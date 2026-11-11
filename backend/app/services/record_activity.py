@@ -40,6 +40,7 @@ from app.models.user import User
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.schemas.changes import ChangeEntryOut, RecordActivityOut
 from app.services.activity_kinds import AUDIT_TRAIL_ONLY_ACTIONS, AUDIT_TRAIL_ONLY_ENTITY_TYPES, action_kinds, kind_of
+from app.services.activity_link_ends import attach_link_ends
 from app.services.changes import attach_actor_names, get_project_changes
 from app.services.link_graph import ArtefactResolver
 
@@ -198,7 +199,9 @@ def get_record_activity(
     else:
         entries = _own_events(db, artefact_type, artefact_id)
     entries += _generic_link_entries(db, resolver, project, artefact_type, artefact_id)
-    entries += _legacy_link_entries(db, project, artefact_id)
+    legacy_links = _legacy_link_entries(db, project, artefact_id)
+    attach_link_ends(db, project, user.id, legacy_links)
+    entries += legacy_links
 
     attach_actor_names(db, [e for e in entries if e.actor_display_name is None])
     entries.sort(key=lambda e: e.timestamp, reverse=True)

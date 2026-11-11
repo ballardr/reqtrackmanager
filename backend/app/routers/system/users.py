@@ -35,6 +35,7 @@ from app.models.user import User
 from app.schemas.pat import BulkRevokeResult
 from app.services import credential_reset
 from app.services.audit import log_event
+from app.services.imported_people import assert_not_imported_person
 from app.services.pats import revoke_matching
 from app.services.rate_limit import RateLimiter
 from app.services.rbac import get_user_org_group_ids, require_server_admin
@@ -593,6 +594,7 @@ def _require_orphaned_user(db: Session, user_id: UUID) -> User:
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    assert_not_imported_person(user)
     has_org_role = db.scalar(select(exists().where(UserOrgRole.user_id == user_id)))
     if has_org_role:
         raise HTTPException(

@@ -55,6 +55,7 @@ from app.services.activity_kinds import (
     actions_for_kinds,
     kind_of,
 )
+from app.services.activity_link_ends import attach_link_ends
 from app.services.link_graph import ArtefactResolver
 from app.services.principals import UNKNOWN_USER_LABEL, principal_labels, principal_member_ids
 from app.services.rbac import get_effective_org_roles
@@ -471,6 +472,7 @@ def _annotate(db: Session, project: Project | None, entries: list[ChangeEntryOut
         entry.kind = kind_of(entry.action, known)
     if project is not None and viewer_id is not None:
         _attach_record_labels(db, project, viewer_id, entries)
+        attach_link_ends(db, project, viewer_id, entries)
 
 
 def _attach_record_labels(db: Session, project: Project, viewer_id: UUID, entries: list[ChangeEntryOut]) -> None:

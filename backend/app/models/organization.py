@@ -263,6 +263,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     report_output_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Age in days after which an imported person that nothing refers to is offered for removal on the organisation's
+    #: People page; `None` (the default) never offers one. Nothing is deleted automatically.
+    imported_person_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Default file name template (without extension) for a generated report that sets none of its own
     #: (`services.report_file_names`); `None` keeps the built-in "<scope>-<report>" names.
     report_file_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

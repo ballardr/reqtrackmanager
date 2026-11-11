@@ -22,12 +22,13 @@ from typing import IO, Any, Literal, overload
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import UserOrgRole
 from app.models.user import User
+from app.services import imported_people
 from app.services.files import upload_file
 
 # Bounds a bundle/CSV import's memory footprint. DEFLATE's ~1032:1 worst-case ratio means an unchecked zip well
@@ -189,46 +190,102 @@ class BundleImportWarnings:
 
 
 class UserResolver:
-    """Resolves the `*_email` references inside a bundle back to real
-    `User` ids in the target deployment, caching lookups within one import.
+    """Resolves the `*_email` references inside a bundle back to `User` ids in the target deployment, caching lookups
+    within one import.
 
-    A `User` is global (one row can hold roles in many organisations, see
-    `models.user.User.email`'s uniqueness), but a bundle may only name people who
-    belong to the organisation being imported into: an email that matches an account
-    with no role there is treated as unmatched, with the same warning as an unknown
-    address. Otherwise a bundle could attribute records to another tenant's users and
-    the warning would reveal which addresses are registered on the server.
+    A `User` is global (one row can hold roles in many organisations, see `models.user.User.email`'s uniqueness), but a
+    bundle may only name people who belong to the organisation being imported into: an email that matches an account
+    with no role there is not matched. Otherwise a bundle could attribute records to another tenant's users and the
+    result would reveal which addresses are registered on the server.
+
+    A person who is not matched becomes an imported person (`services.imported_people`): an inert stand-in that
+    belongs to the organisation, so authorship and ownership keep a name. The importer may instead map a person to
+    themself or to any member, and may force a stand-in where a member matches (`PeopleChoices`).
     """
 
     def __init__(
-        self, db: Session, importing_user: User, warnings: BundleImportWarnings, *, organization_id: UUID
+        self, db: Session, importing_user: User, warnings: BundleImportWarnings, *, organization_id: UUID,
+        data: dict[str, Any] | None = None, choices: imported_people.PeopleChoices | None = None,
     ) -> None:
         self._db = db
         self._organization_id = organization_id
         self._importing_user = importing_user
         self._warnings = warnings
         self._cache: dict[str, UUID | None] = {}
+        self._names = imported_people.people_names(data) if data else {}
+        self.choices = choices or imported_people.PeopleChoices()
+        self._warned: set[str] = set()
+        #: Replay actor per address: the stand-in's id, or the importer for a member, the importer or a reassigned person.
+        self._actor_cache: dict[str, UUID] = {}
         #: Organisation members found for a bundled principal's email, shared by `principal_from_bundle`.
         self.principal_user_cache: dict[tuple[UUID, str], UUID | None] = {}
 
     @property
     def importing_user_id(self) -> UUID:
-        """The user performing the import, the fallback for an unmatched required reference."""
+        """The user performing the import, the fallback for a reference the importer maps to themself."""
         return self._importing_user.id
 
     def _lookup(self, email: str) -> UUID | None:
-        normalized = email.strip().lower()
+        normalized = imported_people.normalise_email(email)
         if not normalized:
             return None
         if normalized not in self._cache:
-            user = self._db.scalar(
-                select(User)
-                .join(UserOrgRole, UserOrgRole.user_id == User.id)
-                .where(User.email == normalized, UserOrgRole.organization_id == self._organization_id)
-                .limit(1)
-            )
-            self._cache[normalized] = user.id if user else None
+            self._cache[normalized] = self._decide(normalized)
         return self._cache[normalized]
+
+    def _decide(self, normalized: str) -> UUID | None:
+        """The user id for an address by the importer's choice, then membership; `None` when it needs a stand-in."""
+        choice = self.choices.mapping.get(normalized)
+        if choice == imported_people.CHOICE_ME:
+            return self._importing_user.id
+        if choice == imported_people.CHOICE_STAND_IN:
+            return None
+        if choice is not None:
+            target = imported_people.reassignable_member(self._db, self._organization_id, choice)
+            if target is not None:
+                return target.id
+        user = self._db.scalar(
+            select(User).join(UserOrgRole, UserOrgRole.user_id == User.id)
+            .where(func.lower(User.email) == normalized, UserOrgRole.organization_id == self._organization_id,
+                   User.imported_organization_id.is_(None))
+            .limit(1)
+        )
+        return user.id if user else None
+
+    def stand_in_id(self, email: str, context: str) -> UUID:
+        """The organisation's imported person for an address (created on first use), warning once per address."""
+        normalized = imported_people.normalise_email(email)
+        user = imported_people.stand_in_for(self._db, self._organization_id, normalized, self._names.get(normalized))
+        if normalized not in self._warned:
+            self._warned.add(normalized)
+            self._warnings.add(f"{context}: '{user.display_name}' is not a member of this organisation — recorded as an imported person.")
+        return user.id
+
+    def person_id(self, email: str, context: str) -> UUID:
+        """The user id for a non-blank address: a member, the importer or reassigned person by choice, else a stand-in."""
+        found = self._lookup(email)
+        return found if found is not None else self.stand_in_id(email, context)
+
+    def actor_id(self, email: str | None, context: str) -> UUID:
+        """Who a replayed history entry is recorded as acted by.
+
+        A stand-in where the person is not a member. A member (matched or reassigned) is never named as the actor of an
+        entry a bundle claims, so a bundle cannot attribute an action to a real colleague; the importer is recorded and
+        the entry's detail names the original person.
+        """
+        if not email or not email.strip():
+            return self._importing_user.id
+        normalized = imported_people.normalise_email(email)
+        if normalized not in self._actor_cache:
+            found = self._lookup(normalized)
+            self._actor_cache[normalized] = self.stand_in_id(normalized, context) if found is None else self._importing_user.id
+        return self._actor_cache[normalized]
+
+    def display_name_for(self, email: str | None) -> str | None:
+        """The bundle's recorded name for an address, for a history entry's detail."""
+        if not email:
+            return None
+        return self._names.get(imported_people.normalise_email(email)) or imported_people.clean_name(None, imported_people.normalise_email(email))
 
     @overload
     def resolve(self, email: str | None, *, required: Literal[True], context: str) -> UUID: ...
@@ -240,29 +297,18 @@ class UserResolver:
         """Resolves an email to a user id.
 
         Args:
-            email: The bundle's recorded email, or None/blank if the
-                original field was itself null.
-            required: Whether the target column is NOT NULL. A required
-                reference that can't be matched falls back to the user
-                performing the import (recorded as a warning); an optional
-                one is simply left null.
-            context: Short human-readable description of what this
-                reference is for, used only in the warning message.
+            email: The bundle's recorded email, or None/blank if the original field was itself null.
+            required: Whether the target column is NOT NULL. A blank required reference is the user performing the
+                import; a blank optional one is left null.
+            context: Short human-readable description of what this reference is for, used only in the warning message.
 
         Returns:
-            A matched (or fallback) user id, or None for an unmatched
-            optional reference.
+            A member, the importer or reassigned person by the importer's choice, or an imported person; `None` for a
+            blank optional reference.
         """
-        if not email:
+        if not email or not email.strip():
             return self._importing_user.id if required else None
-        user_id = self._lookup(email)
-        if user_id is not None:
-            return user_id
-        if required:
-            self._warnings.add(f"{context}: no user found for '{email}' — attributed to the importing user instead.")
-            return self._importing_user.id
-        self._warnings.add(f"{context}: no user found for '{email}' — left unset.")
-        return None
+        return self.person_id(email, context)
 
 
 def import_bundled_file(

@@ -352,6 +352,8 @@ class OrgAdvancedSettingsOut(BaseModel):
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = None
     report_output_retention_days: int | None = None
+    #: Age in days after which an unused imported person is offered for removal; `None` never offers one.
+    imported_person_retention_days: int | None = None
     report_file_name: str | None = None
     #: The report look the Configuration section sets (the accent and logo are on the Branding page).
     report_footer_text: str | None = None
@@ -378,6 +380,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
     report_output_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    imported_person_retention_days: int | None = Field(default=None, ge=1, le=3650)
     report_file_name: str | None = Field(default=None, max_length=200)
     #: Sent only when set: a client that does not know these leaves the report look as it is.
     report_footer_text: str | None = Field(default=None, max_length=500)
@@ -1108,3 +1111,28 @@ class UserAccessOut(BaseModel):
 
     org_groups: list[UserAccessGroupRef]
     projects: list[UserAccessProject]
+
+
+class ImportedPersonRowOut(BaseModel):
+    """One imported person of an organisation (a stand-in for someone named in an import bundle).
+
+    Attributes:
+        id: The stand-in's user id.
+        display_name: The name recorded at import ("Former person" once anonymised).
+        created_at: When the first import named them (UTC).
+        in_use: Whether any record, history entry or field still refers to them.
+        due_for_removal: Whether the organisation's retention age has passed and nothing refers to them.
+    """
+
+    id: UUID
+    display_name: str
+    created_at: datetime
+    in_use: bool
+    due_for_removal: bool
+
+
+class ImportedPeopleOut(BaseModel):
+    """The organisation's imported people and its retention age in days (`None` never offers removal)."""
+
+    retention_days: int | None
+    people: list[ImportedPersonRowOut]

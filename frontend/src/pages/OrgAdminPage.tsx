@@ -63,6 +63,7 @@ import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
+import { ImportedPeoplePanel } from "../components/ImportedPeoplePanel";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
@@ -2438,6 +2439,9 @@ export function OrgAdminPage() {
                 )}
               </SidePanel>
             )}
+            <CollapsibleSection sectionKey="orgAdmin.importedPeople" title={strings.importPeople.panelTitle}>
+              {orgId && <ImportedPeoplePanel orgId={orgId} />}
+            </CollapsibleSection>
           </div>
         )}
 

@@ -83,7 +83,7 @@ def test_an_action_takes_each_principal_kind_and_shows_a_group_by_name(client, a
     assert unassigned.status_code == 201 and unassigned.json()["assignee"] is None
     by_org = _create_action(client, admin_token, pid, assignee=_org(team))
     assert by_org.json()["assignee"] == {
-        "type": "org_group", "id": team, "label": "QA Team", "member_count": 1, "exists": True,
+        "type": "org_group", "id": team, "label": "QA Team", "member_count": 1, "exists": True, "imported": False,
     }
     by_project = _create_action(client, admin_token, pid, assignee=_project(squad))
     assert by_project.json()["assignee"]["label"] == "Test Squad"
@@ -322,7 +322,7 @@ def test_a_task_takes_each_principal_kind_and_a_response_is_a_valid_request(clie
     none = client.post(url, json={"description": "Unassigned"}, headers=h).json()
     assert none["assignee"] is None
     by_org = client.post(url, json={"description": "Org", "assignee": _org(team)}, headers=h).json()
-    assert by_org["assignee"] == {"type": "org_group", "id": team, "label": "Task Team", "member_count": 1, "exists": True}
+    assert by_org["assignee"] == {"type": "org_group", "id": team, "label": "Task Team", "member_count": 1, "exists": True, "imported": False}
     by_project = client.post(url, json={"description": "Project", "assignee": _project(squad)}, headers=h).json()
     assert by_project["assignee"]["label"] == "Task Squad"
     by_user = client.post(url, json={"description": "User", "assignee": _user(member)}, headers=h).json()
@@ -522,7 +522,7 @@ def test_a_requirement_defaults_its_owner_to_the_creator_and_takes_each_principa
     default = _requirement(client, admin_token, pid)
     assert default["owner"]["type"] == "user" and default["owner"]["id"] == me and default["reviewer"] is None
     by_org = _requirement(client, admin_token, pid, owner=_org(team), reviewer=_project(squad))
-    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Req Owners", "member_count": 1, "exists": True}
+    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Req Owners", "member_count": 1, "exists": True, "imported": False}
     assert by_org["reviewer"]["label"] == "Req Squad" and by_org["reviewer"]["type"] == "project_group"
 
     listed = {r["id"]: r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=auth_headers(admin_token)).json()}

@@ -90,6 +90,7 @@ def get_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        imported_person_retention_days=org.imported_person_retention_days,
         report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
         report_include_cover_page=org.report_include_cover_page,
         report_chapters_per_component=org.report_chapters_per_component,
@@ -149,6 +150,8 @@ def update_advanced_settings(
     # (`services.report_run_jobs.effective_retention_days`), so a larger value is accepted but not honoured.
     if "report_output_retention_days" in sent:
         org.report_output_retention_days = payload.report_output_retention_days
+    if "imported_person_retention_days" in sent:
+        org.imported_person_retention_days = payload.imported_person_retention_days
     if "report_file_name" in sent:
         file_name = (payload.report_file_name or "").strip() or None
         if file_name is not None:
@@ -204,6 +207,7 @@ def update_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        imported_person_retention_days=org.imported_person_retention_days,
         report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
         report_include_cover_page=org.report_include_cover_page,
         report_chapters_per_component=org.report_chapters_per_component,

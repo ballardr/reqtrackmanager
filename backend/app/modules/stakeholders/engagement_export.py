@@ -275,6 +275,7 @@ def import_project_data(
             ref, warning = principal_from_bundle(
                 db, entry, organization_id=organization_id, project_id=project.id,
                 fallback_user_id=users.importing_user_id, required=False,
+                users=users, context=f"{context} facilitator",
             )
             if warning:
                 warnings.add(f"{context} facilitator: {warning}")

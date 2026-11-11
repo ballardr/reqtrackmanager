@@ -80,7 +80,7 @@ def test_create_with_each_principal_kind_and_group_display(client, admin_token):
         decision_maker={"type": "project_group", "id": squad},
     )
     assert by_org_group["owner"] == {
-        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True,
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False,
     }
     assert by_org_group["decision_maker"]["label"] == "Squad"
     assert by_org_group["decision_maker"]["type"] == "project_group"

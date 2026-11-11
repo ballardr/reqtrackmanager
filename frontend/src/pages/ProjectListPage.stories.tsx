@@ -355,7 +355,10 @@ export const ImportProjectIsASeparateDialog: Story = {
       ],
     });
     spyOn(api, "post").mockResolvedValue({ id: "new-project" });
-    spyOn(api, "postFile").mockResolvedValue({ project: { id: "imported" }, warnings: [] });
+    spyOn(api, "postFile").mockImplementation(async (path: string) =>
+      path.endsWith("/preview")
+        ? { people: [{ email: "alex@old.example", display_name: "Alex Morgan", resolution: "stand_in", member_id: null, member_name: null }] }
+        : { project: { id: "imported" }, warnings: [] });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -374,10 +377,14 @@ export const ImportProjectIsASeparateDialog: Story = {
     const fileInput = dialog.querySelector('input[type="file"]') as HTMLInputElement;
     await userEvent.upload(fileInput, new File(["zip"], "bundle.zip", { type: "application/zip" }));
     await expect(importButton).toBeEnabled();
+    // The People step lists whom the bundle names and how each would be recorded in the chosen organisation.
+    await expect(await within(dialog).findByRole("table", { name: "People in the bundle" })).toBeInTheDocument();
+    await expect(within(dialog).getByText("alex@old.example")).toBeInTheDocument();
     await userEvent.click(importButton);
     await waitFor(() =>
       expect(api.postFile).toHaveBeenCalledWith(
-        "/api/v1/projects/import", expect.any(File), expect.objectContaining({ organization_id: "org-1", name: "Restored Project" }),
+        "/api/v1/projects/import", expect.any(File),
+        expect.objectContaining({ organization_id: "org-1", name: "Restored Project", people: '{"mapping":{},"keep_original_email":false}' }),
       ),
     );
     await expect(api.post).not.toHaveBeenCalled();
@@ -388,7 +395,10 @@ export const ImportProjectIsASeparateDialog: Story = {
 export const ImportProjectShowsTheError: Story = {
   beforeEach: () => {
     mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
-    spyOn(api, "postFile").mockRejectedValue(new Error("The file is not a project export."));
+    spyOn(api, "postFile").mockImplementation(async (path: string) => {
+      if (path.endsWith("/preview")) return { people: [] };
+      throw new Error("The file is not a project export.");
+    });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

@@ -303,7 +303,7 @@ def test_import_rejects_a_non_zip_file(client, admin_token, org_id):
     assert resp.status_code == 400
 
 
-def test_unmatched_required_user_reference_falls_back_to_importer_with_a_warning(client, admin_token, org_id):
+def test_unmatched_required_user_reference_becomes_an_imported_person_with_a_warning(client, admin_token, org_id):
     """Unit-level test of `import_project_bundle` (rather than round-tripping
     through a real export) so a bundle can reference an email that matches
     no real account — every user in this app is a real, never-deleted
@@ -357,13 +357,16 @@ def test_unmatched_required_user_reference_falls_back_to_importer_with_a_warning
             db, organization_id=UUID(org_id), name="Ghost Import", summary=None,
             zip_bytes=buffer.getvalue(), current_user=importing_user,
         )
-        assert any("ghost@example.com" in w for w in warnings)
+        assert any("imported person" in w for w in warnings)
         owner_id = db.scalar(
             select(RequirementVersion.owner_id)
             .join(Requirement, Requirement.id == RequirementVersion.requirement_id)
             .where(Requirement.project_id == project.id)
         )
-        assert owner_id == importing_user.id
+        # A person who is not a member becomes an imported person rather than the importer, and the address is not kept.
+        owner = db.get(User, owner_id)
+        assert owner is not None and owner.id != importing_user.id and owner.imported_organization_id == UUID(org_id)
+        assert "ghost@example.com" not in owner.email
     finally:
         db.close()
 

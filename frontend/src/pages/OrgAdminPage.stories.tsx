@@ -124,6 +124,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/link-types")) return types;
     // The org-only pending-invites list.
     if (path.includes("/pending-invites")) return orgPendingInvites;
+    if (path.includes("/imported-people")) return { retention_days: null, people: [] };
     if (path.includes("/groups")) return orgGroups;
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];

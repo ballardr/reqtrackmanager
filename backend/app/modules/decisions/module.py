@@ -92,6 +92,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.decisions import activity_links as _activity_links
 from app.modules.decisions import export as bundle_export
 from app.modules.decisions.models import Decision
 from app.modules.decisions.perf_dataset import generate_decisions
@@ -322,6 +323,7 @@ MODULE_DEFINITION = ModuleDefinition(
             browse_levels=(BrowseLevel("decision_type", "Decision type"),),
         ),
     },
+    activity_link_ends={_activity_links.LINK_EVENT_TYPE: _activity_links.link_ends},
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,

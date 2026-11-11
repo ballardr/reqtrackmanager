@@ -109,6 +109,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.context_strategy import activity_links as _activity_links
 from app.modules.context_strategy import export as bundle_export
 from app.modules.context_strategy._shared import FUTURE_STATE_APPROVE_PERMISSION as _FUTURE_STATE_APPROVE_PERMISSION
 from app.modules.context_strategy._shared import (
@@ -871,6 +872,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_ids_in_organization=_artefact_ids_in_organization,
     reports=REPORT_DEFINITIONS,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    activity_link_ends={_activity_links.LINK_EVENT_TYPE: _activity_links.link_ends},
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,

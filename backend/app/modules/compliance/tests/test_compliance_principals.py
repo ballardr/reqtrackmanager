@@ -103,7 +103,7 @@ def test_standard_owner_defaults_to_the_creator_and_takes_ancreate_org_group(cli
     assert default["owner"]["type"] == "user" and default["owner"]["id"] == me
 
     owned = _create_standard(client, admin_token, org_id, reference="OWN-GROUP", owner={"type": "org_group", "id": team})
-    assert owned["owner"] == {"type": "org_group", "id": team, "label": "Standards Board", "member_count": 1, "exists": True}
+    assert owned["owner"] == {"type": "org_group", "id": team, "label": "Standards Board", "member_count": 1, "exists": True, "imported": False}
     assert client.get(f"{_base(org_id)}/standards/{owned['id']}", headers=h).json()["owner"]["label"] == "Standards Board"
     listed = {s["reference"]: s for s in client.get(f"{_base(org_id)}/standards", headers=h).json()}
     assert listed["OWN-GROUP"]["owner"]["type"] == "org_group" and listed["OWN-DEFAULT"]["owner"]["id"] == me
@@ -219,7 +219,7 @@ def test_project_review_owner_takes_each_kind_and_recurrence_keeps_it(client, ad
     )
     assert created.status_code == 201, created.text
     review = created.json()
-    assert review["owner"] == {"type": "project_group", "id": squad, "label": "Review Squad", "member_count": 1, "exists": True}
+    assert review["owner"] == {"type": "project_group", "id": squad, "label": "Review Squad", "member_count": 1, "exists": True, "imported": False}
 
     updated = client.patch(
         f"{_project_base(project['id'])}/reviews/{review['id']}",

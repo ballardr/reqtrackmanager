@@ -68,6 +68,59 @@ export const ChangeHistory: Story = {
   },
 };
 
+/** A link event reads the verb and relationship in the Event column and names both records, stacked, in the Record column, each a link; a record the viewer cannot
+ * open shows only its type, and another project's record is followed by that project's name. */
+export const LinkEvents: Story = {
+  decorators: at(),
+  beforeEach: () => {
+    mockSideReads();
+    const requirement = {
+      role: "source" as const, entity_type: "requirement", entity_type_label: "Requirement", entity_id: "requirement-1",
+      label: "SW-PERF-014 Response time budget", project_id: "project-1", project_name: "Alpha",
+    };
+    spyOn(api, "getPage").mockResolvedValue(pageOf([
+      buildChangeEntry({
+        entity_type: "artefact_link", entity_id: "link-1", action: "created", kind: "links", link_type_label: "Depends on",
+        linked_records: [requirement, {
+          role: "target", entity_type: "decision", entity_type_label: "Decision", entity_id: "decision-1",
+          label: "DEC-007 Use a queue", project_id: "project-1", project_name: "Alpha",
+        }],
+      }),
+      buildChangeEntry({
+        entity_type: "artefact_link", entity_id: "link-2", action: "deleted", kind: "links",
+        linked_records: [requirement, {
+          role: "target", entity_type: "decision", entity_type_label: "Decision", entity_id: null, label: null,
+          project_id: null, project_name: null,
+        }],
+      }),
+      buildChangeEntry({
+        entity_type: "artefact_link", entity_id: "link-3", action: "created", kind: "links",
+        linked_records: [requirement, {
+          role: "target", entity_type: "requirement", entity_type_label: "Requirement", entity_id: "requirement-9",
+          label: "HW-FN-002 Power budget", project_id: "project-2", project_name: "Parent programme",
+        }],
+      }),
+    ]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Project history" });
+    const created = within(table.querySelector("tbody tr:nth-of-type(1)") as HTMLElement);
+    await expect(created.getByText("created a link (Depends on)")).toBeInTheDocument();
+    await expect(created.getByRole("link", { name: "DEC-007 Use a queue" })).toHaveAttribute("href", "/projects/project-1/modules/decisions/decision-1");
+    // The hidden end is named by its type only, and no link is drawn for it.
+    const removed = within(table.querySelector("tbody tr:nth-of-type(2)") as HTMLElement);
+    await expect(removed.getByText("removed a link")).toBeInTheDocument();
+    await expect(removed.getByText("Decision (unavailable)")).toBeInTheDocument();
+    await expect(removed.queryByRole("link", { name: /Decision/ })).not.toBeInTheDocument();
+    // A record of another project opens in that project and names it.
+    const elsewhere = within(table.querySelector("tbody tr:nth-of-type(3)") as HTMLElement);
+    await expect(elsewhere.getByRole("link", { name: "HW-FN-002 Power budget (Parent programme)" })).toHaveAttribute(
+      "href", "/projects/project-2/requirements/requirement-9",
+    );
+  },
+};
+
 /** The day is written once, on the first row of each local day; the rows below it carry the time alone. */
 export const DaysAreGrouped: Story = {
   decorators: at(),

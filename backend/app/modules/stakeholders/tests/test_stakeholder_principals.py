@@ -67,7 +67,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
     persona = _create_project_persona(
         client, token, project["id"], owner={"type": "org_group", "id": team}, champion={"type": "project_group", "id": squad},
     )
-    assert persona["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True}
+    assert persona["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False}
     assert persona["champion"]["label"] == "Squad" and persona["champion"]["type"] == "project_group"
 
     stakeholder = _create_project_stakeholder(client, token, project["id"], owner={"type": "project_group", "id": squad})

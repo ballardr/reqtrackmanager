@@ -35,7 +35,9 @@ A project's **Files** page lists every file the project holds — attached to re
 
 ## Reviewing project history
 
-A project's **Project history** page is a unified timeline of everything that's happened — requirement and change-request version history, plus other audit events (stage transitions, group membership changes, and more). It is a table with one line per event: **Time** (the day is written once, on the first event of each day), **Type**, **Event**, **Record** and **Person**. A requirement, a change request, an action or any other record you may open is named by its code and title, and links to its page. Click **Time** to put the oldest events first.
+A project's **Project history** page is a unified timeline of everything that's happened — requirement and change-request version history, plus other audit events (stage transitions, group membership changes, and more). It is a table with one line per event: **Time** (the day is written once, on the first event of each day), **Type**, **Event**, **Record(s)** and **Person**. A requirement, a change request, an action or any other record you may open is named by its code and title, and links to its page. Click **Time** to put the oldest events first.
+
+A link event reads **created a link (Depends on)** or **removed a link (Depends on)** in the **Event** column: the verb and the relationship. The **Record(s)** column names the two records it joins, the source above the target, each opening its own page. A record from another project is followed by that project's name. A record you may not open is shown by its type only, for example *Decision (unavailable)*, so the event is still listed without revealing the record.
 
 The filter panel on the right narrows the table; every filter is kept in the address, so a reload, the browser's Back button and a copied link restore the same view.
 

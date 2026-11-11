@@ -124,6 +124,7 @@ from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CH
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
 from app.services.files import read_file, resolve_bundle_files
+from app.services.imported_people import PeopleChoices, PersonPreview, classify_people, people_section
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
@@ -584,6 +585,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         ],
         **module_bundle_json,
     }
+    project_json["people"] = people_section(db, project_json)
     return project_json, file_assets_by_id
 
 
@@ -1056,9 +1058,12 @@ def apply_project_data(
     # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
     import_project_scoring(db, project, data, warnings)
 
-    # Replays the source project's structural audit trail so its history is not lost on a move. The importer is the
-    # recorded actor (a bundle cannot attribute an event to anyone else); the original actor and time are kept in
-    # the detail, and the entry is marked as imported so it is never read as an action taken in this project.
+    # Replays the source project's structural audit trail so its history is not lost on a move. A person who is not a
+    # member of the organisation is recorded as the actor through an imported person, so the history still says who did
+    # it; a member is never named as the actor of an entry a bundle claims (the importer is recorded and the detail
+    # names the original person). Every entry is marked as imported, with the importer and time, so it is never read as
+    # an action taken in this project. The original address is kept in the detail only when the importer chose to.
+    imported_at = datetime.now(UTC).isoformat()
     for ev in data.get("audit_events", []):
         if not (
             isinstance(ev.get("entity_type"), str) and isinstance(ev.get("action"), str) and isinstance(ev.get("entity_id"), str)
@@ -1067,10 +1072,18 @@ def apply_project_data(
             continue
         original = ev.get("detail")
         detail = dict(original) if isinstance(original, dict) else {}
-        detail["imported_from_bundle"] = {"original_actor_email": ev.get("actor_email"), "original_created_at": ev.get("created_at")}
+        actor_email = ev.get("actor_email") if isinstance(ev.get("actor_email"), str) else None
+        origin: dict[str, Any] = {
+            "original_actor_name": users.display_name_for(actor_email), "original_created_at": ev.get("created_at"),
+            "imported_by": str(current_user.id), "imported_at": imported_at,
+        }
+        if users.choices.keep_original_email:
+            origin["original_actor_email"] = actor_email
+        detail["imported_from_bundle"] = origin
         log_event(
             db, entity_type=ev["entity_type"], entity_id=ev["entity_id"], action=ev["action"],
-            actor_id=current_user.id, organization_id=organization_id, project_id=project.id, detail=detail,
+            actor_id=users.actor_id(actor_email, "History"), organization_id=organization_id, project_id=project.id,
+            detail=detail,
         )
 
     if not get_effective_project_managers(db, project.id):
@@ -1083,15 +1096,37 @@ def apply_project_data(
     )
 
 
+def preview_project_people(
+    db: Session, *, organization_id: UUID, zip_bytes: bytes, choices: PeopleChoices,
+) -> list[PersonPreview]:
+    """How each person a project bundle names would be resolved on import, without writing anything.
+
+    Args:
+        db: An active database session (read only).
+        organization_id: The organisation the bundle would be imported into.
+        zip_bytes: The uploaded bundle.
+        choices: The importer's decisions so far.
+
+    Returns:
+        One entry per person; see `imported_people.classify_people`.
+
+    Raises:
+        HTTPException: 400 when the bundle is not a valid project bundle.
+    """
+    _manifest, data, _zf = _read_bundle(zip_bytes, PROJECT_BUNDLE_KIND)
+    return classify_people(db, organization_id, data, choices)
+
+
 def import_project_bundle(
     db: Session, *, organization_id: UUID, name: str, summary: str | None, zip_bytes: bytes, current_user: User,
-    skip_files: bool = False,
+    skip_files: bool = False, choices: PeopleChoices | None = None,
 ) -> tuple[Project, list[str]]:
     """Creates a brand-new project in `organization_id` from an exported
     project bundle. Never merges into an existing project — a fresh project
     keeps unique_code/prefix collisions and partial-import states impossible.
 
     Args:
+        choices: The importer's decisions about the people the bundle names (`services.imported_people`).
         skip_files: Import without the bundle's files; honoured only while files cannot be stored
             (`services.files.resolve_bundle_files`).
 
@@ -1110,7 +1145,7 @@ def import_project_bundle(
     file_bytes_by_ref = resolve_bundle_files(
         db, organization_id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
     )
-    users = UserResolver(db, current_user, warnings, organization_id=organization_id)
+    users = UserResolver(db, current_user, warnings, organization_id=organization_id, data=data, choices=choices)
     project = new_project_from_bundle_data(db, organization_id, name, summary, data)
     db.add(project)
     db.flush()

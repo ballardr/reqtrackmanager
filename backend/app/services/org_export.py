@@ -129,6 +129,7 @@ from app.services.bundle_common import (
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.files import read_file, resolve_bundle_files
+from app.services.imported_people import people_section
 from app.services.invites import create_pending_invite
 from app.services.lookups import present
 from app.services.org_membership import external_account_refusal, holds_org_role
@@ -276,6 +277,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "oidc_required_group": org.oidc_required_group, "oidc_allow_account_creation": org.oidc_allow_account_creation,
         "pat_max_lifetime_days": org.pat_max_lifetime_days,
         "report_output_retention_days": org.report_output_retention_days,
+        "imported_person_retention_days": org.imported_person_retention_days,
         "report_file_name": org.report_file_name,
         "logo_file_ref": f"{logo_asset.id}_{logo_asset.filename}" if logo_asset else None,
         "logo_content_type": logo_asset.content_type if logo_asset else None,
@@ -285,6 +287,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "report_look": report_look, "members": members_json, "org_groups": org_groups_json,
         **module_bundle_json,
     }
+    org_json["people"] = people_section(db, org_json)
 
     manifest = {
         "kind": ORG_BUNDLE_KIND, "format_version": ORG_BUNDLE_FORMAT_VERSION,
@@ -689,6 +692,7 @@ def import_org_bundle(
         oidc_required_group=data.get("oidc_required_group"),
         oidc_allow_account_creation=data.get("oidc_allow_account_creation", True), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
         report_output_retention_days=data.get("report_output_retention_days"),
+        imported_person_retention_days=data.get("imported_person_retention_days"),
         report_file_name=_bundled_file_name(data.get("report_file_name"), warnings),
     )
     db.add(org)
@@ -740,7 +744,7 @@ def import_org_bundle(
         org.login_background_file_id = asset.id
 
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
-    users = UserResolver(db, acting_user, warnings, organization_id=org.id)
+    users = UserResolver(db, acting_user, warnings, organization_id=org.id, data=data)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
@@ -881,7 +885,7 @@ def merge_org_bundle(
         db, target_org.id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
     )
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
-    users = UserResolver(db, acting_user, warnings, organization_id=target_org.id)
+    users = UserResolver(db, acting_user, warnings, organization_id=target_org.id, data=data)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)

@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -62,6 +62,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             per org. Implies `is_active = False`, but is tracked separately
             so "banned" survives even if something else were to flip
             `is_active` back on.
+        imported_organization_id / imported_key: Mark an imported person (see the column notes below).
         banned_at / banned_by: Set when `is_banned` transitions to True;
             cleared on unban.
         landing_preference: Where the user is sent after login ("auto",
@@ -127,6 +128,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "users"
+    __table_args__ = (
+        Index(
+            "uq_users_imported_org_key", "imported_organization_id", "imported_key", unique=True,
+            postgresql_where="imported_organization_id IS NOT NULL",
+        ),
+    )
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(255))
@@ -144,6 +151,17 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_server_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Set only on an imported person: a stand-in for someone named in an import bundle who is not a member of the
+    #: organisation it was imported into (`services.imported_people`). The row is always inactive and archived, holds
+    #: no password and a synthetic non-routable address, and belongs to exactly this organisation.
+    imported_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="RESTRICT", use_alter=True, name="fk_users_imported_organization_id"),
+        nullable=True, index=True,
+    )
+    #: Keyed hash of the bundle's normalised email (per organisation), used only to reuse the same stand-in on a later
+    #: import; the address itself is never stored on the row.
+    imported_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     banned_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 

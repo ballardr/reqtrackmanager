@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
+from app.models.user import User
 from tests.conftest import auth_headers, create_org_admin_in
 from tests.test_project_export_import import _build_rich_project
 
@@ -20,23 +21,33 @@ def _import(client, token, org_id, bundle, name="Imported"):
     )
 
 
-def test_a_person_outside_the_target_organisation_is_unmatched_and_the_importer_is_used(client, admin_token, org_id):
+def test_a_person_outside_the_target_organisation_becomes_an_imported_person(client, admin_token, org_id):
     project, _, _ = _build_rich_project(client, admin_token, org_id)
     bundle = client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(admin_token)).content
     other_org, other_admin = create_org_admin_in(client, admin_token, "Strict Target")
 
     result = _import(client, other_admin, other_org["id"], bundle).json()
 
-    assert any("admin@example.com" in w and "no user found" in w for w in result["warnings"])
+    assert any("imported person" in w for w in result["warnings"])
     requirements = client.get(
         f"/api/v1/projects/{result['project']['id']}/requirements", headers=auth_headers(other_admin)
     ).json()
     assert requirements
     me = client.get("/api/v1/auth/me", headers=auth_headers(other_admin)).json()["id"]
-    assert {r["creator_id"] for r in requirements} == {me}
+    creators = {r["creator_id"] for r in requirements}
+    assert me not in creators
+    db = SessionLocal()
+    try:
+        for creator in creators:
+            user = db.get(User, creator)
+            assert user is not None and str(user.imported_organization_id) == other_org["id"]
+            assert not user.is_active and user.is_archived and user.password_hash is None
+            assert user.email.endswith("@imported.example.com") and "admin@example.com" not in user.email
+    finally:
+        db.close()
 
 
-def test_replayed_history_is_attributed_to_the_importer_and_marked_as_imported(client, admin_token, org_id):
+def test_replayed_history_is_attributed_to_an_imported_person_and_marked_as_imported(client, admin_token, org_id):
     project, _, _ = _build_rich_project(client, admin_token, org_id)
     bundle = client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(admin_token)).content
     other_org, other_admin = create_org_admin_in(client, admin_token, "History Target")
@@ -50,7 +61,13 @@ def test_replayed_history_is_attributed_to_the_importer_and_marked_as_imported(c
             if isinstance(e.detail, dict) and "imported_from_bundle" in e.detail
         ]
         assert replayed, "the source project's structural history should be replayed"
-        assert {str(e.actor_id) for e in replayed} == {importer}
+        assert importer not in {str(e.actor_id) for e in replayed}
+        for e in replayed:
+            actor = db.get(User, e.actor_id)
+            assert actor is not None and actor.imported_organization_id is not None
+            origin = e.detail["imported_from_bundle"]
+            assert origin["imported_by"] == importer and origin["imported_at"] and origin["original_actor_name"]
+            assert "original_actor_email" not in origin
         counted = db.scalar(
             select(AuditEvent).where(AuditEvent.project_id == new_id, AuditEvent.action == "imported_from_bundle")
         )

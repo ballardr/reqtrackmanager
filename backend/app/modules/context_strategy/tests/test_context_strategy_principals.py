@@ -88,7 +88,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
     updated = _update_pain_point(client, token, project["id"], pain_point, owner={"type": "org_group", "id": team})
     assert updated.status_code == 200, updated.text
     assert updated.json()["owner"] == {
-        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True,
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False,
     }
     second_pp = _create_pain_point(client, token, project["id"], title="Second")
     _update_pain_point(client, token, project["id"], second_pp, owner={"type": "project_group", "id": squad})

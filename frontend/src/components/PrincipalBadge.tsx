@@ -2,6 +2,7 @@ import { FolderKanban, User, Users } from "lucide-react";
 
 import type { Principal, PrincipalType } from "../api/types";
 import { PRINCIPAL_TYPE_LABEL } from "../api/types";
+import { useStrings } from "../context/TerminologyContext";
 import { Badge } from "./Badge";
 
 const ICON: Record<PrincipalType, typeof User> = { user: User, org_group: Users, project_group: FolderKanban };
@@ -15,6 +16,7 @@ const ICON: Record<PrincipalType, typeof User> = { user: User, org_group: Users,
  * @param placeholder Shown when the field is empty.
  */
 export function PrincipalBadge({ principal, placeholder = "Unassigned" }: { principal: Principal | null | undefined; placeholder?: string }) {
+  const strings = useStrings();
   if (!principal) return <span className="text-muted">{placeholder}</span>;
   const Icon = ICON[principal.type];
   const kind = PRINCIPAL_TYPE_LABEL[principal.type];
@@ -30,6 +32,7 @@ export function PrincipalBadge({ principal, placeholder = "Unassigned" }: { prin
     <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }} title={detail ? `${kind}: ${principal.label}` : kind}>
       <Icon size={14} aria-hidden="true" />
       <span>{principal.label}</span>
+      {principal.imported && <Badge tone="warning">{strings.importPeople.importedBadge}</Badge>}
       {principal.type !== "user" && <Badge tone="muted">{detail ? `${kind} · ${detail}` : kind}</Badge>}
     </span>
   );

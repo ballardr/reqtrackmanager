@@ -41,7 +41,7 @@ export const ImportsTheChosenFile: Story = {
     const dialog = within(within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Import project" }));
     await userEvent.upload(dialog.getByLabelText("Project bundle (.zip)") as HTMLInputElement, zip());
     await userEvent.click(dialog.getByRole("button", { name: "Import" }));
-    await waitFor(() => expect(args.onImport).toHaveBeenCalledWith(expect.any(File), false));
+    await waitFor(() => expect(args.onImport).toHaveBeenCalledWith(expect.any(File), false, { mapping: {}, keep_original_email: false }));
   },
 };
 
@@ -82,7 +82,7 @@ export const OffersImportWithoutFiles: Story = {
     await expect(await dialog.findByText("3 files (2.0 KB) cannot be stored because file uploads are disabled on this deployment.")).toBeInTheDocument();
     await expect(dialog.getByRole("button", { name: "Cancel import" })).toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Import without files" }));
-    await waitFor(() => expect(args.onImport).toHaveBeenLastCalledWith(expect.any(File), true));
+    await waitFor(() => expect(args.onImport).toHaveBeenLastCalledWith(expect.any(File), true, expect.anything()));
   },
 };
 
@@ -105,7 +105,7 @@ export const OffersImportWithoutFilesWhenTheyDoNotFit: Story = {
     await expect(await dialog.findByText("2 files (3.0 MB) do not fit in the storage space left for this organisation (1.0 MB).")).toBeInTheDocument();
     await expect(dialog.getByRole("button", { name: "Cancel import" })).toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Import without files" }));
-    await waitFor(() => expect(args.onImport).toHaveBeenLastCalledWith(expect.any(File), true));
+    await waitFor(() => expect(args.onImport).toHaveBeenLastCalledWith(expect.any(File), true, expect.anything()));
   },
 };
 
@@ -119,5 +119,38 @@ export const CancelImportClosesTheDialog: Story = {
     await userEvent.click(await dialog.findByRole("button", { name: "Cancel import" }));
     await expect(args.onClose).toHaveBeenCalled();
     await expect(args.onImport).toHaveBeenCalledTimes(1);
+  },
+};
+
+const PEOPLE = [
+  { email: "alex@old.example", display_name: "Alex Morgan", resolution: "stand_in" as const, member_id: null, member_name: null },
+  { email: "sam@new.example", display_name: "Sam Lee", resolution: "member" as const, member_id: "u-sam", member_name: "Sam Lee" },
+];
+
+/** With the People step on, choosing a file reads the people; a reassignment and the keep-email switch go to the import. */
+export const ReadsThePeopleAndPassesTheChoices: Story = {
+  args: {
+    people: { load: fn(async () => PEOPLE), members: [{ user_id: "u-sam", display_name: "Sam Lee" }], dependsOn: "org-1" },
+  },
+  play: async ({ canvasElement, args }) => {
+    const dialog = within(within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Import project" }));
+    await userEvent.upload(dialog.getByLabelText("Project bundle (.zip)") as HTMLInputElement, zip());
+    const select = await dialog.findByRole("combobox", { name: "Import Alex Morgan as" });
+    await userEvent.selectOptions(select, "u-sam");
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Keep original email addresses in the history" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(args.onImport).toHaveBeenCalledWith(
+      expect.any(File), false, { mapping: { "alex@old.example": "u-sam" }, keep_original_email: true },
+    ));
+  },
+};
+
+/** A bundle that cannot be read shows the message in place of the table. */
+export const ShowsAPeopleFailure: Story = {
+  args: { people: { load: fn(async () => { throw new Error("Not a valid export bundle."); }), members: [], dependsOn: "org-1" } },
+  play: async ({ canvasElement }) => {
+    const dialog = within(within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Import project" }));
+    await userEvent.upload(dialog.getByLabelText("Project bundle (.zip)") as HTMLInputElement, zip());
+    await expect(await dialog.findByRole("alert")).toHaveTextContent("Not a valid export bundle.");
   },
 };

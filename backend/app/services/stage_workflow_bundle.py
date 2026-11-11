@@ -237,6 +237,7 @@ def import_component_phases(
         ref, warning = principal_from_bundle(
             db, entry.get("owner"), organization_id=project.organization_id, project_id=project.id,
             fallback_user_id=users.importing_user_id, required=False,
+            users=users, context=f"{label} owner",
         )
         if warning:
             warnings.add(f"{label} owner: {warning}")
@@ -314,6 +315,7 @@ def import_phase_schedule(
         ref, warning = principal_from_bundle(
             db, entry, organization_id=project.organization_id, project_id=project.id,
             fallback_user_id=users.importing_user_id, required=False,
+            users=users, context=f"Stage {name!r} owner",
         )
         if warning:
             warnings.add(f"Stage {name!r} owner: {warning}")

@@ -1383,6 +1383,57 @@ export interface ActionTypeDefinition {
   sort_order: number;
 }
 
+/** How an import resolves a person its bundle names (`POST /projects/import/preview`). */
+export type ImportedPersonResolution = "member" | "reassigned" | "me" | "stand_in";
+export const IMPORTED_PERSON_RESOLUTION_LABEL: Record<ImportedPersonResolution, string> = {
+  member: "Member",
+  reassigned: "Reassigned",
+  me: "Me",
+  stand_in: "Imported person",
+};
+export const IMPORTED_PERSON_RESOLUTION_TONE: Record<ImportedPersonResolution, BadgeTone | undefined> = {
+  member: undefined,
+  reassigned: "info",
+  me: "info",
+  stand_in: "warning",
+};
+
+/** One of an organisation's imported people (`GET /orgs/{id}/imported-people`). */
+export interface ImportedPersonRow {
+  id: string;
+  display_name: string;
+  created_at: string;
+  /** Whether any record, history entry or field still refers to them. */
+  in_use: boolean;
+  /** Whether the retention age has passed and nothing refers to them. */
+  due_for_removal: boolean;
+}
+
+export interface ImportedPeopleList {
+  retention_days: number | null;
+  people: ImportedPersonRow[];
+}
+
+/** One person a bundle names and how the import would resolve them. */
+export interface ImportedPerson {
+  email: string;
+  display_name: string;
+  resolution: ImportedPersonResolution;
+  member_id: string | null;
+  member_name: string | null;
+}
+
+/** The importer's decisions about the people in a bundle (the import's `people` field). */
+export interface ImportPeopleChoices {
+  /** Per bundle email: `"me"`, `"stand_in"` or an organisation member's user id; absent means automatic. */
+  mapping: Record<string, string>;
+  keep_original_email: boolean;
+}
+
+export interface ProjectImportPreview {
+  people: ImportedPerson[];
+}
+
 export interface ProjectImportResult {
   project: Project;
   warnings: string[];
@@ -1941,6 +1992,17 @@ export interface ChangeRequestVoteTally {
   reject_count: number;
 }
 
+/** One end of a link event; the identity fields are null when the viewer cannot open the record. */
+export interface LinkedRecord {
+  role: "source" | "target";
+  entity_type: string;
+  entity_type_label: string;
+  entity_id: string | null;
+  label: string | null;
+  project_id: string | null;
+  project_name: string | null;
+}
+
 export interface ChangeEntry {
   timestamp: string;
   entity_type: string;
@@ -1953,6 +2015,34 @@ export interface ChangeEntry {
   kind: ActivityKind;
   /** The record's code and title when it is of a registered type the viewer may see (requirements and change requests carry theirs in `detail`). */
   record_label: string | null;
+  /** The two records a link event joins, source first (empty for any other event). */
+  linked_records?: LinkedRecord[];
+  /** The relationship's name ("Depends on") for a link event whose link type is known. */
+  link_type_label?: string | null;
+}
+
+/** The verb phrase of a link event ("created a link") when it names both records, else `null`. A record's own
+ * Activity aside (`detail.other_label`) words a generic link from that record's side instead. */
+export function linkEventVerb(entry: ChangeEntry): string | null {
+  if (entry.linked_records?.length !== 2 || typeof entry.detail?.other_label === "string") return null;
+  if (entry.action === "deleted" || entry.action === "unlinked") return "removed a link";
+  if (entry.action === "link_type_changed") return "changed the type of a link";
+  return "created a link";
+}
+
+/** What a link event did, without its records ("created a link (Depends on)"): the History table's Event column, whose
+ * Record column names the two records. `null` for an event that is not about a link. */
+export function describeLinkEventAction(entry: ChangeEntry): string | null {
+  const verb = linkEventVerb(entry);
+  return verb === null ? null : `${verb}${entry.link_type_label ? ` (${entry.link_type_label})` : ""}`;
+}
+
+/** How one end of a link event reads: its label, or only its type when the viewer cannot open it; another
+ * project's record is followed by that project's name when `projectId` (the project shown) differs. */
+export function describeLinkedRecord(end: LinkedRecord, projectId?: string): string {
+  if (end.label === null) return `${end.entity_type_label} (unavailable)`;
+  const elsewhere = projectId !== undefined && end.project_id !== null && end.project_id !== projectId && end.project_name;
+  return elsewhere ? `${end.label} (${end.project_name})` : end.label;
 }
 
 /** Actor + action text for one activity entry (the entity-type badge, and
@@ -1970,7 +2060,13 @@ export function describeActivityEntry(entry: ChangeEntry): string {
 /** What an entry did, without who did it ("approved", `added the tag "Security"`): the Event column of the
  * project History table, and the second half of `describeActivityEntry`'s sentence, so a wording change
  * reaches the table and the record's Activity aside together. */
-export function describeActivityAction(entry: ChangeEntry): string {
+export function describeActivityAction(entry: ChangeEntry, projectId?: string): string {
+  const linkVerb = linkEventVerb(entry);
+  if (linkVerb !== null) {
+    const [source, target] = entry.linked_records ?? [];
+    const type = entry.link_type_label ? ` (${entry.link_type_label})` : "";
+    return `${linkVerb}: ${describeLinkedRecord(source, projectId)} → ${describeLinkedRecord(target, projectId)}${type}`;
+  }
   if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
     const removed = entry.action === "deleted";
     const preposition = entry.detail.direction === "incoming" ? "from" : "to";
@@ -2552,6 +2648,8 @@ export interface Principal extends PrincipalRef {
   member_count: number | null;
   /** False once a group was deleted but a history row still names it. */
   exists: boolean;
+  /** True for an imported person (a stand-in for someone named in an import bundle). */
+  imported?: boolean;
 }
 
 /** The server's answer to "what still names this group" (`GET .../groups/{id}/usage`). */

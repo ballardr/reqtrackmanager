@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import io
 import json
+from uuid import UUID
 
+from app.database import SessionLocal
+from app.models.user import User
 from app.modules.compliance.tests.test_compliance_mapping_and_version_impact import (
     _create_mapping,
     _create_relationship_type,
@@ -147,9 +150,17 @@ def test_export_and_import_round_trip_version_summary_and_clarification(client, 
     assert new_child["clarification_count"] == 1
     assert new_child["last_clarification_note"] == "Fixed a typo."
     assert new_child["last_clarified_at"] is not None
-    # The clarifier belongs to the source organisation only: a bundle cannot attribute work to another tenant's account.
-    assert new_child["last_clarified_by"] is None
-    assert any("no user found" in w for w in result["warnings"])
+    # The clarifier belongs to the source organisation only: a bundle cannot attribute work to another tenant's account,
+    # so the person is recorded as an imported person of the target organisation instead.
+    clarifier = new_child["last_clarified_by"]
+    assert clarifier is not None
+    db = SessionLocal()
+    try:
+        stand_in = db.get(User, UUID(clarifier))
+        assert stand_in is not None and str(stand_in.imported_organization_id) == target_org["id"]
+    finally:
+        db.close()
+    assert any("imported person" in w for w in result["warnings"])
 
 
 def test_import_across_orgs_lands_draft_regardless_of_source_status(client, admin_token, org_id):

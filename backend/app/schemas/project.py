@@ -182,6 +182,26 @@ class ProjectOut(BaseModel):
     code_change_locked: bool = False
 
 
+class ImportedPersonOut(BaseModel):
+    """One person an import bundle names and how the import would resolve them (`POST /projects/import/preview`).
+
+    `resolution` is `member` (matched by email), `reassigned` (the importer chose a member), `me` (the importer) or
+    `stand_in` (an imported person is created or reused). `member_id` / `member_name` are set for the first two.
+    """
+
+    email: str
+    display_name: str
+    resolution: str
+    member_id: UUID | None = None
+    member_name: str | None = None
+
+
+class ProjectImportPreview(BaseModel):
+    """The people step of a project import: nothing has been written."""
+
+    people: list[ImportedPersonOut]
+
+
 class ProjectImportResult(BaseModel):
     """Outcome of importing a project bundle (`POST /projects/import`) —
     the new project plus any human-readable warnings about references

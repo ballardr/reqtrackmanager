@@ -381,6 +381,7 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
     activity_action_kinds: dict[str, str] = {}  # {audit action: kind} for the project History page's Event filter (§4l7)
+    activity_link_ends: dict[str, ActivityLinkEndsReader] = {}  # {link event type: reader of its two records} (§4l7)
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
@@ -1293,7 +1294,8 @@ Read left to right: core sections import first, then every module's `import_` in
 
 Rules for a hook (reference implementations: `modules/risk_management/export.py`, `modules/context_strategy/export.py`):
 
-- Cross-references use portable keys (type names, level axis and name, codes, labels, emails), never database ids. People and groups go through `principal_to_bundle` / `principal_columns_from_bundle`; a reference the target cannot match is left unset (or falls back to the importer for a mandatory owner) with a warning.
+- Cross-references use portable keys (type names, level axis and name, codes, labels, emails), never database ids. People and groups go through `principal_to_bundle` / `principal_columns_from_bundle`; a reference the target cannot match becomes an *imported person* (`services/imported_people.py`) through `UserResolver` / `principal_from_bundle(users=...)`, with a warning; never resolve an email yourself.
+- The bundle's `people` section (names for the addresses it contains) is added by the core export for every module by scanning for `email` / `*_email` keys, so a hook needs no code for it. A new column holding a person's email in a bundle should be named `*_email` so it is covered.
 - A record travels as its current content and status; history and comments do not. An import numbers records afresh with `generate_unique_code` and keeps the exported code only as a bundle `ref`.
 - Links between the module's own records and Requirements use `services.bundle_links.export_artefact_links` / `import_artefact_links`; attachments use `bundle_common.export_file_links` / `import_file_links`; tags use `record_tag_names` / `restore_record_tags`.
 - A type vocabulary carries its project overrides, project-only types and the organisation defaults the project has hidden (`ProjectDefinitionSuppression`).
@@ -1427,6 +1429,8 @@ The taxonomy endpoints keep the tree consistent: deleting a category moves its p
 ### 4l7. Activity kinds (the History page's Event filter)
 
 The project History page filters events by **kind** (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, `deleted`, `other`), a fixed vocabulary over the open-ended `AuditEvent.action` strings (`services/activity_kinds.py`). Core actions are classified there once; a module classifies the actions **it** writes through `ModuleDefinition.activity_action_kinds = {"superseded": "status"}`, never an edit to the core map. An action nobody classified is `other`, so a filter by kind never hides an event. A test fails for a module value that is not a kind. A record of a module's type is named on the page by its `artefact_summary_providers` label and linked through `TierAModuleDefinition.artefactPaths`, with no further registration.
+
+A **link** event also names the two records it joins (`services/activity_link_ends.py`): `ChangeEntryOut.linked_records` (source then target, each with its type label and, only when the viewer may open it, its id, label and project) and `link_type_label`. The core event types (`artefact_link`, `requirement_link`, `requirement_action_link`) are read there; a module that logs its own `*_link` event type registers a reader with `ModuleDefinition.activity_link_ends = {"decision_link": reader}` returning an `ActivityLinkEnds` from the event's `detail`, never a case in a core file. `backend/tests/test_history_link_ends.py` fails for a logged `*_link` event type with no reader. Ends are labelled by one `ArtefactResolver` lookup per record type for the returned page.
 
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
 

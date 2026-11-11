@@ -18,7 +18,7 @@ flowchart LR
     New -.->|"secrets, e.g. SMTP/OIDC"| Manual["Re-entered by hand"]
 ```
 
-Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes the importing user (an owner) or is left empty (a reviewer or assignee), with a warning.
+Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes an [imported person](#imported-people), with a warning.
 
 A project's own scoring configuration (default model, offered models, rating bands, thresholds and cell ratings) travels with the project; the organisation's scoring levels do not, and a level the target organisation lacks is skipped with a warning.
 
@@ -56,7 +56,26 @@ Project-level **group membership** is deliberately excluded — only group struc
 
 ### Who and what an import may bring
 
-People named in a bundle (authors, approvers, owners, voters) are matched by email address, and only people who already belong to the **target** organisation are matched; anyone else is left unset or attributed to you, with a warning, exactly like an address nobody has registered. The project's recorded history is kept but shown as imported, attributed to you, with the original person and time in the entry. An organisation administrator can switch **Keep approval state on imported projects** off under **Organisation admin → Advanced settings → Security**: every imported record then returns to a draft and must be approved again in the new organisation. Bundles are checked before anything is read: an upload with too many entries, an oversized file or an implausibly high compression ratio is refused, and a damaged file is reported as invalid.
+People named in a bundle (authors, approvers, owners, voters) are matched by email address, and only people who already belong to the **target** organisation are matched. Anyone else becomes an [imported person](#imported-people). The project's recorded history is kept but shown as imported, with the original person's name and the time in the entry; an action by a member of the target organisation is recorded against you, never against that member, because a bundle cannot be trusted to say who did something. An organisation administrator can switch **Keep approval state on imported projects** off under **Organisation admin → Advanced settings → Security**: every imported record then returns to a draft and must be approved again in the new organisation. Bundles are checked before anything is read: an upload with too many entries, an oversized file or an implausibly high compression ratio is refused, and a damaged file is reported as invalid.
+
+### Imported people
+
+An imported person is a named record standing in for someone the bundle names who is not a member of the organisation. It cannot sign in, receive mail, hold a role or group membership, approve or vote, and it never appears in member lists, pickers or counts. It holds a display name only: the bundle's email address is not stored on it. Where it is shown as an owner, reviewer or similar, it carries an **Imported** badge. The same person in a later import into the same organisation reuses the same record.
+
+```mermaid
+flowchart TD
+    A[Person named in the bundle] --> B{Member of the target organisation?}
+    B -- Yes --> C[Matched member]
+    B -- No --> D[Imported person]
+    E[Your choice in the People step] -.-> C
+    E -.-> D
+```
+
+Read top to bottom: each person is matched or becomes an imported person unless you choose otherwise in the **People** step.
+
+After choosing the file, the import dialog lists every person in the bundle and how each will be recorded. For each person you can choose **Automatic**, **Imported person** (even where a member matches), **Me**, or any member of the organisation, for example after a change of employer or a name change. **Keep original email addresses in the history** records the original person's address in the replayed history entries; it is off by default, so no address of a non-member is stored.
+
+An organisation administrator manages imported people under **Organisation admin → Users → Imported people**: **Anonymise** renames one to "Former person" and keeps the records, and **Remove** deletes one that nothing refers to. The retention setting lists unused imported people as due for removal after a number of days; it is empty by default and nothing is removed automatically.
 
 ### Importing when uploads are disabled
 

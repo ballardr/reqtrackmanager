@@ -869,12 +869,12 @@ jobs:
     # both jobs via `needs:` and publishing once, from one job, removes the
     # race entirely.
     #
-    # `if: always()`, and every step below is best-effort: a coverage/badge
-    # hiccup must never fail the actual CI signal (already reported via each
-    # job's own pass/fail and the dorny/test-reporter check runs), and one
-    # side being unavailable (e.g. the frontend job failed before producing
-    # a report) shouldn't block publishing the other side's badges.
-    if: always()
+    # The job-level `if` uses `always()` and every step below is best-effort: a
+    # coverage/badge hiccup must never fail the actual CI signal (already
+    # reported via each job's own pass/fail and the dorny/test-reporter check
+    # runs), and one side being unavailable (e.g. the frontend job failed
+    # before producing a report) shouldn't block publishing the other side's
+    # badges.
     permissions:
       contents: write
     steps:

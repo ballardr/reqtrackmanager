@@ -14,6 +14,7 @@ package) as a pure code-organization refactor — see
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -50,8 +51,10 @@ from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import ProjectFileOut, ProjectFileSearchIn, ProjectFileUploaderOut
 from app.schemas.principal import PrincipalOut
 from app.schemas.project import (
+    ImportedPersonOut,
     ProjectAncestorOut,
     ProjectCreate,
+    ProjectImportPreview,
     ProjectImportResult,
     ProjectListItemOut,
     ProjectMetricsOut,
@@ -72,12 +75,13 @@ from app.services.changes_export import MAX_DOCUMENT_ROWS, MAX_EXPORT_ROWS, audi
 from app.services.codes import assign_project_code, change_project_code, project_code_locked_for
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import file_response, filename_safe
+from app.services.imported_people import PeopleChoices
 from app.services.lookups import project_or_404
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
 from app.services.project_access import administered_org_ids
 from app.services.project_counts import project_counts, project_stage_progress
-from app.services.project_export import build_project_bundle, import_project_bundle
+from app.services.project_export import build_project_bundle, import_project_bundle, preview_project_people
 from app.services.project_files import FileFilters, project_file_rows, project_uploaders, row_identity
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
 from app.services.project_scope import ProjectScope
@@ -392,11 +396,41 @@ def create_project(
     return _project_out_with_redacted_parent(db, current_user, project)
 
 
+def _people_choices(raw: str | None) -> PeopleChoices:
+    """Parses the `people` form field; malformed JSON is a 422, never a silent default."""
+    if not raw:
+        return PeopleChoices()
+    try:
+        return PeopleChoices.from_json(json.loads(raw))
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The people choices are not valid JSON.") from None
+
+
+@router.post("/import/preview", response_model=ProjectImportPreview)
+async def preview_project_import(
+    request: Request, organization_id: UUID = Form(...), file: UploadFile = File(...), people: str | None = Form(None),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """The People step of a project import: each person the uploaded bundle names and how they would be resolved
+    in `organization_id` (a member, a reassigned member, the importer, or an imported person). Writes nothing.
+
+    Same authorisation as `POST /import`. Registered before `GET /{project_id}` like it.
+    """
+    check_pat_scope(request, organization_id)
+    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
+    if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
+    found = preview_project_people(
+        db, organization_id=organization_id, zip_bytes=await file.read(), choices=_people_choices(people),
+    )
+    return ProjectImportPreview(people=[ImportedPersonOut(**vars(p)) for p in found])
+
+
 @router.post("/import", response_model=ProjectImportResult, status_code=status.HTTP_201_CREATED)
 async def import_project(
     request: Request,
     organization_id: UUID = Form(...), name: str = Form(...), summary: str | None = Form(None),
-    file: UploadFile = File(...), skip_files: bool = Form(False),
+    file: UploadFile = File(...), skip_files: bool = Form(False), people: str | None = Form(None),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     """Creates a brand-new project in `organization_id` from an uploaded
@@ -413,6 +447,10 @@ async def import_project(
     The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
     (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
 
+    `people` is the JSON the People step of `POST /import/preview` builds (`{"mapping": {email: "me" | "stand_in" |
+    member id}, "keep_original_email": bool}`); omitted, each person is matched by email and otherwise becomes an
+    imported person.
+
     Registered before `GET /{project_id}` so the static "/import" path
     isn't swallowed by that dynamic route.
     """
@@ -427,7 +465,7 @@ async def import_project(
     with memoize_user_lookups(), tag_service.reuse_offered_tags():
         project, warnings = import_project_bundle(
             db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes,
-            current_user=current_user, skip_files=skip_files,
+            current_user=current_user, skip_files=skip_files, choices=_people_choices(people),
         )
     return ProjectImportResult(project=ProjectOut.model_validate(project), warnings=warnings)
 

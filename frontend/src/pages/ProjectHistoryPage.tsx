@@ -1,7 +1,7 @@
 /**
  * Module: pages/ProjectHistoryPage
  *
- * The project's changes-over-time view (C-A-10): one table of what happened (Time, Type, Event, Record, Person),
+ * The project's changes-over-time view (C-A-10): one table of what happened (Time, Type, Event, Record(s), Person),
  * newest first, narrowed by a side filter panel (period, type, kind of event, person or group, discussion comments)
  * and downloadable as CSV, PDF, Word, ODT or ODS with the same filters.
  *
@@ -26,9 +26,10 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import {
-  ACTIVITY_KIND_LABEL, activityEntityLabel, activityEntryNotes, describeActivityAction,
+  ACTIVITY_KIND_LABEL, activityEntityLabel, activityEntryNotes, describeActivityAction, describeLinkEventAction, linkEventVerb,
   type ActivityKind, type ChangeEntry, type Principal, type PrincipalRef,
 } from "../api/types";
+import { ActivityLinkEnds } from "../components/ActivityLinkEnds";
 import { ActivityNote } from "../components/ActivityNote";
 import { Badge } from "../components/Badge";
 import { DirectoryTable, type DirectoryColumn } from "../components/DirectoryTable";
@@ -240,7 +241,7 @@ export function ProjectHistoryPage() {
       width: "28%",
       render: ({ entry }) => (
         <span className="stack" style={{ gap: "0.15rem" }}>
-          <span>{describeActivityAction(entry)}</span>
+          <span>{describeLinkEventAction(entry) ?? describeActivityAction(entry, projectId)}</span>
           {activityEntryNotes(entry).map((note) => <ActivityNote key={note} text={note} />)}
         </span>
       ),
@@ -250,6 +251,7 @@ export function ProjectHistoryPage() {
       label: strings.history.columnRecord,
       width: "42%",
       render: ({ entry }) => {
+        if (projectId && linkEventVerb(entry) !== null) return <ActivityLinkEnds entry={entry} projectId={projectId} />;
         const link = projectId ? activityRecordLink(entry, projectId) : null;
         if (link) return <Link to={link.to}>{link.label}</Link>;
         return entry.record_label ?? <span className="text-muted">—</span>;

@@ -70,6 +70,10 @@ The server-tier licensing lever controlling whether an organisation is allowed t
 
 The part of a Pain Point's scores that applies to the whole Pain Point: every criterion's level, and the default for the criteria scored per persona. A persona that differs adds its own levels, which override General for that persona. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#scoring-a-pain-point).
 
+#### Imported person
+
+A named record standing in for someone an import bundle names who is not a member of the importing organisation. It cannot sign in or hold access, shows an **Imported** badge, and keeps only a display name. See [Zip export/import](../core-features/zip-export-import.md#imported-people).
+
 #### Identity (requirement identity)
 
 The part of a requirement that never changes once created: its project, component, category, generated ID, creator, and archival state. Distinct from its versioned content. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).

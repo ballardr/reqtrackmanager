@@ -65,9 +65,14 @@ def _humanise(key: str) -> str:
 def _record(entry: ChangeEntryOut, project: Project, organization: Organization | None) -> tuple[str, str]:
     """The code and title an entry names, or two empty strings for a record that cannot be named.
 
-    Requirements and change requests carry both in `detail`; every other registered type carries a
-    `record_label` (code and title) when the caller may see the record.
+    A link event names the two records it joins and the relationship ("A → B (Depends on)"; an end the caller
+    cannot open by its type only). Requirements and change requests carry both in `detail`; every other registered
+    type carries a `record_label` (code and title) when the caller may see the record.
     """
+    if len(entry.linked_records) == 2:
+        source, target = (record.label or f"{record.entity_type_label} (unavailable)" for record in entry.linked_records)
+        relationship = f" ({entry.link_type_label})" if entry.link_type_label else ""
+        return "", f"{source} → {target}{relationship}"
     detail = entry.detail or {}
     enforced = bool(organization and organization.enforce_code_everywhere)
     if entry.entity_type == "requirement" and isinstance(detail.get("unique_code"), str):

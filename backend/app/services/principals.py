@@ -299,7 +299,7 @@ def principal_labels(
         user = users.get(i)
         out[(PrincipalType.USER.value, i)] = PrincipalOut(
             type=PrincipalType.USER, id=i, label=user.display_name if user else UNKNOWN_USER_LABEL,
-            exists=user is not None,
+            exists=user is not None, imported=user is not None and user.imported_organization_id is not None,
         )
 
     org_ids = {i for t, i in wanted if t == PrincipalType.ORG_GROUP.value}
@@ -461,12 +461,13 @@ def group_ref_from_text(
 # --- Deleting a group that still owns records -------------------------------------------------
 
 
-def _columns(reference: PrincipalReference) -> tuple[Any, Any]:
+def reference_columns(reference: PrincipalReference) -> tuple[Any, Any]:
+    """The `<field>_type` and `<field>_id` columns of a declared principal field."""
     return getattr(reference.model, f"{reference.field}_type"), getattr(reference.model, f"{reference.field}_id")
 
 
 def _naming_rows_clause(reference: PrincipalReference, group: PrincipalRef) -> ColumnElement[bool]:
-    type_column, id_column = _columns(reference)
+    type_column, id_column = reference_columns(reference)
     clause = and_(type_column == group.type.value, id_column == group.id)
     if reference.live_filter is not None:
         clause = and_(clause, reference.live_filter())
@@ -559,7 +560,7 @@ def prepare_group_deletion(
 
     reassigned = cleared = 0
     for reference in all_principal_references():
-        type_column, id_column = _columns(reference)
+        type_column, id_column = reference_columns(reference)
         record_column = getattr(reference.model, reference.record_id_field)
         row_id_column = sa_inspect(reference.model).primary_key[0]
         rows = db.execute(select(row_id_column, record_column).where(_naming_rows_clause(reference, group))).all()
@@ -643,6 +644,8 @@ def principal_from_bundle(
     fallback_user_id: uuid.UUID,
     required: bool = True,
     user_cache: dict[tuple[uuid.UUID, str], uuid.UUID | None] | None = None,
+    users: UserResolver | None = None,
+    context: str = "Principal",
 ) -> tuple[PrincipalRef | None, str | None]:
     """Resolves a bundled principal in the importing organisation.
 
@@ -650,7 +653,9 @@ def principal_from_bundle(
     email names, so an import of many records looks each person up once.
 
     A user is matched by email among the organisation's members, an org group by name, a project group
-    by name within `project_id`. Anything that cannot be matched falls back to `fallback_user_id`
+    by name within `project_id`. With `users` (the import's resolver) a user who is not matched is an imported
+    person, or whatever the importer chose for them, so the field keeps a name. A group, and a user when `users` is not
+    given, that cannot be matched falls back to `fallback_user_id`
     (the importing user) with a warning; an import never fails because of it. For an optional field
     (`required=False`) it is left empty instead, as an unmatched optional user always has been.
 
@@ -662,6 +667,8 @@ def principal_from_bundle(
         return None, None
     kind, name = data.get("type"), data.get("email") or data.get("name")
     found: uuid.UUID | None = None
+    if kind == PrincipalType.USER.value and data.get("email") and users is not None:
+        return PrincipalRef(type=PrincipalType.USER, id=users.person_id(str(data["email"]), context)), None
     if kind == PrincipalType.USER.value and data.get("email"):
         cache_key = (organization_id, str(data["email"]).lower())
         if user_cache is not None and cache_key in user_cache:
@@ -717,6 +724,7 @@ def principal_columns_from_bundle(
     ref, warning = principal_from_bundle(
         db, entry, organization_id=organization_id, project_id=project_id,
         fallback_user_id=users.importing_user_id, required=required, user_cache=users.principal_user_cache,
+        users=users, context=context,
     )
     if warning:
         warnings.add(f"{context}: {warning}")

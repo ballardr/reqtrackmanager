@@ -18,6 +18,14 @@ export const User: Story = {
   },
 };
 
+/** An imported person (a stand-in for someone named in an import bundle) carries an Imported badge. */
+export const ImportedPerson: Story = {
+  args: { principal: { type: "user", id: "u2", label: "Alex Morgan", member_count: null, exists: true, imported: true } },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Imported")).toBeInTheDocument();
+  },
+};
+
 /** An org group names its kind and how many people it stands for. */
 export const OrgGroup: Story = {
   args: { principal: { type: "org_group", id: "g1", label: "Platform team", member_count: 4, exists: true } },

@@ -50,6 +50,7 @@ from app.models.project import ProjectGroupMember
 from app.models.user import User
 from app.security import hash_pat
 from app.services.audit import log_event
+from app.services.imported_people import assert_not_imported_person
 from app.services.lookups import present
 from app.services.org_membership import assert_account_active, assert_may_add_account, belongs_elsewhere, remove_member_from_organization
 from app.services.rbac import get_effective_org_roles
@@ -287,6 +288,7 @@ def _set_active(db: Session, org: Organization, user: User, active: bool) -> boo
         return False
     if user.is_banned:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned and cannot be reactivated.")
+    assert_not_imported_person(user)
     user.is_active = True
     return False
 

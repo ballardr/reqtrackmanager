@@ -34,6 +34,7 @@ from app.routers.orgs import (
     custom_roles,
     files,
     groups,
+    imported_people,
     membership,
     org_pats,
     record_policy,
@@ -67,3 +68,4 @@ router.include_router(taxonomies.router, prefix=_PREFIX)
 router.include_router(custom_roles.router, prefix=_PREFIX)
 router.include_router(scoring.router, prefix=_PREFIX)
 router.include_router(record_policy.router, prefix=_PREFIX)
+router.include_router(imported_people.router, prefix=_PREFIX)

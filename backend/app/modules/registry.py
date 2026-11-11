@@ -1408,6 +1408,27 @@ class DemandParty:
 
 
 @dataclass(frozen=True)
+class ActivityLinkEnds:
+    """The two records one link audit event joins, read from the event's `detail` (see `activity_link_ends`).
+
+    Attributes:
+        source: `(artefact type, id)` of the end the relationship is read from.
+        target: `(artefact type, id)` of the other end.
+        link_type_id: The link type's id when the event names one; its forward name is looked up.
+        link_type_label: The relationship's forward name when the reader knows it without a lookup.
+    """
+
+    source: tuple[str, uuid.UUID]
+    target: tuple[str, uuid.UUID]
+    link_type_id: uuid.UUID | None = None
+    link_type_label: str | None = None
+
+
+#: Reads the ends of one link event's `detail`; returns `None` when the detail does not name two records.
+ActivityLinkEndsReader = Callable[[dict[str, Any]], ActivityLinkEnds | None]
+
+
+@dataclass(frozen=True)
 class ArtefactSummary:
     """A minimal, module-neutral description of one artefact, returned by an
     `ArtefactSummaryProvider` so one module can link to, validate and label
@@ -2908,6 +2929,10 @@ class ModuleDefinition:
         activity_action_kinds: `{audit action: kind}` classifying the actions this module writes for the project
             History page's Event filter (`services.activity_kinds`); a kind is one of its keys (`created`, `edited`,
             `status`, `links`, `tags`, `access`, `comments`, `deleted`). An action left out shows under Other.
+        activity_link_ends: `{audit entity type: reader}` for each link event type this module logs outside the
+            generic link table (an entity type ending `_link`): the reader returns the two records the event joins from
+            its `detail` so the History page and Activity aside can name them (`services.activity_link_ends`). A
+            test fails for a logged `*_link` event type with no reader.
         search_scopes: `{scope key: SearchScope}` the module adds to the search page's
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
@@ -3061,6 +3086,7 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
     activity_action_kinds: dict[str, str] = field(default_factory=dict)
+    activity_link_ends: dict[str, ActivityLinkEndsReader] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
     not_reportable: dict[str, str] = field(default_factory=dict)
@@ -4796,6 +4822,14 @@ def get_activity_action_kinds() -> dict[str, str]:
     for definition in get_module_registry().values():
         kinds.update(definition.activity_action_kinds)
     return kinds
+
+
+def get_activity_link_ends() -> dict[str, ActivityLinkEndsReader]:
+    """`{audit entity type: reader}` merged from every module's `activity_link_ends`."""
+    readers: dict[str, ActivityLinkEndsReader] = {}
+    for definition in get_module_registry().values():
+        readers.update(definition.activity_link_ends)
+    return readers
 
 
 def get_not_searchable_types() -> dict[str, str]:

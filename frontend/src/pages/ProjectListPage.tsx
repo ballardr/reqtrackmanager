@@ -5,8 +5,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
+  ImportPeopleChoices,
+  OrgUser,
   Organization,
   Project,
+  ProjectImportPreview,
   ProjectImportResult,
   ProjectListItem,
   ProjectRole,
@@ -18,6 +21,7 @@ import type {
 import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
 import { stageBadgeText } from "../utils/stageBadge";
 import { BundleImportDialog } from "../components/BundleImportDialog";
+import type { ImportMemberOption } from "../components/ImportPeopleStep";
 import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
 import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
 import { CollapsibleSection } from "../components/CollapsibleSection";
@@ -329,14 +333,35 @@ export function ProjectListPage() {
    * the bundle carries its own structure and history and may come from a different organisation entirely.
    * An error is thrown to `BundleImportDialog`, which shows it.
    */
-  async function importProject(file: File, skipFiles: boolean) {
+  async function importProject(file: File, skipFiles: boolean, choices: ImportPeopleChoices) {
     const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", file, {
-      organization_id: newOrgId, name: newName, summary: newSummary, ...(skipFiles ? { skip_files: "true" } : {}),
+      organization_id: newOrgId, name: newName, summary: newSummary, people: JSON.stringify(choices),
+      ...(skipFiles ? { skip_files: "true" } : {}),
     });
     if (result.warnings.length > 0) setImportWarnings(result.warnings);
     showToast(strings.projects.created);
     navigate(`/projects/${result.project.id}`);
   }
+
+  /** The People step's preview: who the bundle names and how each would be recorded in the chosen organisation. */
+  async function loadImportPeople(file: File, choices: ImportPeopleChoices) {
+    const preview = await api.postFile<ProjectImportPreview>("/api/v1/projects/import/preview", file, {
+      organization_id: newOrgId, people: JSON.stringify(choices),
+    });
+    return preview.people;
+  }
+
+  // The members a person can be reassigned to, read when the import dialog is open for an organisation.
+  const [importMembers, setImportMembers] = useState<ImportMemberOption[]>([]);
+  useLoadOnChange(async () => {
+    if (!showImportForm || !newOrgId) return;
+    try {
+      const users = await api.get<OrgUser[]>(`/api/v1/orgs/${newOrgId}/users`);
+      setImportMembers(users.filter((u) => u.is_active && !u.is_archived).map((u) => ({ user_id: u.user_id, display_name: u.display_name })));
+    } catch {
+      setImportMembers([]);
+    }
+  }, [showImportForm, newOrgId]);
 
   function closeImportForm() {
     setShowImportForm(false);
@@ -541,6 +566,7 @@ export function ProjectListPage() {
             onClose={closeImportForm}
             onImport={importProject}
             canImport={!!newName && !!newOrgId}
+            people={{ load: loadImportPeople, members: importMembers, dependsOn: newOrgId }}
           >
             <ProjectIdentityFields
               orgs={orgs} orgLabelCap={orgLabelCap} orgId={newOrgId} onOrgChange={setNewOrgId}
