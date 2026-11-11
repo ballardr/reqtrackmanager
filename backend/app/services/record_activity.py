@@ -209,5 +209,5 @@ def get_record_activity(
     page = entries[offset:offset + size]
     known = action_kinds()
     for entry in page:
-        entry.kind = kind_of(entry.action, known)
+        entry.kind = kind_of(entry.action, known, entry.entity_type)
     return RecordActivityOut(entries=page, has_more=len(entries) > offset + size)

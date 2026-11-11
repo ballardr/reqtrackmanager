@@ -2,7 +2,7 @@
  * Module: pages/ProjectHistoryPage
  *
  * The project's changes-over-time view (C-A-10): one table of what happened (Time, Type, Event, Record(s), Person),
- * newest first, narrowed by a side filter panel (period, type, kind of event, person or group, discussion comments)
+ * newest first, narrowed by a side filter panel (period, type, change, person or group, discussion comments)
  * and downloadable as CSV, PDF, Word, ODT or ODS with the same filters.
  *
  * Responsibilities:
@@ -27,17 +27,16 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import {
   ACTIVITY_KIND_LABEL, activityEntityLabel, activityEntryNotes, describeActivityAction, describeLinkEventAction, linkEventVerb,
-  type ActivityKind, type ChangeEntry, type Principal, type PrincipalRef,
+  sentenceCase, type ActivityKind, type ChangeEntry, type Principal, type PrincipalRef,
 } from "../api/types";
 import { ActivityLinkEnds } from "../components/ActivityLinkEnds";
 import { ActivityNote } from "../components/ActivityNote";
 import { Badge } from "../components/Badge";
 import { DirectoryTable, type DirectoryColumn } from "../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
-import { FilterSelect } from "../components/FilterSelect";
 import { ListExportMenu } from "../components/ListExportMenu";
 import { ListPageLayout } from "../components/ListPageLayout";
-import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
+import { MultiSelectDropdown, type MultiSelectOption } from "../components/MultiSelectDropdown";
 import { PeriodFilter } from "../components/PeriodFilter";
 import { PrincipalListField } from "../components/PrincipalListField";
 import { Spinner } from "../components/Spinner";
@@ -52,11 +51,21 @@ import { activityRecordLink } from "../utils/activityLink";
 import { PERIOD_KEYS, periodRange } from "../utils/historyPeriod";
 
 const PAGE_SIZE = 30;
-const KINDS = Object.keys(ACTIVITY_KIND_LABEL) as ActivityKind[];
+/** The kinds the Change filter offers: how a record or setting changed. Links, tags and access are metadata, chosen in the Type filter. */
+const CHANGE_KINDS: ActivityKind[] = ["created", "edited", "status", "deleted"];
 const SORT_KEYS = ["time"] as const;
+
+/** One heading of the Type list: a module's records, or a group of metadata types. */
+interface HistoryTypeGroup {
+  key: string;
+  label: string;
+  section: "records" | "metadata";
+  types: string[];
+}
 
 interface HistoryFacets {
   entity_types: string[];
+  groups: HistoryTypeGroup[];
   total: number;
 }
 
@@ -111,7 +120,8 @@ export function ProjectHistoryPage() {
   const [period, setPeriod] = useUrlChoice("period", PERIOD_KEYS);
   const [since, setSince] = useUrlText("since");
   const [until, setUntil] = useUrlText("until");
-  const [entityType, setEntityType] = useUrlText("type");
+  const [entityTypes, setEntityTypes] = useUrlList("type");
+  const [groups, setGroups] = useUrlList("group");
   const [kinds, setKinds] = useUrlList("kind");
   const [actors, setActors] = useUrlList("actor");
   const [includeComments, setIncludeComments] = useUrlFlag("comments");
@@ -130,11 +140,12 @@ export function ProjectHistoryPage() {
     if (range.since) params.set("since", range.since);
     if (range.until) params.set("until", range.until);
     if (includeComments) params.set("include_comments", "true");
-    if (entityType) params.set("entity_type", entityType);
+    entityTypes.forEach((type) => params.append("entity_type", type));
+    groups.forEach((group) => params.append("group", group));
     kinds.forEach((kind) => params.append("kind", kind));
     actors.forEach((actor) => params.append("actor", actor));
     return params;
-  }, [period, since, until, includeComments, entityType, kinds, actors]);
+  }, [period, since, until, includeComments, entityTypes, groups, kinds, actors]);
 
   // A response is applied only if it still answers the latest filter change by the time it resolves (a date input
   // can change several times in quick succession); a "Show more" append does not bump the generation.
@@ -163,7 +174,7 @@ export function ProjectHistoryPage() {
     });
   }
 
-  useLoadOnChange(reload, [projectId, period, since, until, includeComments, entityType, kinds.join(","), actors.join(","), sort?.direction]);
+  useLoadOnChange(reload, [projectId, period, since, until, includeComments, entityTypes.join(","), groups.join(","), kinds.join(","), actors.join(","), sort?.direction]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -198,19 +209,50 @@ export function ProjectHistoryPage() {
     return actorLabels[key] ?? [{ type: type as Principal["type"], id, label: "…", member_count: null, exists: true }];
   });
 
-  const typeOptions = useMemo(() => {
-    const keys = new Set([...(facets?.entity_types ?? []), ...(entityType ? [entityType] : [])]);
-    return [...keys]
-      .map((value) => ({ value, label: activityEntityLabel(value, orgLabelCap) }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [facets, entityType, orgLabelCap]);
+  /**
+   * The two-level Type list: a section caption, then each group's heading (choosing it chooses all its types)
+   * and its types. A type of a chosen group shows ticked and cannot be unticked on its own; a type or group in
+   * the URL that the facets do not list (an old link) is still shown so it can be removed.
+   */
+  const typeOptions = useMemo((): MultiSelectOption[] => {
+    const listed = new Set((facets?.groups ?? []).flatMap((group) => group.types));
+    const strays = entityTypes.filter((type) => !listed.has(type));
+    const known = facets?.groups ?? [];
+    const toggle = (list: string[], set: (value: string[]) => void, value: string) =>
+      set(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
+    const options: MultiSelectOption[] = [];
+    const sectionTitle = { records: strings.history.sectionRecords, metadata: strings.history.sectionMetadata };
+    let lastSection: string | null = null;
+    for (const group of known) {
+      const groupChosen = groups.includes(group.key);
+      options.push({
+        value: group.key, label: group.label, optionLabel: group.label, heading: true, checked: groupChosen,
+        section: group.section !== lastSection ? sectionTitle[group.section] : undefined,
+        onToggle: () => toggle(groups, setGroups, group.key),
+      });
+      lastSection = group.section;
+      [...group.types]
+        .map((value) => ({ value, label: activityEntityLabel(value, orgLabelCap) }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .forEach(({ value, label }) => options.push({
+          value, label, optionLabel: label, indent: true, checked: groupChosen || entityTypes.includes(value), disabled: groupChosen,
+          onToggle: () => toggle(entityTypes, setEntityTypes, value),
+        }));
+    }
+    strays.forEach((value) => options.push({
+      value, label: activityEntityLabel(value, orgLabelCap), optionLabel: activityEntityLabel(value, orgLabelCap), checked: true,
+      onToggle: () => toggle(entityTypes, setEntityTypes, value),
+    }));
+    return options;
+  }, [facets, entityTypes, groups, orgLabelCap, strings.history.sectionRecords, strings.history.sectionMetadata, setEntityTypes, setGroups]);
 
-  const filtered = Boolean(period || entityType || kinds.length || actors.length || includeComments);
+  const filtered = Boolean(period || entityTypes.length || groups.length || kinds.length || actors.length || includeComments);
   function clearFilters() {
     setPeriod("");
     setSince("");
     setUntil("");
-    setEntityType("");
+    setEntityTypes([]);
+    setGroups([]);
     setKinds([]);
     setActors([]);
     setIncludeComments(false);
@@ -241,7 +283,7 @@ export function ProjectHistoryPage() {
       width: "28%",
       render: ({ entry }) => (
         <span className="stack" style={{ gap: "0.15rem" }}>
-          <span>{describeLinkEventAction(entry) ?? describeActivityAction(entry, projectId)}</span>
+          <span>{sentenceCase(describeLinkEventAction(entry) ?? describeActivityAction(entry, projectId))}</span>
           {activityEntryNotes(entry).map((note) => <ActivityNote key={note} text={note} />)}
         </span>
       ),
@@ -295,14 +337,16 @@ export function ProjectHistoryPage() {
           <PeriodFilter
             period={period} since={since} until={until} onPeriod={setPeriod} onSince={setSince} onUntil={setUntil}
           />
-          <FilterSelect
-            label={strings.history.entityType} help={strings.history.help.type} value={entityType}
-            onChange={setEntityType} allLabel={strings.history.allEntityTypes} options={typeOptions}
-          />
+          <FilterField label={strings.history.entityType} help={strings.history.help.type}>
+            <MultiSelectDropdown
+              triggerLabel={strings.history.entityType} emptyLabel={strings.history.allEntityTypes} summaryLimit={2}
+              filterable options={typeOptions}
+            />
+          </FilterField>
           <FilterField label={strings.history.kind} help={strings.history.help.kind}>
             <MultiSelectDropdown
               triggerLabel={strings.history.kind} emptyLabel={strings.history.kindAny} summaryLimit={2}
-              options={KINDS.map((kind) => ({
+              options={[...CHANGE_KINDS, ...kinds.filter((kind): kind is ActivityKind => kind in ACTIVITY_KIND_LABEL && !CHANGE_KINDS.includes(kind as ActivityKind))].map((kind) => ({
                 value: kind,
                 label: ACTIVITY_KIND_LABEL[kind],
                 optionLabel: ACTIVITY_KIND_LABEL[kind],

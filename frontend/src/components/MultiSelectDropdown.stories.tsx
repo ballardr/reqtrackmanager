@@ -179,3 +179,27 @@ export const IconTriggerOpensTheSameList: Story = {
     await expect(within(within(document.body).getByRole("group", { name: "Columns" })).getByRole("checkbox", { name: "Revoke Member from Alex Morgan" })).toBeChecked();
   },
 };
+
+/** A two-level list: a section caption opens each section, a bold heading's checkbox chooses its group, and the
+ * options under it are indented. */
+export const GroupedOptions: Story = {
+  args: {
+    triggerLabel: "Type",
+    emptyLabel: "All types",
+    options: [
+      { value: "core", label: "Core", heading: true, section: "Records", checked: false, optionLabel: "Core", onToggle: fn() },
+      { value: "requirement", label: "Requirement", indent: true, checked: false, optionLabel: "Requirement", onToggle: fn() },
+      { value: "links", label: "Links and files", heading: true, section: "Metadata", checked: true, optionLabel: "Links and files", onToggle: fn() },
+      { value: "link", label: "Link", indent: true, checked: true, disabled: true, optionLabel: "Link", onToggle: fn() },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Type" }));
+    const group = within(within(document.body).getByRole("group", { name: "Type" }));
+    await expect(group.getByText("Records")).toBeInTheDocument();
+    await expect(group.getByText("Metadata")).toBeInTheDocument();
+    await expect(group.getByRole("checkbox", { name: "Links and files" })).toBeChecked();
+    await expect(group.getByRole("checkbox", { name: "Link" })).toBeDisabled();
+    await expect(group.getByText("Core")).toHaveStyle({ fontWeight: "600" });
+  },
+};

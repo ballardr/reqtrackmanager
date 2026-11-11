@@ -68,6 +68,7 @@ from app.schemas.project import (
     UnjoinedProjectListItemOut,
 )
 from app.services import tags as tag_service
+from app.services.activity_kinds import entity_groups
 from app.services.audit import log_event
 from app.services.bundle_common import bundle_size, iter_bundle_file
 from app.services.changes import ChangeFilter, build_filter, get_project_changes_page, history_entity_types, named_actors
@@ -1167,9 +1168,20 @@ def get_project_changes_endpoint(
     since: datetime | None = None,
     until: datetime | None = None,
     include_comments: bool = False,
-    entity_type: str | None = None,
+    entity_type: list[str] = Query([], description="Only events about these entity types."),
+    group: list[str] = Query(
+        [],
+        description=(
+            "Only events about the entity types of these Type-filter groups (`records:<module>`, `records:core`, "
+            "`metadata:<group>`, see `/changes/facets`). An unknown group is ignored."
+        ),
+    ),
     kind: list[str] = Query(
-        [], description="Only these kinds of event (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, `deleted`, `other`).",
+        [],
+        description=(
+            "Only these kinds of event (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, "
+            "`deleted`, `other`). A link, tag, role or group event has the kind of its entity type, whatever its action."
+        ),
     ),
     actor: list[str] = Query(
         [], description="Only events by these people or groups, each `user:<id>`, `org_group:<id>` or `project_group:<id>`.",
@@ -1196,7 +1208,7 @@ def get_project_changes_endpoint(
     project = project_or_404(db, project_id)
     flt = build_filter(
         db, project, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
-        kinds=kind, actors=actor, oldest_first=order == "oldest",
+        kinds=kind, actors=actor, oldest_first=order == "oldest", groups=group,
     )
     entries, total = get_project_changes_page(db, project, flt, limit=limit, offset=offset, viewer_id=current_user.id)
     response.headers["X-Total-Count"] = str(total)
@@ -1207,11 +1219,13 @@ def get_project_changes_endpoint(
 def get_project_changes_facets(
     project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """What the History page's filters offer for this project: the entity types it has events for, and how many
-    events the unfiltered history holds (the filter panel's "N total")."""
+    """What the History page's filters offer for this project: the entity types it has events for, those types in
+    two levels (`groups`: `{key, label, section, types}`, Records by module then Metadata), and how many events the
+    unfiltered history holds (the filter panel's "N total")."""
     project = project_or_404(db, project_id)
     _, total = get_project_changes_page(db, project, ChangeFilter(), limit=1)
-    return {"entity_types": history_entity_types(db, project_id), "total": total}
+    entity_types = history_entity_types(db, project_id)
+    return {"entity_types": entity_types, "groups": entity_groups(entity_types), "total": total}
 
 
 @router.get("/{project_id}/changes/actors", response_model=list[PrincipalOut])
@@ -1231,7 +1245,8 @@ def export_project_changes(
     since: datetime | None = None,
     until: datetime | None = None,
     include_comments: bool = False,
-    entity_type: str | None = None,
+    entity_type: list[str] = Query([]),
+    group: list[str] = Query([]),
     kind: list[str] = Query([]),
     actor: list[str] = Query([]),
     format: ReportFormat = Query("csv", description="csv (default), pdf, docx, odt, ods, xlsx or html."),
@@ -1250,7 +1265,7 @@ def export_project_changes(
     project = project_or_404(db, project_id)
     flt = build_filter(
         db, project, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
-        kinds=kind, actors=actor,
+        kinds=kind, actors=actor, groups=group,
     )
     entries, total = get_project_changes_page(db, project, flt, limit=MAX_EXPORT_ROWS, viewer_id=current_user.id)
     if total > MAX_EXPORT_ROWS or (format in DOCUMENT_FORMATS and total > MAX_DOCUMENT_ROWS):
@@ -1262,7 +1277,7 @@ def export_project_changes(
     filter_keys = sorted(
         name for name, given in (
             ("since", since), ("until", until), ("include_comments", include_comments or None),
-            ("entity_type", entity_type), ("kind", kind or None), ("actor", actor or None),
+            ("entity_type", entity_type or None), ("group", group or None), ("kind", kind or None), ("actor", actor or None),
         ) if given
     )
     result, include_person = build_history_result(db, current_user, project, entries, filter_keys=filter_keys)

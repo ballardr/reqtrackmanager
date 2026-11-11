@@ -18,7 +18,17 @@ type Story = StoryObj<typeof ProjectHistoryPage>;
  * decorator would otherwise nest a second router inside the page's. */
 const at = (search = "") => [withRouter(`/projects/project-1/history${search}`, "/projects/:projectId/history")];
 
-const facets = { entity_types: ["requirement", "change_request", "tag"], total: 40 };
+const facets = {
+  entity_types: ["requirement", "change_request", "decision", "artefact_link", "tag", "project_stage"],
+  groups: [
+    { key: "records:core", label: "Core", section: "records", types: ["change_request", "requirement"] },
+    { key: "records:decisions", label: "Decisions", section: "records", types: ["decision"] },
+    { key: "metadata:links", label: "Links and files", section: "metadata", types: ["artefact_link"] },
+    { key: "metadata:tags", label: "Tags and places", section: "metadata", types: ["tag"] },
+    { key: "metadata:structure", label: "Structure and settings", section: "metadata", types: ["project_stage"] },
+  ],
+  total: 40,
+};
 
 /** Serves the facets and the person labels; the list itself is each story's `getPage` fake. */
 function mockSideReads(actors: Principal[] = []) {
@@ -106,11 +116,11 @@ export const LinkEvents: Story = {
     const canvas = within(canvasElement);
     const table = await canvas.findByRole("table", { name: "Project history" });
     const created = within(table.querySelector("tbody tr:nth-of-type(1)") as HTMLElement);
-    await expect(created.getByText("created a link (Depends on)")).toBeInTheDocument();
+    await expect(created.getByText("Created a link (Depends on)")).toBeInTheDocument();
     await expect(created.getByRole("link", { name: "DEC-007 Use a queue" })).toHaveAttribute("href", "/projects/project-1/modules/decisions/decision-1");
     // The hidden end is named by its type only, and no link is drawn for it.
     const removed = within(table.querySelector("tbody tr:nth-of-type(2)") as HTMLElement);
-    await expect(removed.getByText("removed a link")).toBeInTheDocument();
+    await expect(removed.getByText("Removed a link")).toBeInTheDocument();
     await expect(removed.getByText("Decision (unavailable)")).toBeInTheDocument();
     await expect(removed.queryByRole("link", { name: /Decision/ })).not.toBeInTheDocument();
     // A record of another project opens in that project and names it.
@@ -166,6 +176,7 @@ export const EmptyWhenFiltered: Story = {
   },
 };
 
+/** The Type filter is a two-level list: Records by module (Core first), then Metadata. Choosing a type sends `entity_type`. */
 export const FilterByEntityType: Story = {
   decorators: at(),
   beforeEach: () => {
@@ -174,15 +185,19 @@ export const FilterByEntityType: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const select = await canvas.findByLabelText("Type");
-    await waitFor(() => expect(within(select).getByRole("option", { name: "Requirement" })).toBeInTheDocument());
-    await userEvent.selectOptions(select, "Requirement");
+    await userEvent.click(await canvas.findByRole("button", { name: "Type" }));
+    const list = within(await within(document.body).findByRole("group", { name: "Type" }));
+    await expect(list.getByText("Records")).toBeInTheDocument();
+    await expect(list.getByText("Metadata")).toBeInTheDocument();
+    await expect(list.getByRole("checkbox", { name: "Core" })).toBeInTheDocument();
+    await expect(list.getByRole("checkbox", { name: "Links and files" })).toBeInTheDocument();
+    await userEvent.click(list.getByRole("checkbox", { name: "Requirement" }));
     await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("entity_type=requirement")));
   },
 };
 
-/** The Event filter: ticking Status changes sends `kind=status`; the choices are the fixed kinds. */
-export const FilterByKindOfEvent: Story = {
+/** Choosing a group heading sends `group`; its types show ticked and cannot be changed on their own. */
+export const FilterByTypeGroup: Story = {
   decorators: at(),
   beforeEach: () => {
     mockSideReads();
@@ -190,10 +205,64 @@ export const FilterByKindOfEvent: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Event" }));
-    const popover = within(document.body);
-    await userEvent.click(await popover.findByRole("checkbox", { name: "Status changes" }));
-    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("kind=status")));
+    await userEvent.click(await canvas.findByRole("button", { name: "Type" }));
+    const list = within(await within(document.body).findByRole("group", { name: "Type" }));
+    await userEvent.click(list.getByRole("checkbox", { name: "Links and files" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("group=metadata%3Alinks")));
+    await expect(list.getByRole("checkbox", { name: "Link" })).toBeChecked();
+    await expect(list.getByRole("checkbox", { name: "Link" })).toBeDisabled();
+  },
+};
+
+/** A link opened with a group, several types and an unknown group restores them, and an unknown value is sent on unchanged. */
+export const TypeFiltersFromLink: Story = {
+  decorators: at("?type=tag&type=requirement&group=metadata%3Alinks&group=records%3Aunknown"),
+  beforeEach: () => {
+    mockSideReads();
+    spyOn(api, "getPage").mockResolvedValue(pageOf([]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("entity_type=tag&entity_type=requirement")));
+    await expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("group=metadata%3Alinks&group=records%3Aunknown"));
+    await expect(await canvas.findByRole("button", { name: "Type" })).toHaveTextContent("4 selected");
+  },
+};
+
+/** The Change filter offers only how a record changed, several at once; links, tags and access are in the Type list. */
+export const FilterByChange: Story = {
+  decorators: at(),
+  beforeEach: () => {
+    mockSideReads();
+    spyOn(api, "getPage").mockResolvedValue(pageOf([]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Change" }));
+    const popover = within(await within(document.body).findByRole("group", { name: "Change" }));
+    await expect(popover.getAllByRole("checkbox").map((box) => box.getAttribute("aria-label"))).toEqual([
+      "Created", "Edited", "Status changes", "Deleted",
+    ]);
+    await userEvent.click(popover.getByRole("checkbox", { name: "Status changes" }));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Deleted" }));
+    await waitFor(() => expect(api.getPage).toHaveBeenLastCalledWith(expect.stringContaining("kind=status&kind=deleted")));
+  },
+};
+
+/** The Event column starts every cell with a capital, including an action with no special wording. */
+export const EventCellsAreCapitalised: Story = {
+  decorators: at(),
+  beforeEach: () => {
+    mockSideReads();
+    spyOn(api, "getPage").mockResolvedValue(pageOf([
+      buildChangeEntry({ action: "approved", kind: "status" }),
+      buildChangeEntry({ entity_type: "tag", entity_id: "tag-1", action: "some_new_action", kind: "other" }),
+    ]));
+  },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Project history" });
+    await expect(within(table).getByText("Approved")).toBeInTheDocument();
+    await expect(within(table).getByText("Some new action")).toBeInTheDocument();
   },
 };
 

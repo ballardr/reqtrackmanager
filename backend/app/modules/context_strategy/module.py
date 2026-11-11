@@ -785,6 +785,7 @@ _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="
 
 MODULE_DEFINITION = ModuleDefinition(
     key=CONTEXT_STRATEGY_MODULE_KEY,
+    activity_metadata_types={"project_pain_point_type": "structure"},
     name="Context & Strategy",
     description=(
         "Record organisation and project Strategy — objective, current/desired future state, rationale, "

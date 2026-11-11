@@ -192,6 +192,7 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
 
 MODULE_DEFINITION = ModuleDefinition(
     key=RISK_MODULE_KEY,
+    activity_metadata_types={"project_risk_type": "structure"},
     name="Risk Management",
     description=(
         "Record project Risks — statement, cause, risk event, consequence, owner, treatment strategy and "

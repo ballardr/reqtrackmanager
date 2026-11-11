@@ -53,7 +53,11 @@ from app.services.activity_kinds import (
     KIND_LABELS,
     action_kinds,
     actions_for_kinds,
+    forced_kind_suffixes,
+    forced_kind_types,
+    is_group_key,
     kind_of,
+    types_in_groups,
 )
 from app.services.activity_link_ends import attach_link_ends
 from app.services.link_graph import ArtefactResolver
@@ -85,6 +89,8 @@ class ChangeFilter:
         since / until: Optional inclusive time range, as UTC instants.
         include_comments: Whether discussion-thread comments are merged in (also implied by the `comments` kind).
         entity_type: Only events about this entity type.
+        entity_types: Only events about these entity types (the Type filter: chosen types and the types of chosen
+            groups); `None` means any type, an empty set matches nothing (a group with no events).
         entity_id: Only events about one record (a record's own panel).
         kinds: Only events of these kinds (`services.activity_kinds`); empty means every kind.
         actor_ids: Only events by these users; `None` means any actor. An empty set matches nothing (a group
@@ -96,10 +102,17 @@ class ChangeFilter:
     until: datetime | None = None
     include_comments: bool = False
     entity_type: str | None = None
+    entity_types: frozenset[str] | None = None
     entity_id: UUID | None = None
     kinds: frozenset[str] = field(default_factory=frozenset)
     actor_ids: frozenset[UUID] | None = None
     oldest_first: bool = False
+
+    def allows_type(self, entity_type: str) -> bool:
+        """Whether events about `entity_type` pass the entity-type filters (the single type and the Type list)."""
+        if self.entity_type is not None and self.entity_type != entity_type:
+            return False
+        return self.entity_types is None or entity_type in self.entity_types
 
 
 @dataclass
@@ -113,15 +126,32 @@ class _Source:
     build: Any
 
 
-def _action_clause(column: Any, kinds: frozenset[str]) -> ColumnElement[bool] | None:
-    """`column` restricted to the actions of `kinds`; `None` when no kind filter applies."""
+def _kind_clause(entity_column: Any, action_column: Any, kinds: frozenset[str]) -> ColumnElement[bool] | None:
+    """The events of `kinds`, decided by entity type first and then by action; `None` when no kind filter applies.
+
+    A link, tag, role or group entity has its group's kind whatever its action (`services.activity_kinds`); every
+    other entity has the kind of its action.
+    """
     if not kinds:
         return None
+    forced_types, suffixes = forced_kind_types(), forced_kind_suffixes()
+
+    def forced(kind: str | None) -> list[ColumnElement[bool]]:
+        listed = [entity for entity, entity_kind in forced_types.items() if kind is None or entity_kind == kind]
+        found: list[ColumnElement[bool]] = [entity_column.in_(listed)] if listed else []
+        found += [entity_column.endswith(suffix, autoescape=True) for suffix, entity_kind in suffixes.items() if kind is None or entity_kind == kind]
+        return found
+
+    parts: list[ColumnElement[bool]] = []
+    for kind in kinds:
+        parts.extend(forced(kind))
     actions, include_other = actions_for_kinds(kinds)
-    clause: ColumnElement[bool] = column.in_(actions) if actions else false()
+    by_action: ColumnElement[bool] = action_column.in_(actions) if actions else false()
     if include_other:
-        clause = or_(clause, not_(column.in_(action_kinds().keys())))
-    return clause
+        by_action = or_(by_action, not_(action_column.in_(action_kinds().keys())))
+    every_forced = forced(None)
+    parts.append(and_(not_(or_(*every_forced)), by_action) if every_forced else by_action)
+    return or_(*parts)
 
 
 def _audit_source(project_id: UUID, flt: ChangeFilter) -> _Source:
@@ -131,13 +161,15 @@ def _audit_source(project_id: UUID, flt: ChangeFilter) -> _Source:
         query = query.where(AuditEvent.entity_id == str(flt.entity_id))
     if flt.entity_type is not None:
         query = query.where(AuditEvent.entity_type == flt.entity_type)
+    if flt.entity_types is not None:
+        query = query.where(AuditEvent.entity_type.in_(flt.entity_types))
     if flt.since is not None:
         query = query.where(AuditEvent.created_at >= flt.since)
     if flt.until is not None:
         query = query.where(AuditEvent.created_at <= flt.until)
     if flt.actor_ids is not None:
         query = query.where(AuditEvent.actor_id.in_(flt.actor_ids))
-    clause = _action_clause(AuditEvent.action, flt.kinds)
+    clause = _kind_clause(AuditEvent.entity_type, AuditEvent.action, flt.kinds)
     if clause is not None:
         query = query.where(clause)
     covered = [
@@ -180,7 +212,7 @@ def _version_clause(version_number: Any, flt: ChangeFilter) -> ColumnElement[boo
 
 def _requirement_source(project_id: UUID, flt: ChangeFilter) -> _Source | None:
     """Requirement version history as `created` (version 1) and `updated` entries."""
-    if flt.entity_type not in (None, "requirement"):
+    if not flt.allows_type("requirement"):
         return None
     query = (
         select(RequirementVersion, Requirement.unique_code)
@@ -209,7 +241,7 @@ def _requirement_source(project_id: UUID, flt: ChangeFilter) -> _Source | None:
 
 def _change_request_source(project_id: UUID, flt: ChangeFilter) -> _Source | None:
     """Change request version history as `created` (version 1) and `updated` entries."""
-    if flt.entity_type not in (None, "change_request"):
+    if not flt.allows_type("change_request"):
         return None
     query = (
         select(ChangeRequestVersion, ChangeRequest.status, ChangeRequest.unique_code)
@@ -241,7 +273,8 @@ def _comment_source(project_id: UUID, flt: ChangeFilter) -> _Source | None:
     wants_comments = flt.include_comments or COMMENTS in flt.kinds
     if not wants_comments or (flt.kinds and COMMENTS not in flt.kinds):
         return None
-    if flt.entity_type not in (None, ReviewTargetType.REQUIREMENT.value, ReviewTargetType.CHANGE_REQUEST.value):
+    commentable = [t for t in (ReviewTargetType.REQUIREMENT, ReviewTargetType.CHANGE_REQUEST) if flt.allows_type(t.value)]
+    if not commentable:
         return None
     in_project = or_(
         and_(
@@ -253,9 +286,7 @@ def _comment_source(project_id: UUID, flt: ChangeFilter) -> _Source | None:
             ReviewComment.target_id.in_(select(ChangeRequest.id).where(ChangeRequest.project_id == project_id)),
         ),
     )
-    query = select(ReviewComment).where(in_project)
-    if flt.entity_type is not None:
-        query = query.where(ReviewComment.target_type == ReviewTargetType(flt.entity_type))
+    query = select(ReviewComment).where(in_project, ReviewComment.target_type.in_(commentable))
     if flt.entity_id is not None:
         query = query.where(ReviewComment.target_id == flt.entity_id)
     if flt.since is not None:
@@ -287,7 +318,8 @@ def _sources(project_id: UUID, flt: ChangeFilter) -> list[_Source]:
 
 def build_filter(
     db: Session, project: Project, *, since: datetime | None, until: datetime | None, include_comments: bool,
-    entity_type: str | None, kinds: Sequence[str], actors: Sequence[str], oldest_first: bool = False,
+    entity_type: Sequence[str] | str | None, kinds: Sequence[str], actors: Sequence[str], oldest_first: bool = False,
+    groups: Sequence[str] = (),
 ) -> ChangeFilter:
     """Validates the History page's query parameters and turns them into a `ChangeFilter`.
 
@@ -296,7 +328,9 @@ def build_filter(
         project: The project reported on.
         since / until: Optional time range (UTC instants).
         include_comments: Whether discussion comments are merged in.
-        entity_type: Optional entity type.
+        entity_type: Entity types (a single one or several); the Type filter's chosen types.
+        groups: Type-filter group keys (`services.activity_kinds.entity_groups`); a group stands for the entity types
+            of it that the project has events for. An unknown key is ignored, so an old link still opens.
         kinds: Kind keys (`services.activity_kinds.KIND_LABELS`).
         oldest_first: Whether the page is ordered oldest first.
         actors: Principals as `user:<id>`, `org_group:<id>` or `project_group:<id>`; a group stands for its
@@ -333,8 +367,13 @@ def build_filter(
         if not allowed:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "That group does not belong to this project.")
         actor_ids = (actor_ids or set()) | principal_member_ids(db, ref)
+    chosen = {entity_type} if isinstance(entity_type, str) else set(entity_type or ())
+    entity_types: frozenset[str] | None = frozenset(chosen) if chosen else None
+    valid_groups = [key for key in groups if is_group_key(key)]
+    if valid_groups:
+        entity_types = frozenset(chosen | types_in_groups(history_entity_types(db, project.id), valid_groups))
     return ChangeFilter(
-        since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+        since=since, until=until, include_comments=include_comments, entity_types=entity_types,
         kinds=frozenset(kinds), actor_ids=None if actor_ids is None else frozenset(actor_ids), oldest_first=oldest_first,
     )
 
@@ -469,7 +508,7 @@ def _annotate(db: Session, project: Project | None, entries: list[ChangeEntryOut
     attach_actor_names(db, entries)
     known = action_kinds()
     for entry in entries:
-        entry.kind = kind_of(entry.action, known)
+        entry.kind = kind_of(entry.action, known, entry.entity_type)
     if project is not None and viewer_id is not None:
         _attach_record_labels(db, project, viewer_id, entries)
         attach_link_ends(db, project, viewer_id, entries)

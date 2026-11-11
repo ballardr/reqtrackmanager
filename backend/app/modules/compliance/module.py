@@ -486,6 +486,11 @@ _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="
 
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
+    activity_metadata_types=dict.fromkeys((
+        "project_compliance", "compliance_review", "compliance_standard", "compliance_standard_version",
+        "compliance_standard_default_exclusion", "compliance_requirement_mapping", "compliance_mapping_relationship_type",
+        "compliance_required_action", "compliance_org_settings",
+    ), "structure"),
     name="Compliance",
     description=(
         "Manage compliance standards, requirements, and required actions, and assess project "

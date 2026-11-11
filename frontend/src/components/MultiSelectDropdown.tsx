@@ -19,7 +19,7 @@
  * native select list; the icon-only trigger opens the fixed-width panel to its right.
  */
 import { ChevronDown } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 
@@ -38,6 +38,12 @@ export interface MultiSelectOption {
   optionLabel: string;
   /** Muted text after the label (which record types carry a search field, say). */
   hint?: string;
+  /** Shows the label in bold: a group heading whose checkbox chooses every option under it. */
+  heading?: boolean;
+  /** Indents the option under the heading above it. */
+  indent?: boolean;
+  /** A caption above this option that opens a section of the list ("Records", "Metadata"); not a choice itself. */
+  section?: string;
   onToggle: () => void;
 }
 
@@ -167,7 +173,14 @@ export function MultiSelectDropdown({
               style={{ gap: "var(--space-2)", ...(filterable ? { maxHeight: "18rem", overflowY: "auto" } : {}) }}
             >
               {visible.map((opt) => (
-                <label key={opt.value} className="row" style={{ gap: "var(--space-2)", fontSize: "0.85rem", flexWrap: "nowrap" }}>
+                <Fragment key={opt.value}>
+                {opt.section && (
+                  <span className="text-muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>{opt.section}</span>
+                )}
+                <label
+                  className="row"
+                  style={{ gap: "var(--space-2)", fontSize: "0.85rem", flexWrap: "nowrap", ...(opt.indent ? { paddingLeft: "var(--space-4)" } : {}), ...(opt.heading ? { fontWeight: 600 } : {}) }}
+                >
                   <input
                     type="checkbox"
                     checked={opt.checked}
@@ -186,6 +199,7 @@ export function MultiSelectDropdown({
                     )}
                   </span>
                 </label>
+                </Fragment>
               ))}
               {canAdd && addFromFilter && (
                 <button type="button" className="btn" style={{ justifyContent: "flex-start" }} onClick={addTyped}>

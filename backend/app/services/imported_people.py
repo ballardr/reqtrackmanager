@@ -44,7 +44,6 @@ from app.database import Base
 from app.models.enums import PrincipalType
 from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
-from app.services.principals import all_principal_references, reference_columns
 
 #: Value of `User.auth_backend` on a stand-in; no backend answers to it, so no sign-in path matches.
 IMPORTED_BACKEND = "imported"
@@ -350,6 +349,10 @@ def referenced_ids(db: Session, user_ids: Iterable[uuid.UUID]) -> set[uuid.UUID]
     Returns:
         The subset that is referenced; one query per referencing column, not per user.
     """
+    # Imported here: `services.principals` reaches the module registry, which loads every module, and `bundle_common`
+    # (loaded at application start) imports this file, so a module-level import is a cycle.
+    from app.services.principals import all_principal_references, reference_columns
+
     wanted = set(user_ids)
     found: set[uuid.UUID] = set()
     if not wanted:

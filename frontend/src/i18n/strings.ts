@@ -3236,6 +3236,8 @@ const en = {
     until: "To",
     entityType: "Type",
     allEntityTypes: "All types",
+    sectionRecords: "Records",
+    sectionMetadata: "Metadata",
     includeComments: "Include discussion comments",
     period: "Period",
     periodAny: "Any time",
@@ -3243,8 +3245,8 @@ const en = {
     periodWeek: "Last 7 days",
     periodMonth: "Last 30 days",
     periodCustom: "Custom range",
-    kind: "Event",
-    kindAny: "Any event",
+    kind: "Change",
+    kindAny: "Any change",
     person: "Person or group",
     personAriaLabel: "Search people and groups",
     personEmpty: "Anyone",
@@ -3263,12 +3265,13 @@ const en = {
     help: {
       period:
         "Any time: every event.\nToday: since 00:00 today in your time zone.\nLast 7 days: since 00:00 six days ago.\nLast 30 days: since 00:00 twenty-nine days ago.\nCustom range: a start and an end time in your time zone; the end includes the whole minute you pick.",
-      type: "The kind of record or setting the event is about. Only types this {project} has events for are listed.",
+      type:
+        "Records: the records of each module, with Core first. Choosing a module name chooses all its record types.\nMetadata: what surrounds the records. Links and files: links and file attachments. Tags and places: tags and component or category placements. Access: roles, memberships and groups. Structure and settings: stages, components, categories, vocabularies and settings. Other: anything not listed.\nSeveral types or groups may be chosen; an event matches any of them. Only types this {project} has events for are listed.",
       kind:
-        "Created: a record or setting was added.\nEdited: its content changed.\nStatus changes: submitted, approved, rejected, completed, archived and similar steps.\nLinks and files: a link or a file was added or removed.\nTags and places: a tag or a component or category placement changed.\nAccess: a role, membership or watcher changed.\nComments: a discussion comment was written.\nDeleted: something was removed.\nOther: events with no listed kind.",
+        "Created: a record or setting was added.\nEdited: its content changed.\nStatus changes: submitted, approved, rejected, completed, archived and similar steps.\nDeleted: something was removed.\nSeveral may be chosen. Links, tags and access are chosen in the Type filter, under Metadata.",
       person:
         "Shows only what these people did. A group stands for its current members, including members of groups nested in it. Several may be chosen; an event matches any of them.",
-      comments: "Discussion comments are left out unless this is ticked or the Event filter includes Comments.",
+      comments: "Discussion comments are left out unless this is ticked.",
     },
   },
   preferences: {

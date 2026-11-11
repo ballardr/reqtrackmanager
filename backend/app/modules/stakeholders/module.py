@@ -893,6 +893,7 @@ _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="
 
 MODULE_DEFINITION = ModuleDefinition(
     key=STAKEHOLDERS_MODULE_KEY,
+    activity_metadata_types={"project_persona_type": "structure", "project_stakeholder_type": "structure"},
     name="Stakeholders & Personas",
     description=(
         "Record Personas — representative user archetypes with goals, needs, behaviours and an importance weight "

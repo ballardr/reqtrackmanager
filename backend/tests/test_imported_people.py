@@ -383,3 +383,16 @@ def test_a_principal_field_naming_an_imported_person_counts_as_in_use(client, ad
         assert ip.referenced_ids(db, ids) == set(ids)
     finally:
         db.close()
+
+
+def test_the_application_imports_in_a_fresh_interpreter():
+    """`app.main` loads without a circular import: the test session imports modules in another order and hides one."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.main"], cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]

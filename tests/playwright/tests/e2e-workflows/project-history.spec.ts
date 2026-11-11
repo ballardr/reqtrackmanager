@@ -1,12 +1,27 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { createDisposableProject, installCleanupHook, loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+
+installCleanupHook();
+
+const API = "http://localhost:8000/api/v1";
 
 /**
  * Job to be done: a unified, filterable timeline of a project's changes over time (C-A-10) — a table of what
- * happened (Time, Type, Event, Record, Person) narrowed by period, type, kind of event and person or group, with
+ * happened (Time, Type, Event, Record, Person) narrowed by period, type (records by module, then metadata), change and person or group, with
  * discussion comments excluded by default; every filter lives in the URL so Back and a reload restore the view.
  */
+
+/** Ticks (or clears) types or groups in the Type filter's list, then closes it. */
+async function chooseTypes(page: Page, names: string[], checked = true): Promise<void> {
+  await page.getByRole("button", { name: "Type", exact: true }).click();
+  for (const name of names) {
+    const box = page.getByRole("group", { name: "Type", exact: true }).getByRole("checkbox", { name, exact: true });
+    if (checked) await box.check();
+    else await box.uncheck();
+  }
+  await page.keyboard.press("Escape");
+}
 
 /** The project's history page, opened through the navigation rail, with its project id. */
 async function openHistory(page: Page): Promise<string> {
@@ -40,21 +55,21 @@ test.describe("project history / changes-over-time view", () => {
     });
 
     await test.step("a row links back to the requirement it is about", async () => {
-      await page.getByLabel("Type", { exact: true }).selectOption("requirement");
+      await chooseTypes(page, ["Requirement"]);
       const requirementLink = page.getByRole("table", { name: "Project history" }).getByRole("link").first();
       await expect(requirementLink).toBeVisible();
       await expect(requirementLink).toHaveAttribute("href", /\/requirements\//);
       await expect(page).toHaveURL(/[?&]type=requirement/);
     });
 
-    await test.step("the Event filter narrows to status changes and survives a reload", async () => {
-      await page.getByRole("button", { name: "Event", exact: true }).click();
+    await test.step("the Change filter narrows to status changes and survives a reload", async () => {
+      await page.getByRole("button", { name: "Change", exact: true }).click();
       await page.getByRole("checkbox", { name: "Status changes" }).check();
       await expect(page).toHaveURL(/[?&]kind=status/);
       await page.keyboard.press("Escape");
       await page.reload();
-      await expect(page.getByLabel("Type", { exact: true })).toHaveValue("requirement");
-      await expect(page.getByRole("button", { name: "Event", exact: true })).toContainText("Status changes");
+      await expect(page.getByRole("button", { name: "Type", exact: true })).toContainText("Requirement");
+      await expect(page.getByRole("button", { name: "Change", exact: true })).toContainText("Status changes");
     });
 
     await test.step("going back from a record restores the filters", async () => {
@@ -63,13 +78,13 @@ test.describe("project history / changes-over-time view", () => {
         await link.click();
         await page.goBack();
         await expect(page).toHaveURL(/[?&]kind=status/);
-        await expect(page.getByLabel("Type", { exact: true })).toHaveValue("requirement");
+        await expect(page.getByRole("button", { name: "Type", exact: true })).toContainText("Requirement");
       }
     });
 
     await test.step("clearing the filters empties the URL's filters", async () => {
-      await page.getByLabel("Type", { exact: true }).selectOption("");
-      await page.getByRole("button", { name: "Event", exact: true }).click();
+      await chooseTypes(page, ["Requirement"], false);
+      await page.getByRole("button", { name: "Change", exact: true }).click();
       await page.getByRole("checkbox", { name: "Status changes" }).uncheck();
       await page.keyboard.press("Escape");
       await expect(page).not.toHaveURL(/[?&]kind=/);
@@ -78,7 +93,7 @@ test.describe("project history / changes-over-time view", () => {
     await test.step("including comments reveals the comment event", async () => {
       await page.getByLabel("Include discussion comments").check();
       await expect(page).toHaveURL(/[?&]comments=1|[?&]comments=true/);
-      await expect(page.getByText(/commented on/).first()).toBeVisible();
+      await expect(page.getByText(/commented on/i).first()).toBeVisible();
       await page.getByLabel("Include discussion comments").uncheck();
     });
 
@@ -108,7 +123,7 @@ test.describe("project history / changes-over-time view", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await openProject(page, PROJECT_NAMES.alpha1);
     await openHistory(page);
-    await page.getByLabel("Type", { exact: true }).selectOption("requirement");
+    await chooseTypes(page, ["Requirement"]);
     await page.getByRole("button", { name: "List actions" }).click();
     await page.getByRole("menuitem", { name: "Download shown items" }).click();
     const [download] = await Promise.all([
@@ -116,6 +131,63 @@ test.describe("project history / changes-over-time view", () => {
       page.getByRole("menuitem", { name: /CSV/ }).click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
+  });
+});
+
+test.describe("project history / metadata separated from records", () => {
+  test("a created link is filed under Metadata, not Created, and Event cells start with a capital", async ({ page }) => {
+    const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, "E2E history metadata");
+    const suffix = Date.now();
+    const ids: string[] = [];
+    for (const name of [`Meta source ${suffix}`, `Meta target ${suffix}`]) {
+      const created = await page.request.post(`${API}/projects/${project.projectId}/requirements`, {
+        headers: project.headers,
+        data: { name, component_id: project.components[0].id, category_id: project.categories[0].id },
+      });
+      expect(created.ok()).toBeTruthy();
+      ids.push((await created.json()).id);
+    }
+    const linkTypes: { id: string; forward_name: string }[] = await (
+      await page.request.get(`${API}/orgs/${project.organizationId}/link-types`, { headers: project.headers })
+    ).json();
+    const link = await page.request.post(`${API}/projects/${project.projectId}/artefacts/requirement/${ids[0]}/links`, {
+      headers: project.headers,
+      data: { link_type_id: linkTypes.find((type) => type.forward_name === "Related to")!.id, direction: "outgoing", other_type: "requirement", other_id: ids[1] },
+    });
+    expect(link.ok()).toBeTruthy();
+
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.goto(`/projects/${project.projectId}/history`);
+    const table = page.getByRole("table", { name: "Project history" });
+    const linkRow = table.getByRole("row").filter({ hasText: "Created a link" });
+
+    await test.step("every Event cell starts with a capital letter", async () => {
+      await expect(linkRow).toBeVisible();
+      for (const cell of await table.locator("tbody tr td:nth-child(3) > span > span:first-child").all()) {
+        expect(await cell.innerText()).toMatch(/^[\p{Lu}\p{N}]/u);
+      }
+    });
+
+    await test.step("Change: Created does not include the link", async () => {
+      await page.getByRole("button", { name: "Change", exact: true }).click();
+      await page.getByRole("checkbox", { name: "Created", exact: true }).check();
+      await page.keyboard.press("Escape");
+      await expect(page).toHaveURL(/[?&]kind=created/);
+      await expect(table.getByRole("row").filter({ hasText: "Created a link" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Change", exact: true }).click();
+      await page.getByRole("checkbox", { name: "Created", exact: true }).uncheck();
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("the Metadata group Links and files finds the link, and survives a reload", async () => {
+      await chooseTypes(page, ["Links and files"]);
+      await expect(page).toHaveURL(/[?&]group=metadata%3Alinks/);
+      await expect(linkRow).toBeVisible();
+      await expect(table.getByRole("row").filter({ hasText: "Requirement" }).filter({ hasNotText: "Created a link" })).toHaveCount(0);
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Type", exact: true })).toContainText("Links and files");
+      await expect(linkRow).toBeVisible();
+    });
   });
 });
 

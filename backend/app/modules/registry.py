@@ -2933,6 +2933,11 @@ class ModuleDefinition:
             generic link table (an entity type ending `_link`): the reader returns the two records the event joins from
             its `detail` so the History page and Activity aside can name them (`services.activity_link_ends`). A
             test fails for a logged `*_link` event type with no reader.
+        activity_metadata_types: `{audit entity type: metadata group}` for each event entity type this module logs that
+            is not one of its `artefact_types`, so the History page's Type filter lists it under Links and files
+            (`links`), Tags and places (`tags`), Access (`access`) or Structure and settings (`structure`); a link
+            family (`_link`) and a vocabulary (`_definition`) are found by their names. A type left out is listed
+            under Other. A test fails for a logged entity type that lands there.
         search_scopes: `{scope key: SearchScope}` the module adds to the search page's
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
@@ -3087,6 +3092,7 @@ class ModuleDefinition:
     not_searchable: dict[str, str] = field(default_factory=dict)
     activity_action_kinds: dict[str, str] = field(default_factory=dict)
     activity_link_ends: dict[str, ActivityLinkEndsReader] = field(default_factory=dict)
+    activity_metadata_types: dict[str, str] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
     not_reportable: dict[str, str] = field(default_factory=dict)
@@ -4822,6 +4828,14 @@ def get_activity_action_kinds() -> dict[str, str]:
     for definition in get_module_registry().values():
         kinds.update(definition.activity_action_kinds)
     return kinds
+
+
+def get_activity_metadata_types() -> dict[str, str]:
+    """`{audit entity type: metadata group}` merged from every module's `activity_metadata_types`."""
+    groups: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        groups.update(definition.activity_metadata_types)
+    return groups
 
 
 def get_activity_link_ends() -> dict[str, ActivityLinkEndsReader]:
