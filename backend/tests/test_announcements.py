@@ -337,7 +337,11 @@ def test_the_notification_type_is_registered_and_audit_events_never_carry_the_te
     client.post(f"{SERVER}/{row['id']}/notify", headers=auth_headers(admin_token))
     client.delete(f"{SERVER}/{row['id']}", headers=auth_headers(admin_token))
     with SessionLocal() as db:
-        events = db.scalars(select(AuditEvent).where(AuditEvent.entity_type == "announcement")).all()
+        events = db.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.entity_type == "announcement", AuditEvent.entity_id == row["id"])
+            .order_by(AuditEvent.created_at)
+        ).all()
         assert [e.action for e in events] == ["created", "updated", "notified", "deleted"]
         assert secret_title not in str([e.detail for e in events]) and secret_body not in str([e.detail for e in events])
         notified = next(e for e in events if e.action == "notified")
