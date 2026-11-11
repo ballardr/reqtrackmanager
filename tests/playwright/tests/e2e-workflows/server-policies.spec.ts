@@ -98,7 +98,8 @@ test.describe("server policies", () => {
     await test.step("a signed-in member finds the footer link with the navigation rail collapsed", async () => {
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
       await page.getByRole("button", { name: "Collapse navigation" }).click();
-      const footer = page.getByRole("contentinfo", { name: "Page footer" });
+      // Signed in, the footer sits inside the main region, so it is found by its label, not the contentinfo role.
+      const footer = page.getByLabel("Page footer");
       await expect(footer.getByText(/^Version: v\S+\/v\S+$/)).toBeVisible();
       await footer.getByRole("link", { name: "Policies" }).click();
       await expect(page.getByText("Use the service responsibly.")).toBeVisible();
@@ -118,7 +119,7 @@ test.describe("server policies", () => {
       await expect(page).toHaveURL(/\/login$/);
       await expect(page.getByRole("link", { name: "Policies" })).toHaveCount(0);
       // The footer stays (it carries the version) but has no policies link.
-      await expect(page.getByRole("contentinfo", { name: "Page footer" }).getByText(/^Version: v\S+$/)).toBeVisible();
+      await expect(page.getByLabel("Page footer").getByText(/^Version: v\S+$/)).toBeVisible();
     });
   });
 
@@ -127,6 +128,6 @@ test.describe("server policies", () => {
     await page.goto("/server/management/dataPolicy");
     await expect(page).toHaveURL(/\/server\/management\/personalDataExport$/);
     await expect(page.getByRole("link", { name: "Personal data in exports" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Policies", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Server management sections").getByRole("link", { name: "Policies", exact: true })).toBeVisible();
   });
 });

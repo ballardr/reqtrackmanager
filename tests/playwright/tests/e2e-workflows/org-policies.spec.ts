@@ -63,6 +63,8 @@ test.describe("organisation policies", () => {
     await test.step("a member reads it on the Policies page and was notified", async () => {
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
       await page.getByRole("link", { name: "Policies" }).click();
+      // The page shows one policy at a time, the first by default; the organisation's is chosen from the side menu.
+      await page.getByRole("navigation", { name: "Published policies" }).getByRole("link", { name: new RegExp(marker) }).click();
       await expect(page.getByText("Request access through your manager.")).toBeVisible();
       const memberHeaders = await apiHeaders(page.request, PERSONAS.stakeholderAlpha.email);
       const notifications: { type: string }[] = await (await page.request.get(`${API}/notifications`, { headers: memberHeaders })).json();

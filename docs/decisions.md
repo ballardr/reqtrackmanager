@@ -17577,3 +17577,8 @@ Raised by the user: the History page had "a ton of white and wasted space", and 
 - **Controls unchanged.** Allowances, window, doubling delay, maximum, audit of refused attempts and the same answer for unknown addresses. Tests: `test_login_throttle.py` (waits for an overlapping attempt, bounded wait, zero wait).
 - **Not applicable.** No change to `docs/requirements.md`, the schema or the website.
 
+## Platform review (November 2026): review checkpoint signed off (2026-11-12)
+
+- **Decision (Decided by: User).** The user completed their review at checkpoint R and raised no further items. Every item raised during the review became a numbered phase (21 to 59) and each of those is done; the Status table reads all rows complete, so the plan is closed and archived in `docs/plans/completed/`.
+- **Outstanding at close.** None from the review. The continuous-integration end-to-end suite was still being brought green on the branch at the time (specs aligned with the redesigned Policies page and footer; sign-in lock wait, above); that is test maintenance, not review scope.
+- **Not applicable.** No change to `docs/requirements.md`, the schema or the website.

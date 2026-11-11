@@ -1,6 +1,6 @@
 # Module 19 — Investigations (spikes, experiments, root-cause and discovery work) — Plan
 
-**Status:** planned 2026-11-07; Phase 0 signed off 2026-11-07 (section 6), nothing is built. Depends on the navigation-name overrides in [platform-review-2026-11-plan.md](platform-review-2026-11-plan.md) only for renaming; the module works with its built-in name without them. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** planned 2026-11-07; Phase 0 signed off 2026-11-07 (section 6), nothing is built. Depends on the navigation-name overrides in [platform-review-2026-11-plan.md](completed/platform-review-2026-11-plan.md) only for renaming; the module works with its built-in name without them. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 **Source:** user request 2026-11-07 (**Decided by: User**): a module for investigations that interacts with decisions and other records. An investigation has a scope, optional steps and an outcome, and should also cover experiments. It exists because work often needs investigating before it can be implemented or its requirements determined. Existing experiment tools target academia, which this is not for. Added 2026-11-07 (**Decided by: User**): investigations are recursive, so a step of an investigation may itself be an investigation.
 
