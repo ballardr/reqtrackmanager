@@ -415,6 +415,11 @@ def test_the_organisation_can_export_and_import_its_own_reports(client, admin_to
         (build(reports={"layouts": "nope", "packs": [], "images": []}), 400),
         (build(reports={"layouts": [entry(f"L{i}", tree()) for i in range(101)], "packs": [], "images": []}), 413),
     ],
+    # The files carry their build time, so ids made from the bytes would differ between xdist workers.
+    ids=[
+        "not-a-zip", "wrong-kind", "newer-format", "no-format-version", "parent-path", "absolute-path",
+        "backslash-path", "unknown-member", "layouts-not-a-list", "too-many-layouts",
+    ],
 )
 def test_a_file_that_is_not_a_report_file_is_refused_and_nothing_is_stored(world, data, status):
     target = world.project("Target")
