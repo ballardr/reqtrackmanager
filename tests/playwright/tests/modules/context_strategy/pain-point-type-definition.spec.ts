@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup, setOrgModuleAvailability, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
 
@@ -52,6 +52,11 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
       await dialog.getByLabel("Type", { exact: true }).selectOption({ label: "Market" });
       return dialog;
     };
+    // The definitions are listed in the Type field's `(?)` tooltip, which is portalled to the page body.
+    const typeHelp = async (dialog: Locator) => {
+      await dialog.getByRole("button", { name: "Help: Type" }).click();
+      return page.getByRole("tooltip");
+    };
     const definitionBox = (scope: Page, name: string) => scope.getByRole("textbox", { name, exact: true });
 
     await test.step("the organisation writes a definition for Market", async () => {
@@ -65,7 +70,7 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
 
     await test.step("the picker shows it under the Type field", async () => {
       const dialog = await openNewPainPoint();
-      await expect(dialog.getByText(orgText)).toBeVisible();
+      await expect(await typeHelp(dialog)).toContainText(orgText);
     });
 
     await test.step("the project replaces it for itself", async () => {
@@ -78,8 +83,9 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
       await expect(page.getByText("Org default (overridden)")).toBeVisible();
 
       const dialog = await openNewPainPoint();
-      await expect(dialog.getByText(projectText)).toBeVisible();
-      await expect(dialog.getByText(orgText)).toHaveCount(0);
+      const help = await typeHelp(dialog);
+      await expect(help).toContainText(projectText);
+      await expect(help).not.toContainText(orgText);
     });
 
     await test.step("clearing the project's text brings the organisation's back", async () => {
@@ -90,7 +96,7 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
       await page.getByRole("button", { name: "Rename" }).first().click();
 
       const dialog = await openNewPainPoint();
-      await expect(dialog.getByText(orgText)).toBeVisible();
+      await expect(await typeHelp(dialog)).toContainText(orgText);
     });
   });
 });

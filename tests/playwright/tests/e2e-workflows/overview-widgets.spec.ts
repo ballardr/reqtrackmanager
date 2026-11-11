@@ -139,8 +139,9 @@ test.describe("project overview widgets", () => {
     await page.goto(`/projects/${project.projectId}`);
     const box = async (id: string) => (await page.locator(`[data-widget-id="${id}"]`).boundingBox())!;
     await expect(page.locator('[data-widget-id="percent-complete"]')).toBeVisible();
-    const [first, second, third] = [await box("percent-complete"), await box("file-count"), await box("cr-proposed")];
-    expect(Math.abs(first.y - second.y)).toBeLessThan(2);
+    // The tiles settle as their data arrives, so the shared row is polled rather than read once.
+    await expect.poll(async () => Math.abs((await box("percent-complete")).y - (await box("file-count")).y)).toBeLessThan(2);
+    const [first, third] = [await box("percent-complete"), await box("cr-proposed")];
     expect(third.y).toBeGreaterThan(first.y + first.height - 1);
     // The page never scrolls sideways, and a chart takes the full width.
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();

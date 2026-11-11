@@ -105,10 +105,10 @@ test.describe("organisation bundle export/import", () => {
       await expect(page.getByText(newOrgName)).toBeVisible({ timeout: 15000 });
       // Style guide "Pattern: action menu" — the row's Edit/Disable-Enable/
       // Delete buttons now live behind one `ActionMenu` kebab trigger
-      // (ServerOrganisationsPage.tsx), not a standalone "Edit" link.
+      // (ServerOrganisationsPage.tsx), not a standalone link.
       await page.getByRole("button", { name: `${newOrgName} actions` }).click();
       await expect(page.getByRole("menu", { name: `${newOrgName} actions` })).toBeVisible();
-      await page.getByRole("menuitem", { name: "Edit" }).click();
+      await page.getByRole("menuitem", { name: "Administration" }).click();
       await expect(page).toHaveURL(/\/orgs\/[0-9a-f-]+\/admin$/);
       await expect(page.getByRole("heading", { name: newOrgName })).toBeVisible();
       const newOrgId = page.url().match(/orgs\/([0-9a-f-]+)\/admin/)![1];

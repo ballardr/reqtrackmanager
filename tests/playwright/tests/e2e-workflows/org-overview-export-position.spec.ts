@@ -17,7 +17,10 @@ test("Export stays level with the title row's actions on every organisation comp
     await page.locator(".resource-menu-nav").getByRole("link", { name: section, exact: true }).click();
     const exportButton = page.getByRole("button", { name: "Export", exact: true });
     await expect(exportButton).toBeVisible();
-    const settings = await page.getByRole("main").getByRole("link", { name: "Organisation settings" }).boundingBox();
+    const settingsLink = page.getByRole("main").getByRole("link", { name: "Organisation settings" });
+    // The actions render as the page's data arrives, so measure only once both are shown.
+    await expect(settingsLink).toBeVisible();
+    const settings = await settingsLink.boundingBox();
     const exported = await exportButton.boundingBox();
     expect(settings && exported).toBeTruthy();
     // The same row as the settings link (and so as Reports), to the left of it.

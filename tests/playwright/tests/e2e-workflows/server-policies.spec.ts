@@ -8,17 +8,19 @@ const API = "http://localhost:8000/api/v1";
  * Registers cleanup that unpublishes every server policy and deletes the ones this spec created (a built-in policy
  * cannot be deleted, only unpublished), so no policy stays visible on the login page for another spec. Idempotent.
  */
+async function unpublishServerPolicies(request: APIRequestContext, marker: string): Promise<void> {
+  const headers = await apiHeaders(request, PERSONAS.serverAdmin.email);
+  const listed = await request.get(`${API}/system/policies`, { headers });
+  if (!listed.ok()) return;
+  for (const item of (await listed.json()) as { id: string | null; key: string | null; title: string; state: string }[]) {
+    if (item.id === null) continue;
+    if (item.state === "published") await request.post(`${API}/system/policies/${item.id}/unpublish`, { headers });
+    if (item.title.includes(marker)) await request.delete(`${API}/system/policies/${item.id}`, { headers });
+  }
+}
+
 function removePoliciesOnCleanup(marker: string): void {
-  onCleanup(async (request: APIRequestContext) => {
-    const headers = await apiHeaders(request, PERSONAS.serverAdmin.email);
-    const listed = await request.get(`${API}/system/policies`, { headers });
-    if (!listed.ok()) return;
-    for (const item of (await listed.json()) as { id: string | null; key: string | null; title: string; state: string }[]) {
-      if (item.id === null) continue;
-      if (item.state === "published") await request.post(`${API}/system/policies/${item.id}/unpublish`, { headers });
-      if (item.title.includes(marker)) await request.delete(`${API}/system/policies/${item.id}`, { headers });
-    }
-  });
+  onCleanup((request: APIRequestContext) => unpublishServerPolicies(request, marker));
 }
 
 /**
@@ -33,6 +35,8 @@ test.describe("server policies", () => {
     test.setTimeout(120_000);
     const marker = `E2E Acceptable use ${Date.now()}`;
     removePoliciesOnCleanup(marker);
+    // The seeded datasets publish the built-in Privacy and Data policies; this test starts from none published.
+    await unpublishServerPolicies(page.request, marker);
 
     await test.step("the server administrator writes a policy in the visual editor", async () => {
       await loginAs(page, PERSONAS.serverAdmin.email);

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, deleteOrgOnCleanup, installCleanupHook, loginAs, SERVER_ADMIN_LOGIN } from "./helpers";
+import { apiHeaders, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, SERVER_ADMIN_LOGIN } from "./helpers";
 
 // Deletes the disposable organisations. The rules set here belong to those organisations only, so no other spec is affected.
 installCleanupHook();
@@ -13,13 +13,23 @@ const apiBaseUrl = "http://localhost:8000";
 
 type Headers = Record<string, string>;
 
-/** Creates a disposable organisation with a project and one requirement; returns the ids needed to upload to it. */
-async function seedOrganisation(page: import("@playwright/test").Page, headers: Headers, label: string) {
+/**
+ * Creates a disposable organisation with an organisation administrator, a project and one requirement; returns the ids
+ * needed to upload to it and the administrator's headers. A server administrator holds no organisation role, so the
+ * records are created (and uploaded) as the organisation's own administrator.
+ */
+async function seedOrganisation(page: import("@playwright/test").Page, serverHeaders: Headers, label: string) {
   const suffix = Date.now();
   const org = await (
-    await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers, data: { name: `E2E Storage ${label} ${suffix}` } })
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: serverHeaders, data: { name: `E2E Storage ${label} ${suffix}` } })
   ).json();
   deleteOrgOnCleanup({ id: org.id });
+  const adminEmail = `e2e-storage-${label.toLowerCase()}-${suffix}@example.com`;
+  const created = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+    headers: serverHeaders, data: { email: adminEmail, display_name: `E2E Storage ${label} Admin`, password: PASSWORD, role: "org_admin" },
+  });
+  expect(created.ok()).toBeTruthy();
+  const headers = await apiHeaders(page.request, adminEmail);
   const project = await (
     await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
       headers, data: { organization_id: org.id, name: `E2E Storage Project ${suffix}`, summary: "" },
@@ -38,7 +48,7 @@ async function seedOrganisation(page: import("@playwright/test").Page, headers: 
       headers, data: { name: "Requirement with files", component_id: component.id, category_id: category.id },
     })
   ).json();
-  return { org, project, requirement, suffix };
+  return { org, project, requirement, suffix, adminEmail, headers };
 }
 
 function upload(page: import("@playwright/test").Page, headers: Headers, projectId: string, requirementId: string, bytes: number) {
@@ -73,10 +83,10 @@ test("a server administrator sets a storage limit and uploads are refused past i
   });
 
   await test.step("an upload past the limit is refused, and another organisation is unaffected", async () => {
-    const refused = await upload(page, headers, limited.project.id, limited.requirement.id, 2048);
+    const refused = await upload(page, limited.headers, limited.project.id, limited.requirement.id, 2048);
     expect(refused.status()).toBe(403);
     expect((await refused.json()).detail.code).toBe("storage_quota_exceeded");
-    const allowed = await upload(page, headers, other.project.id, other.requirement.id, 2048);
+    const allowed = await upload(page, other.headers, other.project.id, other.requirement.id, 2048);
     expect(allowed.status()).toBe(201);
   });
 
@@ -85,7 +95,7 @@ test("a server administrator sets a storage limit and uploads are refused past i
     await dialog.getByRole("spinbutton", { name: "Storage limit" }).fill("1");
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("The storage rules were saved.")).toBeVisible();
-    const accepted = await upload(page, headers, limited.project.id, limited.requirement.id, 2048);
+    const accepted = await upload(page, limited.headers, limited.project.id, limited.requirement.id, 2048);
     expect(accepted.status()).toBe(201);
   });
 });
@@ -107,7 +117,7 @@ test("a server administrator disables uploads for one organisation", async ({ pa
   });
 
   await test.step("an upload is refused with the organisation's code", async () => {
-    const refused = await upload(page, headers, seeded.project.id, seeded.requirement.id, 10);
+    const refused = await upload(page, seeded.headers, seeded.project.id, seeded.requirement.id, 10);
     expect(refused.status()).toBe(403);
     expect((await refused.json()).detail.code).toBe("organization_uploads_disabled");
   });
@@ -117,7 +127,7 @@ test("a server administrator disables uploads for one organisation", async ({ pa
     await dialog.getByRole("switch", { name: "Allow file uploads" }).click();
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("The storage rules were saved.")).toBeVisible();
-    expect((await upload(page, headers, seeded.project.id, seeded.requirement.id, 10)).status()).toBe(201);
+    expect((await upload(page, seeded.headers, seeded.project.id, seeded.requirement.id, 10)).status()).toBe(201);
   });
 });
 
@@ -128,23 +138,24 @@ test("a server administrator disables uploads for one organisation", async ({ pa
 test("an import that does not fit the storage limit offers Import without files", async ({ page }) => {
   const headers = await apiHeaders(page.request, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
   const seeded = await seedOrganisation(page, headers, "Import");
-  expect((await upload(page, headers, seeded.project.id, seeded.requirement.id, 4096)).status()).toBe(201);
-  const bundle = await page.request.get(`${apiBaseUrl}/api/v1/projects/${seeded.project.id}/export`, { headers });
+  expect((await upload(page, seeded.headers, seeded.project.id, seeded.requirement.id, 4096)).status()).toBe(201);
+  const bundle = await page.request.get(`${apiBaseUrl}/api/v1/projects/${seeded.project.id}/export`, { headers: seeded.headers });
   const bundlePath = path.join(os.tmpdir(), `e2e-storage-${seeded.suffix}.zip`);
   fs.writeFileSync(bundlePath, await bundle.body());
   // The original 4 KB are stored; a limit of 5 KB leaves 1 KB, less than the 4 KB the import brings.
   await page.request.put(`${apiBaseUrl}/api/v1/orgs/${seeded.org.id}/storage`, {
     headers, data: { file_uploads_enabled: true, storage_quota_bytes: 5120 },
   });
-  await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+  await loginAs(page, seeded.adminEmail, PASSWORD);
 
   await page.goto("/projects");
   await page.getByRole("button", { name: "More options" }).click();
   await page.getByRole("button", { name: "Import project" }).click();
   const form = page.getByRole("dialog", { name: "Import project" });
   await form.getByLabel("Name", { exact: true }).fill(`E2E Storage Imported ${seeded.suffix}`);
-  const orgSelect = form.locator("select").first();
-  await orgSelect.selectOption({ label: seeded.org.name });
+  // A single-organisation administrator gets no organisation picker.
+  const orgSelect = form.locator("select", { has: page.locator("option", { hasText: seeded.org.name }) });
+  if ((await orgSelect.count()) > 0) await orgSelect.selectOption({ label: seeded.org.name });
   await form.locator('input[type="file"][accept*="zip"]').setInputFiles(bundlePath);
   await form.getByRole("button", { name: "Import", exact: true }).click();
 

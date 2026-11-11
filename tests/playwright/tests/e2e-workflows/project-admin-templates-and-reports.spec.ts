@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { apiHeaders, installCleanupHook, loginAs, onCleanup, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an org admin finds the organisation's report look on Branding and Configuration, not in a list of
@@ -9,12 +9,25 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, sel
  *
  * Uses Gamma (single-org admin, `/orgs` redirects straight to its admin
  * page) to stay isolated from the Alpha/Beta specs in this suite.
+ *
+ * Marks the seeded Gamma-2 project as a template, which hides it from the Projects list, so the file runs with the
+ * global-state specs (one worker, before the parallel ones) and unmarks the project afterwards.
  */
 
+const API = "http://localhost:8000/api/v1";
+
 test.describe("org report look and project report setup", () => {
+  installCleanupHook();
+
   test("there is no report templates section, a project has no default template, mark a project as a template", async ({
     page,
   }) => {
+    onCleanup(async (request) => {
+      const headers = await apiHeaders(request, PERSONAS.orgAdminGamma.email);
+      const projects: { id: string; name: string }[] = await (await request.get(`${API}/projects?include_templates=true`, { headers })).json();
+      const gamma2 = projects.find((project) => project.name === PROJECT_NAMES.gamma2);
+      if (gamma2) await request.patch(`${API}/projects/${gamma2.id}`, { headers, data: { is_template: false } });
+    });
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);

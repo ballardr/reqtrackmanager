@@ -40,7 +40,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section", () 
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/members$/);
 
     // The creator is auto-granted `standards_manager`.
-    await expect(page.getByText(PERSONAS.orgAdminAlphaBeta.name)).toBeVisible();
+    await expect(page.getByRole("cell", { name: PERSONAS.orgAdminAlphaBeta.name, exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Roles for ${PERSONAS.orgAdminAlphaBeta.name}` }).click();
     const creatorGroup = page.getByRole("group", { name: `Roles for ${PERSONAS.orgAdminAlphaBeta.name}` });
     const managerCheckbox = creatorGroup.getByRole("checkbox", {

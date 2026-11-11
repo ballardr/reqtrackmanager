@@ -79,7 +79,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
 
     // --- Add the link from the Stakeholder's page.
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);
-    await expect(page.getByText("This Stakeholder doesn't represent any Persona yet.")).toBeVisible();
+    await expect(page.getByText("This Stakeholder does not represent any Persona yet.")).toBeVisible();
     await page.getByRole("button", { name: "Add to Represents these Personas" }).click();
     const addDialog = page.getByRole("dialog", { name: "Add to Represents these Personas" });
     await addDialog.getByLabel("Persona to represent").selectOption({ label: personaName });
@@ -99,7 +99,7 @@ test.describe("Stakeholders & Personas: Stakeholder lifecycle", () => {
     await page.getByRole("button", { name: `Remove ${personaName}` }).click();
     await page.getByRole("dialog", { name: `Remove ${personaName}?` }).getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText("Link removed.")).toBeVisible();
-    await expect(page.getByText("This Stakeholder doesn't represent any Persona yet.")).toBeVisible();
+    await expect(page.getByText("This Stakeholder does not represent any Persona yet.")).toBeVisible();
   });
 
   test("adds a Stakeholder from an organisation user, once", async ({ page }) => {

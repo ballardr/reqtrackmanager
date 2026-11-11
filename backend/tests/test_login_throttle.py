@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -154,3 +158,63 @@ def test_the_password_rule_applies_where_a_password_is_chosen_not_where_it_is_us
     )
     assert refused.status_code == 422
     assert login(client, ADMIN, "ChangeMe123!")  # an existing password that would not pass today still signs in
+
+
+def _hold_account_lock(email: str, seconds: float) -> threading.Thread:
+    """Holds the account's sign-in lock from another session for `seconds`, returning once it is held."""
+    held = threading.Event()
+
+    def hold():
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": f"login:{email}"})
+            held.set()
+            time.sleep(seconds)
+        finally:
+            db.rollback()
+            db.close()
+
+    thread = threading.Thread(target=hold)
+    thread.start()
+    assert held.wait(5)
+    return thread
+
+
+def test_an_attempt_overlapping_another_on_the_same_account_waits_for_it_and_is_not_refused(monkeypatch):
+    """A correct sign-in that arrives while another attempt on the account is in progress is served, not answered 429."""
+    monkeypatch.setattr(get_settings(), "login_lock_wait_seconds", 5)
+    holder = _hold_account_lock(ADMIN, 0.5)
+    db = SessionLocal()
+    try:
+        started = time.monotonic()
+        assert login_throttle.seconds_to_wait(db, ADMIN, "198.51.100.5") == 0
+        assert time.monotonic() - started >= 0.3
+    finally:
+        db.close()
+        holder.join()
+
+
+def test_an_attempt_that_outlasts_the_lock_wait_is_answered_with_a_one_second_wait(monkeypatch):
+    """The wait is bounded: a lock held past it gives the one-second answer, and the session is usable afterwards."""
+    monkeypatch.setattr(get_settings(), "login_lock_wait_seconds", 1)
+    holder = _hold_account_lock(ADMIN, 2.5)
+    db = SessionLocal()
+    try:
+        assert login_throttle.seconds_to_wait(db, ADMIN, "198.51.100.6") == 1
+        assert db.scalar(text("SELECT 1")) == 1
+    finally:
+        db.close()
+        holder.join()
+
+
+def test_a_lock_wait_of_zero_refuses_an_overlapping_attempt_at_once(monkeypatch):
+    monkeypatch.setattr(get_settings(), "login_lock_wait_seconds", 0)
+    holder = _hold_account_lock(ADMIN, 1.0)
+    db = SessionLocal()
+    try:
+        started = time.monotonic()
+        assert login_throttle.seconds_to_wait(db, ADMIN, "198.51.100.7") == 1
+        assert time.monotonic() - started < 0.5
+    finally:
+        db.close()
+        holder.join()

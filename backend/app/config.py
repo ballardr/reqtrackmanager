@@ -153,6 +153,9 @@ class Settings(BaseSettings):
             last success) and against the source address; past the free allowance each further failure doubles
             the wait from the base up to the maximum. A delay, not a lock: it ends by itself, so a third party
             cannot keep a person out for longer than the maximum.
+        login_lock_wait_seconds: How long a sign-in waits for another attempt on the same account to finish (attempts
+            on one account are serialised so a burst cannot all pass the failure count). Past it the attempt is
+            answered 429 with a one-second wait; 0 refuses at once.
         oidc_allow_private_network_targets: Deployment-level opt-in that
             disables the SSRF guard's public-IP check for org-configured
             OIDC endpoints (`services.oidc_client._assert_safe_external_url`),
@@ -377,6 +380,7 @@ class Settings(BaseSettings):
     login_delay_free_attempts_address: int = Field(default=30, ge=1)
     login_delay_base_seconds: int = Field(default=5, ge=1)
     login_delay_max_seconds: int = Field(default=300, ge=1)
+    login_lock_wait_seconds: int = Field(default=5, ge=0, le=30)
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
     org_smtp_allow_private_network_targets: bool = False

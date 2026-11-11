@@ -17568,3 +17568,12 @@ Raised by the user: the History page had "a ton of white and wasted space", and 
 - **Capture traps.** The demonstration dataset sets Phase/Spec/ECR terminology on Falcon-3 Inspection Drone, which is cleared for capture and restored afterwards; the seeded "Demonstration data" message is dismissed before capture; the server pages need the server administrator, whose Users list defaults to **Orphaned accounts** (empty), so **All users** is chosen first.
 - **Performance pages.** Reviewed: this pass changed no measured path and no number, so `sizing-and-performance.mdx` and `performance-testing-method.md` are unchanged; the perf scenarios not re-run for phases 9, 12, 14 and 16 stay listed as unverified there.
 - **Not applicable.** No code, schema, permission or requirement changed. No change to `docs/requirements.md`.
+
+## Sign-in: overlapping attempts on one account wait for the lock (2026-11-11)
+
+- **Defect found.** The per-account advisory lock (`services.login_throttle`) refused any attempt that overlapped another on the same account with 429 "wait 1 second", including a correct password. Two sign-ins that overlap by chance (a double submit, two devices, the Playwright suite's two workers on shared personas) failed; the suite's helpers then read a missing `access_token` and cascaded into 401 and 422 failures.
+- **Decision (Decided by: User).** Successful sign-ins are not throttled: the delay counts failed password attempts only and a success resets the account's count. The lock stays, because it is what stops a burst of parallel guesses all passing the failure count, but a later attempt now waits for it (`login_lock_wait_seconds`, default 5, `LOGIN_LOCK_WAIT_SECONDS`) instead of being refused. Past the wait the answer is the same 429 with a one-second wait; 0 restores refusal at once.
+- **Risk considered.** A waiting attempt holds a database connection for at most the wait. Each worker already admits a bounded number of requests (`MAX_CONCURRENT_REQUESTS`), and once an account is past its allowance the delay answer is given before the password is checked, so the lock is held only briefly.
+- **Controls unchanged.** Allowances, window, doubling delay, maximum, audit of refused attempts and the same answer for unknown addresses. Tests: `test_login_throttle.py` (waits for an overlapping attempt, bounded wait, zero wait).
+- **Not applicable.** No change to `docs/requirements.md`, the schema or the website.
+

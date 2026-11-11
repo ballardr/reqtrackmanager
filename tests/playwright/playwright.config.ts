@@ -37,6 +37,8 @@ const GLOBAL_STATE_SPECS = [
   "e2e-workflows/logo-band.spec.ts",
   // Sets the platform footer position and footer details (read by every signed-out page) and Alpha's own position.
   "e2e-workflows/footer-position.spec.ts",
+  // Marks the seeded Gamma-2 project as a template, which hides it from the Projects list that other specs search.
+  "e2e-workflows/project-admin-templates-and-reports.spec.ts",
   // Added after a CI failure: this file's "an org admin
   // can disable the relaxed child-creation path" test flips Gamma's own
   // org-wide "Allow ... managers to create sub-projects" security toggle

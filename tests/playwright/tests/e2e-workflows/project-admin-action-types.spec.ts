@@ -108,7 +108,7 @@ test.describe("project admin: action types", () => {
     await test.step("the reassigned action now shows type Test", async () => {
       await page.getByRole("link", { name: "Actions", exact: true }).click();
       await page.getByText("E2E Action Type Test").click();
-      await expect(page.getByRole("dialog").getByLabel("Type", { exact: true }).locator("option:checked")).toHaveText("Test");
+      await expect(page.getByRole("region", { name: "Details" }).getByLabel("Type", { exact: true }).locator("option:checked")).toHaveText("Test");
     });
 
     await test.step("with only Test remaining, its delete control is disabled", async () => {

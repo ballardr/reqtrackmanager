@@ -41,7 +41,8 @@ test.describe("organisation policies", () => {
     await test.step("the administrator adds a policy from a starter title and publishes it, notifying members", async () => {
       await page.goto(`/orgs/${alpha.id}/admin`);
       await selectOrgAdminGroup(page, "Policies");
-      await expect(page.getByRole("table", { name: "Policies" })).toBeVisible();
+      // The list is a table only once a policy exists; a fresh organisation shows its empty state.
+      await expect(page.getByRole("button", { name: "New policy" })).toBeVisible();
       await page.getByRole("button", { name: "New policy" }).click();
       const dialog = page.getByRole("dialog", { name: "New policy" });
       await expect(dialog.getByText("Every member of the organisation.")).toBeVisible();

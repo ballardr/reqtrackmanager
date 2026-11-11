@@ -298,6 +298,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // "create a new project from the template" step below.
     await page.waitForLoadState("networkidle");
 
+    // The project is a template, which the list leaves out until "Show templates" is ticked.
+    await page.getByRole("checkbox", { name: "Show templates" }).check();
     const card = page.locator("main .card", { hasText: templateProjectName });
     await card.getByRole("button", { name: "Favourite" }).click();
     await expect(card.getByRole("button", { name: "Remove from favourites" })).toBeVisible();

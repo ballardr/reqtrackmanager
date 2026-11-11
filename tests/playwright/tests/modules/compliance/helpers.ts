@@ -49,34 +49,15 @@ export async function createStandardWithVersion(
 }
 
 /**
- * Selects an option in one of `FilterPanel.tsx`'s `FilterField`-wrapped
- * `<select>`s (e.g. the Outstanding panels' Standard/Standard
- * version/Sub-section filters) — `page.getByLabel(fieldLabel,
- * { exact: true })` does **not** work here: `FilterField` renders `<label
- * class="stack"><span>{label}</span>{children}</label>`, a `<label>` that
- * *wraps* its control rather than pointing at it via `for`/`id`, and
- * Playwright's own `internal:label=` selector engine matches against the
- * label element's full `textContent` for an exact match — which, for a
- * wrapped `<select>`, includes every one of its `<option>` elements' own
- * text (DOM `textContent` doesn't distinguish "the label's own words" from
- * "text nested inside the control it wraps" the way the browser's real
- * accessible-name computation does). So `getByLabel(fieldLabel, {exact:
- * true})` resolves to zero elements whenever the select has any options at
- * all, and just hangs until Playwright's action timeout — not a strict-mode
- * violation, since it never got past "0 elements match." Confirmed live:
- * the same wrapped-label markup works fine via `getByLabelText` in this
- * component's own Storybook stories, because Testing Library's accessible-
- * name computation correctly excludes an embedded control's own text —
- * this is specifically a Playwright `internal:label=` quirk, not a real
- * accessibility defect in the app.
+ * Selects an option in one of the filter panel's `FilterSelect`s (e.g. the Outstanding panels' Standard/Standard
+ * version/Sub-section filters), found by its accessible name.
  *
- * Works around it exactly the way this file's own `createStandardWithVersion`
- * already does for a different label-ambiguity case: locate the label's own
- * `<span>` by its *exact* text (which, unlike the `<label>`, has no other
- * descendants to pollute its `textContent`) and walk to the sibling
- * `<select>` rather than trusting label association at all.
+ * @param page The page showing the filter panel.
+ * @param fieldLabel The filter's caption, matched exactly.
+ * @param optionLabel The visible text of the option to choose.
  */
 export async function selectFilterOption(page: Page, fieldLabel: string, optionLabel: string): Promise<void> {
-  const select = page.getByText(fieldLabel, { exact: true }).locator("xpath=following-sibling::select");
-  await select.selectOption({ label: optionLabel });
+  // `FilterSelect` names its `<select>` with the caption (aria-label), and the caption's `(?)` button sits between the
+  // caption and the select, so the select is found by its accessible name rather than as the caption's sibling.
+  await page.getByRole("combobox", { name: fieldLabel, exact: true }).selectOption({ label: optionLabel });
 }
