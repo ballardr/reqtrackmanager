@@ -108,7 +108,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     }
     await newProjectDialog.getByLabel("Name", { exact: true }).fill(templateProjectName);
     await newProjectDialog.getByLabel("Summary").fill("Created by Playwright (Pelion v2 spec)");
-    await newProjectDialog.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: templateProjectName })).toBeVisible();
   });
@@ -325,7 +325,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await newProjectDialog.getByLabel("Summary").fill("Cloned by Playwright (Pelion v2 spec)");
     await expect(newProjectDialog.getByLabel("Create from template")).toContainText(templateProjectName);
     await newProjectDialog.getByLabel("Create from template").selectOption({ label: templateProjectName });
-    await newProjectDialog.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 

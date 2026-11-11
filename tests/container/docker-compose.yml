@@ -156,6 +156,11 @@ services:
       # password on purpose, so the per-address allowance (30 failures in 15 minutes) would delay later sign-ins with a 429.
       # The per-account delay stays at its default.
       LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS: ${LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS:-100000}
+      # Every signed-out page reads the published policies (the footer link) and announcements, and the suite loads those
+      # pages hundreds of times from one address, so the default per-address allowance (30 burst, 60 a minute) answers 429
+      # and the pages read it as "nothing published".
+      PUBLIC_ANNOUNCEMENT_RATE_LIMIT_BURST: ${PUBLIC_ANNOUNCEMENT_RATE_LIMIT_BURST:-100000}
+      PUBLIC_ANNOUNCEMENT_RATE_LIMIT_PER_MINUTE: ${PUBLIC_ANNOUNCEMENT_RATE_LIMIT_PER_MINUTE:-100000}
       REQUIRE_EMAIL_CONFIRMATION: ${REQUIRE_EMAIL_CONFIRMATION:-false}
       SERVER_ADMIN_ENABLED: "true"
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
