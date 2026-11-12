@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fireEvent, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { clippedMenuItems } from "../testing/orphanedControls";
 import { MenuButton } from "./MenuButton";
@@ -67,5 +67,28 @@ export const LongLabelsAreNeverClipped: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
     const menu = within(document.body).getByRole("menu", { name: "New" });
     await expect(clippedMenuItems(menu)).toEqual([]);
+  },
+};
+
+/** An item with `onDragStart` can be dragged as well as chosen; the menu stays open for the drag and closes when it ends. */
+export const ItemsCanBeDragged: Story = {
+  args: {
+    items: [
+      { label: "Persona", onSelect: fn(), onDragStart: fn() },
+      { label: "Stakeholder", onSelect: fn() },
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    const menu = within(within(document.body).getByRole("menu", { name: "New" }));
+    const draggable = menu.getByRole("menuitem", { name: "Persona" });
+    await expect(draggable).toHaveAttribute("draggable", "true");
+    await expect(menu.getByRole("menuitem", { name: "Stakeholder" })).toHaveAttribute("draggable", "false");
+    fireEvent.dragStart(draggable);
+    await expect(args.items[0].onDragStart).toHaveBeenCalledTimes(1);
+    await expect(within(document.body).getByRole("menu")).toBeInTheDocument();
+    fireEvent.dragEnd(draggable);
+    await waitFor(() => expect(within(document.body).queryByRole("menu")).not.toBeInTheDocument());
+    await expect(args.items[0].onSelect).not.toHaveBeenCalled();
   },
 };

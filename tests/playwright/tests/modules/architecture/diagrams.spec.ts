@@ -34,7 +34,7 @@ async function selectNode(page: Page, name: string) {
  * created through the API as setup, everything about the diagram through the UI.
  */
 test.describe("System Architecture: diagram editor", () => {
-  test("an architect places elements, sees their connection, adds one from the palette and removes a box without deleting it", async ({ page }) => {
+  test("an architect places elements, sees their connection, adds one from the Add menu and removes a box without deleting it", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchDiagram", true, "System Architecture");
     const gateway = `Gateway ${suffix}`;
     const orders = `Orders ${suffix}`;
@@ -63,7 +63,8 @@ test.describe("System Architecture: diagram editor", () => {
     });
 
     await test.step("add existing elements, see their connection before saving, then save", async () => {
-      await page.getByRole("button", { name: "Add existing elements" }).click();
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: "Add existing elements" }).click();
       const dialog = page.getByRole("dialog", { name: "Add existing elements" });
       await dialog.getByRole("checkbox", { name: `Add ${gateway}` }).check();
       await dialog.getByRole("checkbox", { name: `Add ${orders}` }).check();
@@ -79,14 +80,33 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
     });
 
-    await test.step("create an element from the palette and place it", async () => {
-      await page.getByRole("button", { name: "New Service" }).click();
+    await test.step("create an element from the Add menu and place it", async () => {
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: "Service", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "New Service" });
       await dialog.getByLabel("Name", { exact: true }).fill(queue);
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+    });
+
+    await test.step("the Configuration tab keeps unsaved edits, and its setting is stored at once", async () => {
+      await selectNode(page, queue);
+      await page.keyboard.press("ArrowRight");
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await page.getByRole("tab", { name: "Configuration" }).click();
+      await expect(page).toHaveURL(/tab=configuration/);
+      await expect(page.getByRole("toolbar", { name: "Diagram editing" })).toHaveCount(0);
+      const detail = page.getByRole("switch", { name: "Connection detail" });
+      await detail.click();
+      await expect(detail).toBeChecked();
+      await page.getByRole("tab", { name: "Drawing" }).click();
+      await expect(page).not.toHaveURL(/tab=/);
+      // The move made before the tab change is still pending.
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Undo" }).click();
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
     });
 
     await test.step("undo a move, then remove a box: the element stays in the model", async () => {

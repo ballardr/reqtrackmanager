@@ -42,6 +42,17 @@ async function select(canvas: ReturnType<typeof within>, name: string) {
   return node;
 }
 
+/** Chooses an editor tab (the Drawing tab is the default). */
+async function openTab(canvas: ReturnType<typeof within>, name: "Drawing" | "Configuration") {
+  await userEvent.click(await canvas.findByRole("tab", { name }));
+}
+
+/** Opens the "Add to diagram" menu and chooses an entry (the menu is a popover outside the story's canvas). */
+async function addFromMenu(canvas: ReturnType<typeof within>, item: string) {
+  await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
+  await userEvent.click(await within(document.body).findByRole("menuitem", { name: item }));
+}
+
 export const DrawsBoxesAndLinesFromTheModelData: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -49,8 +60,9 @@ export const DrawsBoxesAndLinesFromTheModelData: Story = {
     await expect(await canvas.findByLabelText("Gateway, node")).toBeInTheDocument();
     await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument();
     await expect(await canvas.findByLabelText("Connection from Gateway to Orders")).toBeInTheDocument();
-    await expect(canvas.getByRole("switch", { name: "Security devices" })).toBeChecked();
     await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await openTab(canvas, "Configuration");
+    await expect(await canvas.findByRole("switch", { name: "Security devices" })).toBeChecked();
   },
 };
 
@@ -138,12 +150,16 @@ export const FlippingASwitchRedrawsAtOnceWithoutStoringOrReading: Story = {
   beforeEach: () => { spyOn(api, "put"); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const toggle = await canvas.findByRole("switch", { name: "Security devices" });
     await canvas.findByLabelText("Firewall, node");
     const reads = (api.get as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+    await openTab(canvas, "Configuration");
+    const toggle = await canvas.findByRole("switch", { name: "Security devices" });
     await userEvent.click(toggle);
+    await openTab(canvas, "Drawing");
     await waitFor(() => expect(canvas.queryByLabelText("Firewall, node")).not.toBeInTheDocument());
-    await userEvent.click(toggle);
+    await openTab(canvas, "Configuration");
+    await userEvent.click(await canvas.findByRole("switch", { name: "Security devices" }));
+    await openTab(canvas, "Drawing");
     await expect(await canvas.findByLabelText("Firewall, node")).toBeInTheDocument();
     expect((api.get as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(reads);
     expect(api.put).not.toHaveBeenCalled();
@@ -165,7 +181,9 @@ export const SwitchingOffAnElementBridgesTheLineAcrossIt: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByLabelText("Connection from Gateway to Firewall")).toBeInTheDocument();
+    await openTab(canvas, "Configuration");
     await userEvent.click(await canvas.findByRole("switch", { name: "Security devices" }));
+    await openTab(canvas, "Drawing");
     // The bridged line stands for both connections, so its label carries their count.
     const bridged = await canvas.findByLabelText("×2, connection from Gateway to Orders");
     await expect(bridged).toBeInTheDocument();
@@ -181,6 +199,7 @@ export const AddingASwitchStoresTheWholeSet: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openTab(canvas, "Configuration");
     await userEvent.click(await canvas.findByRole("button", { name: "Add switch" }));
     const dialog = within(within(document.body).getByRole("dialog"));
     await userEvent.type(await dialog.findByLabelText(/^Name/), "Hardware");
@@ -224,7 +243,7 @@ export const AddingAnElementDrawsItsConnectionsBeforeSaving: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add existing elements" }));
+    await addFromMenu(canvas, "Add existing elements");
     const dialog = within(within(document.body).getByRole("dialog"));
     await expect(dialog.queryByText("Gateway")).not.toBeInTheDocument();
     await userEvent.click(await dialog.findByRole("checkbox", { name: "Add Cache" }));
@@ -242,7 +261,7 @@ export const ACreatedElementIsPlacedWhereItWasDropped: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "New Service" }));
+    await addFromMenu(canvas, "Service");
     const dialog = within(within(document.body).getByRole("dialog"));
     await userEvent.type(await dialog.findByLabelText(/^Name/), "Queue worker");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
@@ -256,7 +275,7 @@ export const ACreatedElementIsPlacedWhereItWasDropped: Story = {
 export const ANoteIsEditedInPlainText: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add note" }));
+    await addFromMenu(canvas, "Add note");
     const text = await canvas.findByRole("textbox", { name: "Note text" });
     await userEvent.type(text, "<b>Check with ops</b>");
     await userEvent.tab();
@@ -288,8 +307,10 @@ export const AnArchivedDiagramCannotBeEdited: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByLabelText("Gateway, node");
-    await expect(canvas.getByRole("button", { name: "Add note" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Add to diagram" })).toBeDisabled();
     await expect(canvas.getByRole("button", { name: "Undo" })).toBeDisabled();
+    await openTab(canvas, "Configuration");
+    await expect(await canvas.findByRole("switch", { name: "Security devices" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add switch" })).not.toBeInTheDocument();
   },
 };
@@ -314,7 +335,8 @@ export const ADetailedLineShowsItsTypeAndCount: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByLabelText("REST API ×2, connection from Gateway to Orders")).toBeInTheDocument();
-    await expect(canvas.getByRole("switch", { name: "Connection detail" })).toBeChecked();
+    await openTab(canvas, "Configuration");
+    await expect(await canvas.findByRole("switch", { name: "Connection detail" })).toBeChecked();
   },
 };
 
@@ -358,9 +380,11 @@ async function exportAs(canvas: ReturnType<typeof within>, item: string) {
 export const TheOutlineFollowsTheViewSwitches: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await expect(await within(await canvas.findByRole("region", { name: "Outline" })).findByRole("button", { name: /^ELM-003 Firewall/ })).toBeInTheDocument();
+    await openTab(canvas, "Configuration");
+    await userEvent.click(await canvas.findByRole("switch", { name: "Security devices" }));
+    await openTab(canvas, "Drawing");
     const outline = within(await canvas.findByRole("region", { name: "Outline" }));
-    await expect(await outline.findByRole("button", { name: /^ELM-003 Firewall/ })).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("switch", { name: "Security devices" }));
     await waitFor(() => expect(outline.queryByRole("button", { name: /^ELM-003 Firewall/ })).not.toBeInTheDocument());
     await expect(outline.getByText(/1 hidden by view switches\./)).toBeInTheDocument();
   },
@@ -383,7 +407,7 @@ export const ABoxAddedBeforeSavingIsInTheOutlineAtOnce: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const outline = within(await canvas.findByRole("region", { name: "Outline" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Add existing elements" }));
+    await addFromMenu(canvas, "Add existing elements");
     const dialog = within(within(document.body).getByRole("dialog"));
     await userEvent.click(await dialog.findByRole("checkbox", { name: "Add Cache" }));
     await userEvent.click(dialog.getByRole("button", { name: "Add selected (1)" }));
@@ -448,7 +472,9 @@ export const ExportingAfterSwitchingOffNamesTheSwitchAsOff: Story = {
   play: async ({ canvasElement }) => {
     const names = captureDownloads();
     const canvas = within(canvasElement);
+    await openTab(canvas, "Configuration");
     await userEvent.click(await canvas.findByRole("switch", { name: "Security devices" }));
+    await openTab(canvas, "Drawing");
     await exportAs(canvas, "Download Mermaid text");
     await waitFor(() => expect(names).toEqual(["DGM-001-platform-overview.mmd"]));
     expect(api.getForBlob).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/mermaid?toggle_off=tg-1`);
@@ -510,5 +536,98 @@ export const AFailedExportShowsAMessageAndDownloadsNothing: Story = {
     // The menu is usable again once the failure has been handled.
     await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeEnabled());
     expect(names).toEqual([]);
+  },
+};
+
+export const TheAddMenuGroupsTheTypesByDomain: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
+    const menu = within(await within(document.body).findByRole("menu", { name: "Add to diagram" }));
+    const labels = menu.getAllByRole("menuitem").map((item) => item.textContent?.trim());
+    await expect(labels).toEqual(["Service", "Board", "Custom block", "Add existing elements", "Add note"]);
+    for (const heading of ["New software element", "New hardware element", "New software and hardware element", "Other"]) {
+      await expect(menu.getByText(heading)).toBeInTheDocument();
+    }
+    // A type can be dragged onto the canvas as well as chosen.
+    await expect(menu.getByRole("menuitem", { name: "Service" })).toHaveAttribute("draggable", "true");
+    await expect(menu.getByRole("menuitem", { name: "Add note" })).toHaveAttribute("draggable", "false");
+  },
+};
+
+export const ChoosingATypeInTheMenuAsksForTheNewElementsName: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await addFromMenu(canvas, "Board");
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByRole("heading", { name: "New Board" })).toBeInTheDocument();
+  },
+};
+
+export const TheConfigurationTabHoldsTheSettingsInsteadOfTheDrawing: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("tab", { name: "Drawing" })).toHaveAttribute("aria-selected", "true");
+    await expect(canvas.queryByRole("region", { name: "View switches" })).not.toBeInTheDocument();
+    await openTab(canvas, "Configuration");
+    await expect(await canvas.findByRole("tab", { name: "Configuration" })).toHaveAttribute("aria-selected", "true");
+    await expect(await canvas.findByRole("region", { name: "Connections" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("region", { name: "View switches" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("toolbar", { name: "Diagram editing" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("region", { name: "Outline" })).not.toBeInTheDocument();
+  },
+};
+
+export const UnsavedEditsAndTheSelectionSurviveAChangeOfTab: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await openTab(canvas, "Configuration");
+    await expect(await canvas.findByText(/unsaved changes; they are kept/)).toBeInTheDocument();
+    await openTab(canvas, "Drawing");
+    await expect(await canvas.findByLabelText("Gateway, node")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("status")).toHaveTextContent("Unsaved changes.");
+    await expect(await canvas.findByRole("region", { name: "Selection" })).toHaveTextContent(/Gateway/);
+  },
+};
+
+export const TheConnectionDetailSettingIsStoredFromTheConfigurationTab: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, connection_detail: true }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Configuration");
+    await userEvent.click(await canvas.findByRole("switch", { name: "Connection detail" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, connection_detail: true })));
+  },
+};
+
+export const AnEditMadeWhileASaveIsReadBackIsKept: Story = {
+  beforeEach: () => {
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    // Hold the reads that follow a save, so a second move can be made while the stored layout is being read back.
+    const spy = api.get as unknown as { getMockImplementation: () => (...args: unknown[]) => Promise<unknown>; mockImplementation: (fn: unknown) => void };
+    const original = spy.getMockImplementation();
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    spy.mockImplementation(async (...args: unknown[]) => { await gate; return original(...args); });
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    release();
+    await waitFor(() => expect(canvas.getByRole("status")).toHaveTextContent("Unsaved changes."));
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    // Only the second move is unsaved: undoing it returns to what was stored.
+    await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
   },
 };

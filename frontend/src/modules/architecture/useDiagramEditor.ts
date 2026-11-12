@@ -16,7 +16,8 @@
  * - Layout edits are local until Save (one undo step per move, resize, add, removal or note edit). Toggles and the
  *   connection-detail switch are stored when changed, since they are settings of the diagram, not drawing edits; they
  *   advance the same version, which this hook keeps current so a later layout save is not stale by its own doing.
- * - A save clears the undo history: the stored layout becomes the new baseline, and notes take their stored ids.
+ * - A save clears the undo history: the stored layout becomes the new baseline, and notes take their stored ids. An edit
+ *   made while the saved layout is being read back is kept (and stays unsaved) instead of being replaced.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -62,6 +63,9 @@ export interface DiagramEditor {
   setDiagram: (diagram: ArchitectureDiagram) => void;
 }
 
+/** @param layout A layout. @returns What a save of it would send, as text, for telling whether it changed. */
+const signatureOf = (layout: EditorLayout): string => JSON.stringify(layoutToSave(layout));
+
 /**
  * @param projectId The diagram's project.
  * @param diagramId The diagram.
@@ -79,7 +83,16 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
   const request = useRef(0);
   const loaded = useRef(false);
 
-  const read = useCallback((discard: boolean): Promise<void> => {
+  // The layout as last rendered, so a read that resolves later can tell whether an edit was made while it was in flight.
+  const latest = useRef(history.present);
+  useEffect(() => { latest.current = history.present; });
+
+  /**
+   * Reads the diagram again. `discard` true replaces the layout with the stored one; false merges the stored view into it;
+   * a layout is the one just saved: it replaces the editor's layout only when no edit has been made since, and otherwise
+   * becomes the saved baseline, so work done while the read was in flight is kept and only that work stays unsaved.
+   */
+  const read = useCallback((discard: boolean | EditorLayout): Promise<void> => {
     const mine = ++request.current;
     return Promise.all([api.get(diagramId), api.view(diagramId), api.model(diagramId)])
       .then(([record, resolved, data]) => {
@@ -88,11 +101,16 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
         setView(resolved);
         setModel(data);
         setLoadError(null);
-        if (discard || !loaded.current) {
+        const justSaved = typeof discard === "object" ? discard : null;
+        const replace = discard === true || !loaded.current || (justSaved !== null && signatureOf(latest.current) === signatureOf(justSaved));
+        if (replace) {
           setHistory(startHistory(layoutFromView(resolved)));
           setConflict(false);
         } else {
-          setHistory((h) => refreshPresent(h, mergeView(h.present, resolved)));
+          setHistory((h) => {
+            const merged = refreshPresent(h, mergeView(h.present, resolved));
+            return justSaved ? { ...merged, saved: justSaved } : merged;
+          });
         }
         loaded.current = true;
       })
@@ -128,7 +146,7 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
   const save = useCallback(async () => {
     const { placements, notes } = layoutToSave(history.present);
     if (!(await store((version) => api.saveLayout(diagramId, version, placements, notes)))) return false;
-    await read(true);
+    await read(history.present);
     return true;
   }, [store, read, api, diagramId, history.present]);
 

@@ -47,7 +47,7 @@
 import type { ReactNode } from "react";
 import { ChevronRight, MoreVertical } from "lucide-react";
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 
 import { Popover } from "./Popover";
 
@@ -71,6 +71,10 @@ export interface ActionMenuItem {
   hint?: string;
   /** Tooltip, e.g. the full name of an acronym label. */
   title?: string;
+  /** Makes the item draggable: called when a drag starts, to set the data a drop target reads (a palette-style menu whose
+   * entries can also be dropped on a canvas). The menu closes when the drag ends, not when it starts, so the source stays
+   * mounted for the whole drag. Ignored on a submenu item and on a disabled one. */
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
   /** Makes this item a parent: it opens a second list of these items (one level only; their own `children` are
    * ignored) instead of acting itself, so its own `onSelect` is not called. */
   children?: ActionMenuItem[];
@@ -271,6 +275,9 @@ export function ActionMenuList({
                 className={item.danger ? "btn btn-danger menu-item" : "btn menu-item"}
                 title={item.title}
                 disabled={item.disabled}
+                draggable={item.onDragStart !== undefined && !item.disabled}
+                onDragStart={item.onDragStart}
+                onDragEnd={item.onDragStart ? onSelect : undefined}
                 onMouseEnter={() => hoverRow(null)}
                 onClick={() => {
                   onSelect();
