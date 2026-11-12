@@ -1217,7 +1217,7 @@ jobs:
       # and increments from there.
       - name: Determine version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3
+        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v3
 
       # Feeds the APP_VERSION/GIT_SHA/BUILD_DATE build args of the images that
       # report their own build identity (GET /api/v1/system/version, the nav
