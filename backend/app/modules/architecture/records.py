@@ -62,6 +62,7 @@ from app.modules.architecture.enums import RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
+    ArchitectureDiagram,
     ArchitectureElement,
     ArchitectureElementType,
     ArchitecturePort,
@@ -299,7 +300,7 @@ def list_connections(
 # --- Shared checks ---------------------------------------------------------
 
 
-def _check_version(record: ArchitectureElement | ArchitectureConnection, version: int) -> None:
+def _check_version(record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram, version: int) -> None:
     """Raises `VersionConflict` unless `version` is the record's current one."""
     if record.version != version:
         raise VersionConflict()
@@ -316,7 +317,7 @@ def _validate_owner(db: Session, owner: ElementOwner, principal: PrincipalRef | 
         raise RuleError(str(exc.detail), 400) from exc
 
 
-def _touch(record: ArchitectureElement | ArchitectureConnection, **changes: Any) -> None:
+def _touch(record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram, **changes: Any) -> None:
     """Applies `changes` and advances the version."""
     for key, value in changes.items():
         setattr(record, key, value)

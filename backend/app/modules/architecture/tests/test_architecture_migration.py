@@ -132,3 +132,28 @@ def test_the_symbols_migration_adds_the_table_and_columns_backfills_builtins_and
         ), {"o": uuid.UUID(org["id"])}).scalar_one()
     assert [(r[1], r[0]) for r in rows] == [(key, name) for key, name in DEFAULT_SYMBOLS]
     assert all(r[2] is None for r in rows) and assigned == 0
+
+
+def test_the_diagrams_migration_adds_the_tables_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0176 drops the five diagram tables and leaves the elements they placed; upgrading recreates them
+    empty (nothing is seeded)."""
+    from app.modules.architecture.tests._helpers import make_diagram, make_element, place, setup
+
+    _org, project, token = setup(client, admin_token, "Arch diagrams migration")
+    kept = make_element(client, token, project["id"], "Kept")
+    place(client, token, project["id"], make_diagram(client, token, project["id"], "Context"), kept["id"])
+    tables = (
+        "architecture_diagrams", "architecture_diagram_placements", "architecture_diagram_notes",
+        "architecture_diagram_toggles", "architecture_diagram_toggle_members",
+    )
+    command.downgrade(build_alembic_config(), "0175")
+    try:
+        assert not any(_table_exists(t) for t in tables)
+        with engine.connect() as conn:
+            remaining = {str(r[0]) for r in conn.execute(text("SELECT id FROM architecture_elements"))}
+        assert kept["id"] in remaining
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert all(_table_exists(t) for t in tables)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM architecture_diagrams")).scalar_one() == 0

@@ -6,7 +6,7 @@ The gates behind the Architecture routers.
 RBAC: any project member can read the vocabularies, elements and connections once
 the matching sub-component is enabled. Creating and changing elements, ports and
 connections needs the project `architect` role or a Fine-Grained Access Control
-`(architecture_element, manage)` / `(architecture_connection, manage)` grant;
+`(architecture_element, manage)` / `(architecture_connection, manage)` / `(architecture_diagram, manage)` grant;
 changing a project's vocabulary or symbol library needs the project `architecture_admin` role and
 changing the organisation's defaults the organisation `architecture_org_admin` role.
 All compose with server admin, organisation admin and (for a project) project manager.
@@ -25,6 +25,7 @@ from app.models.user import User
 from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
     ELEMENT_ARTEFACT_TYPE,
 )
 from app.services.permissions import encode_permission
@@ -37,12 +38,13 @@ ARCHITECT_ROLE = "architect"
 #: The Fine-Grained Access Control atoms the `architect` role carries.
 ELEMENT_MANAGE_PERMISSION = encode_permission(ELEMENT_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 CONNECTION_MANAGE_PERMISSION = encode_permission(CONNECTION_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
+DIAGRAM_MANAGE_PERMISSION = encode_permission(DIAGRAM_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 
 
 def require_architect(db: Session, current_user: User, project: Project, permission: str) -> None:
-    """Gate for creating and changing elements, ports and connections: the project `architect` role (composing
-    with server admin, organisation admin and project manager) or the given Fine-Grained Access Control atom
-    (`ELEMENT_MANAGE_PERMISSION` or `CONNECTION_MANAGE_PERMISSION`).
+    """Gate for creating and changing elements, ports, connections and diagrams: the project `architect` role
+    (composing with server admin, organisation admin and project manager) or the given Fine-Grained Access Control
+    atom (`ELEMENT_MANAGE_PERMISSION`, `CONNECTION_MANAGE_PERMISSION` or `DIAGRAM_MANAGE_PERMISSION`).
 
     Raises:
         HTTPException: 403 if neither holds.

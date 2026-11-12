@@ -2471,9 +2471,10 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
 def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
     """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
-    REST API, Power), plus an organisation-owned identity service shared with the project through a collection.
+    REST API, Power), an organisation-owned identity service shared with the project through a collection, and a diagram
+    of the airframe with a toggle that hides its sensors.
     The Board, Sensor and Service types are drawn with the built-in symbols a new organisation is given, and the
-    drone with a symbol uploaded to the project's own library. Returns the number of elements and connections created."""
+    drone with a symbol uploaded to the project's own library. Returns the number of elements, connections and diagrams created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
 
@@ -2561,7 +2562,30 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     ).raise_for_status()
     httpx.post(f"{collection_url}/grants", headers=headers, timeout=30, json={"project_id": project_id}).raise_for_status()
     connect("Operator sign-in", "REST API", ground, "", identity.json(), "", "OpenID Connect")
-    return {"elements": 8, "connections": 5}
+
+    # A diagram of the airframe: the sensors, flight controller and radio placed on a row, with a view toggle that
+    # hides the sensors (so the toggle's saved default can be flipped on the page and in a report).
+    diagram = httpx.post(
+        f"{base}/diagrams", headers=headers, timeout=30,
+        json={"name": "Airframe data flow", "purpose": "How readings reach the ground station.", "activate": True,
+              "scope_element_id": airframe["id"], "connection_detail": True},
+    )
+    diagram.raise_for_status()
+    placed = diagram.json()
+    for index, item in enumerate((gps, imu, fc, radio, ground)):
+        placed = httpx.post(
+            f"{base}/diagrams/{placed['id']}/placements", headers=headers, timeout=30,
+            json={"version": placed["version"], "element_id": item["id"], "x": index * 220, "y": 0 if index < 2 else 140},
+        )
+        placed.raise_for_status()
+        placed = placed.json()
+    httpx.put(
+        f"{base}/diagrams/{placed['id']}/toggles", headers=headers, timeout=30,
+        json={"version": placed["version"], "toggles": [
+            {"name": "Sensors", "default_on": True, "rule": {"element_type_ids": [element_types["Sensor"]]}},
+        ]},
+    ).raise_for_status()
+    return {"elements": 8, "connections": 5, "diagrams": 1}
 
 
 def main() -> None:
@@ -4508,7 +4532,8 @@ def main() -> None:
           " 'Business Requirements Document (with evidence)' layout prints links, pictures and equations")
     print(f"  System Architecture (enabled org-wide): {architecture_counts['elements']} elements on Falcon-3 in a tree"
           f" (a System, a Subsystem, boards, sensors and a ground-station service, each with ports) and"
-          f" {architecture_counts['connections']} typed connections between them")
+          f" {architecture_counts['connections']} typed connections between them, and {architecture_counts['diagrams']}"
+          f" diagram of the airframe with a toggle that hides its sensors")
     if repo_counts:
         print(f"  {seed_repo_demo.PROJECT_NAME}: " + ", ".join(f"{count} {name}" for name, count in repo_counts.items())
               + " — loaded from this repository's documents (docs/decisions.md, docs/requirements.md, docs/soc2/)")

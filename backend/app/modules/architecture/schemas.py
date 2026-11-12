@@ -4,7 +4,8 @@ Module: modules.architecture.schemas
 Request and response bodies of the module's APIs: the vocabularies (an element type
 and a connection type share the name, domain and colour fields; each adds its own
 `shape` and `symbol_id`, or `line_style` and `directional`), the symbol library, and the
-records (elements with their ports, and connections).
+records (elements with their ports, connections, and diagrams with their placements, notes, toggles and the resolved
+view a diagram draws).
 
 A save of an element or a connection quotes the `version` it was based on; the API
 answers 409 when the record has moved on. A nullable field the body may clear
@@ -15,6 +16,7 @@ mention by `model_fields_set`.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -359,3 +361,235 @@ class CollectionOut(BaseModel):
     grants: list[CollectionGrantOut]
     created_at: datetime
     updated_at: datetime
+
+
+# --- Diagrams ----------------------------------------------------------------
+
+#: A coordinate or size on the diagram canvas: finite and bounded, so a stored box cannot be used to break a renderer.
+Coordinate = Annotated[float, Field(ge=-1_000_000, le=1_000_000, allow_inf_nan=False)]
+Extent = Annotated[float, Field(ge=1, le=100_000, allow_inf_nan=False)]
+
+
+class DiagramCreate(BaseModel):
+    """Create payload for a diagram.
+
+    Attributes:
+        scope_element_id: The element whose inside the diagram shows, or `None` for the system context.
+        connection_detail: Draw typed, labelled connections (otherwise plain lines).
+        activate: Create the diagram `active` instead of `draft` (Save and activate).
+        populate: Place the scope element's children (the root elements for the system context) in a grid.
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    purpose: str = Field(default="", max_length=20000)
+    scope_element_id: UUID | None = None
+    connection_detail: bool = False
+    activate: bool = False
+    populate: bool = False
+
+
+class DiagramUpdate(BaseModel):
+    """Edit of a diagram's own fields. `version` is required; a field left out is kept, and `scope_element_id`
+    set to `null` returns the diagram to the system context."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    purpose: str | None = Field(default=None, max_length=20000)
+    scope_element_id: UUID | None = None
+    connection_detail: bool | None = None
+
+
+class DiagramOut(ProjectScopedRow):
+    """A diagram with its counts. `scope_element_code` / `scope_element_name` are filled for a scope the viewer may read
+    (the name is blank for one they may not)."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    name: str
+    purpose: str
+    scope_element_id: UUID | None
+    scope_element_code: str | None = None
+    scope_element_name: str | None = None
+    connection_detail: bool
+    status: str
+    version: int
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    placement_count: int
+    note_count: int
+    toggle_count: int
+
+
+class PlacementIn(BaseModel):
+    """An element's box on a diagram."""
+
+    element_id: UUID
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 80.0
+    collapsed: bool = False
+
+
+class NoteIn(BaseModel):
+    """A plain-text note on a diagram (`id` keeps an existing note; none creates one)."""
+
+    id: UUID | None = None
+    text: str = Field(default="", max_length=2000)
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 60.0
+
+
+class LayoutSave(BaseModel):
+    """Replaces a diagram's placements and notes (what the editor saves). `version` is the optimistic lock; an element
+    left out of `placements` is removed from the diagram (never from the model)."""
+
+    version: int
+    placements: list[PlacementIn] = Field(default_factory=list, max_length=2000)
+    notes: list[NoteIn] = Field(default_factory=list, max_length=200)
+
+
+class PlacementAdd(PlacementIn):
+    """Places one more element on a diagram (`version` is the optimistic lock)."""
+
+    version: int
+
+
+class ToggleRule(BaseModel):
+    """What a toggle matches besides its manual members: elements of the given types or domains, connections of the given
+    types or domains, and records tagged with any of the tags. All lists are optional."""
+
+    element_type_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    connection_type_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    domains: list[Domain] = Field(default_factory=list, max_length=3)
+    tags: list[str] = Field(default_factory=list, max_length=50)
+
+
+class ToggleIn(BaseModel):
+    """One toggle: a name, its default state, its rule and its manual members (`id` keeps an existing toggle)."""
+
+    id: UUID | None = None
+    name: str = Field(min_length=1, max_length=100)
+    default_on: bool = True
+    rule: ToggleRule = Field(default_factory=ToggleRule)
+    element_ids: list[UUID] = Field(default_factory=list, max_length=2000)
+    connection_ids: list[UUID] = Field(default_factory=list, max_length=2000)
+
+
+class TogglesSave(BaseModel):
+    """Replaces a diagram's toggles (`version` is the optimistic lock)."""
+
+    version: int
+    toggles: list[ToggleIn] = Field(default_factory=list, max_length=50)
+
+
+class ToggleOut(BaseModel):
+    """A toggle with its current state in the view (`on`)."""
+
+    id: UUID
+    name: str
+    default_on: bool
+    on: bool
+    rule: ToggleRule
+    element_ids: list[UUID]
+    connection_ids: list[UUID]
+    sort_order: int
+
+
+class NoteOut(BaseModel):
+    """A note on a diagram."""
+
+    id: UUID
+    text: str
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class ViewPort(BaseModel):
+    """A port of a placed element, as drawn."""
+
+    id: UUID
+    name: str
+    direction: str
+    connection_type_name: str | None
+
+
+class ViewNode(BaseModel):
+    """A placed element as the diagram draws it.
+
+    A `locked` node is an element the viewer can no longer read: only its code is shown. `hidden` is a node a toggle
+    switches off (kept in the placements, drawn on no export). `internal_connection_ids` are the connections wholly
+    inside the element (drawn on no line)."""
+
+    placement_id: UUID
+    element_id: UUID
+    unique_code: str
+    name: str
+    locked: bool
+    shared: bool
+    hidden: bool
+    status: str
+    parent_id: UUID | None
+    element_type_id: UUID | None
+    element_type_name: str
+    shape: str
+    color_light: str | None
+    color_dark: str | None
+    symbol_id: UUID | None
+    ports: list[ViewPort]
+    x: float
+    y: float
+    width: float
+    height: float
+    collapsed: bool
+    internal_connection_ids: list[UUID]
+
+
+class ViewHop(BaseModel):
+    """A hidden element a bridged line passes through."""
+
+    element_id: UUID
+    unique_code: str
+    name: str
+
+
+class ViewEdge(BaseModel):
+    """A line between two placed elements and the connections behind it.
+
+    With connection detail off, `type_name`, `line_style`, `color_light`, `color_dark` and `label` are `None` (a plain
+    line); with it on they describe the connections' shared type and protocol (`type_name` is `None` for mixed types).
+    `connections` lists the underlying connections, which a selection shows either way."""
+
+    id: str
+    source_element_id: UUID
+    target_element_id: UUID
+    two_way: bool
+    indirect: bool
+    rolled_up: bool
+    bridged: bool
+    count: int
+    type_name: str | None
+    line_style: str | None
+    color_light: str | None
+    color_dark: str | None
+    label: str | None
+    connections: list[ConnectionOut]
+    hops: list[ViewHop]
+
+
+class DiagramView(BaseModel):
+    """A diagram resolved for drawing: its record, toggles with their state, nodes, lines and notes."""
+
+    diagram: DiagramOut
+    toggles: list[ToggleOut]
+    nodes: list[ViewNode]
+    edges: list[ViewEdge]
+    notes: list[NoteOut]

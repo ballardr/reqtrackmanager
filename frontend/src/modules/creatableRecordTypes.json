@@ -21,6 +21,7 @@
   ],
   "notCreatable": [
     "architecture_connection",
+    "architecture_diagram",
     "architecture_element",
     "compliance_required_action_assessment",
     "compliance_requirement",

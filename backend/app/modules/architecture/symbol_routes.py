@@ -35,7 +35,7 @@ SYMBOL_ENTITY_TYPE = "architecture_symbol"
 
 #: Sent with a symbol's SVG: it is only ever drawn as an image, and must never run anything if opened on its own. The
 #: security-headers middleware keeps a policy a route sets, so this one also forbids framing.
-_SVG_HEADERS = {
+SVG_HEADERS = {
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "private, max-age=60",
@@ -82,7 +82,7 @@ def _svg_response(db: Session, symbol: ArchitectureSymbol) -> Response:
         svg = symbol_svg(db, symbol)
     except LookupError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Symbol not found.") from exc
-    return Response(content=svg, media_type=report_images.SVG_TYPE, headers=_SVG_HEADERS)
+    return Response(content=svg, media_type=report_images.SVG_TYPE, headers=SVG_HEADERS)
 
 
 def _readable(db: Session, viewer: Viewer, symbol_id: UUID) -> ArchitectureSymbol:

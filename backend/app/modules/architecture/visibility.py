@@ -103,6 +103,19 @@ def _ancestors(db: Session, element_ids: Iterable[uuid.UUID]):
     return walk.union_all(step)
 
 
+def ancestor_parents(db: Session, element_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID | None]:
+    """`{element id: its parent id}` for the given elements and every ancestor of them (one recursive query).
+
+    A root maps to `None`. It reads the tree only and applies no visibility rule: a caller uses it for elements it
+    has already checked, and an element's ancestors always share its owner.
+    """
+    wanted = list(element_ids)
+    if not wanted:
+        return {}
+    walk = _ancestors(db, wanted)
+    return {node: parent for node, parent in db.execute(select(walk.c.node, walk.c.parent).distinct())}
+
+
 def is_shared_out(db: Session, element_id: uuid.UUID) -> bool:
     """Whether the element is shared with anyone: it, or an ancestor, is in a collection that has a grant."""
     walk = _ancestors(db, [element_id])

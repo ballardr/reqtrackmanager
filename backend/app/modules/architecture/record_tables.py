@@ -1,9 +1,9 @@
 """
 Module: modules.architecture.record_tables
 
-The `RecordTableProvider`s of the module's two record types, the element and the connection: each list as a
-table, so it exports to CSV, PDF and Word and imports from the same CSV (a row with a code updates that
-record, a blank code creates one).
+The `RecordTableProvider`s of the module's three record types, the element, the connection and the diagram: each
+list as a table, so it exports to CSV, PDF and Word and (element and connection) imports from the same CSV (a row
+with a code updates that record, a blank code creates one). A diagram exports only (`NOT_IMPORTABLE` says why).
 
 Responsibilities:
 - Declare the columns (name, type, symbol, parent, owner, status, ports; or type, ends, ports, protocol) and
@@ -47,11 +47,18 @@ from sqlalchemy.orm import Session
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
-from app.modules.architecture import records
+from app.modules.architecture import diagrams, records
 from app.modules.architecture._shared import CONNECTION_MANAGE_PERMISSION, ELEMENT_MANAGE_PERMISSION, require_architect
+from app.modules.architecture.diagram_routes import filter_diagrams
 from app.modules.architecture.enums import PortDirection, RecordStatus
 from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement, ArchitecturePort, ArchitectureSymbol
+from app.modules.architecture.models import (
+    ArchitectureConnection,
+    ArchitectureDiagram,
+    ArchitectureElement,
+    ArchitecturePort,
+    ArchitectureSymbol,
+)
 from app.modules.architecture.record_routes import filter_connections, filter_elements
 from app.modules.architecture.records import ElementOwner
 from app.modules.architecture.schemas import (
@@ -66,6 +73,8 @@ from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
     CONNECTION_SUBCOMPONENT_KEY,
     CONNECTION_TYPES,
+    DIAGRAM_ARTEFACT_TYPE,
+    DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
@@ -99,6 +108,7 @@ from app.services.record_tables_core import (
 
 ELEMENT_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search", "roots_only"})
 CONNECTION_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search"})
+DIAGRAM_FILTERS = frozenset({"include_archived", "status", "open_only", "search"})
 
 _STATUS_TONES = {"Draft": "info", "Active": "accent", "Retired": "muted"}
 _DIRECTION_BY_LABEL = {label.casefold(): value for value, label in PORT_DIRECTION_LABEL.items()}
@@ -570,7 +580,83 @@ CONNECTION_TABLE = RecordTableProvider(
     count=lambda db, user, project_id: count_rows(db, ArchitectureConnection, project_id, live_only=True),
 )
 
+# --- Diagram ---------------------------------------------------------------
+
+
+class _DiagramPrepared:
+    """Lookups handed to every diagram column's `get`: tags, scope element codes and placement counts."""
+
+    def __init__(self, db: Session, project: Project, records_: Sequence[ArchitectureDiagram]) -> None:
+        ids = [r.id for r in records_]
+        self.tags = tag_service.tag_names_for_records(db, DIAGRAM_ARTEFACT_TYPE, ids) if ids else {}
+        scope_ids = {r.scope_element_id for r in records_ if r.scope_element_id}
+        self.scopes: dict[uuid.UUID, str] = {}
+        if scope_ids:
+            readable = visible_element_ids(db, Viewer.of_project(project.id, project.organization_id), scope_ids)
+            self.scopes = {
+                element_id: code for element_id, code in db.execute(
+                    select(ArchitectureElement.id, ArchitectureElement.unique_code).where(ArchitectureElement.id.in_(readable))
+                )
+            }
+        self.counts = {
+            d.id: d for d in diagrams.diagram_outs(db, list(records_), Viewer.of_project(project.id, project.organization_id))
+        }
+
+
+def _prepare_diagrams(db: Session, project: Project, records_: list[ArchitectureDiagram]) -> _DiagramPrepared:
+    return _DiagramPrepared(db, project, records_)
+
+
+def _list_diagrams(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ArchitectureDiagram]:
+    status = enum_filter(filters, "status", RecordStatus)
+    return filter_diagrams(
+        diagrams.list_diagrams(db, project_id, include_archived=bool(filters.flag("include_archived"))),
+        status_=status.value if status else None, open_only=bool(filters.flag("open_only")), search=filters.one("search"),
+    )
+
+
+def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
+    return [
+        RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
+        RecordColumn("purpose", "Purpose", lambda t, r: r.purpose, text_parser),
+        RecordColumn("scope", "Scope element", lambda t, r: t.scopes.get(r.scope_element_id, "") if r.scope_element_id else "", text_parser),
+        RecordColumn(
+            "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
+        ),
+        RecordColumn("placements", "Elements", lambda t, r: str(t.counts[r.id].placement_count), text_parser),
+        _status_column(),
+        _tags_column(),
+    ]
+
+
+def _find_diagram(db: Session, project: Project, code: str) -> ArchitectureDiagram | None:
+    return db.scalar(select(ArchitectureDiagram).where(
+        ArchitectureDiagram.project_id == project.id, ArchitectureDiagram.unique_code == code.upper(),
+    ))
+
+
+#: Why a diagram has no import: its layout is authored visually, so a row of cells cannot describe it.
+NOT_IMPORTABLE: dict[str, str] = {
+    DIAGRAM_ARTEFACT_TYPE: (
+        "A diagram's content is a layout of boxes, toggles and notes drawn in the editor, which a row of cells cannot "
+        "describe; its list exports, and the project bundle and the JSON interchange carry the diagram itself."
+    ),
+}
+
+DIAGRAM_TABLE = RecordTableProvider(
+    label="Diagrams",
+    columns=_diagram_columns,
+    list_records=_list_diagrams,
+    find=_find_diagram,
+    find_many=find_many_by_code(ArchitectureDiagram, "project_id"),
+    prepare=_prepare_diagrams,
+    filter_params=DIAGRAM_FILTERS,
+    gate=(ARCHITECTURE_MODULE_KEY, DIAGRAM_SUBCOMPONENT_KEY),
+    count=lambda db, user, project_id: count_rows(db, ArchitectureDiagram, project_id, live_only=True),
+)
+
 RECORD_TABLES: dict[str, RecordTableProvider] = {
     ELEMENT_ARTEFACT_TYPE: ELEMENT_TABLE,
     CONNECTION_ARTEFACT_TYPE: CONNECTION_TABLE,
+    DIAGRAM_ARTEFACT_TYPE: DIAGRAM_TABLE,
 }

@@ -157,3 +157,47 @@ def shared_names(client, token, project_id, **params) -> set[str]:
     resp = client.get(f"{project_base(project_id)}/elements/shared", params=params, headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
     return {e["name"] for e in resp.json()}
+
+
+# --- Diagrams -----------------------------------------------------------------
+
+
+def make_diagram(client, token, project_id, name="Context", *, expect=201, **fields) -> dict:
+    """Creates a diagram; returns the response body (or the response when `expect` is not 201)."""
+    resp = client.post(f"{project_base(project_id)}/diagrams", json={"name": name, **fields}, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def place(client, token, project_id, diagram, element_id, *, expect=201, **box) -> dict:
+    """Places an element on a diagram quoting its current `version`; returns the updated diagram."""
+    resp = client.post(
+        f"{project_base(project_id)}/diagrams/{diagram['id']}/placements",
+        json={"version": diagram["version"], "element_id": element_id, **box}, headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def place_all(client, token, project_id, diagram, *element_ids) -> dict:
+    """Places several elements one after another; returns the final diagram."""
+    for index, element_id in enumerate(element_ids):
+        diagram = place(client, token, project_id, diagram, element_id, x=index * 200, y=0)
+    return diagram
+
+
+def view(client, token, project_id, diagram_id, *, expect=200, **params) -> dict:
+    """The resolved view of a diagram; `params` are query parameters (`toggle_on`, `toggle_off`, `include_retired`)."""
+    resp = client.get(f"{project_base(project_id)}/diagrams/{diagram_id}/view", params=params, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def save_toggles(client, token, project_id, diagram, toggles, *, expect=200) -> dict:
+    """Replaces a diagram's toggles quoting its current `version`; returns the updated diagram."""
+    resp = client.put(
+        f"{project_base(project_id)}/diagrams/{diagram['id']}/toggles",
+        json={"version": diagram["version"], "toggles": toggles}, headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()

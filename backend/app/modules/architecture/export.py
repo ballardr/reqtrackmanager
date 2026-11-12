@@ -30,6 +30,11 @@ Design decisions:
   bundle, so a bundle can never point a record at a symbol of another organisation.
 - The four vocabulary keys are template configuration; the records, the collections and their links
   are template records, reset to fresh drafts without creator or archived records.
+- Diagrams: a diagram travels with its element boxes (keyed by element code, or a foreign reference for an element
+  another owner shares), notes and toggles. A toggle's rule names vocabulary rows by name (never an id) and its manual
+  members by code, so a bundle holds no ids; an import numbers the diagram afresh and drops, with a warning, a box,
+  member or scope it cannot resolve. A diagram is a template record, reset to a fresh draft that places only the
+  template's own elements.
 - Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
   an import can never publish anything to a project or a group by itself. An organisation bundle carries the
   organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
@@ -57,6 +62,11 @@ from app.modules.architecture.models import (
     ArchitectureCollection,
     ArchitectureCollectionMember,
     ArchitectureConnection,
+    ArchitectureDiagram,
+    ArchitectureDiagramNote,
+    ArchitectureDiagramPlacement,
+    ArchitectureDiagramToggle,
+    ArchitectureDiagramToggleMember,
     ArchitectureElement,
     ArchitecturePort,
     ArchitectureSymbol,
@@ -65,6 +75,8 @@ from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
     CONNECTION_CODE_PREFIX,
     CONNECTION_TYPES,
+    DIAGRAM_ARTEFACT_TYPE,
+    DIAGRAM_CODE_PREFIX,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_TYPES,
@@ -98,6 +110,7 @@ _VOCABULARIES: tuple[tuple[ArchitectureVocabulary, str, str, str], ...] = (
 
 ELEMENTS_KEY = "architecture_elements"
 CONNECTIONS_KEY = "architecture_connections"
+DIAGRAMS_KEY = "architecture_diagrams"
 LINKS_KEY = "architecture_links"
 COLLECTIONS_KEY = "architecture_collections"
 ORG_ELEMENTS_KEY = "architecture_org_elements"
@@ -111,7 +124,7 @@ PROJECT_KEYS = frozenset(
     key for _v, _o, project_key, hidden_key in _VOCABULARIES for key in (project_key, hidden_key)
 ) | {PROJECT_SYMBOLS_KEY, HIDDEN_SYMBOLS_KEY}
 #: Project bundle keys of the records, for the template classification (records).
-RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, LINKS_KEY, COLLECTIONS_KEY})
+RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY, LINKS_KEY, COLLECTIONS_KEY})
 
 
 def _row_json(vocabulary: ArchitectureVocabulary, row, symbol_refs: dict[UUID, dict[str, str]]) -> dict[str, Any]:
@@ -546,7 +559,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails = _emails(
         db,
         {e.creator_id for e in elements} | {e.archived_by for e in elements}
-        | {c.creator_id for c in connections} | {c.archived_by for c in connections},
+        | {c.creator_id for c in connections} | {c.archived_by for c in connections}
+        | set(db.scalars(select(ArchitectureDiagram.creator_id).where(ArchitectureDiagram.project_id == project.id)))
+        | set(db.scalars(select(ArchitectureDiagram.archived_by).where(ArchitectureDiagram.project_id == project.id))),
     )
 
     data[ELEMENTS_KEY] = [
@@ -587,14 +602,111 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         }
         for c in connections
     ]
+    data[DIAGRAMS_KEY], diagrams = _diagrams_json(
+        db, project, codes, {c.id: c.unique_code for c in connections}, type_names, emails,
+    )
     data[COLLECTIONS_KEY] = _collections_json(
         db, ArchitectureCollection.project_id == project.id, lambda element_id: codes.get(element_id),
     )
     data[LINKS_KEY] = export_artefact_links(db, project, {
         ELEMENT_ARTEFACT_TYPE: {e.id: e.unique_code for e in elements},
         CONNECTION_ARTEFACT_TYPE: {c.id: c.unique_code for c in connections},
+        DIAGRAM_ARTEFACT_TYPE: {d.id: d.unique_code for d in diagrams},
     })
     return data, assets
+
+
+def _element_ref(codes: dict[UUID, str], foreign: dict[UUID, dict[str, str]], element_id: UUID) -> dict[str, Any]:
+    """How a bundle names an element: its code in this project, or (for one another owner shares) the owner reference."""
+    return {"code": codes[element_id]} if element_id in codes else {"ref": foreign.get(element_id)}
+
+
+def _diagrams_json(
+    db: Session, project: Project, codes: dict[UUID, str], connection_codes: dict[UUID, str], type_names: dict[UUID, str],
+    emails: dict[UUID, str],
+) -> tuple[list[dict[str, Any]], list[ArchitectureDiagram]]:
+    """The project's diagrams for the bundle, and the rows exported: boxes, notes and toggles, with elements named by
+    code (or a foreign reference) and a toggle's rule types by name."""
+    rows = list(db.scalars(
+        select(ArchitectureDiagram).where(ArchitectureDiagram.project_id == project.id).order_by(ArchitectureDiagram.unique_code)
+    ))
+    if not rows:
+        return [], rows
+    ids = [d.id for d in rows]
+    boxes = list(db.scalars(
+        select(ArchitectureDiagramPlacement).where(ArchitectureDiagramPlacement.diagram_id.in_(ids))
+        .order_by(ArchitectureDiagramPlacement.created_at, ArchitectureDiagramPlacement.id)
+    ))
+    notes = list(db.scalars(
+        select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.diagram_id.in_(ids))
+        .order_by(ArchitectureDiagramNote.sort_order, ArchitectureDiagramNote.id)
+    ))
+    toggles = list(db.scalars(
+        select(ArchitectureDiagramToggle).where(ArchitectureDiagramToggle.diagram_id.in_(ids))
+        .order_by(ArchitectureDiagramToggle.sort_order, ArchitectureDiagramToggle.name)
+    ))
+    members = list(db.scalars(
+        select(ArchitectureDiagramToggleMember).where(ArchitectureDiagramToggleMember.toggle_id.in_([t.id for t in toggles]))
+    )) if toggles else []
+    wanted = (
+        {b.element_id for b in boxes} | {d.scope_element_id for d in rows if d.scope_element_id}
+        | {m.element_id for m in members if m.element_id}
+    )
+    foreign = _foreign_refs(db, {e for e in wanted if e not in codes})
+    prime_record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, DIAGRAM_ARTEFACT_TYPE, ids)
+    by_diagram_boxes: dict[UUID, list[ArchitectureDiagramPlacement]] = {}
+    for box in boxes:
+        by_diagram_boxes.setdefault(box.diagram_id, []).append(box)
+    by_diagram_notes: dict[UUID, list[ArchitectureDiagramNote]] = {}
+    for note in notes:
+        by_diagram_notes.setdefault(note.diagram_id, []).append(note)
+    by_diagram_toggles: dict[UUID, list[ArchitectureDiagramToggle]] = {}
+    for toggle in toggles:
+        by_diagram_toggles.setdefault(toggle.diagram_id, []).append(toggle)
+    by_toggle_members: dict[UUID, list[ArchitectureDiagramToggleMember]] = {}
+    for member in members:
+        by_toggle_members.setdefault(member.toggle_id, []).append(member)
+
+    def type_list(rule: dict[str, Any], key: str) -> list[str]:
+        return [type_names[UUID(i)] for i in rule.get(key, []) if UUID(i) in type_names]
+
+    def toggle_json(t: ArchitectureDiagramToggle) -> dict[str, Any]:
+        rule = t.rule or {}
+        ms = by_toggle_members.get(t.id, [])
+        return {
+            "name": t.name, "default_on": t.default_on, "sort_order": t.sort_order,
+            "rule": {
+                "element_type_names": type_list(rule, "element_type_ids"),
+                "connection_type_names": type_list(rule, "connection_type_ids"),
+                "domains": rule.get("domains", []), "tags": rule.get("tags", []),
+            },
+            "elements": [_element_ref(codes, foreign, m.element_id) for m in ms if m.element_id],
+            "connection_codes": [connection_codes[m.connection_id] for m in ms if m.connection_id in connection_codes],
+        }
+
+    return [
+        {
+            "unique_code": d.unique_code, "name": d.name, "purpose": d.purpose,
+            "scope": _element_ref(codes, foreign, d.scope_element_id) if d.scope_element_id else None,
+            "connection_detail": d.connection_detail, "status": d.status,
+            "boxes": [
+                {**_element_ref(codes, foreign, b.element_id), "x": b.x, "y": b.y, "width": b.width, "height": b.height,
+                 "collapsed": b.collapsed}
+                for b in by_diagram_boxes.get(d.id, ())
+            ],
+            "notes": [
+                {"text": n.text, "x": n.x, "y": n.y, "width": n.width, "height": n.height}
+                for n in by_diagram_notes.get(d.id, ())
+            ],
+            "toggles": [toggle_json(t) for t in by_diagram_toggles.get(d.id, ())],
+            "created_by_email": _email(emails, d.creator_id), "created_at": _stamp(d.created_at),
+            "is_archived": d.is_archived, "archived_at": _stamp(d.archived_at), "archived_by_email": _email(emails, d.archived_by),
+            "tags": record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, d.id),
+            "placements": record_placements(db, DIAGRAM_ARTEFACT_TYPE, d.id),
+        }
+        for d in rows
+    ], rows
 
 
 def reset_for_template(data: dict[str, Any]) -> None:
@@ -604,14 +716,27 @@ def reset_for_template(data: dict[str, Any]) -> None:
     itself); a collection keeps only the members that survived."""
     fresh_drafts(data.get(ELEMENTS_KEY, []), status=RecordStatus.DRAFT.value)
     fresh_drafts(data.get(CONNECTIONS_KEY, []), status=RecordStatus.DRAFT.value)
+    fresh_drafts(data.get(DIAGRAMS_KEY, []), status=RecordStatus.DRAFT.value)
     kept = {e["unique_code"] for e in data.get(ELEMENTS_KEY, [])}
     data[CONNECTIONS_KEY] = [
         c for c in data.get(CONNECTIONS_KEY, []) if c.get("source_code") in kept and c.get("target_code") in kept
     ]
+    kept_connections = {c["unique_code"] for c in data[CONNECTIONS_KEY]}
+
+    def own(ref: dict[str, Any] | None) -> bool:
+        return ref is not None and ref.get("code") in kept
+
+    for diagram in data.get(DIAGRAMS_KEY, []):
+        diagram["scope"] = diagram.get("scope") if own(diagram.get("scope")) else None
+        diagram["boxes"] = [b for b in diagram.get("boxes", []) if own(b)]
+        for toggle in diagram.get("toggles", []):
+            toggle["elements"] = [e for e in toggle.get("elements", []) if own(e)]
+            toggle["connection_codes"] = [c for c in toggle.get("connection_codes", []) if c in kept_connections]
     for collection in data.get(COLLECTIONS_KEY, []):
         collection["members"] = [code for code in collection.get("members", []) if code in kept]
     surviving = {
-        ELEMENT_ARTEFACT_TYPE: kept, CONNECTION_ARTEFACT_TYPE: {c["unique_code"] for c in data[CONNECTIONS_KEY]},
+        ELEMENT_ARTEFACT_TYPE: kept, CONNECTION_ARTEFACT_TYPE: kept_connections,
+        DIAGRAM_ARTEFACT_TYPE: {d["unique_code"] for d in data.get(DIAGRAMS_KEY, [])},
     }
     data[LINKS_KEY] = [
         link for link in data.get(LINKS_KEY, [])
@@ -634,6 +759,113 @@ def _type_row(vocabulary: ArchitectureVocabulary, db: Session, project: Project,
         warnings.add(f"{vocabulary.label} {name!r} was not found here and was created in the project.")
         found = vocabulary.create(db, project_id=project.id, organization_id=project.organization_id, name=name)
     return found
+
+
+def _resolve_ref(
+    db: Session, project: Project, current_user: User, elements: dict[str, UUID], ref: dict[str, Any] | None,
+) -> UUID | None:
+    """The element a bundle reference names: a code created by this import, or a foreign reference the person
+    importing may read (else `None`)."""
+    if not ref:
+        return None
+    if ref.get("code"):
+        return elements.get(ref["code"])
+    return _resolve_foreign(db, project, current_user, ref.get("ref"))
+
+
+def _rule_ids(rule: dict[str, Any], key: str, vocabulary: ArchitectureVocabulary, db: Session, project: Project) -> list[str]:
+    """The ids (as text) of the vocabulary rows a bundled rule names, skipping a name the project cannot resolve."""
+    rows = [
+        *vocabulary.resolve_effective(db, project.id, project.organization_id).rows,
+        *vocabulary.project_rows(db, project.id), *vocabulary.org_rows(db, project.organization_id),
+    ]
+    by_name = {r.name.casefold(): r.id for r in rows}
+    return [str(by_name[n.casefold()]) for n in rule.get(key, []) if n.casefold() in by_name]
+
+
+def _import_diagrams(
+    db: Session, project: Project, entries: list[dict[str, Any]], elements: dict[str, UUID], connections: dict[str, UUID],
+    current_user: User, users: UserResolver, warnings: BundleImportWarnings,
+) -> dict[str, UUID]:
+    """Recreates the bundle's diagrams, numbered afresh, with their boxes, notes and toggles. A box, scope or member
+    that cannot be resolved is dropped with a warning. Returns `{bundle code: new id}`."""
+    created: dict[str, UUID] = {}
+    for entry in entries:
+        code = entry.get("unique_code", "")
+        creator = users.resolve(entry.get("created_by_email"), required=True, context=f"Diagram {code} creator")
+        archived = bool(entry.get("is_archived"))
+        scope = entry.get("scope")
+        scope_id = _resolve_ref(db, project, current_user, elements, scope)
+        if scope and scope_id is None:
+            warnings.add(f"Diagram {code}: its scope element is not available here — set to the system context.")
+        diagram = ArchitectureDiagram(
+            project_id=project.id, unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
+            name=entry["name"], purpose=entry.get("purpose", ""), scope_element_id=scope_id,
+            connection_detail=bool(entry.get("connection_detail")), status=entry.get("status", "draft"), version=1,
+            creator_id=creator, is_archived=archived, archived_at=_instant(entry.get("archived_at")),
+            archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Diagram {code} archiver") or creator)
+            if archived else None,
+        )
+        created_at = _instant(entry.get("created_at"))
+        if created_at is not None:
+            diagram.created_at = created_at
+        db.add(diagram)
+        db.flush()
+        created[code] = diagram.id
+        seen: set[UUID] = set()
+        for box in entry.get("boxes", []):
+            element_id = _resolve_ref(db, project, current_user, elements, box)
+            if element_id is None or element_id in seen:
+                warnings.add(f"Diagram {code}: an element box is not available here — left out.")
+                continue
+            seen.add(element_id)
+            db.add(ArchitectureDiagramPlacement(
+                diagram_id=diagram.id, element_id=element_id, x=box.get("x", 0.0), y=box.get("y", 0.0),
+                width=box.get("width", 160.0), height=box.get("height", 80.0), collapsed=bool(box.get("collapsed")),
+            ))
+        for order, note in enumerate(entry.get("notes", [])):
+            db.add(ArchitectureDiagramNote(
+                diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
+                width=note.get("width", 160.0), height=note.get("height", 60.0), sort_order=order,
+            ))
+        names: set[str] = set()
+        for order, toggle in enumerate(entry.get("toggles", [])):
+            name = toggle.get("name", "")
+            if not name or name.casefold() in names:
+                warnings.add(f"Diagram {code}: a toggle with a missing or repeated name was skipped.")
+                continue
+            names.add(name.casefold())
+            rule = toggle.get("rule", {})
+            row = ArchitectureDiagramToggle(
+                diagram_id=diagram.id, name=name, default_on=bool(toggle.get("default_on", True)), sort_order=order,
+                rule={
+                    key: value for key, value in {
+                        "element_type_ids": _rule_ids(rule, "element_type_names", ELEMENT_TYPES, db, project),
+                        "connection_type_ids": _rule_ids(rule, "connection_type_names", CONNECTION_TYPES, db, project),
+                        "domains": list(rule.get("domains", [])), "tags": list(rule.get("tags", [])),
+                    }.items() if value
+                },
+            )
+            db.add(row)
+            db.flush()
+            member_elements = {
+                i for i in (_resolve_ref(db, project, current_user, elements, ref) for ref in toggle.get("elements", [])) if i
+            }
+            member_connections = {connections[c] for c in toggle.get("connection_codes", []) if c in connections}
+            for element_id in member_elements:
+                db.add(ArchitectureDiagramToggleMember(toggle_id=row.id, element_id=element_id))
+            for connection_id in member_connections:
+                db.add(ArchitectureDiagramToggleMember(toggle_id=row.id, connection_id=connection_id))
+        restore_record_tags(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=DIAGRAM_ARTEFACT_TYPE, artefact_id=diagram.id, names=entry.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator, artefact_type=DIAGRAM_ARTEFACT_TYPE, artefact_id=diagram.id,
+            entries=entry.get("placements"),
+        )
+    db.flush()
+    return created
 
 
 def import_project_data(
@@ -760,13 +992,15 @@ def import_project_data(
             db, project_id=project.id, actor_id=creator, artefact_type=CONNECTION_ARTEFACT_TYPE,
             artefact_id=connection.id, entries=entry.get("placements"),
         )
+    diagram_ids = _import_diagrams(db, project, data.get(DIAGRAMS_KEY, []), elements, connections, current_user, users, warnings)
     _import_collections(
         db, data.get(COLLECTIONS_KEY, []), owner={"project_id": project.id},
         owner_filter=ArchitectureCollection.project_id == project.id, elements=elements, creator_id=current_user.id,
         warnings=warnings,
     )
     import_artefact_links(
-        db, project, data.get(LINKS_KEY, []), {ELEMENT_ARTEFACT_TYPE: elements, CONNECTION_ARTEFACT_TYPE: connections},
+        db, project, data.get(LINKS_KEY, []),
+        {ELEMENT_ARTEFACT_TYPE: elements, CONNECTION_ARTEFACT_TYPE: connections, DIAGRAM_ARTEFACT_TYPE: diagram_ids},
         current_user, users, warnings, context="System Architecture",
     )
     db.flush()

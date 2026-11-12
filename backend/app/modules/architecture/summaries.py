@@ -1,8 +1,8 @@
 """
 Module: modules.architecture.summaries
 
-The `ArtefactSummaryProvider`s for the `architecture_element` and `architecture_connection` artefact
-types, so core (the link graph, the "Add a link" finder) and other modules can label, status-badge
+The `ArtefactSummaryProvider`s for the `architecture_element`, `architecture_connection` and
+`architecture_diagram` artefact types, so core (the link graph, the "Add a link" finder) and other modules can label, status-badge
 and visibility-check an element or a connection without importing its models.
 
 Responsibilities:
@@ -16,7 +16,8 @@ Design decisions:
   than the person's own view. An organisation-owned element carries no project and its organisation, and no
   `list_for_organization` is offered: core resolves an organisation-qualified code for any member of the
   organisation, which would show an element nobody shared with them.
-- A connection with no name is labelled by its code and its ends.
+- A connection with no name is labelled by its code and its ends. A diagram is the project's own record
+  (`DGM-001 name`) and is never shared, so its provider reads the project's rows only.
 
 Dependencies: this module's models and labels; `modules.registry` for the summary dataclasses;
 `services.summary_facets`.
@@ -33,7 +34,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.models.project import Project
 from app.modules.architecture.labels import RECORD_STATUS_LABEL
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement
+from app.modules.architecture.models import ArchitectureConnection, ArchitectureDiagram, ArchitectureElement
 from app.modules.architecture.visibility import Viewer, granted_element_ids, visible_element_ids
 from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider, BrowseLevel
 from app.services.summary_facets import status_facet
@@ -136,4 +137,37 @@ def _get_many_connections(db: Session, project_id: UUID, ids: Sequence[UUID]) ->
 CONNECTION_SUMMARY_PROVIDER = ArtefactSummaryProvider(
     get=_get_connection, list_for_project=_list_connections, get_many_in_project=_get_many_connections,
     browse_levels=BROWSE_LEVELS,
+)
+
+
+def _diagram_summaries(rows: Sequence[ArchitectureDiagram]) -> list[ArtefactSummary]:
+    return [
+        ArtefactSummary(
+            id=d.id, project_id=d.project_id, label=f"{d.unique_code} {d.name}", status=d.status, is_archived=d.is_archived,
+            facets=_facets(d.status),
+        )
+        for d in rows
+    ]
+
+
+def _get_diagram(db: Session, diagram_id: UUID) -> ArtefactSummary | None:
+    row = db.get(ArchitectureDiagram, diagram_id)
+    return None if row is None else _diagram_summaries([row])[0]
+
+
+def _list_diagrams(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+    rows = db.scalars(select(ArchitectureDiagram).where(
+        ArchitectureDiagram.project_id == project_id, ArchitectureDiagram.is_archived.is_(False),
+    )).all()
+    return sorted(_diagram_summaries(rows), key=lambda s: s.label)
+
+
+def _get_many_diagrams(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
+    return _diagram_summaries(db.scalars(select(ArchitectureDiagram).where(
+        ArchitectureDiagram.id.in_(ids), ArchitectureDiagram.project_id == project_id,
+    )).all())
+
+
+DIAGRAM_SUMMARY_PROVIDER = ArtefactSummaryProvider(
+    get=_get_diagram, list_for_project=_list_diagrams, get_many_in_project=_get_many_diagrams, browse_levels=BROWSE_LEVELS,
 )

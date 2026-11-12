@@ -11,6 +11,9 @@ The two vocabularies every architecture record is typed by, and the records:
 - `ArchitectureConnection` — an interface between two elements.
 - `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
   elements and who it is shared with (a project, optionally with its descendants, or a group).
+- `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s and
+  `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a saved view over the
+  project's model; it holds no truth of its own.
 
 Each is one table whose owner is a project *or* an organisation (a CHECK keeps
 exactly one). An organisation row is a default every project of the organisation
@@ -27,8 +30,19 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 
 from app.database import Base
@@ -391,3 +405,148 @@ class ArchitectureCollectionGrant(UUIDPKMixin, TimestampMixin, Base):
     group_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     include_descendants: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
+    """A saved view over the project's model: which elements are drawn where, and how connections are shown.
+
+    A diagram stores placements, notes and toggles only; the elements and connections it draws are the model's, so
+    deleting a diagram loses nothing from the model. Its `version` is advanced by every change to the diagram or to
+    its placements, notes and toggles, so an editor holding a stale copy is told before it overwrites.
+
+    Attributes:
+        project_id: The owning project.
+        unique_code: Project-scoped identifier (`DGM-001`).
+        name / purpose: Display name and what the view is for.
+        scope_element_id: The element the diagram shows the inside of, or `None` for the system context (the
+            root elements). `SET NULL` when the element is deleted.
+        connection_detail: When false the diagram draws plain lines (no type, protocol or port labels) and
+            parallel lines collapse into one; when true connections are typed and labelled.
+        status: A `RecordStatus` value.
+        version: Optimistic counter.
+        creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
+    """
+
+    __tablename__ = "architecture_diagrams"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_architecture_diagrams_project_unique_code"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    purpose: Mapped[str] = mapped_column(Text, default="")
+    scope_element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    connection_detail: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitectureDiagramPlacement(UUIDPKMixin, TimestampMixin, Base):
+    """An element drawn on a diagram, with its box.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its placements.
+        element_id: The element (the diagram's project's own, or one another owner shares with it). Deleting the
+            element removes the placement; deleting the placement never touches the element.
+        x / y / width / height: The box in diagram units.
+        collapsed: Whether the box is drawn as one block (its placed descendants are not nested inside it). Carried
+            for the editor; the resolver does not read it.
+    """
+
+    __tablename__ = "architecture_diagram_placements"
+    __table_args__ = (UniqueConstraint("diagram_id", "element_id", name="uq_architecture_diagram_placements"),)
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=160.0)
+    height: Mapped[float] = mapped_column(Float, default=80.0)
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
+    """A plain-text note on a diagram: the only shape with no element behind it. Never rendered as markup.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its notes.
+        text: The note's text.
+        x / y / width / height: The box in diagram units.
+        sort_order: Order among the diagram's notes.
+    """
+
+    __tablename__ = "architecture_diagram_notes"
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    text: Mapped[str] = mapped_column(Text, default="")
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=160.0)
+    height: Mapped[float] = mapped_column(Float, default=60.0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ArchitectureDiagramToggle(UUIDPKMixin, TimestampMixin, Base):
+    """A named switch on a diagram (for example "Security devices"): when off, its members are hidden.
+
+    Membership is the union of the manual members (`ArchitectureDiagramToggleMember`) and the elements and
+    connections the `rule` matches.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its toggles.
+        name: Unique within the diagram.
+        default_on: The state a report or export uses unless a call names the states.
+        rule: `{"element_type_ids", "domains", "connection_type_ids", "tags"}`, each a list (all optional). It names
+            vocabulary rows, domains and tag names, never a record, so it travels in a bundle without references.
+        sort_order: Order among the diagram's toggles.
+    """
+
+    __tablename__ = "architecture_diagram_toggles"
+    __table_args__ = (UniqueConstraint("diagram_id", "name", name="uq_architecture_diagram_toggles_name"),)
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    default_on: Mapped[bool] = mapped_column(Boolean, default=True)
+    rule: Mapped[dict] = mapped_column(JSONB, default=dict)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ArchitectureDiagramToggleMember(UUIDPKMixin, TimestampMixin, Base):
+    """An element or a connection a toggle names by hand; exactly one of the two ids is set.
+
+    Attributes:
+        toggle_id: The toggle; deleting it removes its members.
+        element_id / connection_id: The member; deleting the record removes the membership.
+    """
+
+    __tablename__ = "architecture_diagram_toggle_members"
+    __table_args__ = (
+        CheckConstraint("(element_id IS NULL) <> (connection_id IS NULL)", name="ck_architecture_diagram_toggle_members_one"),
+        UniqueConstraint("toggle_id", "element_id", name="uq_architecture_diagram_toggle_members_element"),
+        UniqueConstraint("toggle_id", "connection_id", name="uq_architecture_diagram_toggle_members_connection"),
+    )
+
+    toggle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagram_toggles.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), nullable=True, index=True
+    )

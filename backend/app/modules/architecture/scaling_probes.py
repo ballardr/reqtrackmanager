@@ -1,15 +1,19 @@
 """
 Module: modules.architecture.scaling_probes
 
-The `ScalingProbe`s for the `architecture_element` and `architecture_connection` artefact types: how the
-scaling-shape guard fills and reads them through the API.
+The `ScalingProbe`s for the `architecture_element`, `architecture_connection` and `architecture_diagram`
+artefact types: how the scaling-shape guard fills and reads them through the API.
 
 Responsibilities:
-- Create N elements (children of the first, each with a port) or N connections (between elements the
-  probe creates) through the real create endpoints, and name the list endpoints.
+- Create N elements (children of the first, each with a port), N connections (between elements the
+  probe creates) or N diagrams (each placing the same few probe elements) through the real create
+  endpoints, and name the list endpoints.
 
 Design decisions:
-- Neither type has a comment thread, so `has_comments` is off.
+- No type has a comment thread, so `has_comments` is off.
+- Each diagram places the same fixed number of elements, so the statements behind a diagram's list, detail and
+  bundle export are compared at two diagram counts, not two diagram sizes; the resolver's cost with a large diagram
+  is guarded by its own test.
 
 Dependencies: `modules.registry` (`ScalingProbe`).
 """
@@ -18,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
+from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, DIAGRAM_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
 from app.modules.registry import ScalingProbe
 
 _BASE = "modules/architecture"
@@ -69,7 +73,42 @@ def _create_connections(api: Any, project_id: str, start: int, count: int) -> li
     ]
 
 
+#: How many elements each probe diagram places.
+_PLACED = 3
+
+
+def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[str]:
+    element_type, connection_type = _vocabulary_ids(api, project_id)
+    ends = [
+        api.post(
+            f"/projects/{project_id}/{_BASE}/elements",
+            {"name": f"Probe diagram element {start}-{i}", "element_type_id": element_type, "ports": [{"name": "Main"}]},
+        )
+        for i in range(_PLACED)
+    ]
+    api.post(
+        f"/projects/{project_id}/{_BASE}/connections",
+        {
+            "name": f"Probe diagram connection {start}", "connection_type_id": connection_type,
+            "source_element_id": ends[0]["id"], "target_element_id": ends[1]["id"],
+        },
+    )
+    ids: list[str] = []
+    for i in range(count):
+        diagram = api.post(
+            f"/projects/{project_id}/{_BASE}/diagrams", {"name": f"Probe diagram {start + i}", "purpose": "A view of the probe system."},
+        )
+        for order, end in enumerate(ends):
+            diagram = api.post(
+                f"/projects/{project_id}/{_BASE}/diagrams/{diagram['id']}/placements",
+                {"version": diagram["version"], "element_id": end["id"], "x": order * 200, "y": 0},
+            )
+        ids.append(diagram["id"])
+    return ids
+
+
 SCALING_PROBES = {
     ELEMENT_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/elements", create=_create_elements, has_comments=False),
     CONNECTION_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/connections", create=_create_connections, has_comments=False),
+    DIAGRAM_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/diagrams", create=_create_diagrams, has_comments=False),
 }

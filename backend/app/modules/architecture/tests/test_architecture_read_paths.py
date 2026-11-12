@@ -115,3 +115,54 @@ def test_the_shared_reads_use_the_same_number_of_statements_however_many_element
     for e in more[:4]:
         make_connection(client, architect, consumer["id"], local["id"], e["id"])
     assert [count(u) for u in urls] == few
+
+
+def test_the_diagram_view_and_svg_use_the_same_number_of_statements_however_large_the_diagram(client, admin_token):
+    """The resolved view and the server SVG read a diagram's placements, connections, toggles and ancestors in bulk, so
+    a larger diagram (more boxes, connections, toggles and shared elements) costs no more statements."""
+    from app.modules.architecture.tests._helpers import make_diagram, place_all, save_toggles, view
+
+    org, owner, consumer, _o, token, member, _out = _world(client, admin_token, "Arch reads diagram")
+    base = project_base(owner["id"])
+    shared = make_element(client, token, owner["id"], "Shared platform", activate=True)
+    collection = make_collection(client, token, base, "Infra", members=[shared["id"]])
+    grant(client, token, base, collection["id"], project_id=consumer["id"])
+    architect = make_architect(client, token, org["id"], consumer["id"], "arch.reads.diagram@example.com")
+    root = make_element(client, token, consumer["id"], "Root", type_name="System")
+    diagram = make_diagram(client, architect, consumer["id"], "Context", connection_detail=True)
+    first = [make_element(client, token, consumer["id"], f"Part {i}", parent_id=root["id"], ports=[{"name": "Main"}]) for i in range(2)]
+    make_connection(client, architect, consumer["id"], first[0]["id"], first[1]["id"])
+    make_connection(client, architect, consumer["id"], first[0]["id"], shared["id"])
+    diagram = place_all(client, architect, consumer["id"], diagram, root["id"], shared["id"], *[e["id"] for e in first])
+    diagram = save_toggles(client, architect, consumer["id"], diagram, [{"name": "Hardware", "rule": {"domains": ["hardware"], "tags": ["x"]}}])
+    toggle_id = view(client, architect, consumer["id"], diagram["id"])["toggles"][0]["id"]
+    urls = [
+        f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/view",
+        f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/svg",
+    ]
+
+    def count(url) -> int:
+        seen: list[str] = []
+
+        def record(_conn, _cursor, statement, *_args):
+            seen.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            assert client.get(url, params={"toggle_off": toggle_id}, headers=auth_headers(architect)).status_code == 200
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+        return len(seen)
+
+    few = [count(u) for u in urls]
+    more = [make_element(client, token, consumer["id"], f"More {i}", parent_id=root["id"], ports=[{"name": "Main"}]) for i in range(8)]
+    for i, e in enumerate(more[:6]):
+        make_connection(client, architect, consumer["id"], e["id"], first[i % 2]["id"])
+    make_connection(client, architect, consumer["id"], more[0]["id"], shared["id"])
+    everything = [root["id"], shared["id"], *[x["id"] for x in first], *[x["id"] for x in more]]
+    client.put(
+        f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/layout",
+        json={"version": diagram["version"], "placements": [{"element_id": e} for e in everything]},
+        headers=auth_headers(architect),
+    )
+    assert [count(u) for u in urls] == few

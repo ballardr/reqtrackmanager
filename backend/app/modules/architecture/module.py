@@ -5,22 +5,23 @@ Registers the System Architecture module into the modular feature system's
 registry via `MODULE_DEFINITION`. As built so far it delivers the element type and
 connection type vocabularies (an organisation's defaults, a project's own rows, and
 hiding and restoring a default in a project), the project's and the organisation's elements, ports and
-connections, sharing (collections of elements granted to projects and groups, read through `visibility`) and the
-symbol library (built-in and uploaded SVG drawings an element type or element is shown with).
+connections, sharing (collections of elements granted to projects and groups, read through `visibility`), the
+symbol library (built-in and uploaded SVG drawings an element type or element is shown with) and diagrams (saved
+views with placements, notes and view toggles, resolved by one rule into nodes and lines and drawn as a server SVG).
 
 Registered contributions:
 - Roles (not additions to `ProjectRole`): `architect` (project; carries the
-  Fine-Grained Access Control `(architecture_element, manage)` and
-  `(architecture_connection, manage)` atoms) creates and changes elements, ports,
-  connections and collections; `architecture_admin` (project) changes a project's vocabularies and
+  Fine-Grained Access Control `(architecture_element, manage)`,
+  `(architecture_connection, manage)` and `(architecture_diagram, manage)` atoms) creates and changes elements, ports,
+  connections, diagrams and collections; `architecture_admin` (project) changes a project's vocabularies and
   `architecture_org_admin` (organisation) changes the organisation's defaults (types and symbols), its own elements and its
   collections, and reads every organisation-owned element. `architecture_admin` also manages the project's symbols.
-- Sub-components `architecture_type` (the types and the symbol library), `architecture_element` and
-  `architecture_connection`.
-- `artefact_types` for the element and the connection, with their summary providers,
-  search, report fields, record tables (export and import), scaling probes, dataset
-  generators and the link types the module adds (`LINK_TYPE_SEEDS`). Both are placeable
-  and taggable through the shared tables, so they declare nothing for either.
+- Sub-components `architecture_type` (the types and the symbol library), `architecture_element`,
+  `architecture_connection` and `architecture_diagram`.
+- `artefact_types` for the element, the connection and the diagram, with their summary providers,
+  search, report fields, record tables (export; import for the element and connection, `NOT_IMPORTABLE` for the
+  diagram), scaling probes, dataset generators and the link types the module adds (`LINK_TYPE_SEEDS`). All are
+  placeable and taggable through the shared tables, so they declare nothing for either.
 - `principal_references` for an element's owner and for the group a collection grant names.
 - `on_org_created` seeds each new organisation's default types; the migration
   backfills existing organisations so a module switched on later has them.
@@ -47,13 +48,19 @@ from app.modules.architecture._shared import (
     ARCHITECTURE_ADMIN_ROLE,
     ARCHITECTURE_ORG_ADMIN_ROLE,
     CONNECTION_MANAGE_PERMISSION,
+    DIAGRAM_MANAGE_PERMISSION,
     ELEMENT_MANAGE_PERMISSION,
 )
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
-from app.modules.architecture.models import ArchitectureCollectionGrant, ArchitectureConnection, ArchitectureElement
-from app.modules.architecture.perf_dataset import generate_connections, generate_elements
+from app.modules.architecture.models import (
+    ArchitectureCollectionGrant,
+    ArchitectureConnection,
+    ArchitectureDiagram,
+    ArchitectureElement,
+)
+from app.modules.architecture.perf_dataset import generate_connections, generate_diagrams, generate_elements
 from app.modules.architecture.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
-from app.modules.architecture.record_tables import RECORD_TABLES
+from app.modules.architecture.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.architecture.report_fields import REPORT_FIELDS
 from app.modules.architecture.scaling_probes import SCALING_PROBES
 from app.modules.architecture.search import SEARCH_PROVIDERS
@@ -61,12 +68,18 @@ from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_ARTEFACT_TYPE,
     CONNECTION_SUBCOMPONENT_KEY,
+    DIAGRAM_ARTEFACT_TYPE,
+    DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_SUBCOMPONENT_KEY,
     TYPE_SUBCOMPONENT_KEY,
     seed_org_defaults,
 )
-from app.modules.architecture.summaries import CONNECTION_SUMMARY_PROVIDER, ELEMENT_SUMMARY_PROVIDER
+from app.modules.architecture.summaries import (
+    CONNECTION_SUMMARY_PROVIDER,
+    DIAGRAM_SUMMARY_PROVIDER,
+    ELEMENT_SUMMARY_PROVIDER,
+)
 from app.modules.registry import (
     LinkTypeSeed,
     ModuleDefinition,
@@ -79,6 +92,7 @@ from app.modules.registry import (
 )
 
 _BOTH = (ELEMENT_ARTEFACT_TYPE, CONNECTION_ARTEFACT_TYPE)
+_ALL = (*_BOTH, DIAGRAM_ARTEFACT_TYPE)
 
 records.register_usage_checks()
 
@@ -117,13 +131,14 @@ def _seed_org_defaults(db: Session, organization_id) -> None:
 
 
 def _artefact_ids_in_organization(db: Session, organization_id):
-    """`ModuleDefinition.artefact_ids_in_organization`: every element and connection in the organisation's projects,
+    """`ModuleDefinition.artefact_ids_in_organization`: every element, connection and diagram in the organisation's projects,
     for organisation deletion's polymorphic cleanup."""
     project_ids = select(Project.id).where(Project.organization_id == organization_id)
     return (
         set(db.scalars(select(ArchitectureElement.id).where(ArchitectureElement.project_id.in_(project_ids))))
         | set(db.scalars(select(ArchitectureElement.id).where(ArchitectureElement.organization_id == organization_id)))
         | set(db.scalars(select(ArchitectureConnection.id).where(ArchitectureConnection.project_id.in_(project_ids))))
+        | set(db.scalars(select(ArchitectureDiagram.id).where(ArchitectureDiagram.project_id.in_(project_ids))))
     )
 
 
@@ -148,21 +163,26 @@ MODULE_DEFINITION = ModuleDefinition(
         "architecture_collection": "structure",
         "architecture_symbol": "structure",
     },
-    artefact_types=_BOTH,
-    artefact_type_labels={ELEMENT_ARTEFACT_TYPE: "Element", CONNECTION_ARTEFACT_TYPE: "Connection"},
+    artefact_types=_ALL,
+    artefact_type_labels={
+        ELEMENT_ARTEFACT_TYPE: "Element", CONNECTION_ARTEFACT_TYPE: "Connection", DIAGRAM_ARTEFACT_TYPE: "Diagram",
+    },
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={
         ELEMENT_ARTEFACT_TYPE: ELEMENT_SUMMARY_PROVIDER, CONNECTION_ARTEFACT_TYPE: CONNECTION_SUMMARY_PROVIDER,
+        DIAGRAM_ARTEFACT_TYPE: DIAGRAM_SUMMARY_PROVIDER,
     },
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,
+    not_importable=NOT_IMPORTABLE,
     scaling_probes=SCALING_PROBES,
     perf_generators={
         ELEMENT_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_elements, order=190),
         CONNECTION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_connections, order=195),
+        DIAGRAM_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_diagrams, order=197),
     },
     link_type_seeds=LINK_TYPE_SEEDS,
     principal_references=(
@@ -178,11 +198,13 @@ MODULE_DEFINITION = ModuleDefinition(
     not_creatable_from_links={
         ELEMENT_ARTEFACT_TYPE: "Elements are created from the Architecture screens, which add the Links panel creator.",
         CONNECTION_ARTEFACT_TYPE: "A connection needs two elements, so it is created from the Architecture screens.",
+        DIAGRAM_ARTEFACT_TYPE: "A diagram is created from the Architecture screens, which add the Links panel creator.",
     },
     sub_components=(
         ModuleSubComponentDefinition(key=TYPE_SUBCOMPONENT_KEY, name="Types and symbols", default_enabled=True),
         ModuleSubComponentDefinition(key=ELEMENT_SUBCOMPONENT_KEY, name="Elements", default_enabled=True),
         ModuleSubComponentDefinition(key=CONNECTION_SUBCOMPONENT_KEY, name="Connections", default_enabled=True),
+        ModuleSubComponentDefinition(key=DIAGRAM_SUBCOMPONENT_KEY, name="Diagrams", default_enabled=True),
     ),
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=architecture_export.export_org_data, import_=architecture_export.import_org_data,
@@ -197,8 +219,9 @@ MODULE_DEFINITION = ModuleDefinition(
     roles=(
         ModuleRoleDefinition(
             role_key=ARCHITECT_ROLE, name="Architect",
-            description="Creates and changes the project's elements, ports and connections, and their status.",
-            scope="project", permissions=(ELEMENT_MANAGE_PERMISSION, CONNECTION_MANAGE_PERMISSION),
+            description="Creates and changes the project's elements, ports, connections and diagrams, and their status.",
+            scope="project",
+            permissions=(ELEMENT_MANAGE_PERMISSION, CONNECTION_MANAGE_PERMISSION, DIAGRAM_MANAGE_PERMISSION),
         ),
         ModuleRoleDefinition(
             role_key=ARCHITECTURE_ADMIN_ROLE, name="Architecture Admin",
