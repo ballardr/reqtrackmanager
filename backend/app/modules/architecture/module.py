@@ -5,17 +5,18 @@ Registers the System Architecture module into the modular feature system's
 registry via `MODULE_DEFINITION`. As built so far it delivers the element type and
 connection type vocabularies (an organisation's defaults, a project's own rows, and
 hiding and restoring a default in a project), the project's and the organisation's elements, ports and
-connections, and sharing: collections of elements granted to projects and groups, read through
-`visibility`.
+connections, sharing (collections of elements granted to projects and groups, read through `visibility`) and the
+symbol library (built-in and uploaded SVG drawings an element type or element is shown with).
 
 Registered contributions:
 - Roles (not additions to `ProjectRole`): `architect` (project; carries the
   Fine-Grained Access Control `(architecture_element, manage)` and
   `(architecture_connection, manage)` atoms) creates and changes elements, ports,
   connections and collections; `architecture_admin` (project) changes a project's vocabularies and
-  `architecture_org_admin` (organisation) changes the organisation's defaults, its own elements and its
-  collections, and reads every organisation-owned element.
-- Sub-components `architecture_type`, `architecture_element` and `architecture_connection`.
+  `architecture_org_admin` (organisation) changes the organisation's defaults (types and symbols), its own elements and its
+  collections, and reads every organisation-owned element. `architecture_admin` also manages the project's symbols.
+- Sub-components `architecture_type` (the types and the symbol library), `architecture_element` and
+  `architecture_connection`.
 - `artefact_types` for the element and the connection, with their summary providers,
   search, report fields, record tables (export and import), scaling probes, dataset
   generators and the link types the module adds (`LINK_TYPE_SEEDS`). Both are placeable
@@ -145,6 +146,7 @@ MODULE_DEFINITION = ModuleDefinition(
         "architecture_element_type": "structure",
         "architecture_connection_type": "structure",
         "architecture_collection": "structure",
+        "architecture_symbol": "structure",
     },
     artefact_types=_BOTH,
     artefact_type_labels={ELEMENT_ARTEFACT_TYPE: "Element", CONNECTION_ARTEFACT_TYPE: "Connection"},
@@ -178,12 +180,13 @@ MODULE_DEFINITION = ModuleDefinition(
         CONNECTION_ARTEFACT_TYPE: "A connection needs two elements, so it is created from the Architecture screens.",
     },
     sub_components=(
-        ModuleSubComponentDefinition(key=TYPE_SUBCOMPONENT_KEY, name="Element and connection types", default_enabled=True),
+        ModuleSubComponentDefinition(key=TYPE_SUBCOMPONENT_KEY, name="Types and symbols", default_enabled=True),
         ModuleSubComponentDefinition(key=ELEMENT_SUBCOMPONENT_KEY, name="Elements", default_enabled=True),
         ModuleSubComponentDefinition(key=CONNECTION_SUBCOMPONENT_KEY, name="Connections", default_enabled=True),
     ),
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=architecture_export.export_org_data, import_=architecture_export.import_org_data,
+        export_files=architecture_export.export_org_files, import_files=architecture_export.import_org_files,
     ),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=architecture_export.export_project_data, import_=architecture_export.import_project_data,

@@ -3,6 +3,7 @@ Module: modules.architecture.models
 
 The two vocabularies every architecture record is typed by, and the records:
 
+- `ArchitectureSymbol` — a drawing (a sanitised SVG, or one of the built-in set) an element type or element is shown with.
 - `ArchitectureElementType` — what an element is (System, Service, Board, ...).
 - `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...).
 - `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s; owned by a project
@@ -28,23 +29,21 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, declared_attr, mapped_column
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
-class OwnedVocabularyMixin(UUIDPKMixin, TimestampMixin):
-    """Columns shared by both vocabularies.
+class OwnedNamedMixin(UUIDPKMixin, TimestampMixin):
+    """Columns shared by every table a project or the organisation owns a named, ordered list of (the two vocabularies
+    and the symbol library), so the code that lists, hides and orders them treats them alike.
 
     Attributes:
         project_id: The owning project, or `NULL` for an organisation default.
         organization_id: The owning organisation, or `NULL` for a project row.
         name: Display name, unique within the owner.
-        domain: A `Domain` value.
-        color_light: Accent colour on a light theme, `#RRGGBB`, or `NULL` for the theme default.
-        color_dark: Accent colour on a dark theme, `#RRGGBB`, or `NULL` for the theme default.
         sort_order: Picker order among the owner's rows.
     """
 
@@ -59,10 +58,53 @@ class OwnedVocabularyMixin(UUIDPKMixin, TimestampMixin):
         )
 
     name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class OwnedVocabularyMixin(OwnedNamedMixin):
+    """Columns shared by both vocabularies, on top of `OwnedNamedMixin`.
+
+    Attributes:
+        domain: A `Domain` value.
+        color_light: Accent colour on a light theme, `#RRGGBB`, or `NULL` for the theme default.
+        color_dark: Accent colour on a dark theme, `#RRGGBB`, or `NULL` for the theme default.
+    """
+
     domain: Mapped[str] = mapped_column(String(20), default="any")
     color_light: Mapped[str | None] = mapped_column(String(7), nullable=True)
     color_dark: Mapped[str | None] = mapped_column(String(7), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ArchitectureSymbol(OwnedNamedMixin, Base):
+    """A drawing an element type, or one element, is shown with: a library entry, not a record (no code, link or search).
+
+    Owned by a project or the organisation (a CHECK keeps exactly one) and listed, hidden and restored like a type
+    (`service.SymbolLibrary`). Either a stored file (`file_asset_id`: an upload, kept in its sanitised form) or a
+    built-in drawing (`builtin_key`, drawn by `symbols.BUILTIN_SVG`, no file); a CHECK keeps exactly one.
+
+    Attributes:
+        file_asset_id: The stored SVG, or `None` for a built-in. A copy of an inherited project row shares the file, so
+            the file is deleted only with the last row that names it. `SET NULL` is a backstop only.
+        builtin_key: The built-in drawing, or `None` for an upload. Built-in rows cannot be renamed.
+    """
+
+    __tablename__ = "architecture_symbols"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_symbols_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_symbols_org_name"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_symbols_one_owner"),
+        CheckConstraint("(file_asset_id IS NULL) <> (builtin_key IS NULL)", name="ck_architecture_symbols_one_source"),
+    )
+
+    file_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    builtin_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    @property
+    def is_builtin(self) -> bool:
+        """Whether this is one of the built-in drawings."""
+        return self.builtin_key is not None
 
 
 class ArchitectureElementType(OwnedVocabularyMixin, Base):
@@ -70,6 +112,8 @@ class ArchitectureElementType(OwnedVocabularyMixin, Base):
 
     Attributes:
         shape: An `ElementShape` value, the outline drawn when no symbol is set.
+        symbol_id: The symbol its elements are drawn with, or `None` to draw `shape`. `SET NULL` is a backstop: a
+            symbol in use is never deleted.
     """
 
     __tablename__ = "architecture_element_types"
@@ -82,6 +126,11 @@ class ArchitectureElementType(OwnedVocabularyMixin, Base):
     )
 
     shape: Mapped[str] = mapped_column(String(20), default="rectangle")
+    symbol_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_symbols.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Declared only so a flush inserts a new symbol before a type or element that names it; never loaded through.
+    symbol: Mapped[ArchitectureSymbol | None] = relationship("ArchitectureSymbol", lazy="raise", viewonly=False)
 
 
 class ArchitectureConnectionType(OwnedVocabularyMixin, Base):
@@ -124,6 +173,8 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
         parent_id: The containing element, or `None` for a root. `SET NULL` is a backstop only: the service
             refuses to delete an element that has children.
         owner_type / owner_id: Optional principal (a user or a group) accountable for the element.
+        symbol_id: A symbol drawn instead of the type's, or `None` to use the type's. The owner's own symbol (a project
+            element: the project's effective library; an organisation element: the organisation's). `SET NULL` is a backstop.
         status: A `RecordStatus` value.
         version: Optimistic counter, starting at 1 and advanced by every change to the element or its ports.
         creator_id: Who created the record.
@@ -157,6 +208,11 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
     )
     owner_type: Mapped[str | None] = principal_type_column(nullable=True)
     owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    symbol_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_symbols.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Declared only so a flush inserts a new symbol before a type or element that names it; never loaded through.
+    symbol: Mapped[ArchitectureSymbol | None] = relationship("ArchitectureSymbol", lazy="raise", viewonly=False)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

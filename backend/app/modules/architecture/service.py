@@ -1,14 +1,18 @@
 """
 Module: modules.architecture.service
 
-The element type and connection type vocabularies: seeding an organisation's
-defaults, resolving a project's effective list, and creating, editing, hiding
-and deleting rows.
+The element type and connection type vocabularies and the symbol library: seeding
+an organisation's defaults, resolving a project's effective list, and creating,
+editing, hiding and deleting rows.
 
 Responsibilities:
 - `ArchitectureVocabulary`, one instance per vocabulary, holds every rule so the
   two vocabularies and their routers cannot drift.
 - The default rows an organisation is created with.
+- `SymbolLibrary` is a vocabulary of drawings (built-in or an uploaded SVG file) that
+  element types and elements are assigned; it uses the same two tiers, hiding and nested
+  fallback as the types. A symbol file is shared by the copies of an inherited project row,
+  so it is deleted with the last row that names it. The upload checks are in `symbols`.
 
 Design decisions:
 - A project's effective list is the organisation's rows it has not hidden plus
@@ -28,19 +32,21 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.file import FileAsset
 from app.models.project import Project
 from app.modules.architecture.enums import Domain, ElementShape, LineStyle
-from app.modules.architecture.models import ArchitectureConnectionType, ArchitectureElementType
+from app.modules.architecture.models import ArchitectureConnectionType, ArchitectureElementType, ArchitectureSymbol
 from app.services import definition_suppression
+from app.services.files import delete_file
 
 #: A vocabulary's model class.
-VocabularyModel = type[ArchitectureElementType] | type[ArchitectureConnectionType]
+VocabularyModel = type[ArchitectureElementType] | type[ArchitectureConnectionType] | type[ArchitectureSymbol]
 
 ARCHITECTURE_MODULE_KEY = "architecture"
 TYPE_SUBCOMPONENT_KEY = "architecture_type"
@@ -55,6 +61,7 @@ CONNECTION_CODE_PREFIX = "CON"
 
 ELEMENT_TYPE_KIND = "architecture_element_type"
 CONNECTION_TYPE_KIND = "architecture_connection_type"
+SYMBOL_KIND = "architecture_symbol"
 
 #: How many ancestors `configuration_source` walks (a guard against a corrupt tree).
 _ANCESTOR_CAP = 50
@@ -99,6 +106,19 @@ DEFAULT_CONNECTION_TYPES: tuple[tuple[str, str, bool], ...] = (
     ("Power", Domain.HARDWARE.value, True),
     ("Analogue signal", Domain.HARDWARE.value, True),
 )
+
+
+#: `(builtin key, name)` for each built-in symbol a new organisation is given; `symbols.BUILTIN_SVG` draws each key.
+DEFAULT_SYMBOLS: tuple[tuple[str, str], ...] = (
+    ("device", "Device"), ("server", "Server"), ("database", "Database"), ("queue", "Queue"), ("firewall", "Firewall"),
+    ("cloud", "Cloud"), ("sensor", "Sensor"), ("board", "Board"), ("connector", "Connector"), ("user", "User"),
+)
+
+#: The built-in symbol a seeded element type is given in a new organisation (a type not listed is drawn by its shape).
+DEFAULT_TYPE_SYMBOLS: dict[str, str] = {
+    "Service": "server", "Datastore": "database", "Queue": "queue", "Board": "board", "Sensor": "sensor",
+    "Connector": "connector", "Enclosure": "device",
+}
 
 
 @dataclass(frozen=True)
@@ -374,16 +394,49 @@ class ArchitectureVocabulary(ABC):
 
 
 class ElementTypeVocabulary(ArchitectureVocabulary):
-    """The element type vocabulary."""
+    """The element type vocabulary. A type's `symbol_id` is validated against the symbols its owner may use."""
 
-    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
-        """Adds the default element types to a new organisation. The caller owns the transaction."""
+    def seed_defaults(
+        self, db: Session, organization_id: uuid.UUID, symbol_ids: Mapping[str, uuid.UUID] | None = None,
+    ) -> None:
+        """Adds the default element types to a new organisation. The caller owns the transaction.
+
+        `symbol_ids` maps a built-in symbol key to the id of the row just added for the organisation
+        (`SymbolLibrary.add_builtins`), so a type that has one in `DEFAULT_TYPE_SYMBOLS` is drawn with it.
+        """
+        symbols = symbol_ids or {}
         for i, (name, shape, domain) in enumerate(DEFAULT_ELEMENT_TYPES):
             light, dark = DOMAIN_COLORS[domain]
             db.add(ArchitectureElementType(
                 organization_id=organization_id, name=name, shape=shape, domain=domain,
-                color_light=light, color_dark=dark, sort_order=i,
+                color_light=light, color_dark=dark, sort_order=i, symbol_id=symbols.get(DEFAULT_TYPE_SYMBOLS.get(name, "")),
             ))
+
+    def create(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, **fields):
+        """As the base class, checking that `symbol_id` (when given) is a symbol the owner may use.
+
+        Raises:
+            ValueError: On a clashing name or a symbol the owner cannot use.
+        """
+        if fields.get("symbol_id") is not None:
+            SYMBOLS.assert_assignable(db, project_id=project_id, organization_id=organization_id, symbol_id=fields["symbol_id"])
+        return super().create(db, project_id=project_id, organization_id=organization_id, **fields)
+
+    def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
+        """As the base class, plus `symbol_id`: given as `None` it clears the symbol, and a new one is checked against the
+        symbols the owner may use.
+
+        Raises:
+            ValueError: On a clashing name or a symbol the owner cannot use.
+        """
+        given = "symbol_id" in fields
+        symbol_id = fields.pop("symbol_id", None)
+        if given and symbol_id is not None and symbol_id != row.symbol_id:
+            SYMBOLS.assert_assignable(db, project_id=row.project_id, organization_id=organization_id, symbol_id=symbol_id)
+        super().update(db, row, organization_id, **fields)
+        if given:
+            row.symbol_id = symbol_id
+            db.flush()
 
 
 class ConnectionTypeVocabulary(ArchitectureVocabulary):
@@ -399,13 +452,96 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
             ))
 
 
+class SymbolLibrary(ArchitectureVocabulary):
+    """The symbol library: the organisation's symbols, a project's own, and hiding and restoring the organisation's.
+
+    A row is either a built-in drawing or an uploaded file (`symbols` checks and stores an upload; this class holds the
+    rows). A built-in cannot be renamed, since a bundle names it by its key.
+    """
+
+    def add_builtins(self, db: Session, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
+        """Adds the built-in symbols to a new organisation and returns `{builtin key: row id}`. The ids are set here, not at
+        the flush, so a type can name its symbol without a read; the caller owns the transaction."""
+        ids: dict[str, uuid.UUID] = {}
+        for i, (key, name) in enumerate(DEFAULT_SYMBOLS):
+            ids[key] = uuid.uuid4()
+            db.add(ArchitectureSymbol(id=ids[key], organization_id=organization_id, name=name, builtin_key=key, sort_order=i))
+        return ids
+
+    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
+        """Adds the built-in symbols to a new organisation. The caller owns the transaction."""
+        self.add_builtins(db, organization_id)
+
+    def check_new_name(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, name: str) -> None:
+        """Rejects a name the owner already lists, before an upload is stored.
+
+        Raises:
+            ValueError: On a clash within the owner (organisation) or among the rows the project can see.
+        """
+        self._check_name(db, project_id=project_id, organization_id=organization_id, name=name.strip())
+
+    def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
+        """As the base class.
+
+        Raises:
+            ValueError: If the row is built-in and the name would change, or the new name clashes.
+        """
+        if row.builtin_key is not None and fields.get("name") is not None and fields["name"].strip() != row.name:
+            raise ValueError("A built-in symbol cannot be renamed.")
+        super().update(db, row, organization_id, **fields)
+
+    def assert_assignable(
+        self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, symbol_id: uuid.UUID,
+    ) -> ArchitectureSymbol:
+        """The symbol a type or element of this owner may be given.
+
+        A project owner may use its effective library (the organisation's symbols it has not hidden and its own); an
+        organisation owner (`project_id` None) only the organisation's, since a project's symbol would reach people who
+        cannot open that project.
+
+        Raises:
+            ValueError: If the symbol is not one the owner may use.
+        """
+        if project_id is not None:
+            return self.usable_row(db, project_id, organization_id, symbol_id)
+        row = db.get(ArchitectureSymbol, symbol_id)
+        if row is None or row.organization_id != organization_id:
+            raise ValueError("This is not a valid symbol for the organisation.")
+        return row
+
+    def _drop_file(self, db: Session, file_asset_id: uuid.UUID | None) -> None:
+        """Deletes a symbol's stored file unless another row (a project's copy of an inherited row) still names it."""
+        if file_asset_id is None:
+            return
+        if db.scalar(select(ArchitectureSymbol.id).where(ArchitectureSymbol.file_asset_id == file_asset_id).limit(1)) is not None:
+            return
+        asset = db.get(FileAsset, file_asset_id)
+        if asset is not None:
+            delete_file(db, asset)
+
+    def delete_org_row(self, db: Session, row) -> None:
+        """As the base class, then removes the file when no other row names it."""
+        file_asset_id = row.file_asset_id
+        super().delete_org_row(db, row)
+        self._drop_file(db, file_asset_id)
+
+    def delete_project_row(self, db: Session, row) -> None:
+        """As the base class, then removes the file when no other row names it."""
+        file_asset_id = row.file_asset_id
+        super().delete_project_row(db, row)
+        self._drop_file(db, file_asset_id)
+
+
 ELEMENT_TYPES = ElementTypeVocabulary(kind=ELEMENT_TYPE_KIND, label="Element type", model=ArchitectureElementType)
 CONNECTION_TYPES = ConnectionTypeVocabulary(
     kind=CONNECTION_TYPE_KIND, label="Connection type", model=ArchitectureConnectionType,
 )
+SYMBOLS = SymbolLibrary(kind=SYMBOL_KIND, label="Symbol", model=ArchitectureSymbol)
 
 
 def seed_org_defaults(db: Session, organization_id: uuid.UUID) -> None:
-    """`ModuleDefinition.on_org_created`: gives a new organisation the default element and connection types."""
-    ELEMENT_TYPES.seed_defaults(db, organization_id)
+    """`ModuleDefinition.on_org_created`: gives a new organisation the built-in symbols and the default element and
+    connection types."""
+    symbol_ids = SYMBOLS.add_builtins(db, organization_id)
+    ELEMENT_TYPES.seed_defaults(db, organization_id, symbol_ids)
     CONNECTION_TYPES.seed_defaults(db, organization_id)

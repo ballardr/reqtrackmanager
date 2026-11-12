@@ -7,7 +7,7 @@ RBAC: any project member can read the vocabularies, elements and connections onc
 the matching sub-component is enabled. Creating and changing elements, ports and
 connections needs the project `architect` role or a Fine-Grained Access Control
 `(architecture_element, manage)` / `(architecture_connection, manage)` grant;
-changing a project's vocabulary needs the project `architecture_admin` role and
+changing a project's vocabulary or symbol library needs the project `architecture_admin` role and
 changing the organisation's defaults the organisation `architecture_org_admin` role.
 All compose with server admin, organisation admin and (for a project) project manager.
 """

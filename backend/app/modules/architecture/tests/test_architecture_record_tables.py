@@ -150,3 +150,30 @@ def test_connections_export_and_import_by_element_code_and_port_name(client, adm
     # The existing connection gained its target port and became Active.
     assert listed["Readings"]["target_element_code"] == "ELM-002" and listed["Readings"]["target_port_name"] == "In"
     assert listed["Readings"]["source_port_name"] == "Out" and listed["Readings"]["status"] == "active"
+
+
+def test_the_symbol_column_exports_a_name_and_imports_a_name_or_clears_it(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch tables symbol")
+    h = auth_headers(token)
+    drawing = b'<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
+    own = client.post(
+        f"{project_base(project['id'])}/symbols", files={"file": ("pump.svg", drawing, "image/svg+xml")},
+        data={"name": "Pump"}, headers=h,
+    )
+    assert own.status_code == 201, own.text
+    element = make_element(client, token, project["id"], "Station", symbol_id=own.json()["id"])
+    plain = make_element(client, token, project["id"], "Plain")
+
+    rows = {r["name"]: r for r in _rows(client.get(f"{_tier(project, ELEMENT)}/export", headers=h))}
+    assert rows["Station"]["symbol"] == "Pump" and rows["Plain"]["symbol"] == ""
+    exported = client.get(f"{_tier(project, ELEMENT)}/export", headers=h).content.decode("utf-8-sig")
+    result = _import(client, token, _tier(project, ELEMENT), exported)
+    assert (result["updated"], result["failed"]) == (0, 0), result
+
+    result = _import(client, token, _tier(project, ELEMENT), _csv(
+        ["code", "symbol"], [plain["unique_code"], "Cloud"], [element["unique_code"], ""], ["", "Nonsense"],
+    ))
+    assert (result["updated"], result["failed"]) == (2, 1), result
+    listed = _element_list(client, token, project["id"])
+    symbols = {s["name"]: s["id"] for s in client.get(f"{project_base(project['id'])}/symbols", headers=h).json()}
+    assert listed["Plain"]["symbol_id"] == symbols["Cloud"] and listed["Station"]["symbol_id"] is None

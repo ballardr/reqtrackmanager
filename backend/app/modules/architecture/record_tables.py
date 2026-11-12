@@ -6,7 +6,7 @@ table, so it exports to CSV, PDF and Word and imports from the same CSV (a row w
 record, a blank code creates one).
 
 Responsibilities:
-- Declare the columns (name, type, parent, owner, status, ports; or type, ends, ports, protocol) and
+- Declare the columns (name, type, symbol, parent, owner, status, ports; or type, ends, ports, protocol) and
   filters, and share the create and edit logic with the endpoints (`records.create_element` and so on), so
   validation, the version counter and the audit event are the ones the screen applies.
 
@@ -16,6 +16,9 @@ Design decisions:
   that another owner shares is written qualified by the owner's code (`PLAT-ELM-004`, or the organisation's code),
   because a bare code would name one of the project's own elements; the parser resolves it through
   `visibility`, so a file cannot reach an element the person cannot read.
+- The symbol is written by its name (the owner's effective library) and left blank for the type's own; a name is shown
+  only for a symbol the reader may read (`symbols.visible_symbol_ids`), so an element another owner shares never
+  discloses a symbol the person cannot see.
 - `status` is importable because the module has no approval gate (an element or a connection may move
   between any two states); a new record can be created `Draft` or `Active`, not `Retired`.
 - `ports` is one list cell, `name:direction` per port (`Main:both;Debug:in`), the way the export writes it. An
@@ -48,7 +51,7 @@ from app.modules.architecture import records
 from app.modules.architecture._shared import CONNECTION_MANAGE_PERMISSION, ELEMENT_MANAGE_PERMISSION, require_architect
 from app.modules.architecture.enums import PortDirection, RecordStatus
 from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement, ArchitecturePort
+from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement, ArchitecturePort, ArchitectureSymbol
 from app.modules.architecture.record_routes import filter_connections, filter_elements
 from app.modules.architecture.records import ElementOwner
 from app.modules.architecture.schemas import (
@@ -67,7 +70,9 @@ from app.modules.architecture.service import (
     ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
     ELEMENT_TYPES,
+    SYMBOLS,
 )
+from app.modules.architecture.symbols import visible_symbol_ids
 from app.modules.architecture.visibility import Viewer, is_architecture_org_admin, visible_element_ids
 from app.modules.registry import (
     OrganizationRecordTable,
@@ -161,6 +166,17 @@ def _type_parser(vocabulary: Any, kind: str) -> Callable[[RecordImportContext, s
     return parse
 
 
+def _symbol_parser(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
+    """A parser for a symbol name of the importing owner's effective library; an empty cell means the type's own."""
+    if not text:
+        return None
+    scope = ctx.project if ctx.project is not None else ctx.organization
+    found = cached_lookup(ctx, "symbols:names", lambda: _type_names(SYMBOLS, ctx.db, scope)).get(text.casefold())
+    if found is None:
+        raise RecordCellError(f"Unknown symbol '{text}'.")
+    return found
+
+
 def _element_by_code_parser(field_name: str, *, blank_clears: bool) -> Callable[[RecordImportContext, str], uuid.UUID | None]:
     """A parser for the code of an element of the importing owner (`ELM-004`); an empty cell means none."""
 
@@ -228,12 +244,20 @@ class _Prepared:
         self.element_types = {row.id: row.name for row in _effective_rows(ELEMENT_TYPES, db, scope)}
         self.connection_types = {row.id: row.name for row in _effective_rows(CONNECTION_TYPES, db, scope)}
         self.codes: dict[uuid.UUID, str] = {}
+        self.symbols: dict[uuid.UUID, str] = {}
         self.ports_text: dict[uuid.UUID, str] = {}
         self.port_names: dict[uuid.UUID, str] = {}
         self.people = PrincipalCells.load(db, [])
         if artefact_type == ELEMENT_ARTEFACT_TYPE:
             self.people = PrincipalCells.load(db, [principal_ref(r.owner_type, r.owner_id) for r in records_])
             wanted = {r.parent_id for r in records_ if r.parent_id}
+            symbol_ids = {r.symbol_id for r in records_ if r.symbol_id}
+            if symbol_ids:
+                viewer = Viewer.of_project(scope.id, scope.organization_id) if isinstance(scope, Project) else Viewer(scope.id)
+                readable = visible_symbol_ids(db, viewer, symbol_ids)
+                self.symbols = {
+                    row.id: row.name for row in db.scalars(select(ArchitectureSymbol).where(ArchitectureSymbol.id.in_(readable)))
+                }
             for element_id, port_list in records.ports_for(db, ids).items():
                 self.ports_text[element_id] = list_cell([f"{p.name}:{PORT_DIRECTION_LABEL.get(p.direction, p.direction)}" for p in port_list])
         else:
@@ -311,6 +335,10 @@ def _element_columns(db: Session, project: Project | Organization) -> list[Recor
             kind="enum", required=True, choices=tuple(_type_names_ordered(ELEMENT_TYPES, db, project)),
         ),
         RecordColumn(
+            "symbol", "Symbol", lambda t, r: t.symbols.get(r.symbol_id, "") if r.symbol_id else "", _symbol_parser,
+            kind="enum", choices=tuple(_type_names_ordered(SYMBOLS, db, project)),
+        ),
+        RecordColumn(
             "parent", "Parent element", lambda t, r: t.codes.get(r.parent_id, "") if r.parent_id else "",
             _element_by_code_parser("Parent element", blank_clears=True),
         ),
@@ -345,15 +373,18 @@ def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> Arch
         raise RecordCellError("A new element cannot be created Retired.")
     payload = _payload(ElementCreate, {
         "name": values.get("name", ""), "description": values.get("description", ""),
-        "element_type_id": values.get("type"), "parent_id": values.get("parent"), "owner": values.get("owner"),
-        "activate": status is RecordStatus.ACTIVE, "ports": _ports_from_cell(values.get("ports", [])),
+        "element_type_id": values.get("type"), "symbol_id": values.get("symbol"), "parent_id": values.get("parent"),
+        "owner": values.get("owner"), "activate": status is RecordStatus.ACTIVE, "ports": _ports_from_cell(values.get("ports", [])),
     })
     return _rule(lambda: records.create_element(ctx.db, _owner_of(ctx), ctx.user, payload))
 
 
 def _update_element(ctx: RecordImportContext, element: ArchitectureElement, values: Mapping[str, Any]) -> None:
     fields: dict[str, Any] = {}
-    for key, field in (("name", "name"), ("description", "description"), ("type", "element_type_id"), ("parent", "parent_id"), ("owner", "owner")):
+    for key, field in (
+        ("name", "name"), ("description", "description"), ("type", "element_type_id"), ("symbol", "symbol_id"),
+        ("parent", "parent_id"), ("owner", "owner"),
+    ):
         if key in values:
             fields[field] = values[key]
     if fields:

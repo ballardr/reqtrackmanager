@@ -219,6 +219,8 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
+        if hooks.export_files is not None:
+            module_bundle_json.update(hooks.export_files(db, org, file_assets_by_id))
 
     member_rows = list(
         db.execute(select(UserOrgRole.role, User).join(User, User.id == UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id))
@@ -749,6 +751,8 @@ def import_org_bundle(
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
+        if hooks.import_files is not None:
+            hooks.import_files(db, org, data, file_bytes_by_ref, acting_user, warnings)
         hooks.import_(db, org, data, users, warnings, None)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
 
@@ -902,6 +906,8 @@ def merge_org_bundle(
     org_policies.import_org(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
+        if hooks.import_files is not None:
+            hooks.import_files(db, target_org, data, file_bytes_by_ref, acting_user, warnings)
         hooks.import_(db, target_org, data, users, warnings, resolutions)
     project_id_by_ref = _import_projects(
         db, target_org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=resolutions,

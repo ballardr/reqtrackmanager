@@ -3,8 +3,8 @@ Module: modules.architecture.schemas
 
 Request and response bodies of the module's APIs: the vocabularies (an element type
 and a connection type share the name, domain and colour fields; each adds its own
-`shape`, or `line_style` and `directional`) and the records (elements with their
-ports, and connections).
+`shape` and `symbol_id`, or `line_style` and `directional`), the symbol library, and the
+records (elements with their ports, and connections).
 
 A save of an element or a connection quotes the `version` it was based on; the API
 answers 409 when the record has moved on. A nullable field the body may clear
@@ -46,15 +46,17 @@ class _VocabularyUpdate(BaseModel):
 
 
 class ElementTypeCreate(_VocabularyCreate):
-    """Create payload for an element type."""
+    """Create payload for an element type. `symbol_id` is a symbol the owner may use."""
 
     shape: ElementShape = ElementShape.RECTANGLE
+    symbol_id: UUID | None = None
 
 
 class ElementTypeUpdate(_VocabularyUpdate):
-    """Partial update of an element type."""
+    """Partial update of an element type. `symbol_id: null` clears the symbol (the shape is drawn)."""
 
     shape: ElementShape | None = None
+    symbol_id: UUID | None = None
 
 
 class ConnectionTypeCreate(_VocabularyCreate):
@@ -90,6 +92,7 @@ class ElementTypeOut(_VocabularyOut):
     """An element type."""
 
     shape: str
+    symbol_id: UUID | None
 
 
 class ConnectionTypeOut(_VocabularyOut):
@@ -97,6 +100,30 @@ class ConnectionTypeOut(_VocabularyOut):
 
     line_style: str
     directional: bool
+
+
+# --- Symbols -----------------------------------------------------------------
+
+
+class SymbolUpdate(BaseModel):
+    """Rename of a symbol (a built-in cannot be renamed, and the drawing of an upload is replaced by uploading anew)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class SymbolOut(BaseModel):
+    """A symbol library entry. Exactly one of `project_id` and `organization_id` is set (the owner); `builtin_key` is
+    set for a built-in drawing. Its SVG is read from `.../symbols/{id}/content`."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    builtin_key: str | None
+    is_builtin: bool
+    sort_order: int
 
 
 # --- Elements, ports and connections ---------------------------------------
@@ -136,6 +163,7 @@ class ElementCreate(BaseModel):
     Attributes:
         activate: Create the element `active` instead of `draft` (Save and activate). Needs nothing beyond the
             permission to create, since an element has no approval gate.
+        symbol_id: A symbol drawn instead of the type's, from the owner's library.
         ports: Ports created with the element.
     """
 
@@ -144,13 +172,14 @@ class ElementCreate(BaseModel):
     element_type_id: UUID
     parent_id: UUID | None = None
     owner: PrincipalRef | None = None
+    symbol_id: UUID | None = None
     activate: bool = False
     ports: list[PortCreate] = Field(default_factory=list, max_length=200)
 
 
 class ElementUpdate(BaseModel):
     """Edit of an element. `version` is required (the optimistic lock); a field left out is kept, and
-    `parent_id` / `owner` set to `null` clear the field."""
+    `parent_id` / `owner` / `symbol_id` set to `null` clear the field."""
 
     version: int
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -158,6 +187,7 @@ class ElementUpdate(BaseModel):
     element_type_id: UUID | None = None
     parent_id: UUID | None = None
     owner: PrincipalRef | None = None
+    symbol_id: UUID | None = None
 
 
 class StatusChange(BaseModel):
@@ -168,7 +198,8 @@ class StatusChange(BaseModel):
 
 
 class ElementOut(ProjectScopedRow):
-    """An element with its type name, resolved owner, ports and tree counts.
+    """An element with its type name, resolved owner, ports and tree counts. `symbol_id` is the element's own symbol and
+    `effective_symbol_id` the one drawn (its own, else its type's, else `None` for the type's shape).
 
     `project_id` / `organization_id` say who owns it (exactly one is set); `shared` is true when it is shown in a
     project that does not own it, in which case its connection count covers only that project's connections."""
@@ -182,6 +213,8 @@ class ElementOut(ProjectScopedRow):
     description: str
     element_type_id: UUID
     element_type_name: str
+    symbol_id: UUID | None
+    effective_symbol_id: UUID | None
     parent_id: UUID | None
     owner: PrincipalOut | None
     status: str

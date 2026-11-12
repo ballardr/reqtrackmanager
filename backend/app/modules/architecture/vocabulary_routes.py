@@ -40,9 +40,12 @@ def _field_values(payload) -> dict:
 
 def add_org_routes(
     router: APIRouter, *, path: str, vocabulary: ArchitectureVocabulary, create_schema, update_schema, out_schema,
-    entity_type: str, require_view,
+    entity_type: str, require_view, create_route: bool = True,
 ) -> None:
-    """Adds list, create, update, move and delete of the organisation's rows to `router` under `/{path}`."""
+    """Adds list, create, update, move and delete of the organisation's rows to `router` under `/{path}`.
+
+    `create_route=False` leaves out the JSON create endpoint, for a vocabulary whose rows are created another way (a
+    symbol is uploaded as a file: `symbol_routes`)."""
 
     def org_row(db: Session, organization_id: UUID, type_id: UUID):
         row = db.get(vocabulary.model, type_id)
@@ -57,7 +60,6 @@ def add_org_routes(
         """The organisation's default rows in picker order."""
         return vocabulary.org_rows(db, organization_id)
 
-    @router.post(f"/{path}", response_model=out_schema, status_code=status.HTTP_201_CREATED)
     def create_org_row(
         organization_id: UUID, payload: create_schema, current_user: User = Depends(require_view),
         db: Session = Depends(get_db),
@@ -73,6 +75,9 @@ def add_org_routes(
         db.commit()
         db.refresh(row)
         return row
+
+    if create_route:
+        router.add_api_route(f"/{path}", create_org_row, methods=["POST"], response_model=out_schema, status_code=status.HTTP_201_CREATED)
 
     @router.patch(f"/{path}/{{type_id}}", response_model=out_schema)
     def update_org_row(
@@ -127,10 +132,11 @@ def add_org_routes(
 
 def add_project_routes(
     router: APIRouter, *, path: str, vocabulary: ArchitectureVocabulary, create_schema, update_schema, out_schema,
-    entity_type: str, require_view,
+    entity_type: str, require_view, create_route: bool = True,
 ) -> None:
     """Adds the project's effective list, its own rows' create, update, move and delete (which hides an
-    organisation default) and the hidden-default list and restore to `router` under `/{path}`."""
+    organisation default) and the hidden-default list and restore to `router` under `/{path}`. `create_route=False`
+    leaves out the JSON create endpoint (see `add_org_routes`)."""
 
     @router.get(f"/{path}", response_model=list[out_schema])
     def list_project_rows(
@@ -160,7 +166,6 @@ def add_project_routes(
         sh.require_architecture_admin(db, current_user, project)
         return restore_hidden_types(db, vocabulary, project, payload, current_user, entity_type)
 
-    @router.post(f"/{path}", response_model=out_schema, status_code=status.HTTP_201_CREATED)
     def create_project_row(
         project_id: UUID, payload: create_schema, current_user: User = Depends(require_view),
         db: Session = Depends(get_db),
@@ -180,6 +185,9 @@ def add_project_routes(
         db.commit()
         db.refresh(row)
         return row
+
+    if create_route:
+        router.add_api_route(f"/{path}", create_project_row, methods=["POST"], response_model=out_schema, status_code=status.HTTP_201_CREATED)
 
     @router.patch(f"/{path}/{{type_id}}", response_model=out_schema)
     def update_project_row(

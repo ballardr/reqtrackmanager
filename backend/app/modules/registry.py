@@ -827,6 +827,14 @@ class ModuleOrgBundleHooks:
             into `merge_org_bundle`'s own returned/audit-logged summary
             dict. `None` for a module with nothing worth summarising
             separately from its raw import.
+        export_files: Optional `(db, org, assets) -> dict` for a module whose organisation
+            content includes files (the Architecture symbol library): returns more
+            `org.json` sections, like `export`, and adds each `FileAsset` it references to
+            `assets` (by id) so the bundle embeds its bytes. `export` is still called as well.
+        import_files: Optional `(db, org, data, file_bytes_by_ref, acting_user, warnings) -> None`,
+            called just *before* `import_` with the bundle's embedded bytes (keyed by `file_ref`),
+            so the content `import_` writes can refer to the files it creates. It owns checking
+            every file it stores as untrusted input.
     """
 
     export: Callable[[Session, Organization], dict[str, Any]]
@@ -836,6 +844,8 @@ class ModuleOrgBundleHooks:
     compute_merge_conflicts: Callable[[Session, Organization, dict[str, Any]], list[dict[str, Any]]] | None = None
     merge_resolution_choices: Mapping[str, frozenset[str]] = field(default_factory=dict)
     summarize_merge: Callable[[dict[str, Any], list[dict[str, Any]], dict[str, str]], dict[str, int]] | None = None
+    export_files: Callable[[Session, Organization, dict[uuid.UUID, FileAsset]], dict[str, Any]] | None = None
+    import_files: Callable[[Session, Organization, dict[str, Any], dict[str, bytes], User, BundleImportWarnings], None] | None = None
 
 
 @dataclass(frozen=True)

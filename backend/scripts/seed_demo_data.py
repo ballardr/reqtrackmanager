@@ -2472,7 +2472,8 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
     REST API, Power), plus an organisation-owned identity service shared with the project through a collection.
-    Returns the number of elements and connections created."""
+    The Board, Sensor and Service types are drawn with the built-in symbols a new organisation is given, and the
+    drone with a symbol uploaded to the project's own library. Returns the number of elements and connections created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
 
@@ -2482,13 +2483,25 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         return {row["name"]: row["id"] for row in r.json()}
 
     element_types, connection_types = effective("element-types"), effective("connection-types")
+    quadcopter = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" '
+        'stroke-linecap="round"><circle cx="14" cy="14" r="8"/><circle cx="50" cy="14" r="8"/><circle cx="14" cy="50" r="8"/>'
+        '<circle cx="50" cy="50" r="8"/><path d="M20 20l24 24M44 20L20 44"/><rect x="26" y="26" width="12" height="12" rx="2"/></svg>'
+    )
+    uploaded = httpx.post(
+        f"{base}/symbols", headers=headers, timeout=30, data={"name": "Quadcopter"},
+        files={"file": ("quadcopter.svg", quadcopter.encode(), "image/svg+xml")},
+    )
+    uploaded.raise_for_status()
 
-    def element(name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = ()) -> dict:
+    def element(
+        name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = (), symbol: str | None = None,
+    ) -> dict:
         r = httpx.post(
             f"{base}/elements", headers=headers, timeout=30,
             json={
                 "name": name, "description": description, "element_type_id": element_types[type_name],
-                "parent_id": parent, "activate": True,
+                "parent_id": parent, "activate": True, "symbol_id": symbol,
                 "ports": [{"name": n, "direction": d, "connection_type_id": connection_types.get(t)} for n, d, t in ports],
             },
         )
@@ -2510,7 +2523,9 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         r.raise_for_status()
         return r.json()
 
-    drone = element("Falcon-3 drone", "System", "The inspection drone and its ground segment.")
+    drone = element(
+        "Falcon-3 drone", "System", "The inspection drone and its ground segment.", symbol=uploaded.json()["id"],
+    )
     airframe = element("Airframe electronics", "Subsystem", "Everything that flies.", parent=drone["id"])
     fc = element(
         "Flight controller", "Board", "Runs the control loop and the failsafes.", parent=airframe["id"],

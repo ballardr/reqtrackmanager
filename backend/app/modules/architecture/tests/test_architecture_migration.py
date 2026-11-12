@@ -96,3 +96,39 @@ def test_the_sharing_migration_adds_the_owner_column_and_the_collection_tables_a
         assert conn.execute(text(
             "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'architecture_elements' AND column_name = 'project_id'"
         )).scalar_one() == "YES"
+
+
+def test_the_symbols_migration_adds_the_table_and_columns_backfills_builtins_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0175 removes the symbol table and the `symbol_id` columns, leaving the types and elements; upgrading
+    recreates them and gives an organisation that already exists the built-in symbols (rows only), changing no type."""
+    from app.modules.architecture.service import DEFAULT_SYMBOLS
+    from app.modules.architecture.tests._helpers import make_element, setup
+
+    org, project, token = setup(client, admin_token, "Arch symbols migration")
+    kept = make_element(client, token, project["id"], "Kept")
+    command.downgrade(build_alembic_config(), "0174")
+    try:
+        assert not _table_exists("architecture_symbols")
+        with engine.connect() as conn:
+            columns = {
+                (r[0], r[1]) for r in conn.execute(text(
+                    "SELECT table_name, column_name FROM information_schema.columns "
+                    "WHERE table_name IN ('architecture_elements', 'architecture_element_types')"
+                ))
+            }
+            remaining = {str(r[0]) for r in conn.execute(text("SELECT id FROM architecture_elements"))}
+        assert ("architecture_elements", "symbol_id") not in columns and ("architecture_element_types", "symbol_id") not in columns
+        assert kept["id"] in remaining
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_symbols")
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT name, builtin_key, file_asset_id FROM architecture_symbols WHERE organization_id = :o ORDER BY sort_order"),
+            {"o": uuid.UUID(org["id"])},
+        ).all()
+        assigned = conn.execute(text(
+            "SELECT count(*) FROM architecture_element_types WHERE organization_id = :o AND symbol_id IS NOT NULL"
+        ), {"o": uuid.UUID(org["id"])}).scalar_one()
+    assert [(r[1], r[0]) for r in rows] == [(key, name) for key, name in DEFAULT_SYMBOLS]
+    assert all(r[2] is None for r in rows) and assigned == 0

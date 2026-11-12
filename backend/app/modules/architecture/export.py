@@ -2,8 +2,8 @@
 Module: modules.architecture.export
 
 The Architecture module's contribution to the organisation and project bundles:
-the organisation's default element and connection types, and a project's own types
-with the organisation defaults it has hidden, its elements (with ports, tags, places)
+the organisation's default element and connection types and symbols, and a project's own types
+and symbols with the organisation defaults it has hidden, its elements (with ports, tags, places)
 and connections, and the links between them and Requirements. Registered through
 `ModuleOrgBundleHooks` and `ModuleProjectBundleHooks`, so no core export file
 names this module.
@@ -23,6 +23,11 @@ Design decisions:
   a type the target lacks is created in the project so the record keeps its type.
 - Links travel through the shared `services.bundle_links`, so only links to records
   in this bundle and to Requirements are carried.
+- Symbols: an organisation's library travels in the organisation bundle (its files embedded) and a project's own
+  uploads in the project bundle, with the organisation symbols the project hides. A symbol travels by name and an
+  upload with its file, which an import checks and sanitises again like an upload; a built-in travels by key
+  alone. A type or element names its symbol as `{"tier", "name"}`, never by id, and an import takes no id from a
+  bundle, so a bundle can never point a record at a symbol of another organisation.
 - The four vocabulary keys are template configuration; the records, the collections and their links
   are template records, reset to fresh drafts without creator or archived records.
 - Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
@@ -35,6 +40,7 @@ Design decisions:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -42,6 +48,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
@@ -52,6 +59,7 @@ from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureElement,
     ArchitecturePort,
+    ArchitectureSymbol,
 )
 from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
@@ -60,14 +68,17 @@ from app.modules.architecture.service import (
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_TYPES,
+    SYMBOLS,
     ArchitectureVocabulary,
 )
+from app.modules.architecture.symbols import BUILTIN_SVG, clean_symbol_svg
 from app.modules.architecture.visibility import Viewer, visible_element_ids
-from app.services import definition_suppression
-from app.services.bundle_common import BundleImportWarnings, UserResolver
+from app.services import definition_suppression, report_images
+from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
+from app.services.report_raster import ImageRejectedError
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 from app.services.template_reset import fresh_drafts
@@ -91,30 +102,134 @@ LINKS_KEY = "architecture_links"
 COLLECTIONS_KEY = "architecture_collections"
 ORG_ELEMENTS_KEY = "architecture_org_elements"
 ORG_COLLECTIONS_KEY = "architecture_org_collections"
+ORG_SYMBOLS_KEY = "architecture_org_symbols"
+PROJECT_SYMBOLS_KEY = "architecture_project_symbols"
+HIDDEN_SYMBOLS_KEY = "architecture_hidden_symbols"
 
-#: Project bundle keys of the vocabularies, for the template classification (configuration).
-PROJECT_KEYS = frozenset(key for _v, _o, project_key, hidden_key in _VOCABULARIES for key in (project_key, hidden_key))
+#: Project bundle keys of the vocabularies and the symbol library, for the template classification (configuration).
+PROJECT_KEYS = frozenset(
+    key for _v, _o, project_key, hidden_key in _VOCABULARIES for key in (project_key, hidden_key)
+) | {PROJECT_SYMBOLS_KEY, HIDDEN_SYMBOLS_KEY}
 #: Project bundle keys of the records, for the template classification (records).
 RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, LINKS_KEY, COLLECTIONS_KEY})
 
 
-def _row_json(vocabulary: ArchitectureVocabulary, row) -> dict[str, Any]:
-    """A row's bundle form: every column except identity, owner and timestamps."""
-    return {column: getattr(row, column) for column in vocabulary.copied_columns()}
+def _row_json(vocabulary: ArchitectureVocabulary, row, symbol_refs: dict[UUID, dict[str, str]]) -> dict[str, Any]:
+    """A row's bundle form: every column except identity, owner and timestamps, with a symbol as a `symbol` reference
+    (`{"tier", "name"}`) in place of its id."""
+    entry = {column: getattr(row, column) for column in vocabulary.copied_columns() if column != "symbol_id"}
+    if vocabulary is ELEMENT_TYPES:
+        entry["symbol"] = symbol_refs.get(row.symbol_id) if row.symbol_id else None
+    return entry
+
+
+def _symbol_refs(db: Session, symbol_ids: Iterable[UUID | None]) -> dict[UUID, dict[str, str]]:
+    """`{symbol id: {"tier": "organisation" or "project", "name"}}` for the given ids, in one statement."""
+    wanted = {i for i in symbol_ids if i}
+    if not wanted:
+        return {}
+    return {
+        r.id: {"tier": "organisation" if r.organization_id is not None else "project", "name": r.name}
+        for r in db.scalars(select(ArchitectureSymbol).where(ArchitectureSymbol.id.in_(wanted)))
+    }
 
 
 def _add_rows(
     db: Session, vocabulary: ArchitectureVocabulary, entries: list[dict[str, Any]], *, taken: set[str], owner: dict[str, Any],
+    symbol_for: Callable[[Any], UUID | None],
 ) -> None:
-    """Adds the bundle rows whose name is not in `taken`, keeping their order after the owner's existing rows."""
-    columns = set(vocabulary.copied_columns())
+    """Adds the bundle rows whose name is not in `taken`, keeping their order after the owner's existing rows.
+
+    A symbol is never read from the entry as an id: `symbol_for` turns its `symbol` reference into one of the owner's.
+    """
+    columns = set(vocabulary.copied_columns()) - {"symbol_id"}
     for entry in entries:
         name = entry.get("name")
         if not name or name.lower() in taken:
             continue
-        db.add(vocabulary.model(**owner, **{k: v for k, v in entry.items() if k in columns}))
+        extra = {"symbol_id": symbol_for(entry.get("symbol"))} if vocabulary is ELEMENT_TYPES else {}
+        db.add(vocabulary.model(**owner, **{k: v for k, v in entry.items() if k in columns}, **extra))
         taken.add(name.lower())
     db.flush()
+
+
+# --- Symbols -----------------------------------------------------------------
+
+
+def _symbol_entries(db: Session, rows: Sequence[ArchitectureSymbol], assets: dict[UUID, FileAsset]) -> list[dict[str, Any]]:
+    """Symbol rows in bundle form: name, order and either the built-in key or the file (added to `assets`)."""
+    files = {
+        a.id: a for a in db.scalars(select(FileAsset).where(FileAsset.id.in_([r.file_asset_id for r in rows if r.file_asset_id])))
+    } if any(r.file_asset_id for r in rows) else {}
+    out = []
+    for row in rows:
+        entry: dict[str, Any] = {"name": row.name, "sort_order": row.sort_order, "builtin_key": row.builtin_key}
+        asset = files.get(row.file_asset_id) if row.file_asset_id else None
+        if asset is not None:
+            assets[asset.id] = asset
+            entry.update(file_ref=f"{asset.id}_{asset.filename}", filename=asset.filename)
+        if row.builtin_key is not None or asset is not None:
+            out.append(entry)
+    return out
+
+
+def _import_symbols(
+    db: Session, entries: list[dict[str, Any]], file_bytes: dict[str, bytes], *, project_id: UUID | None,
+    organization_id: UUID, actor_id: UUID, taken: set[str], warnings: BundleImportWarnings,
+) -> None:
+    """Recreates the bundle's symbols for one owner. A name the owner already lists is skipped; a built-in whose key is
+    unknown, or an upload with no file or an unsafe one, is reported. A file is checked and sanitised again, as an upload
+    is, and stored under the importing organisation."""
+    for entry in entries:
+        name = str(entry.get("name") or "").strip()[:100]
+        if not name or name.lower() in taken:
+            continue
+        fields: dict[str, Any]
+        key = entry.get("builtin_key")
+        if key is not None:
+            if key not in BUILTIN_SVG or project_id is not None:
+                warnings.add(f"Symbol {name!r} skipped — it is not a built-in symbol of this version.")
+                continue
+            fields = {"builtin_key": key}
+        else:
+            data = file_bytes.get(str(entry.get("file_ref", "")))
+            if data is None:
+                warnings.add(f"Symbol {name!r} skipped — its file is not in the bundle.")
+                continue
+            try:
+                clean = clean_symbol_svg(data)
+            except ImageRejectedError as exc:
+                warnings.add(f"Symbol {name!r} skipped — {str(exc).rstrip('.').lower()}.")
+                continue
+            asset = import_bundled_file(
+                db, organization_id=organization_id, uploaded_by=actor_id, filename=str(entry.get("filename") or f"{name}.svg"),
+                content_type=report_images.SVG_TYPE, data=clean,
+            )
+            fields = {"file_asset_id": asset.id}
+        SYMBOLS.create(db, project_id=project_id, organization_id=organization_id, name=name, **fields)
+        taken.add(name.lower())
+    db.flush()
+
+
+def _symbol_lookup(
+    db: Session, organization_id: UUID, project_id: UUID | None, warnings: BundleImportWarnings, context: str,
+) -> Callable[[Any], UUID | None]:
+    """A function turning a bundle `symbol` reference into the id of a symbol this owner may use, else `None` (with a
+    warning). A project looks in its own symbols and the organisation's (a hidden one included, as for a type); an
+    organisation only in its own."""
+    own = {r.name.casefold(): r.id for r in SYMBOLS.project_rows(db, project_id)} if project_id is not None else {}
+    org = {r.name.casefold(): r.id for r in SYMBOLS.org_rows(db, organization_id)}
+
+    def lookup(ref: Any) -> UUID | None:
+        if not isinstance(ref, dict) or not ref.get("name"):
+            return None
+        wanted = str(ref["name"]).casefold()
+        found = (own.get(wanted) or org.get(wanted)) if ref.get("tier") == "project" else (org.get(wanted) or own.get(wanted))
+        if found is None:
+            warnings.add(f"{context}: symbol {ref['name']!r} was not found here — the type's shape is drawn.")
+        return found
+
+    return lookup
 
 
 # --- Organisation level ------------------------------------------------------
@@ -138,10 +253,12 @@ def _org_element_json(db: Session, org: Organization) -> list[dict[str, Any]]:
         ):
             ports.setdefault(port.element_id, []).append(port)
     emails = _emails(db, {*(e.creator_id for e in elements), *(e.archived_by for e in elements)})
+    symbol_refs = _symbol_refs(db, (e.symbol_id for e in elements))
     return [
         {
             "unique_code": e.unique_code, "name": e.name, "description": e.description,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
+            "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None,
             "owner": principal_to_bundle(db, e.owner_type, e.owner_id), "status": e.status,
             "ports": [
                 {
@@ -177,8 +294,10 @@ def _collections_json(db: Session, owner_filter: Any, codes_of: Any) -> list[dic
 def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     """`ModuleOrgBundleHooks.export`: the organisation's default element and connection types, its own elements
     (with ports) and its collections with their members. Grants are never exported."""
+    org_types = {vocabulary: vocabulary.org_rows(db, org.id) for vocabulary, _o, _p, _h in _VOCABULARIES}
+    symbol_refs = _symbol_refs(db, (r.symbol_id for r in org_types[ELEMENT_TYPES]))
     data: dict[str, Any] = {
-        org_key: [_row_json(vocabulary, row) for row in vocabulary.org_rows(db, org.id)]
+        org_key: [_row_json(vocabulary, row, symbol_refs) for row in org_types[vocabulary]]
         for vocabulary, org_key, _project_key, _hidden_key in _VOCABULARIES
     }
     data[ORG_ELEMENTS_KEY] = _org_element_json(db, org)
@@ -191,16 +310,33 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     return data
 
 
+def export_org_files(db: Session, org: Organization, assets: dict[UUID, FileAsset]) -> dict[str, Any]:
+    """`ModuleOrgBundleHooks.export_files`: the organisation's symbols; each upload's file is added to `assets`."""
+    return {ORG_SYMBOLS_KEY: _symbol_entries(db, SYMBOLS.org_rows(db, org.id), assets)}
+
+
+def import_org_files(
+    db: Session, org: Organization, data: dict[str, Any], file_bytes: dict[str, bytes], actor: User, warnings: BundleImportWarnings,
+) -> None:
+    """`ModuleOrgBundleHooks.import_files`: recreates the organisation's symbols (before its types and elements, which
+    name them). A name the organisation already lists is kept as it is, so a fresh organisation's built-ins are not doubled."""
+    _import_symbols(
+        db, data.get(ORG_SYMBOLS_KEY, []), file_bytes, project_id=None, organization_id=org.id, actor_id=actor.id,
+        taken={r.name.lower() for r in SYMBOLS.org_rows(db, org.id)}, warnings=warnings,
+    )
+
+
 def import_org_data(
     db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     resolutions: dict[str, str] | None,
 ) -> None:
     """`ModuleOrgBundleHooks.import_`: recreates the defaults (skipping names the organisation already has), then its
     elements, numbered afresh from the organisation's counter, and its collections. No grant is created."""
+    symbol_for = _symbol_lookup(db, org.id, None, warnings, "Element type")
     for vocabulary, org_key, _project_key, _hidden_key in _VOCABULARIES:
         rows = vocabulary.org_rows(db, org.id)
         taken = {r.name.lower() for r in rows}
-        _add_rows(db, vocabulary, data.get(org_key, []), taken=taken, owner={"organization_id": org.id})
+        _add_rows(db, vocabulary, data.get(org_key, []), taken=taken, owner={"organization_id": org.id}, symbol_for=symbol_for)
 
     def type_row(vocabulary: ArchitectureVocabulary, name: str | None):
         if not name:
@@ -211,6 +347,7 @@ def import_org_data(
             found = vocabulary.create(db, project_id=None, organization_id=org.id, name=name)
         return found
 
+    element_symbol_for = _symbol_lookup(db, org.id, None, warnings, "Element")
     created: dict[str, ArchitectureElement] = {}
     for entry in data.get(ORG_ELEMENTS_KEY, []):
         code = entry.get("unique_code", "")
@@ -224,6 +361,7 @@ def import_org_data(
             organization_id=org.id,
             unique_code=generate_unique_code(db, org, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
             name=entry["name"], description=entry.get("description", ""), element_type_id=element_type.id, parent_id=None,
+            symbol_id=element_symbol_for(entry.get("symbol")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Element {code} archiver") or creator)
@@ -364,16 +502,23 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     """`ModuleProjectBundleHooks.export`: the project's own types and the organisation defaults it has hidden, its
     elements with ports, tags and places, its connections (an end another owner shares as a reference), its
     collections with their members (never their grants), and their links (archived records included: a bundle is
-    a backup). No file is bundled."""
+    a backup). The project's own symbols travel with their files (returned as the second value), and the
+    organisation symbols it hides by name."""
     data: dict[str, Any] = {}
-    for vocabulary, _org_key, project_key, hidden_key in _VOCABULARIES:
-        data[project_key] = [_row_json(vocabulary, row) for row in vocabulary.project_rows(db, project.id)]
-        hidden = definition_suppression.get_suppressed_ids(db, project.id, vocabulary.kind)
-        data[hidden_key] = [r.name for r in vocabulary.org_rows(db, project.organization_id) if r.id in hidden]
-
+    assets: dict[UUID, FileAsset] = {}
     elements = list(db.scalars(
         select(ArchitectureElement).where(ArchitectureElement.project_id == project.id).order_by(ArchitectureElement.unique_code)
     ))
+    own_types = {vocabulary: vocabulary.project_rows(db, project.id) for vocabulary, _o, _p, _h in _VOCABULARIES}
+    symbol_refs = _symbol_refs(db, [*(r.symbol_id for r in own_types[ELEMENT_TYPES]), *(e.symbol_id for e in elements)])
+    for vocabulary, _org_key, project_key, hidden_key in _VOCABULARIES:
+        data[project_key] = [_row_json(vocabulary, row, symbol_refs) for row in own_types[vocabulary]]
+        hidden = definition_suppression.get_suppressed_ids(db, project.id, vocabulary.kind)
+        data[hidden_key] = [r.name for r in vocabulary.org_rows(db, project.organization_id) if r.id in hidden]
+    data[PROJECT_SYMBOLS_KEY] = _symbol_entries(db, SYMBOLS.project_rows(db, project.id), assets)
+    hidden_symbols = definition_suppression.get_suppressed_ids(db, project.id, SYMBOLS.kind)
+    data[HIDDEN_SYMBOLS_KEY] = [r.name for r in SYMBOLS.org_rows(db, project.organization_id) if r.id in hidden_symbols]
+
     connections = list(db.scalars(
         select(ArchitectureConnection).where(ArchitectureConnection.project_id == project.id)
         .order_by(ArchitectureConnection.unique_code)
@@ -408,6 +553,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         {
             "unique_code": e.unique_code, "name": e.name, "description": e.description,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
+            "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None,
             "owner": principal_to_bundle(db, e.owner_type, e.owner_id), "status": e.status,
             "ports": [
                 {
@@ -448,7 +594,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         ELEMENT_ARTEFACT_TYPE: {e.id: e.unique_code for e in elements},
         CONNECTION_ARTEFACT_TYPE: {c.id: c.unique_code for c in connections},
     })
-    return data, {}
+    return data, assets
 
 
 def reset_for_template(data: dict[str, Any]) -> None:
@@ -497,11 +643,20 @@ def import_project_data(
     """`ModuleProjectBundleHooks.import_`: recreates the project's own types and hides the organisation defaults
     it had hidden, then its elements (parents after their children are created), connections and links, numbered
     afresh. A name the project already lists is skipped; a reference that cannot be matched is reported."""
+    _import_symbols(
+        db, data.get(PROJECT_SYMBOLS_KEY, []), file_bytes_by_ref, project_id=project.id, organization_id=project.organization_id,
+        actor_id=current_user.id,
+        taken={r.name.lower() for r in SYMBOLS.resolve_effective(db, project.id, project.organization_id).rows}, warnings=warnings,
+    )
+    for name in SYMBOLS.hide_by_names(db, project.id, project.organization_id, data.get(HIDDEN_SYMBOLS_KEY, [])):
+        warnings.add(f"Symbol {name!r} was hidden in the source project but the organisation has no such symbol.")
+    type_symbol_for = _symbol_lookup(db, project.organization_id, project.id, warnings, "Element type")
+    element_symbol_for = _symbol_lookup(db, project.organization_id, project.id, warnings, "Element")
     for vocabulary, _org_key, project_key, hidden_key in _VOCABULARIES:
         entries = data.get(project_key, [])
         if entries:
             taken = {r.name.lower() for r in vocabulary.resolve_effective(db, project.id, project.organization_id).rows}
-            _add_rows(db, vocabulary, entries, taken=taken, owner={"project_id": project.id})
+            _add_rows(db, vocabulary, entries, taken=taken, owner={"project_id": project.id}, symbol_for=type_symbol_for)
         for name in vocabulary.hide_by_names(db, project.id, project.organization_id, data.get(hidden_key, [])):
             warnings.add(f"{vocabulary.label} {name!r} was hidden in the source project but the organisation has no such type.")
 
@@ -522,6 +677,7 @@ def import_project_data(
         element = ArchitectureElement(
             project_id=project.id, unique_code=generate_unique_code(db, project, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
             name=entry["name"], description=entry.get("description", ""), element_type_id=element_type.id, parent_id=None,
+            symbol_id=element_symbol_for(entry.get("symbol")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Element {code} archiver") or creator)

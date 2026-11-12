@@ -84,6 +84,7 @@ from app.modules.architecture.service import (
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_TYPES,
+    SYMBOLS,
 )
 from app.modules.architecture.visibility import (
     Viewer,
@@ -420,6 +421,22 @@ def _usable_element_type(db: Session, owner: ElementOwner, type_id: uuid.UUID):
     return row
 
 
+def _usable_symbol(db: Session, owner: ElementOwner, symbol_id: uuid.UUID) -> None:
+    """Checks that `owner`'s element may be drawn with the symbol: the project's effective library, or (for an
+    organisation element) the organisation's own symbols.
+
+    Raises:
+        RuleError: 400 if it may not.
+    """
+    try:
+        SYMBOLS.assert_assignable(
+            db, project_id=owner.project.id if owner.project is not None else None, organization_id=owner.organization_id,
+            symbol_id=symbol_id,
+        )
+    except ValueError as exc:
+        raise RuleError(str(exc), 400) from exc
+
+
 def _usable_connection_type(db: Session, project: Project, type_id: uuid.UUID):
     try:
         return CONNECTION_TYPES.usable_row(db, project.id, project.organization_id, type_id)
@@ -454,6 +471,8 @@ def create_element(db: Session, owner: ElementOwner, actor: User, payload: Eleme
         RuleError: 400 for a type, parent, owner or port that is not valid.
     """
     _usable_element_type(db, owner, payload.element_type_id)
+    if payload.symbol_id is not None:
+        _usable_symbol(db, owner, payload.symbol_id)
     if payload.parent_id is not None:
         _check_parent(db, owner, None, payload.parent_id)
     _validate_owner(db, owner, payload.owner)
@@ -465,8 +484,9 @@ def create_element(db: Session, owner: ElementOwner, actor: User, payload: Eleme
         **owner.columns,
         unique_code=generate_unique_code(db, owner.code_owner, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
         name=payload.name.strip(), description=payload.description, element_type_id=payload.element_type_id,
-        parent_id=payload.parent_id, status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value,
-        version=1, creator_id=actor.id, is_archived=False, **principal_columns("owner", payload.owner),
+        parent_id=payload.parent_id, symbol_id=payload.symbol_id,
+        status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value, version=1, creator_id=actor.id,
+        is_archived=False, **principal_columns("owner", payload.owner),
     )
     db.add(element)
     db.flush()
@@ -506,6 +526,10 @@ def update_element(
         if payload.parent_id is not None:
             _check_parent(db, owner, element.id, payload.parent_id)
         changes["parent_id"] = payload.parent_id
+    if "symbol_id" in given and payload.symbol_id != element.symbol_id:
+        if payload.symbol_id is not None:
+            _usable_symbol(db, owner, payload.symbol_id)
+        changes["symbol_id"] = payload.symbol_id
     if "owner" in given and principal_ref(element.owner_type, element.owner_id) != _ref(payload.owner):
         _validate_owner(db, owner, payload.owner)
         changes.update(principal_columns("owner", payload.owner))
@@ -865,12 +889,17 @@ def delete_connection(db: Session, project: Project, actor: User, connection_id:
 # --- API shapes (bulk) -----------------------------------------------------
 
 
-def _type_names(db: Session, model: Any, ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
-    """`{type id: name}` for the type rows with the given ids."""
+def _type_rows(db: Session, model: Any, ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, Any]:
+    """`{type id: row}` for the type rows with the given ids, in one statement."""
     wanted = set(ids)
     if not wanted:
         return {}
-    return {row.id: row.name for row in db.scalars(select(model).where(model.id.in_(wanted)))}
+    return {row.id: row for row in db.scalars(select(model).where(model.id.in_(wanted)))}
+
+
+def _type_names(db: Session, model: Any, ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """`{type id: name}` for the type rows with the given ids."""
+    return {type_id: row.name for type_id, row in _type_rows(db, model, ids).items()}
 
 
 def ports_for(db: Session, element_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[ArchitecturePort]]:
@@ -905,7 +934,7 @@ def element_outs(
     """
     ids = [e.id for e in elements]
     ports = ports_for(db, ids)
-    element_types = _type_names(db, ArchitectureElementType, (e.element_type_id for e in elements))
+    element_types = _type_rows(db, ArchitectureElementType, (e.element_type_id for e in elements))
     connection_types = _type_names(
         db, ArchitectureConnectionType, (p.connection_type_id for ps in ports.values() for p in ps if p.connection_type_id),
     )
@@ -933,7 +962,10 @@ def element_outs(
             id=e.id, project_id=e.project_id, organization_id=e.organization_id,
             shared=viewer_project_id is not None and e.project_id != viewer_project_id,
             unique_code=e.unique_code, name=e.name, description=e.description,
-            element_type_id=e.element_type_id, element_type_name=element_types.get(e.element_type_id, ""),
+            element_type_id=e.element_type_id,
+            element_type_name=element_types[e.element_type_id].name if e.element_type_id in element_types else "",
+            symbol_id=e.symbol_id,
+            effective_symbol_id=e.symbol_id or (element_types[e.element_type_id].symbol_id if e.element_type_id in element_types else None),
             parent_id=e.parent_id, owner=label_of(labels, e.owner_type, e.owner_id), status=e.status, version=e.version,
             creator_id=e.creator_id, is_archived=e.is_archived, archived_at=e.archived_at, created_at=e.created_at,
             updated_at=e.updated_at, child_count=child_counts.get(e.id, 0), connection_count=connection_counts.get(e.id, 0),
@@ -1004,9 +1036,18 @@ def _connection_type_in_use(db: Session, type_id: uuid.UUID) -> bool:
     )
 
 
+def _symbol_in_use(db: Session, symbol_id: uuid.UUID) -> bool:
+    return (
+        db.scalar(select(ArchitectureElement.id).where(ArchitectureElement.symbol_id == symbol_id).limit(1)) is not None
+        or db.scalar(select(ArchitectureElementType.id).where(ArchitectureElementType.symbol_id == symbol_id).limit(1)) is not None
+    )
+
+
 def register_usage_checks() -> None:
-    """Registers the checks that stop a type a record uses from being deleted (idempotent). Called when the module
-    is registered, so it holds whichever router a request arrives through."""
-    for vocabulary, check in ((ELEMENT_TYPES, _element_type_in_use), (CONNECTION_TYPES, _connection_type_in_use)):
+    """Registers the checks that stop a type or symbol a record uses from being deleted (idempotent). Called when the
+    module is registered, so it holds whichever router a request arrives through."""
+    for vocabulary, check in (
+        (ELEMENT_TYPES, _element_type_in_use), (CONNECTION_TYPES, _connection_type_in_use), (SYMBOLS, _symbol_in_use),
+    ):
         if check not in vocabulary.usage_checks:
             vocabulary.usage_checks.append(check)
