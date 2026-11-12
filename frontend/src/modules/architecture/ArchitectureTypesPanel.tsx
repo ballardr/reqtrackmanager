@@ -41,11 +41,12 @@ function ColourDots({ row }: { row: TypeRow }) {
 }
 
 /** "Software · Cylinder" / "Hardware · Dashed, one-way": what the row shows beside its name. */
-function summaryOf(row: TypeRow): string {
+function summaryOf(row: TypeRow, rows: TypeRow[]): string {
   const detail = "shape" in row
     ? ELEMENT_SHAPE_LABEL[row.shape]
     : `${LINE_STYLE_LABEL[row.line_style]}, ${row.directional ? "one-way" : "two-way"}`;
-  return `${DOMAIN_LABEL[row.domain]} · ${detail}`;
+  const parents = "parent_ids" in row ? row.parent_ids.map((id) => rows.find((r) => r.id === id)?.name).filter(Boolean) : [];
+  return `${DOMAIN_LABEL[row.domain]} · ${detail}${parents.length > 0 ? ` · Under ${parents.join(", ")}` : ""}`;
 }
 
 /**
@@ -145,7 +146,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
         onAdd={async (values) => {
           const blank = kind === "element"
             ? { name: values.name, domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null }
-            : { name: values.name, domain: "any", line_style: "solid", directional: true, color_light: null, color_dark: null };
+            : { name: values.name, domain: "any", line_style: "solid", directional: true, color_light: null, color_dark: null, parent_ids: [] };
           await (scope.kind === "project" ? calls.projectCreate(scopeId, blank as never) : calls.orgCreate(scopeId, blank as never));
           showToast(`${noun[0].toUpperCase()}${noun.slice(1)} created.`);
           reload();
@@ -174,7 +175,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
         addLabel={`Add ${noun}`}
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item)}</span>
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows)}</span>
             <ColourDots row={item} />
             {scope.kind === "project" && item.project_id === null && <span className="text-muted" style={{ fontSize: "0.75rem" }}>Org default</span>}
             {!isOrgDefault(item) && (
@@ -210,6 +211,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
           initial={editing === "new" ? undefined : editing}
           symbols={symbols}
           symbolUrl={symbolUrl}
+          connectionTypes={kind === "connection" ? (rows as ConnectionType[]) : []}
           error={formError}
           onCancel={() => { setEditing(null); setFormError(null); }}
           onSave={save}

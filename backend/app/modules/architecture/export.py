@@ -127,13 +127,26 @@ PROJECT_KEYS = frozenset(
 RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY, LINKS_KEY, COLLECTIONS_KEY})
 
 
-def _row_json(vocabulary: ArchitectureVocabulary, row, symbol_refs: dict[UUID, dict[str, str]]) -> dict[str, Any]:
+def _row_json(
+    vocabulary: ArchitectureVocabulary, row, symbol_refs: dict[UUID, dict[str, str]], parent_names: dict[UUID, str],
+) -> dict[str, Any]:
     """A row's bundle form: every column except identity, owner and timestamps, with a symbol as a `symbol` reference
-    (`{"tier", "name"}`) in place of its id."""
+    (`{"tier", "name"}`) in place of its id and a connection type's parents as `parent_names`."""
     entry = {column: getattr(row, column) for column in vocabulary.copied_columns() if column != "symbol_id"}
     if vocabulary is ELEMENT_TYPES:
         entry["symbol"] = symbol_refs.get(row.symbol_id) if row.symbol_id else None
+    if vocabulary is CONNECTION_TYPES:
+        entry["parent_names"] = sorted(parent_names[p] for p in row.parent_ids if p in parent_names)
     return entry
+
+
+def _parent_names(db: Session, rows: Iterable) -> dict[UUID, str]:
+    """`{id: name}` of every connection type the given rows sit under, in one statement."""
+    wanted = {p for row in rows for p in getattr(row, "parent_ids", ())}
+    if not wanted:
+        return {}
+    model = CONNECTION_TYPES.model
+    return dict(db.execute(select(model.id, model.name).where(model.id.in_(wanted))).tuples().all())
 
 
 def _symbol_refs(db: Session, symbol_ids: Iterable[UUID | None]) -> dict[UUID, dict[str, str]]:
@@ -149,13 +162,16 @@ def _symbol_refs(db: Session, symbol_ids: Iterable[UUID | None]) -> dict[UUID, d
 
 def _add_rows(
     db: Session, vocabulary: ArchitectureVocabulary, entries: list[dict[str, Any]], *, taken: set[str], owner: dict[str, Any],
-    symbol_for: Callable[[Any], UUID | None],
+    symbol_for: Callable[[Any], UUID | None], organization_id: UUID, warnings: BundleImportWarnings,
 ) -> None:
     """Adds the bundle rows whose name is not in `taken`, keeping their order after the owner's existing rows.
 
     A symbol is never read from the entry as an id: `symbol_for` turns its `symbol` reference into one of the owner's.
+    A connection type's `parent_names` are linked once every row exists (a parent may come later in the list), for
+    the rows added here only: a type the owner already lists keeps its own parents.
     """
     columns = set(vocabulary.copied_columns()) - {"symbol_id"}
+    parents_by_child: dict[str, list[str]] = {}
     for entry in entries:
         name = entry.get("name")
         if not name or name.lower() in taken:
@@ -163,7 +179,14 @@ def _add_rows(
         extra = {"symbol_id": symbol_for(entry.get("symbol"))} if vocabulary is ELEMENT_TYPES else {}
         db.add(vocabulary.model(**owner, **{k: v for k, v in entry.items() if k in columns}, **extra))
         taken.add(name.lower())
+        if entry.get("parent_names"):
+            parents_by_child[name] = [p for p in entry["parent_names"] if isinstance(p, str)]
     db.flush()
+    if parents_by_child and vocabulary is CONNECTION_TYPES:
+        for problem in CONNECTION_TYPES.link_by_names(
+            db, project_id=owner.get("project_id"), organization_id=organization_id, parents_by_child=parents_by_child,
+        ):
+            warnings.add(problem)
 
 
 # --- Symbols -----------------------------------------------------------------
@@ -309,8 +332,9 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     (with ports) and its collections with their members. Grants are never exported."""
     org_types = {vocabulary: vocabulary.org_rows(db, org.id) for vocabulary, _o, _p, _h in _VOCABULARIES}
     symbol_refs = _symbol_refs(db, (r.symbol_id for r in org_types[ELEMENT_TYPES]))
+    parent_names = _parent_names(db, org_types[CONNECTION_TYPES])
     data: dict[str, Any] = {
-        org_key: [_row_json(vocabulary, row, symbol_refs) for row in org_types[vocabulary]]
+        org_key: [_row_json(vocabulary, row, symbol_refs, parent_names) for row in org_types[vocabulary]]
         for vocabulary, org_key, _project_key, _hidden_key in _VOCABULARIES
     }
     data[ORG_ELEMENTS_KEY] = _org_element_json(db, org)
@@ -349,7 +373,10 @@ def import_org_data(
     for vocabulary, org_key, _project_key, _hidden_key in _VOCABULARIES:
         rows = vocabulary.org_rows(db, org.id)
         taken = {r.name.lower() for r in rows}
-        _add_rows(db, vocabulary, data.get(org_key, []), taken=taken, owner={"organization_id": org.id}, symbol_for=symbol_for)
+        _add_rows(
+            db, vocabulary, data.get(org_key, []), taken=taken, owner={"organization_id": org.id}, symbol_for=symbol_for,
+            organization_id=org.id, warnings=warnings,
+        )
 
     def type_row(vocabulary: ArchitectureVocabulary, name: str | None):
         if not name:
@@ -524,8 +551,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     ))
     own_types = {vocabulary: vocabulary.project_rows(db, project.id) for vocabulary, _o, _p, _h in _VOCABULARIES}
     symbol_refs = _symbol_refs(db, [*(r.symbol_id for r in own_types[ELEMENT_TYPES]), *(e.symbol_id for e in elements)])
+    parent_names = _parent_names(db, own_types[CONNECTION_TYPES])
     for vocabulary, _org_key, project_key, hidden_key in _VOCABULARIES:
-        data[project_key] = [_row_json(vocabulary, row, symbol_refs) for row in own_types[vocabulary]]
+        data[project_key] = [_row_json(vocabulary, row, symbol_refs, parent_names) for row in own_types[vocabulary]]
         hidden = definition_suppression.get_suppressed_ids(db, project.id, vocabulary.kind)
         data[hidden_key] = [r.name for r in vocabulary.org_rows(db, project.organization_id) if r.id in hidden]
     data[PROJECT_SYMBOLS_KEY] = _symbol_entries(db, SYMBOLS.project_rows(db, project.id), assets)
@@ -539,10 +567,13 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     element_ids = [e.id for e in elements]
     connection_ids = [c.id for c in connections]
     codes = {e.id: e.unique_code for e in elements}
-    type_names = {
-        **{r.id: r.name for r in db.scalars(select(ELEMENT_TYPES.model))},
-        **{r.id: r.name for r in db.scalars(select(CONNECTION_TYPES.model))},
-    }
+    type_names: dict[UUID, str] = {}
+    for vocabulary in (ELEMENT_TYPES, CONNECTION_TYPES):
+        # Only this project's rows and its organisation's: a record never names a type of another organisation.
+        model = vocabulary.model
+        type_names.update(db.execute(select(model.id, model.name).where(
+            (model.project_id == project.id) | (model.organization_id == project.organization_id)
+        )).tuples().all())
     ports: dict[UUID, list[ArchitecturePort]] = {}
     port_names: dict[UUID, str] = {}
     if element_ids:
@@ -888,7 +919,10 @@ def import_project_data(
         entries = data.get(project_key, [])
         if entries:
             taken = {r.name.lower() for r in vocabulary.resolve_effective(db, project.id, project.organization_id).rows}
-            _add_rows(db, vocabulary, entries, taken=taken, owner={"project_id": project.id}, symbol_for=type_symbol_for)
+            _add_rows(
+                db, vocabulary, entries, taken=taken, owner={"project_id": project.id}, symbol_for=type_symbol_for,
+                organization_id=project.organization_id, warnings=warnings,
+            )
         for name in vocabulary.hide_by_names(db, project.id, project.organization_id, data.get(hidden_key, [])):
             warnings.add(f"{vocabulary.label} {name!r} was hidden in the source project but the organisation has no such type.")
 

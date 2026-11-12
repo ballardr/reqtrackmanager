@@ -14,7 +14,9 @@ import { ColorField, ToggleField, TextField } from "../../components/FormFields"
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
+import { TreeSelectField } from "../../components/TreeSelectField";
 import { labelOptions } from "../../utils/labelOptions";
+import { connectionTypeNodes, cycleReasons } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import { SymbolPicker } from "./SymbolPicker";
 import {
@@ -33,12 +35,13 @@ interface Draft {
   symbol_id: string | null;
   line_style: LineStyle;
   directional: boolean;
+  parent_ids: string[];
 }
 
 function blankDraft(): Draft {
   return {
     name: "", domain: "any", color_light: "", color_dark: "", shape: "rectangle", symbol_id: null,
-    line_style: "solid", directional: true,
+    line_style: "solid", directional: true, parent_ids: [],
   };
 }
 
@@ -46,7 +49,7 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
   return {
     ...blankDraft(),
     name: row.name, domain: row.domain, color_light: row.color_light ?? "", color_dark: row.color_dark ?? "",
-    ...("shape" in row ? { shape: row.shape, symbol_id: row.symbol_id } : { line_style: row.line_style, directional: row.directional }),
+    ...("shape" in row ? { shape: row.shape, symbol_id: row.symbol_id } : { line_style: row.line_style, directional: row.directional, parent_ids: row.parent_ids }),
   };
 }
 
@@ -55,16 +58,18 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
  * @param initial The type being edited; omit to create.
  * @param symbols The symbols an element type may use (ignored for a connection type).
  * @param symbolUrl The API path of a symbol's content, for the preview.
+ * @param connectionTypes The connection types a connection type may sit under (a connection type's dialog only).
  * @param error A save error to show.
  * @param onSave Called with the values for the kind.
  */
 export function TypeFormModal({
-  kind, initial, symbols = [], symbolUrl = () => "", error, onCancel, onSave,
+  kind, initial, symbols = [], symbolUrl = () => "", connectionTypes = [], error, onCancel, onSave,
 }: {
   kind: "element" | "connection";
   initial?: ElementType | ConnectionType;
   symbols?: ArchitectureSymbol[];
   symbolUrl?: (symbolId: string) => string;
+  connectionTypes?: ConnectionType[];
   error?: string | null;
   onCancel: () => void;
   onSave: (values: ElementTypeValues | ConnectionTypeValues) => void;
@@ -80,7 +85,7 @@ export function TypeFormModal({
     };
     onSave(kind === "element"
       ? { ...common, shape: draft.shape, symbol_id: draft.symbol_id }
-      : { ...common, line_style: draft.line_style, directional: draft.directional });
+      : { ...common, line_style: draft.line_style, directional: draft.directional, parent_ids: draft.parent_ids });
   }
 
   return (
@@ -118,6 +123,15 @@ export function TypeFormModal({
               <SymbolPicker
                 help={ARCHITECTURE_HELP.typeSymbol} label="Symbol" symbols={symbols} value={draft.symbol_id}
                 onChange={(next) => set("symbol_id", next)} urlFor={symbolUrl} emptyLabel="Draw the shape"
+              />
+            </FormGridFull>
+          )}
+          {kind === "connection" && (
+            <FormGridFull>
+              <TreeSelectField
+                help={ARCHITECTURE_HELP.typeParents} label="Sits under" searchable emptyLabel="Top level"
+                value={draft.parent_ids} onChange={(next) => set("parent_ids", next)}
+                nodes={connectionTypeNodes(connectionTypes, cycleReasons(connectionTypes, initial?.id))}
               />
             </FormGridFull>
           )}

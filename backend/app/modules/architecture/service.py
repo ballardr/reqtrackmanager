@@ -9,6 +9,8 @@ Responsibilities:
 - `ArchitectureVocabulary`, one instance per vocabulary, holds every rule so the
   two vocabularies and their routers cannot drift.
 - The default rows an organisation is created with.
+- `ConnectionTypeVocabulary` adds the type tree: a type's parents are validated (same tier or a visible
+  organisation default, no cycle, depth cap in `connection_tree`) and copied with an inherited configuration.
 - `SymbolLibrary` is a vocabulary of drawings (built-in or an uploaded SVG file) that
   element types and elements are assigned; it uses the same two tiers, hiding and nested
   fallback as the types. A symbol file is shared by the copies of an inherited project row,
@@ -25,7 +27,9 @@ Design decisions:
   because it references the organisation's row directly.
 - A row that records use is never deleted; `usage_checks` is where a record type
   registers its check.
-- Seeding runs when an organisation is created and never for a project.
+- Seeding runs when an organisation is created and never for a project; a migration seeds nothing.
+- A parent a project row already has stays allowed after the organisation default is hidden (hiding stops new
+  use only), so editing the row does not silently drop the link.
 """
 
 from __future__ import annotations
@@ -40,8 +44,14 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.project import Project
+from app.modules.architecture.connection_tree import check_tree
 from app.modules.architecture.enums import Domain, ElementShape, LineStyle
-from app.modules.architecture.models import ArchitectureConnectionType, ArchitectureElementType, ArchitectureSymbol
+from app.modules.architecture.models import (
+    ArchitectureConnectionType,
+    ArchitectureConnectionTypeParent,
+    ArchitectureElementType,
+    ArchitectureSymbol,
+)
 from app.services import definition_suppression
 from app.services.files import delete_file
 
@@ -92,8 +102,15 @@ DEFAULT_ELEMENT_TYPES: tuple[tuple[str, str, str], ...] = (
     ("Enclosure", ElementShape.RECTANGLE.value, Domain.HARDWARE.value),
 )
 
-#: `(name, domain, directional)` for each connection type a new organisation is given.
+#: `(name, domain, directional)` for each connection type a new organisation is given, in seed order: the groups first
+#: (each is itself a usable type), then the types that sit under them, then the unspecified types.
 DEFAULT_CONNECTION_TYPES: tuple[tuple[str, str, bool], ...] = (
+    ("Network", Domain.ANY.value, False),
+    ("Serial bus", Domain.HARDWARE.value, False),
+    ("Power", Domain.HARDWARE.value, True),
+    ("Wired signal", Domain.HARDWARE.value, True),
+    ("Software interface", Domain.SOFTWARE.value, True),
+    ("Data exchange", Domain.SOFTWARE.value, True),
     ("REST API", Domain.SOFTWARE.value, True),
     ("gRPC", Domain.SOFTWARE.value, True),
     ("Message queue", Domain.SOFTWARE.value, True),
@@ -106,9 +123,19 @@ DEFAULT_CONNECTION_TYPES: tuple[tuple[str, str, bool], ...] = (
     ("CAN", Domain.HARDWARE.value, False),
     ("Ethernet", Domain.ANY.value, False),
     ("USB", Domain.HARDWARE.value, False),
-    ("Power", Domain.HARDWARE.value, True),
     ("Analogue signal", Domain.HARDWARE.value, True),
+    ("Unspecified hardware link", Domain.HARDWARE.value, False),
+    ("Unspecified software interface", Domain.SOFTWARE.value, True),
 )
+
+#: `{type name: names of the types it sits under}` for the seeded connection types; a name not listed is a root.
+DEFAULT_CONNECTION_TYPE_PARENTS: dict[str, tuple[str, ...]] = {
+    "Ethernet": ("Network",),
+    "SPI": ("Serial bus",), "I2C": ("Serial bus",), "UART": ("Serial bus",), "CAN": ("Serial bus",), "USB": ("Serial bus",),
+    "Analogue signal": ("Wired signal",),
+    "REST API": ("Software interface",), "gRPC": ("Software interface",), "Database access": ("Software interface",),
+    "Message queue": ("Data exchange",), "Event stream": ("Data exchange",), "File exchange": ("Data exchange",),
+}
 
 
 #: `(builtin key, name)` for each built-in symbol a new organisation is given; `symbols.BUILTIN_SVG` draws each key.
@@ -443,16 +470,140 @@ class ElementTypeVocabulary(ArchitectureVocabulary):
 
 
 class ConnectionTypeVocabulary(ArchitectureVocabulary):
-    """The connection type vocabulary."""
+    """The connection type vocabulary, whose rows form a tree: any depth, several parents per type, and a group is
+    itself a usable type. Create and update take `parent_ids` (a given list replaces the parents; omitted leaves them)."""
 
     def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
-        """Adds the default connection types to a new organisation. The caller owns the transaction."""
+        """Adds the default connection types, nested under their groups, to a new organisation. The caller owns the
+        transaction."""
+        ids = {name: uuid.uuid4() for name, _domain, _directional in DEFAULT_CONNECTION_TYPES}
         for i, (name, domain, directional) in enumerate(DEFAULT_CONNECTION_TYPES):
             light, dark = DOMAIN_COLORS[domain]
             db.add(ArchitectureConnectionType(
-                organization_id=organization_id, name=name, domain=domain, directional=directional,
+                id=ids[name], organization_id=organization_id, name=name, domain=domain, directional=directional,
                 line_style=LineStyle.SOLID.value, color_light=light, color_dark=dark, sort_order=i,
             ))
+        for name, parents in DEFAULT_CONNECTION_TYPE_PARENTS.items():
+            for parent in parents:
+                db.add(ArchitectureConnectionTypeParent(child_id=ids[name], parent_id=ids[parent]))
+
+    def _check_parents(
+        self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, child: ArchitectureConnectionType | None,
+        parent_ids: list[uuid.UUID],
+    ) -> list[uuid.UUID]:
+        """Validates the parents a type is to have and returns them without duplicates.
+
+        A parent is a type of the child's own tier or, for a project row, an organisation default the project lists.
+        A parent the row already has is kept even when the project has since hidden it.
+
+        Raises:
+            ValueError: If a parent is unknown to the owner, or the edit makes a cycle or a chain that is too deep.
+        """
+        wanted = list(dict.fromkeys(parent_ids))
+        if project_id is None:
+            visible = self.org_rows(db, organization_id)
+        else:
+            visible = self.resolve_effective(db, project_id, organization_id).rows
+        kept = set(child.parent_ids) if child is not None else set()
+        allowed = {r.id for r in visible} | kept
+        if any(p not in allowed for p in wanted):
+            raise ValueError("A parent must be a connection type this owner can use.")
+        links = {r.id: set(r.parent_ids) for r in visible}
+        check_tree(links, child.id if child is not None else uuid.uuid4(), wanted)
+        return wanted
+
+    def _set_parents(self, row: ArchitectureConnectionType, parent_ids: list[uuid.UUID]) -> None:
+        """Replaces a row's parent links with `parent_ids` (already validated)."""
+        keep = set(parent_ids)
+        for link in list(row.parent_links):
+            if link.parent_id not in keep:
+                row.parent_links.remove(link)
+        have = {link.parent_id for link in row.parent_links}
+        for parent_id in parent_ids:
+            if parent_id not in have:
+                row.parent_links.append(ArchitectureConnectionTypeParent(parent_id=parent_id))
+
+    def create(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, **fields):
+        """As the base class, plus `parent_ids`.
+
+        Raises:
+            ValueError: On a clashing name or an invalid parent.
+        """
+        parent_ids = self._check_parents(
+            db, project_id=project_id, organization_id=organization_id, child=None, parent_ids=fields.pop("parent_ids", None) or [],
+        )
+        row = super().create(db, project_id=project_id, organization_id=organization_id, **fields)
+        self._set_parents(row, parent_ids)
+        db.flush()
+        return row
+
+    def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
+        """As the base class, plus `parent_ids` (a list replaces the parents, `None` or omitted leaves them).
+
+        Raises:
+            ValueError: On a clashing name or an invalid parent.
+        """
+        given = fields.pop("parent_ids", None)
+        parent_ids = None
+        if given is not None:
+            parent_ids = self._check_parents(
+                db, project_id=row.project_id, organization_id=organization_id, child=row, parent_ids=given,
+            )
+        super().update(db, row, organization_id, **fields)
+        if parent_ids is not None:
+            self._set_parents(row, parent_ids)
+            db.flush()
+
+    def link_by_names(
+        self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, parents_by_child: Mapping[str, list[str]],
+    ) -> list[str]:
+        """Nests rows under parents named in a bundle, after all the rows exist.
+
+        Args:
+            db: Session.
+            project_id: The project the rows belong to, or `None` for an organisation's rows.
+            organization_id: The organisation.
+            parents_by_child: `{child name: parent names}`; a child is matched among the owner's own rows.
+
+        Returns:
+            One message for each link that could not be made (an unknown parent, a cycle, a chain too deep).
+        """
+        if project_id is None:
+            own = {r.name.casefold(): r for r in self.org_rows(db, organization_id)}
+            visible = own
+        else:
+            own = {r.name.casefold(): r for r in self.project_rows(db, project_id)}
+            visible = {r.name.casefold(): r for r in self.resolve_effective(db, project_id, organization_id).rows}
+        problems: list[str] = []
+        for child_name, parent_names in parents_by_child.items():
+            child = own.get(child_name.casefold())
+            if child is None:
+                continue
+            ids: list[uuid.UUID] = []
+            for parent_name in parent_names:
+                parent = visible.get(parent_name.casefold())
+                if parent is None:
+                    problems.append(f"Connection type {parent_name!r} (the parent of {child_name!r}) was not found and was skipped.")
+                else:
+                    ids.append(parent.id)
+            try:
+                self.update(db, child, organization_id, parent_ids=ids)
+            except ValueError as exc:
+                problems.append(f"Connection type {child_name!r} was not nested: {exc}")
+        return problems
+
+    def materialize_inherited(self, db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+        """As the base class, then copies each row's parent links, pointing at the project's copy of a parent that was
+        copied and otherwise at the same (organisation) parent."""
+        mapping = super().materialize_inherited(db, project_id)
+        for source_id, copy_id in mapping.items():
+            source = db.get(ArchitectureConnectionType, source_id)
+            copy = db.get(ArchitectureConnectionType, copy_id)
+            if source is None or copy is None:
+                continue
+            self._set_parents(copy, [mapping.get(p, p) for p in source.parent_ids])
+        db.flush()
+        return mapping
 
 
 class SymbolLibrary(ArchitectureVocabulary):

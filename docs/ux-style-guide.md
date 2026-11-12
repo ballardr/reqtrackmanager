@@ -417,6 +417,9 @@ Built as `MultiSelectDropdown` (`frontend/src/components/MultiSelectDropdown.tsx
 
 First and only call site so far: `OrgAdminPage.tsx`'s Users table Roles column, replacing the always-visible three-checkbox stack. This also closed the reported "errors when selecting another role": every grant/revoke previously called the page's giant `reload()` (the same architectural pattern behind the PR #12 race in `docs/decisions.md`) — which re-fetches the users list from offset 0, silently dropping any rows paged in past the first 30, and, if two toggles landed close together, could race two overlapping ~10-request reload bundles against each other, surfacing as a page-wide load-error state on any transient failure. Fixed by updating just the affected row's own `roles` array in local state on a successful grant/revoke instead — the display rule above already means this table only ever shows `OrgRole`'s full, uncollapsed set per row, so no other on-screen state depends on a full reload.
 
+
+**Choosing from a tree (`TreeSelect`, `TreeSelectField`).** A vocabulary that nests (the System Architecture connection types, where a type may sit under several groups) is chosen with `TreeSelectField` in a form: `single` for one choice (a radio per node; choosing closes the list), `searchable` for a search box that keeps the matching nodes and the ancestors that lead to them, and `clearLabel` for an entry that empties the choice. A form that takes several (parents) uses the same field without `single`. A filter panel keeps `FilterSelect`, and a control in a row keeps `InlineSelect`; those show the tree in order with each option labelled by its place ("Serial bus › I2C"), and the filter's `help` says that choosing a group includes the types beneath it.
+
 ## Pattern: split-button trigger
 
 *(New 2026-08-24 — see [The "New Requirement" trigger](plans/completed/ux-audit-2026-08.md#the-new-requirement-trigger-doesnt-match-the-requested-split-button-interaction).)*

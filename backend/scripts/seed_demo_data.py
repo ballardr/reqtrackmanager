@@ -2471,7 +2471,7 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
 def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
     """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
-    REST API, Power), an organisation-owned identity service shared with the project through a collection, and a diagram
+    REST API, Power; one left on the "Serial bus" group to show a connection refined later), an organisation-owned identity service shared with the project through a collection, and a diagram
     of the airframe with a toggle that hides its sensors.
     The Board, Sensor and Service types are drawn with the built-in symbols a new organisation is given, and the
     drone with a symbol uploaded to the project's own library. Returns the number of elements, connections and diagrams created."""
@@ -2542,7 +2542,8 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
                      ports=(("Telemetry API", "in", "REST API"),))
     connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz")
     connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud")
-    connect("Telemetry out", "UART", fc, "Telemetry link", radio, "UART in", "MAVLink 2")
+    # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.
+    connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2")
     connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
 
     # An element the organisation owns, shared with Falcon-3 through a collection, and a connection to it.

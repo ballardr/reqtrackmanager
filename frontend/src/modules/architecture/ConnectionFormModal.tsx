@@ -15,10 +15,12 @@ import { TextAreaField, TextField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
+import { TreeSelectField } from "../../components/TreeSelectField";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { blankConnectionValues, valuesFromConnection } from "./architectureFields";
+import { connectionTypeNodes } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType } from "./types";
 
@@ -80,10 +82,10 @@ export function ConnectionFormModal({
           <FormGridFull>
             <TextField helpNotNeeded label="Name" value={values.name} onChange={(value) => set("name", value)} />
           </FormGridFull>
-          <LabeledSelect
-            help={ARCHITECTURE_HELP.connectionType} required label="Connection type" value={values.connection_type_id}
-            placeholder="Choose a type" onChange={(next) => set("connection_type_id", next)}
-            options={connectionTypes.map((t) => ({ value: t.id, label: t.name }))}
+          <TreeSelectField
+            help={ARCHITECTURE_HELP.connectionType} required single searchable label="Connection type"
+            value={values.connection_type_id ? [values.connection_type_id] : []} emptyLabel="Choose a type"
+            nodes={connectionTypeNodes(connectionTypes)} onChange={([next]) => set("connection_type_id", next ?? "")}
           />
           <TextField help={ARCHITECTURE_HELP.connectionProtocol} label="Protocol" value={values.protocol} onChange={(value) => set("protocol", value)} />
           <LabeledSelect

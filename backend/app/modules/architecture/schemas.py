@@ -62,17 +62,19 @@ class ElementTypeUpdate(_VocabularyUpdate):
 
 
 class ConnectionTypeCreate(_VocabularyCreate):
-    """Create payload for a connection type."""
+    """Create payload for a connection type. `parent_ids` are the types it sits under (see `connection_tree`)."""
 
     line_style: LineStyle = LineStyle.SOLID
     directional: bool = True
+    parent_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
 class ConnectionTypeUpdate(_VocabularyUpdate):
-    """Partial update of a connection type."""
+    """Partial update of a connection type. `parent_ids` replaces the parents (an empty list makes it a root)."""
 
     line_style: LineStyle | None = None
     directional: bool | None = None
+    parent_ids: list[UUID] | None = Field(default=None, max_length=20)
 
 
 class _VocabularyOut(BaseModel):
@@ -102,6 +104,7 @@ class ConnectionTypeOut(_VocabularyOut):
 
     line_style: str
     directional: bool
+    parent_ids: list[UUID]
 
 
 # --- Symbols -----------------------------------------------------------------

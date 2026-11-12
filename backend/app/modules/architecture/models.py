@@ -5,7 +5,8 @@ The two vocabularies every architecture record is typed by, and the records:
 
 - `ArchitectureSymbol` — a drawing (a sanitised SVG, or one of the built-in set) an element type or element is shown with.
 - `ArchitectureElementType` — what an element is (System, Service, Board, ...).
-- `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...).
+- `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...); a type sits in a tree of any depth
+  and may have several parents (`ArchitectureConnectionTypeParent`), so a group is itself a usable type.
 - `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s; owned by a project
   or by the organisation.
 - `ArchitectureConnection` — an interface between two elements.
@@ -166,6 +167,42 @@ class ArchitectureConnectionType(OwnedVocabularyMixin, Base):
 
     line_style: Mapped[str] = mapped_column(String(20), default="solid")
     directional: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Loaded with the row (one extra statement per list) so an API list carries `parent_ids` without a read per row.
+    parent_links: Mapped[list[ArchitectureConnectionTypeParent]] = relationship(
+        "ArchitectureConnectionTypeParent", foreign_keys="ArchitectureConnectionTypeParent.child_id", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ArchitectureConnectionTypeParent.parent_id", back_populates="child",
+    )
+
+    @property
+    def parent_ids(self) -> list[uuid.UUID]:
+        """The ids of the types this one sits under (empty for a root)."""
+        return [link.parent_id for link in self.parent_links]
+
+
+class ArchitectureConnectionTypeParent(Base):
+    """One edge of the connection type tree: `child_id` sits under `parent_id`.
+
+    A type may have several parents and the tree has any depth (the service refuses a cycle and a chain deeper than
+    `connection_tree.MAX_TYPE_DEPTH`). A parent is in the child's own tier or an organisation default visible to it.
+    Deleting either type removes the edge: the children of a deleted group become roots.
+
+    Attributes:
+        child_id: The nested type.
+        parent_id: The type it sits under.
+    """
+
+    __tablename__ = "architecture_connection_type_parents"
+    __table_args__ = (CheckConstraint("child_id <> parent_id", name="ck_architecture_connection_type_parents_not_self"),)
+
+    child_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    parent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True, index=True,
+    )
+    child: Mapped[ArchitectureConnectionType] = relationship(
+        "ArchitectureConnectionType", foreign_keys=[child_id], back_populates="parent_links", lazy="raise",
+    )
 
 
 class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):

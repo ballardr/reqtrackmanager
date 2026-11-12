@@ -65,3 +65,18 @@ export const EditHasNoActivateButton: Story = {
     await expect(d.queryByRole("button", { name: "Save and activate" })).not.toBeInTheDocument();
   },
 };
+
+/** The type is chosen from the tree (a group is a usable type) and can be found by searching. */
+export const TypeIsChosenFromTheTreeAndSearched: Story = {
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.selectOptions(d.getByLabelText("Source element"), "el-1");
+    await userEvent.selectOptions(d.getByLabelText("Target element"), "el-2");
+    await userEvent.click(d.getByRole("button", { name: "Connection type" }));
+    const popover = within(document.body);
+    await userEvent.type(popover.getByRole("searchbox", { name: "Search Connection type" }), "i2c");
+    await userEvent.click(popover.getByRole("radio", { name: "I2C" }));
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ connection_type_id: "ct-2" }), expect.anything());
+  },
+};

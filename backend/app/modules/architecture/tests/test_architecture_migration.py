@@ -11,8 +11,12 @@ from sqlalchemy import text
 
 from alembic import command
 from app.database import engine
-from app.modules.architecture.service import DEFAULT_CONNECTION_TYPES, DEFAULT_ELEMENT_TYPES
+from app.modules.architecture.service import DEFAULT_ELEMENT_TYPES
 from tests.conftest import build_alembic_config, create_org_admin_in
+
+#: The flat connection types the vocabulary migration backfills for an existing organisation; the groups a new
+#: organisation is seeded with (`DEFAULT_CONNECTION_TYPES`) are not added to an existing one.
+_BACKFILLED_CONNECTION_TYPES = 14
 
 
 def _count(table: str, org_id: str) -> int:
@@ -37,7 +41,7 @@ def test_downgrade_drops_the_tables_and_upgrade_backfills_existing_organisations
         command.upgrade(build_alembic_config(), "head")
 
     assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)
-    assert _count("architecture_connection_types", org["id"]) == len(DEFAULT_CONNECTION_TYPES)
+    assert _count("architecture_connection_types", org["id"]) == _BACKFILLED_CONNECTION_TYPES
     with engine.connect() as conn:
         names = [r[0] for r in conn.execute(
             text("SELECT name FROM architecture_element_types WHERE organization_id = :o ORDER BY sort_order"),
@@ -157,3 +161,23 @@ def test_the_diagrams_migration_adds_the_tables_and_reverses_cleanly(client, adm
     assert all(_table_exists(t) for t in tables)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM architecture_diagrams")).scalar_one() == 0
+
+
+def test_the_type_tree_migration_adds_the_link_table_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0177 drops the parent link table and leaves the connection types; upgrading recreates it empty
+    (nothing is seeded, so an existing organisation's flat list is unchanged)."""
+    from app.modules.architecture.tests._helpers import setup
+
+    org, _project, _token = setup(client, admin_token, "Arch tree migration")
+    before = _count("architecture_connection_types", org["id"])
+    command.downgrade(build_alembic_config(), "0176")
+    try:
+        assert not _table_exists("architecture_connection_type_parents")
+        assert _count("architecture_connection_types", org["id"]) == before
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_connection_type_parents")
+    assert _count("architecture_connection_types", org["id"]) == before
+    with engine.connect() as conn:
+        # The seeded organisation's links are gone with the table; the types keep their rows and no row is invented.
+        assert conn.execute(text("SELECT count(*) FROM architecture_connection_type_parents")).scalar_one() == 0

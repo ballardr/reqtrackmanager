@@ -21,7 +21,7 @@ Every write lookup is scoped to the owner in the URL, so another owner's ids loo
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from typing import Any, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -37,6 +37,7 @@ from app.modules.architecture._shared import (
     require_architect,
     require_architecture_org_admin,
 )
+from app.modules.architecture.connection_tree import closure_of
 from app.modules.architecture.enums import RecordStatus
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement
 from app.modules.architecture.records import ElementOwner
@@ -102,14 +103,17 @@ def filter_elements(
 
 
 def filter_connections(
-    connections: list[ArchitectureConnection], *, status_: str | None = None, connection_type_id: uuid.UUID | None = None,
-    element_id: uuid.UUID | None = None, open_only: bool = False, search: str | None = None,
+    connections: list[ArchitectureConnection], *, status_: str | None = None,
+    connection_type_ids: Collection[uuid.UUID] | None = None, element_id: uuid.UUID | None = None, open_only: bool = False,
+    search: str | None = None,
 ) -> list[ArchitectureConnection]:
-    """The connections the list's filters keep. `element_id` keeps those with that element at either end."""
+    """The connections the list's filters keep. `element_id` keeps those with that element at either end;
+    `connection_type_ids` keeps those typed with any of the given types (a filter by a group passes the group's
+    `connection_tree.closure_of`)."""
     return [
         c for c in connections
         if (status_ is None or c.status == status_)
-        and (connection_type_id is None or c.connection_type_id == connection_type_id)
+        and (connection_type_ids is None or c.connection_type_id in connection_type_ids)
         and (element_id is None or element_id in (c.source_element_id, c.target_element_id))
         and (not open_only or c.status != RecordStatus.RETIRED.value)
         and _matches(search, c.unique_code, c.name, c.protocol, c.description)
@@ -316,7 +320,8 @@ def add_record_routes(router: APIRouter) -> None:
         def rows_for(pid: uuid.UUID) -> list[ConnectionOut]:
             found = filter_connections(
                 records.list_connections(db, pid, include_archived=include_archived),
-                status_=status_filter.value if status_filter else None, connection_type_id=connection_type_id,
+                status_=status_filter.value if status_filter else None,
+                connection_type_ids=closure_of(db, [connection_type_id]) if connection_type_id else None,
                 element_id=element_id, open_only=open_only, search=search,
             )
             return records.connection_outs(db, tag_filter.keep(db, pid, CONNECTION_ARTEFACT_TYPE, found), viewer)

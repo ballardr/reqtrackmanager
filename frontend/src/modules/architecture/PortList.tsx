@@ -9,6 +9,7 @@
 import { DefinitionList } from "../../components/DefinitionList";
 import { InlineSelect } from "../../components/LabeledSelect";
 import { labelOptions } from "../../utils/labelOptions";
+import { pathOptions } from "./connectionTypeTree";
 import { PORT_DIRECTION_LABEL, type ConnectionType, type Port, type PortDirection, type PortValues } from "./types";
 
 /** A port as the list shows it; `id` is the server's, or a temporary one for a port not saved yet. */
@@ -62,7 +63,7 @@ export function PortList({
           />
           <InlineSelect
             ariaLabel={`Connection type of ${port.name}`} value={port.connection_type_id ?? ""} placeholder="Any type" autoWidth
-            options={connectionTypes.map((t) => ({ value: t.id, label: t.name }))}
+            options={pathOptions(connectionTypes)}
             onChange={(next) => void onChange(port.id, { connection_type_id: next || null })}
           />
         </span>

@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.architecture import diagrams, records
-from app.modules.architecture.diagram_view import matched_by_rules, toggle_rule
+from app.modules.architecture.diagram_view import matched_by_rules, rule_type_closure, toggle_rule
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
@@ -182,11 +182,12 @@ def _toggle_members(
         if connections:
             connection_tags = tag_service.tag_names_for_records(db, CONNECTION_ARTEFACT_TYPE, [c.id for c in connections])
     connection_ids = {c.id for c in connections}
+    type_closure = rule_type_closure(db, rules.values())
     out: list[ModelToggleMembers] = []
     for toggle in toggles:
         hidden_elements, hidden_connections = matched_by_rules(
             rules, [toggle.id], readable_elements, connections, element_types, connection_types, element_tags,
-            connection_tags,
+            connection_tags, type_closure,
         )
         for member in members.get(toggle.id, ()):
             if member.element_id is not None and member.element_id in readable_elements:

@@ -29,13 +29,14 @@ Dependencies: `diagram_resolver`, `diagrams`, `records`, `visibility`, `symbols`
 from __future__ import annotations
 
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.architecture import diagrams, records
+from app.modules.architecture.connection_tree import descendant_map
 from app.modules.architecture.diagram_resolver import ModelConnection, Resolution, resolve
 from app.modules.architecture.enums import ElementShape
 from app.modules.architecture.models import (
@@ -89,13 +90,19 @@ def toggle_rule(toggle: ArchitectureDiagramToggle) -> ToggleRule:
         return ToggleRule()
 
 
+def rule_type_closure(db: Session, rules: Iterable[ToggleRule]) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """Each connection type the rules name with the types beneath it (one pass for all the rules)."""
+    return descendant_map(db, {t for rule in rules for t in rule.connection_type_ids})
+
+
 def matched_by_rules(
     rules: dict[uuid.UUID, ToggleRule], toggles_off: Collection[uuid.UUID], elements: dict[uuid.UUID, ArchitectureElement],
     connections: list[ArchitectureConnection], element_types: dict[uuid.UUID, ArchitectureElementType],
     connection_types: dict[uuid.UUID, ArchitectureConnectionType], element_tags: dict[uuid.UUID, list[str]],
-    connection_tags: dict[uuid.UUID, list[str]],
+    connection_tags: dict[uuid.UUID, list[str]], type_closure: Mapping[uuid.UUID, set[uuid.UUID]],
 ) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
-    """The elements and connections the switched-off toggles' rules match."""
+    """The elements and connections the switched-off toggles' rules match. A rule naming a connection type also
+    matches the types beneath it: `type_closure` is `connection_tree.descendant_map` of the types the rules name."""
     hidden_elements: set[uuid.UUID] = set()
     hidden_connections: set[uuid.UUID] = set()
     for toggle_id in toggles_off:
@@ -108,7 +115,7 @@ def matched_by_rules(
                 or tag_names.intersection(element_tags.get(element.id, ()))
             ):
                 hidden_elements.add(element.id)
-        connection_type_ids = set(rule.connection_type_ids)
+        connection_type_ids = set().union(*(type_closure.get(t, {t}) for t in rule.connection_type_ids))
         for connection in connections:
             connection_kind = connection_types.get(connection.connection_type_id)
             if (
@@ -179,6 +186,7 @@ def build_view(
             connection_tags = tag_service.tag_names_for_records(db, CONNECTION_ARTEFACT_TYPE, [c.id for c in connections])
     hidden_elements, hidden_connections = matched_by_rules(
         rules, off, readable_elements, connections, types, connection_types, element_tags, connection_tags,
+        rule_type_closure(db, rules.values()),
     )
     connection_ids = {c.id for c in connections}
     for toggle_id in off:

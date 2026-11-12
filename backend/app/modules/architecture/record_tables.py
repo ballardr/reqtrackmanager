@@ -54,6 +54,7 @@ from app.modules.architecture._shared import (
     ELEMENT_MANAGE_PERMISSION,
     require_architect,
 )
+from app.modules.architecture.connection_tree import closure_of
 from app.modules.architecture.diagram_routes import filter_diagrams
 from app.modules.architecture.enums import PortDirection, RecordStatus
 from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL
@@ -478,7 +479,8 @@ def _list_connections(db: Session, user: User, project_id: uuid.UUID, filters: R
     status = enum_filter(filters, "status", RecordStatus)
     return filter_connections(
         records.list_connections(db, project_id, include_archived=bool(filters.flag("include_archived"))),
-        status_=status.value if status else None, connection_type_id=type_id,
+        status_=status.value if status else None,
+        connection_type_ids=closure_of(db, [type_id]) if type_id is not None else None,
         open_only=bool(filters.flag("open_only")), search=filters.one("search"),
     )
 

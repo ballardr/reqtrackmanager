@@ -52,3 +52,28 @@ export const EditKeepsTheStoredColours: Story = {
     await expect(dialog().getByLabelText("Colour (light theme) (hex code)")).toHaveValue("#dbeafe");
   },
 };
+
+export const ConnectionTypeChoosesItsParentsFromTheTree: Story = {
+  args: { kind: "connection", initial: undefined, connectionTypes: CONNECTION_TYPES },
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.type(d.getByLabelText("Name"), "SMBus");
+    await userEvent.click(d.getByRole("button", { name: "Sits under" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Serial bus" }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "SMBus", parent_ids: ["ct-3"] }));
+  },
+};
+
+/** A type cannot be placed under itself or anything beneath it: those nodes are shown but cannot be chosen. */
+export const ParentsOfAGroupExcludeItsOwnBranch: Story = {
+  args: { kind: "connection", initial: CONNECTION_TYPES[2], connectionTypes: CONNECTION_TYPES },
+  play: async () => {
+    const d = dialog();
+    await userEvent.click(d.getByRole("button", { name: "Sits under" }));
+    await expect(within(document.body).getByRole("checkbox", { name: "Serial bus" })).toBeDisabled();
+    await expect(within(document.body).getByRole("checkbox", { name: "I2C" })).toBeDisabled();
+    await expect(within(document.body).getByRole("checkbox", { name: "REST API" })).toBeEnabled();
+  },
+};

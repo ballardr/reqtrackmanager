@@ -74,12 +74,29 @@ export const EditDialogSavesTheOtherAttributes: Story = {
   },
 };
 
-/** A connection type adds a line style and whether it is one-way. */
+/** A connection type adds a line style and whether it is one-way, and the groups it sits under. */
 export const ConnectionTypesShowLineStyleAndDirection: Story = {
   args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "connection" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Software · Solid, one-way")).toBeInTheDocument();
-    await expect(canvas.getByText("Hardware · Dashed, two-way")).toBeInTheDocument();
+    await expect(canvas.getByText("Hardware · Dashed, two-way · Under Serial bus")).toBeInTheDocument();
+  },
+};
+
+/** A new connection type is created at the top level, and a group's edit dialog lists the tree to sit under. */
+export const ANewConnectionTypeStartsAtTheTopLevel: Story = {
+  args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "connection" },
+  beforeEach: () => {
+    const post = spyOn(api, "post").mockResolvedValue({} as never);
+    return () => post.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(await canvas.findByPlaceholderText("Connection type name"), "Radio link");
+    await userEvent.click(canvas.getByRole("button", { name: "Add connection type" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/architecture/connection-types`, expect.objectContaining({ name: "Radio link", parent_ids: [] }),
+    ));
   },
 };

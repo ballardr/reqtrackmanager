@@ -83,6 +83,8 @@ export interface ElementType extends VocabularyRow {
 export interface ConnectionType extends VocabularyRow {
   line_style: LineStyle;
   directional: boolean;
+  /** The types this one sits under (empty for a root); a type may have several parents, to any depth. */
+  parent_ids: string[];
 }
 
 /** The writable fields of an element type (`symbol_id: null` clears the symbol). */
@@ -102,6 +104,8 @@ export interface ConnectionTypeValues {
   directional: boolean;
   color_light: string | null;
   color_dark: string | null;
+  /** The types this one sits under; an empty list makes it a root. */
+  parent_ids: string[];
 }
 
 /** A symbol library entry; its drawing is read from `.../symbols/{id}/content`. */

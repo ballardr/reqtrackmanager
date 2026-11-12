@@ -34,6 +34,8 @@ import { addSharedListFilters } from "../../utils/listFilterParams";
 import { projectConnectionApi, projectElementApi } from "./api";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ConnectionEnd } from "./connectionEnds";
+import { pathOptions, typeClosure } from "./connectionTypeTree";
+import { ARCHITECTURE_HELP } from "./help";
 import { useArchitectureReference } from "./useArchitectureReference";
 import { useCreateConnection } from "./useCreateConnection";
 import {
@@ -85,16 +87,21 @@ export function ProjectConnectionsPage() {
     return () => { active = false; };
   }, [projectId, refreshKey]);
 
+  // Choosing a group keeps the connections typed with any type beneath it.
+  const typeIds = useMemo(
+    () => (typeFilter ? typeClosure(reference.connectionTypes, [typeFilter]) : null),
+    [typeFilter, reference.connectionTypes],
+  );
   const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (c: ArchitectureConnection, applyOpenOnly: boolean) => {
       if (applyOpenOnly && c.status === "retired") return false;
       if (statusFilter && c.status !== statusFilter) return false;
-      if (typeFilter && c.connection_type_id !== typeFilter) return false;
+      if (typeIds && !typeIds.has(c.connection_type_id)) return false;
       if (elementFilter && c.source_element_id !== elementFilter && c.target_element_id !== elementFilter) return false;
       return !needle || `${c.unique_code} ${c.name} ${c.protocol} ${c.description} ${c.source_element_name} ${c.target_element_name}`.toLowerCase().includes(needle);
     };
-  }, [search, statusFilter, typeFilter, elementFilter]);
+  }, [search, statusFilter, typeIds, elementFilter]);
   const filtered = useMemo(() => (connections ?? []).filter((c) => matches(c, openOnly)), [connections, matches, openOnly]);
 
   if (!projectId) return null;
@@ -152,7 +159,7 @@ export function ProjectConnectionsPage() {
             />
             <FilterSelect
               label="Connection type" value={typeFilter} onChange={setTypeFilter} allLabel="All types"
-              options={reference.connectionTypes.map((t) => ({ value: t.id, label: t.name }))}
+              help={ARCHITECTURE_HELP.connectionTypeFilter} options={pathOptions(reference.connectionTypes)}
             />
             <FilterSelect
               label="Element" value={elementFilter} onChange={setElementFilter} allLabel="All elements"

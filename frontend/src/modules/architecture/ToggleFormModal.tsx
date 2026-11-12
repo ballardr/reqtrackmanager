@@ -13,8 +13,10 @@ import { FormActions } from "../../components/FormActions";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
 import { MultiSelectDropdown } from "../../components/MultiSelectDropdown";
+import { TreeSelect } from "../../components/TreeSelect";
 import { FieldCaption } from "../../components/FieldHelp";
 import { useRecordCode } from "../../hooks/useRecordCode";
+import { connectionTypeNodes } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import { blankToggle } from "./diagramToggles";
 import {
@@ -75,12 +77,10 @@ export function ToggleFormModal({
               onToggle: () => setRule({ element_type_ids: toggled(rule.element_type_ids, t.id) }),
             }))}
           />
-          <MultiSelectDropdown
-            triggerLabel="Connection types" emptyLabel="No connection types"
-            options={connectionTypes.map((t) => ({
-              value: t.id, label: t.name, checked: rule.connection_type_ids.includes(t.id), optionLabel: `Match connection type ${t.name}`,
-              onToggle: () => setRule({ connection_type_ids: toggled(rule.connection_type_ids, t.id) }),
-            }))}
+          <TreeSelect
+            triggerLabel="Connection types" emptyLabel="No connection types" searchable
+            nodes={connectionTypeNodes(connectionTypes)} selectedIds={rule.connection_type_ids}
+            onChange={(next) => setRule({ connection_type_ids: next })}
           />
           <MultiSelectDropdown
             triggerLabel="Domains" emptyLabel="No domains"
