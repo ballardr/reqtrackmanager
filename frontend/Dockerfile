@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 
 # Build identity, baked into the bundle at build time (Vite substitutes
 # `import.meta.env.VITE_*` when the build runs, unlike VITE_API_BASE_URL
