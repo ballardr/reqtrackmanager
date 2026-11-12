@@ -73,7 +73,7 @@ apscheduler==3.10.4
 joserfc==1.7.7
 # Static type checking (`mypy` from backend/, gated by scripts/check_mypy.py in CI) and the stub
 # packages for the untyped libraries it checks against (APScheduler has none; see pyproject.toml).
-mypy==2.4.0
+mypy==2.4.1
 types-boto3[s3]==1.43.118
 types-passlib==1.7.7.20260211
 types-qrcode==8.2.0.20260518
