@@ -217,4 +217,94 @@ test.describe("System Architecture: diagram editor", () => {
       expect((await mermaid).suggestedFilename()).toMatch(/\.mmd$/);
     });
   });
+
+  test("an architect chooses where a line meets its boxes from the Selection card and by dragging its end, and the choice is kept", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchAnchors", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const gateway = `Gateway ${suffix}`;
+    const orders = `Orders ${suffix}`;
+    const gatewayId = await createElement(page.request, adminHeaders, project.id, gateway);
+    const ordersId = await createElement(page.request, adminHeaders, project.id, orders);
+    const connectionTypes = await (await page.request.get(`${base}/connection-types`, { headers: adminHeaders })).json();
+    const connection = await page.request.post(`${base}/connections`, {
+      headers: adminHeaders,
+      data: { connection_type_id: connectionTypes[0].id, source_element_id: gatewayId, target_element_id: ordersId, activate: true },
+    });
+    expect(connection.ok(), await connection.text()).toBeTruthy();
+    const created = await page.request.post(`${base}/diagrams`, { headers: adminHeaders, data: { name: `Anchors ${suffix}`, activate: true } });
+    const diagram = await created.json();
+    const layout = await page.request.put(`${base}/diagrams/${diagram.id}/layout`, {
+      headers: adminHeaders,
+      data: {
+        version: diagram.version,
+        placements: [{ element_id: gatewayId, x: 0, y: 0 }, { element_id: ordersId, x: 400, y: 0 }],
+        notes: [],
+      },
+    });
+    expect(layout.ok(), await layout.text()).toBeTruthy();
+
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    const line = page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true });
+    await expect(line).toBeAttached();
+    await line.focus();
+    await page.keyboard.press("Enter");
+    const selection = page.getByRole("region", { name: "Selection" });
+    const starts = selection.getByRole("combobox", { name: "Line starts at" });
+    const ends = selection.getByRole("combobox", { name: "Line ends at" });
+
+    await test.step("automatic ends are the facing sides of boxes side by side", async () => {
+      await expect(starts).toHaveValue("");
+      await expect(starts.locator("option:checked")).toHaveText("Automatic (Right)");
+      await expect(ends.locator("option:checked")).toHaveText("Automatic (Left)");
+    });
+
+    await test.step("choosing the start from the list is an unsaved edit that Save stores", async () => {
+      await starts.selectOption("bottom");
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+    });
+
+    await test.step("dragging the end of the line to another point of the same box chooses that point", async () => {
+      await line.focus();
+      await page.keyboard.press("Enter");
+      const handle = page.locator(`.react-flow__node[data-id="${ordersId}"] .react-flow__handle[data-handleid="top"]`);
+      const updater = page.locator(".react-flow__edgeupdater-target").first();
+      await expect(updater).toBeAttached();
+      const from = (await updater.boundingBox())!;
+      const to = (await handle.boundingBox())!;
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await expect(ends).toHaveValue("top");
+      await expect(page.getByText(/Unsaved changes/)).toBeVisible();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+    });
+
+    await test.step("the choice is stored, shown after a reload and drawn by the server", async () => {
+      await page.reload();
+      await line.focus();
+      await page.keyboard.press("Enter");
+      await expect(starts).toHaveValue("bottom");
+      await expect(ends).toHaveValue("top");
+      const view = await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
+      expect(view.anchors).toEqual([
+        { source_element_id: gatewayId, target_element_id: ordersId, source_point: "bottom", target_point: "top" },
+      ]);
+      const svg = await (await page.request.get(`${base}/diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
+      // Gateway is 160 x 80 at the origin and Orders the same at x = 400: bottom middle (80, 80) to top middle (480, 0).
+      expect(svg).toContain('x1="80.0" y1="80.0" x2="480.0" y2="0.0"');
+    });
+
+    await test.step("choosing Automatic again removes the choice", async () => {
+      await starts.selectOption("");
+      await ends.selectOption("");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+      const view = await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
+      expect(view.anchors).toEqual([]);
+    });
+  });
 });

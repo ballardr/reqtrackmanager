@@ -8,6 +8,7 @@
 
 import type { BadgeTone, Principal, PrincipalRef } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
+import type { AttachPoint } from "../../components/graphAttachPoints";
 
 export type ArchitectureRecordStatus = "draft" | "active" | "retired";
 
@@ -414,6 +415,15 @@ export interface DiagramView {
   nodes: DiagramViewNode[];
   edges: DiagramViewEdge[];
   notes: DiagramNote[];
+  anchors: DiagramAnchor[];
+}
+
+/** Where a drawn line meets its two boxes, when a person chose it; an end that is null is automatic. */
+export interface DiagramAnchor {
+  source_element_id: string;
+  target_element_id: string;
+  source_point: AttachPoint | null;
+  target_point: AttachPoint | null;
 }
 
 /** An element as the editor needs it to draw a box and resolve lines; a `locked` one carries its code only. */

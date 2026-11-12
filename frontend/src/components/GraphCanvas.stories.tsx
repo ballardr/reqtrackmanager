@@ -358,3 +358,134 @@ export const ReadOnlyIgnoresTheDeleteKey: Story = {
     await expect(canvasElement.querySelector("[aria-describedby]")).not.toHaveTextContent(/Delete or Backspace/);
   },
 };
+
+/** The y of the start of a drawn line's path (its source end), from the path's "M x,y". */
+function lineStartY(root: HTMLElement, edgeId: string): number {
+  const path = root.querySelector(`.react-flow__edge[data-id="${edgeId}"] path.react-flow__edge-path`);
+  const match = /^M\s*([-\d.e]+)[ ,]\s*([-\d.e]+)/.exec(path?.getAttribute("d") ?? "");
+  return match ? Number(match[2]) : Number.NaN;
+}
+
+/** Every box offers eight attach handles: the middle of each side and the four corners. */
+export const DrawsEightAttachHandlesOnEachNode: Story = {
+  render: () => <Host />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    const ids = [...node.querySelectorAll(".react-flow__handle")].map((h) => h.getAttribute("data-handleid")).sort();
+    expect(ids).toEqual(["bottom", "bottom_left", "bottom_right", "left", "right", "top", "top_left", "top_right"]);
+  },
+};
+
+/** A line meets the nearest points unless the consumer fixes an end; a fixed end moves where the line starts. */
+export const AFixedAttachPointMovesWhereTheLineStarts: Story = {
+  render: () => (
+    <div className="stack">
+      <div data-testid="automatic">
+        <GraphCanvas
+          nodes={NODES.slice(0, 2)} edges={[{ id: "e1", source: "sensor", target: "gateway" }]} ariaLabel="Automatic" showViewToggle={false}
+        />
+      </div>
+      <div data-testid="fixed">
+        <GraphCanvas
+          nodes={NODES.slice(0, 2)} edges={[{ id: "e1", source: "sensor", target: "gateway", sourcePoint: "bottom" }]}
+          ariaLabel="Fixed" showViewToggle={false}
+        />
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findAllByLabelText("Sensor, node");
+    const automatic = canvas.getByTestId("automatic");
+    const fixed = canvas.getByTestId("fixed");
+    await waitFor(() => expect(lineStartY(automatic, "e1")).not.toBeNaN());
+    await waitFor(() => expect(lineStartY(fixed, "e1")).not.toBeNaN());
+    // Both boxes are 64 high at the same height, so the automatic line starts at mid-height and the fixed one at the bottom.
+    expect(lineStartY(fixed, "e1")).toBeGreaterThan(lineStartY(automatic, "e1"));
+  },
+};
+
+/** The numbers of a straight line's path ("M sx,sy L ex,ey"): `[sx, sy, ex, ey]`. */
+function lineEnds(root: HTMLElement, edgeId: string): number[] {
+  const d = root.querySelector(`.react-flow__edge[data-id="${edgeId}"] path.react-flow__edge-path`)?.getAttribute("d") ?? "";
+  return (d.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).map(Number);
+}
+
+/** Boxes side by side are joined by a level line from side to side, and boxes stacked by a vertical line from bottom to top. */
+export const TheLineJoinsTheNearestPointsOfTwoBoxes: Story = {
+  render: () => (
+    <div className="stack">
+      <div data-testid="beside">
+        <GraphCanvas
+          nodes={[{ id: "a", label: "A", x: 0, y: 0 }, { id: "b", label: "B", x: 300, y: 0 }]}
+          edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Beside" showViewToggle={false}
+        />
+      </div>
+      <div data-testid="below">
+        <GraphCanvas
+          nodes={[{ id: "a", label: "A", x: 0, y: 0 }, { id: "b", label: "B", x: 0, y: 300 }]}
+          edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Below" showViewToggle={false}
+        />
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => {
+      expect(lineEnds(canvas.getByTestId("beside"), "e1").length).toBeGreaterThanOrEqual(4);
+      expect(lineEnds(canvas.getByTestId("below"), "e1").length).toBeGreaterThanOrEqual(4);
+    });
+    const [sx, sy, ex, ey] = lineEnds(canvas.getByTestId("beside"), "e1");
+    expect(ex).toBeGreaterThan(sx);
+    expect(ey).toBeCloseTo(sy, 0);
+    const [vx, vy, wx, wy] = lineEnds(canvas.getByTestId("below"), "e1");
+    expect(wy).toBeGreaterThan(vy);
+    expect(wx).toBeCloseTo(vx, 0);
+  },
+};
+
+/** A read-only canvas offers no way to change where a line meets its box. */
+export const ReadOnlyOffersNoAnchorChange: Story = {
+  args: { onEdgeAnchorChange: fn() },
+  render: (args) => <Host readOnly onEdgeAnchorChange={args.onEdgeAnchorChange} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Sensor, node");
+    expect(canvasElement.querySelectorAll(".react-flow__edgeupdater").length).toBe(0);
+    expect(args.onEdgeAnchorChange).not.toHaveBeenCalled();
+  },
+};
+
+/** Dragging the end of a line to another attach point of the same box reports the new point once, naming only that end. */
+export const DraggingALineEndReportsTheNewAttachPoint: Story = {
+  args: { onEdgeAnchorChange: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={[{ id: "a", label: "A", x: 0, y: 0 }, { id: "b", label: "B", x: 300, y: 0 }]}
+      edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Anchors" showViewToggle={false} onEdgeAnchorChange={args.onEdgeAnchorChange}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("B, node");
+    const handle = node.querySelector('.react-flow__handle[data-handleid="bottom"]') as HTMLElement;
+    const updater = await waitFor(() => {
+      const found = canvasElement.querySelector(".react-flow__edgeupdater-target") as HTMLElement | null;
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    const from = updater.getBoundingClientRect();
+    const to = handle.getBoundingClientRect();
+    const start = { clientX: from.left + from.width / 2, clientY: from.top + from.height / 2 };
+    const end = { clientX: to.left + to.width / 2, clientY: to.top + to.height / 2 };
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: updater, coords: start },
+      { target: handle, coords: { clientX: (start.clientX + end.clientX) / 2, clientY: (start.clientY + end.clientY) / 2 } },
+      { target: handle, coords: end },
+      { keys: "[/MouseLeft]", target: handle, coords: end },
+    ]);
+    await waitFor(() => expect(args.onEdgeAnchorChange).toHaveBeenCalledWith("e1", { targetPoint: "bottom" }));
+    expect(args.onEdgeAnchorChange).toHaveBeenCalledTimes(1);
+  },
+};

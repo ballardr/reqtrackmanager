@@ -199,8 +199,8 @@ def add_diagram_routes(router: APIRouter) -> None:
         project_id: uuid.UUID, diagram_id: uuid.UUID, payload: LayoutSave,
         current_user: User = Depends(view_diagrams), db: Session = Depends(get_db),
     ):
-        """Replaces the diagram's placements and notes (the editor's save); an element left out is unplaced, never
-        deleted. 409 if the `version` is stale."""
+        """Replaces the diagram's placements, notes and line anchors (the editor's save); an element left out is
+        unplaced, never deleted, and its line anchors go with it. 409 if the `version` is stale."""
         project = project_or_404(db, project_id)
         require_architect(db, current_user, project, DIAGRAM_MANAGE_PERMISSION)
         diagram = as_http(lambda: diagrams.save_layout(db, project, current_user, diagram_id, payload))

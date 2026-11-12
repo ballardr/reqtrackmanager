@@ -31,10 +31,10 @@ Design decisions:
 - The four vocabulary keys are template configuration; the records, the collections and their links
   are template records, reset to fresh drafts without creator or archived records.
 - Diagrams: a diagram travels with its element boxes (keyed by element code, or a foreign reference for an element
-  another owner shares), notes and toggles. A toggle's rule names vocabulary rows by name (never an id) and its manual
-  members by code, so a bundle holds no ids; an import numbers the diagram afresh and drops, with a warning, a box,
-  member or scope it cannot resolve. A diagram is a template record, reset to a fresh draft that places only the
-  template's own elements.
+  another owner shares), notes, line anchors (the two elements and their attach points) and toggles. A toggle's rule
+  names vocabulary rows by name (never an id) and its manual members by code, so a bundle holds no ids; an import
+  numbers the diagram afresh and drops, with a warning, a box, member, anchor or scope it cannot resolve. A diagram is a
+  template record, reset to a fresh draft that places only the template's own elements.
 - Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
   an import can never publish anything to a project or a group by itself. An organisation bundle carries the
   organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
@@ -57,12 +57,13 @@ from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
-from app.modules.architecture.enums import PortDirection, RecordStatus
+from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureCollection,
     ArchitectureCollectionMember,
     ArchitectureConnection,
     ArchitectureDiagram,
+    ArchitectureDiagramAnchor,
     ArchitectureDiagramNote,
     ArchitectureDiagramPlacement,
     ArchitectureDiagramToggle,
@@ -683,8 +684,8 @@ def _diagrams_json(
     db: Session, project: Project, codes: dict[UUID, str], connection_codes: dict[UUID, str], type_names: dict[UUID, str],
     emails: dict[UUID, str],
 ) -> tuple[list[dict[str, Any]], list[ArchitectureDiagram]]:
-    """The project's diagrams for the bundle, and the rows exported: boxes, notes and toggles, with elements named by
-    code (or a foreign reference) and a toggle's rule types by name."""
+    """The project's diagrams for the bundle, and the rows exported: boxes, notes, line anchors and toggles, with elements
+    named by code (or a foreign reference) and a toggle's rule types by name."""
     rows = list(db.scalars(
         select(ArchitectureDiagram).where(ArchitectureDiagram.project_id == project.id).order_by(ArchitectureDiagram.unique_code)
     ))
@@ -698,6 +699,10 @@ def _diagrams_json(
     notes = list(db.scalars(
         select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.diagram_id.in_(ids))
         .order_by(ArchitectureDiagramNote.sort_order, ArchitectureDiagramNote.id)
+    ))
+    anchors = list(db.scalars(
+        select(ArchitectureDiagramAnchor).where(ArchitectureDiagramAnchor.diagram_id.in_(ids))
+        .order_by(ArchitectureDiagramAnchor.created_at, ArchitectureDiagramAnchor.id)
     ))
     toggles = list(db.scalars(
         select(ArchitectureDiagramToggle).where(ArchitectureDiagramToggle.diagram_id.in_(ids))
@@ -719,6 +724,9 @@ def _diagrams_json(
     by_diagram_notes: dict[UUID, list[ArchitectureDiagramNote]] = {}
     for note in notes:
         by_diagram_notes.setdefault(note.diagram_id, []).append(note)
+    by_diagram_anchors: dict[UUID, list[ArchitectureDiagramAnchor]] = {}
+    for anchor in anchors:
+        by_diagram_anchors.setdefault(anchor.diagram_id, []).append(anchor)
     by_diagram_toggles: dict[UUID, list[ArchitectureDiagramToggle]] = {}
     for toggle in toggles:
         by_diagram_toggles.setdefault(toggle.diagram_id, []).append(toggle)
@@ -756,6 +764,11 @@ def _diagrams_json(
             "notes": [
                 {"text": n.text, "x": n.x, "y": n.y, "width": n.width, "height": n.height}
                 for n in by_diagram_notes.get(d.id, ())
+            ],
+            "anchors": [
+                {"source": _element_ref(codes, foreign, a.source_element_id), "target": _element_ref(codes, foreign, a.target_element_id),
+                 "source_point": a.source_point, "target_point": a.target_point}
+                for a in by_diagram_anchors.get(d.id, ())
             ],
             "toggles": [toggle_json(t) for t in by_diagram_toggles.get(d.id, ())],
             "created_by_email": _email(emails, d.creator_id), "created_at": _stamp(d.created_at),
@@ -841,6 +854,32 @@ def _rule_ids(rule: dict[str, Any], key: str, vocabulary: ArchitectureVocabulary
     return [str(by_name[n.casefold()]) for n in rule.get(key, []) if n.casefold() in by_name]
 
 
+def _import_anchors(
+    db: Session, project: Project, current_user: User, elements: dict[str, UUID], diagram_id: UUID,
+    entries: list[dict[str, Any]], placed: set[UUID], code: str, warnings: BundleImportWarnings,
+) -> None:
+    """Recreates a diagram's line anchors. One whose ends are not both boxes of the imported diagram, whose point is not
+    one of the eight, or that repeats a line already anchored, is dropped with a warning."""
+    valid = {p.value for p in AttachPoint}
+    seen: set[frozenset[UUID]] = set()
+    for entry in entries:
+        source = _resolve_ref(db, project, current_user, elements, entry.get("source") or {})
+        target = _resolve_ref(db, project, current_user, elements, entry.get("target") or {})
+        points = (entry.get("source_point"), entry.get("target_point"))
+        if (
+            source is None or target is None or source == target or source not in placed or target not in placed
+            or any(p is not None and p not in valid for p in points) or points == (None, None)
+            or frozenset((source, target)) in seen
+        ):
+            warnings.add(f"Diagram {code}: a line anchor could not be restored — left out.")
+            continue
+        seen.add(frozenset((source, target)))
+        db.add(ArchitectureDiagramAnchor(
+            diagram_id=diagram_id, source_element_id=source, target_element_id=target,
+            source_point=points[0], target_point=points[1],
+        ))
+
+
 def _import_diagrams(
     db: Session, project: Project, entries: list[dict[str, Any]], elements: dict[str, UUID], connections: dict[str, UUID],
     current_user: User, users: UserResolver, warnings: BundleImportWarnings,
@@ -881,6 +920,7 @@ def _import_diagrams(
                 diagram_id=diagram.id, element_id=element_id, x=box.get("x", 0.0), y=box.get("y", 0.0),
                 width=box.get("width", 160.0), height=box.get("height", 80.0), collapsed=bool(box.get("collapsed")),
             ))
+        _import_anchors(db, project, current_user, elements, diagram.id, entry.get("anchors", []), seen, code, warnings)
         for order, note in enumerate(entry.get("notes", [])):
             db.add(ArchitectureDiagramNote(
                 diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),

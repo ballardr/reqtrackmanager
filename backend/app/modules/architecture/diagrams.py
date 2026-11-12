@@ -2,7 +2,7 @@
 Module: modules.architecture.diagrams
 
 The rules for diagrams and what they hold: create, edit, move between statuses, archive and delete a diagram; replace
-its layout (placements and notes) or its toggles; place or unplace one element. The read side (the resolved view) is in
+its layout (placements, notes and line anchors) or its toggles; place or unplace one element. The read side (the resolved view) is in
 `diagram_view`.
 
 Responsibilities:
@@ -25,6 +25,9 @@ Design decisions:
   cannot be newly placed.
 - **Layout save replaces.** The editor owns undo and redo, so it saves the complete placement and note lists; an element
   left out is unplaced. An id that names a note or toggle of another diagram is refused.
+- **Line anchors follow the boxes.** An anchor joins two placed elements, so unplacing either removes it (the layout save and
+  `remove_placement` both do), and a save may not name an element that is not placed. An anchor whose line is not drawn
+  at the moment (a view switch hides an end, or roll-up draws another pair) is kept and simply unused.
 - **Toggle rules name vocabulary rows, domains and tag names, never records;** a toggle's manual members are the only
   record references, and each must be readable.
 
@@ -48,6 +51,7 @@ from app.modules.architecture.enums import RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureDiagram,
+    ArchitectureDiagramAnchor,
     ArchitectureDiagramNote,
     ArchitectureDiagramPlacement,
     ArchitectureDiagramToggle,
@@ -63,6 +67,7 @@ from app.modules.architecture.records import (
     _touch,
 )
 from app.modules.architecture.schemas import (
+    AnchorIn,
     DiagramCreate,
     DiagramOut,
     DiagramUpdate,
@@ -301,6 +306,71 @@ def notes_of(db: Session, diagram_id: uuid.UUID) -> list[ArchitectureDiagramNote
     ))
 
 
+def anchors_of(db: Session, diagram_id: uuid.UUID) -> list[ArchitectureDiagramAnchor]:
+    """The diagram's line anchors in a stable order."""
+    return list(db.scalars(
+        select(ArchitectureDiagramAnchor).where(ArchitectureDiagramAnchor.diagram_id == diagram_id)
+        .order_by(ArchitectureDiagramAnchor.created_at, ArchitectureDiagramAnchor.id)
+    ))
+
+
+def _check_anchors(anchors: Sequence[AnchorIn], placed: set[uuid.UUID]) -> None:
+    """Checks the anchors of a save: both ends placed and different, one line once (either direction), a point given.
+
+    Raises:
+        RuleError: 400 otherwise.
+    """
+    seen: set[frozenset[uuid.UUID]] = set()
+    for anchor in anchors:
+        if anchor.source_element_id == anchor.target_element_id:
+            raise RuleError("A line joins two different elements.", 400)
+        if anchor.source_point is None and anchor.target_point is None:
+            raise RuleError("A line anchor must fix at least one end.", 400)
+        if anchor.source_element_id not in placed or anchor.target_element_id not in placed:
+            raise RuleError("A line anchor must join two elements placed on the diagram.", 400)
+        key = frozenset((anchor.source_element_id, anchor.target_element_id))
+        if key in seen:
+            raise RuleError("A line can have one anchor.", 400)
+        seen.add(key)
+
+
+def _sync_anchors(db: Session, diagram_id: uuid.UUID, wanted: Sequence[AnchorIn] | None, placed: set[uuid.UUID]) -> int:
+    """Makes the stored anchors match `wanted` (`None` keeps them), after dropping any whose box is no longer placed.
+    Returns how many rows were added, removed or changed."""
+    changed = 0
+    stored = anchors_of(db, diagram_id)
+    keep: dict[tuple[uuid.UUID, uuid.UUID], ArchitectureDiagramAnchor] = {}
+    for row in stored:
+        if row.source_element_id not in placed or row.target_element_id not in placed:
+            db.delete(row)
+            changed += 1
+        else:
+            keep[(row.source_element_id, row.target_element_id)] = row
+    if wanted is None:
+        return changed
+    given = {(a.source_element_id, a.target_element_id): a for a in wanted}
+    for key, row in keep.items():
+        a = given.get(key)
+        if a is None:
+            db.delete(row)
+            changed += 1
+        elif (row.source_point, row.target_point) != (
+            a.source_point.value if a.source_point else None, a.target_point.value if a.target_point else None,
+        ):
+            row.source_point = a.source_point.value if a.source_point else None
+            row.target_point = a.target_point.value if a.target_point else None
+            changed += 1
+    for key, a in given.items():
+        if key not in keep:
+            db.add(ArchitectureDiagramAnchor(
+                diagram_id=diagram_id, source_element_id=a.source_element_id, target_element_id=a.target_element_id,
+                source_point=a.source_point.value if a.source_point else None,
+                target_point=a.target_point.value if a.target_point else None,
+            ))
+            changed += 1
+    return changed
+
+
 def _box(row: ArchitectureDiagramPlacement | ArchitectureDiagramNote) -> tuple[float, float, float, float]:
     return (row.x, row.y, row.width, row.height)
 
@@ -308,15 +378,15 @@ def _box(row: ArchitectureDiagramPlacement | ArchitectureDiagramNote) -> tuple[f
 def save_layout(
     db: Session, project: Any, actor: User, diagram_id: uuid.UUID, payload: LayoutSave,
 ) -> ArchitectureDiagram:
-    """Replaces the diagram's placements and notes with the lists given. The caller commits.
+    """Replaces the diagram's placements, notes and (when given) line anchors with the lists given. The caller commits.
 
     Elements already placed stay (even if now retired or unreadable); each newly placed element must pass
-    `_check_new_element`. An element left out is unplaced, never deleted. Nothing changes (and the version does not
-    advance) when the lists equal what is stored.
+    `_check_new_element`. An element left out is unplaced, never deleted, and its line anchors go with it. Nothing
+    changes (and the version does not advance) when the lists equal what is stored.
 
     Raises:
         RuleError: 404 if absent, 409 on a stale `version`, 400 for a repeated or unavailable element, a note id that
-            is not this diagram's, or a box that is not finite.
+            is not this diagram's, a box that is not finite, or an anchor that is not between two placed elements.
     """
     diagram = get_diagram(db, project.id, diagram_id, lock=True)
     _check_version(diagram, payload.version)
@@ -326,6 +396,8 @@ def save_layout(
     boxes: list[PlacementIn | NoteIn] = [*payload.placements, *payload.notes]
     for box in boxes:
         _check_box(box)
+    if payload.anchors is not None:
+        _check_anchors(payload.anchors, set(wanted_ids))
     existing = {p.element_id: p for p in placements_of(db, diagram.id)}
     _check_new_element(db, Viewer.of_user(actor, project), [e for e in wanted_ids if e not in existing])
 
@@ -373,13 +445,16 @@ def save_layout(
             )
             notes_changed += 1
 
-    if not (added or removed or moved or notes_changed):
+    anchors_changed = _sync_anchors(db, diagram.id, payload.anchors, set(wanted_ids))
+
+    if not (added or removed or moved or notes_changed or anchors_changed):
         return diagram
     diagram.version += 1
     db.flush()
     _audit(
         db, diagram.id, "layout_saved", actor, project.id,
         placements_added=added, placements_removed=removed, placements_moved=moved, notes_changed=notes_changed,
+        anchors_changed=anchors_changed,
     )
     return diagram
 
@@ -426,9 +501,12 @@ def remove_placement(
     if row is None:
         raise RuleError("This element is not on the diagram.", 404)
     db.delete(row)
+    anchors = [a for a in anchors_of(db, diagram.id) if element_id in (a.source_element_id, a.target_element_id)]
+    for anchor in anchors:
+        db.delete(anchor)
     diagram.version += 1
     db.flush()
-    _audit(db, diagram.id, "layout_saved", actor, project_id, placements_removed=1)
+    _audit(db, diagram.id, "layout_saved", actor, project_id, placements_removed=1, anchors_changed=len(anchors))
     return diagram
 
 

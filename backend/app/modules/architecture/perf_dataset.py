@@ -15,8 +15,8 @@ Design decisions:
   connection joins two elements, on a port each when both have one. Connections are generated after elements
   (`order`), so their ends exist, and diagrams after both.
 - The first diagram of a project is the large one (up to `_LARGE_DIAGRAM` elements, with a toggle and a note), so the
-  view and the SVG are measured on a big drawing; the others place a handful of elements. Toggle rules name a
-  domain, never a record.
+  view and the SVG are measured on a big drawing; the others place a handful of elements. A share of the lines between
+  neighbouring boxes carry anchors. Toggle rules name a domain, never a record.
 - Only project-owned records are generated. Organisation-owned elements, collections and grants are not (a
   profile's unit is the project); the visibility resolver's cost is covered by the scaling-shape guard instead.
 
@@ -30,11 +30,12 @@ import uuid
 
 from sqlalchemy import select
 
-from app.modules.architecture.enums import PortDirection, RecordStatus
+from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
     ArchitectureDiagram,
+    ArchitectureDiagramAnchor,
     ArchitectureDiagramNote,
     ArchitectureDiagramPlacement,
     ArchitectureDiagramToggle,
@@ -62,6 +63,7 @@ _PORT_NAMES = ("Main", "Control", "Data", "Power", "Debug", "Status")
 #: Most elements the first (large) diagram of a project places, and the range for the others.
 _LARGE_DIAGRAM = 200
 _SMALL_DIAGRAM = (3, 12)
+_ATTACH_POINTS = [point.value for point in AttachPoint]
 
 
 def _type_ids(
@@ -202,12 +204,21 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
         )
         size = min(len(elements), _LARGE_DIAGRAM if index == 0 else rng.randint(*_SMALL_DIAGRAM))
         columns = max(int(math.sqrt(size)), 1)
-        for slot, element_id in enumerate(rng.sample(elements, size)):
+        placed = rng.sample(elements, size)
+        for slot, element_id in enumerate(placed):
             batch.satellite(ArchitectureDiagramPlacement, {
                 "id": batch.new_id(), "diagram_id": record_id, "element_id": element_id,
                 "x": float(slot % columns * 200), "y": float(slot // columns * 120), "width": 160.0, "height": 80.0,
                 "collapsed": rng.random() < 0.1, "created_at": created, "updated_at": created,
             })
+        for first, second in zip(placed, placed[1:], strict=False):
+            if rng.random() < 0.15:
+                points = rng.sample(_ATTACH_POINTS, 2)
+                batch.satellite(ArchitectureDiagramAnchor, {
+                    "id": batch.new_id(), "diagram_id": record_id, "source_element_id": first, "target_element_id": second,
+                    "source_point": points[0], "target_point": points[1] if rng.random() < 0.7 else None,
+                    "created_at": created, "updated_at": created,
+                })
         for order in range(rng.choice((0, 1, 1, 2))):
             batch.satellite(ArchitectureDiagramNote, {
                 "id": batch.new_id(), "diagram_id": record_id, "text": textgen.title(rng), "x": float(order * 180),

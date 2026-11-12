@@ -229,6 +229,81 @@ export const SelectingALineListsTheConnectionsBehindIt: Story = {
   },
 };
 
+/** Selects the line between Gateway and Orders and returns the Selection card. */
+async function selectLine(canvas: ReturnType<typeof within>) {
+  const edge = await canvas.findByLabelText("Connection from Gateway to Orders");
+  edge.focus();
+  await userEvent.keyboard("{Enter}");
+  return within(await canvas.findByRole("region", { name: "Selection" }));
+}
+
+export const ChoosingALineEndInTheSelectionCardIsStoredWithTheLayout: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    // Gateway is at the left and Orders 300 to the right at the same height, so Automatic reads as the facing sides.
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Automatic (Right)");
+    await expect(panel.getByRole("combobox", { name: "Line ends at" })).toHaveDisplayValue("Automatic (Left)");
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line starts at" }), "Bottom");
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Bottom");
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "bottom", target_point: null }],
+      }),
+    ));
+  },
+};
+
+export const ChoosingAutomaticAgainRemovesTheAnchor: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: null }] }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Top");
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line starts at" }), "Automatic (Right)");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Top");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+  },
+};
+
+export const RemovingABoxDropsTheAnchorsOfItsLines: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: "bottom" }] }),
+    });
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    await userEvent.click(await canvas.findByRole("button", { name: "Remove from diagram" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({ anchors: [] })));
+  },
+};
+
+export const AnArchivedDiagramOffersNoLineEnds: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: ELEMENTS, diagramView: buildDiagramView({ diagram: buildDiagram({ is_archived: true }) }) });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(panel.queryByRole("combobox", { name: "Line starts at" })).not.toBeInTheDocument();
+  },
+};
+
 export const AddingAnElementDrawsItsConnectionsBeforeSaving: Story = {
   beforeEach: () => {
     mockArchitectureReads({

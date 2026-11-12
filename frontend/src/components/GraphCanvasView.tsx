@@ -8,6 +8,9 @@
  * Responsibilities:
  * - Turn `GraphCanvasNode`/`GraphCanvasEdge` into React Flow nodes and edges, and report selection, moves and new
  *   connections back through the callbacks.
+ * - Draw eight attach handles on every box and route each line between the points `graphAttachPoints` chooses (the nearest
+ *   pair, or the ends the consumer fixed), following a box while it is dragged or resized; dragging a line's end to
+ *   another handle of the same box is reported as an anchor change.
  * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
  *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
  *   Backspace asks the consumer to delete it, each with a spoken name.
@@ -15,6 +18,7 @@
  * Design decisions:
  * - Labels are React text children (nodes) or React Flow's SVG text (connections), never markup. A symbol is an
  *   `<img>` of a sanitised data URI (`utils/safeSvgImage`), so it cannot run script or reach the page's DOM.
+ * - Lines are straight, joining two attach points, so the canvas and the server's drawing of a diagram show the same line.
  * - Selection is single (no multi-select) and deletion is not handled here: what a delete means belongs to the
  *   consumer. Selection may be controlled (`selected`) or kept here.
  * - A dragged position is kept locally until the consumer's props change to a different position, so a consumer
@@ -47,6 +51,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import { GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
+import { ATTACH_POINTS, lineAttachPoints, type AttachPoint } from "./graphAttachPoints";
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
@@ -64,7 +69,22 @@ const RESIZE_KEYS: Record<string, { width: number; height: number }> = {
 type NodeData = { label: string; caption?: string; symbol: string | null; accent?: string; dashed?: boolean; resizable: boolean };
 type FlowNode = Node<NodeData, "graph">;
 
-/** One box on the canvas: accent edge, optional symbol and the text label; handles are for drawing lines. */
+/**
+ * Where each attach point's handle sits. A handle is centred on its point; the position tells React Flow which part of the
+ * handle's own box a line ends on, so a corner handle uses the side facing outward vertically.
+ */
+const HANDLE_POSITION: Record<AttachPoint, Position> = {
+  top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left,
+  top_right: Position.Top, bottom_right: Position.Bottom, bottom_left: Position.Bottom, top_left: Position.Top,
+};
+const HANDLE_STYLE: Partial<Record<AttachPoint, CSSProperties>> = {
+  top_right: { top: 0, left: "100%", transform: "translate(-50%, -50%)" },
+  bottom_right: { top: "100%", left: "100%", transform: "translate(-50%, -50%)" },
+  bottom_left: { top: "100%", left: 0, transform: "translate(-50%, -50%)" },
+  top_left: { top: 0, left: 0, transform: "translate(-50%, -50%)" },
+};
+
+/** One box on the canvas: accent edge, optional symbol and the text label; the eight handles are for drawing lines. */
 function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
   return (
     <div
@@ -72,13 +92,14 @@ function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
       style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}
     >
       {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
-      <Handle type="target" position={Position.Left} />
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
       <span className="graph-node-text">
         <span className="graph-node-label">{data.label}</span>
         {data.caption && <span className="graph-node-caption">{data.caption}</span>}
       </span>
-      <Handle type="source" position={Position.Right} />
+      {ATTACH_POINTS.map((point) => (
+        <Handle key={point} id={point} type="source" position={HANDLE_POSITION[point]} style={HANDLE_STYLE[point]} />
+      ))}
     </div>
   );
 }
@@ -102,6 +123,7 @@ export function GraphCanvasView({
   onSelect,
   onNodesMove,
   onConnect,
+  onEdgeAnchorChange,
   resizable = false,
   onNodesResize,
   onDelete,
@@ -146,26 +168,32 @@ export function GraphCanvasView({
     [nodes, moved, sized, selection, text, resizable, readOnly],
   );
 
-  const flowEdges = useMemo<Edge[]>(
-    () =>
-      edges.map((e) => {
-        const direction = e.direction ?? "forward";
-        const marker = { type: MarkerType.ArrowClosed, color: e.color };
-        return {
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          type: "smoothstep",
-          label: e.label,
-          selected: selection?.kind === "edge" && selection.id === e.id,
-          ariaLabel: text.edgeAria(labels.get(e.source) ?? e.source, labels.get(e.target) ?? e.target, e.label),
-          markerEnd: direction === "none" ? undefined : marker,
-          markerStart: direction === "both" ? marker : undefined,
-          style: { stroke: e.color, strokeDasharray: e.dashed ? "6 4" : undefined },
-        };
-      }),
-    [edges, selection, labels, text],
-  );
+  const flowEdges = useMemo<Edge[]>(() => {
+    const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
+    return edges.flatMap<Edge>((e) => {
+      const from = boxes.get(e.source);
+      const to = boxes.get(e.target);
+      if (!from || !to) return [];
+      const direction = e.direction ?? "forward";
+      const marker = { type: MarkerType.ArrowClosed, color: e.color };
+      const [sourceHandle, targetHandle] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
+      return [{
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle,
+        targetHandle,
+        type: "straight",
+        label: e.label,
+        selected: selection?.kind === "edge" && selection.id === e.id,
+        reconnectable: !readOnly && onEdgeAnchorChange !== undefined,
+        ariaLabel: text.edgeAria(labels.get(e.source) ?? e.source, labels.get(e.target) ?? e.target, e.label),
+        markerEnd: direction === "none" ? undefined : marker,
+        markerStart: direction === "both" ? marker : undefined,
+        style: { stroke: e.color, strokeDasharray: e.dashed ? "6 4" : undefined },
+      }];
+    });
+  }, [edges, flowNodes, selection, labels, text, readOnly, onEdgeAnchorChange]);
 
   const choose = useCallback(
     (next: GraphCanvasSelection | null) => {
@@ -253,6 +281,26 @@ export function GraphCanvasView({
     [onConnect],
   );
 
+  /**
+   * A line's end was dragged to a handle. Only a move to another handle of the same box counts as choosing a point; an end
+   * dropped on a different box changes nothing (a line's ends are its connection's elements, not a point to move).
+   */
+  const handleReconnect = useCallback(
+    (previous: Edge, c: Connection) => {
+      if (!onEdgeAnchorChange) return;
+      const forward = c.source === previous.source && c.target === previous.target;
+      const swapped = c.source === previous.target && c.target === previous.source;
+      if (!forward && !swapped) return;
+      const sourceHandle = (forward ? c.sourceHandle : c.targetHandle) as AttachPoint | null;
+      const targetHandle = (forward ? c.targetHandle : c.sourceHandle) as AttachPoint | null;
+      const change: { sourcePoint?: AttachPoint; targetPoint?: AttachPoint } = {};
+      if (sourceHandle && sourceHandle !== previous.sourceHandle) change.sourcePoint = sourceHandle;
+      if (targetHandle && targetHandle !== previous.targetHandle) change.targetPoint = targetHandle;
+      if (change.sourcePoint || change.targetPoint) onEdgeAnchorChange(previous.id, change);
+    },
+    [onEdgeAnchorChange],
+  );
+
   const keyResize = resizable && !readOnly && onNodesResize !== undefined;
   const keyDelete = !readOnly && onDelete !== undefined;
 
@@ -315,6 +363,8 @@ export function GraphCanvasView({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
+        onReconnect={handleReconnect}
+        edgesReconnectable={!readOnly && onEdgeAnchorChange !== undefined}
         onInit={(instance) => { flow.current = instance; }}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}

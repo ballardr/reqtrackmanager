@@ -5,8 +5,9 @@
  * - A box: open the element, open its inside as a diagram of its own, take it off this diagram (the element is not
  *   changed), or delete the element from the model (a separate, confirmed action that needs the code typed).
  * - A note: edit its text (applied when the field loses focus, as one undo step) or remove it.
- * - A line: the connections behind it (a rolled-up or merged line stands for several) and, for a bridged line, the hidden
- *   elements it passes through.
+ * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
+ *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
+ *   keyboard route to dragging a line's end.
  * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
  *   line between two boxes does.
  * A box the viewer cannot read shows its code only and offers no actions beyond removing it from the diagram.
@@ -20,10 +21,11 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TextAreaField } from "../../components/FormFields";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useRecordCode } from "../../hooks/useRecordCode";
-import { NOTE_NODE_PREFIX, type EditorBox, type EditorNote } from "./diagramEditorModel";
+import { ATTACH_POINTS, ATTACH_POINT_LABEL, lineAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
+import { NOTE_NODE_PREFIX, anchorOf, type EditorBox, type EditorNote } from "./diagramEditorModel";
 import { boxName } from "./diagramOutlineModel";
 import { ARCHITECTURE_HELP } from "./help";
-import type { DiagramViewEdge } from "./types";
+import type { DiagramAnchor, DiagramViewEdge } from "./types";
 
 /**
  * @param projectId The diagram's project, for the links.
@@ -31,29 +33,34 @@ import type { DiagramViewEdge } from "./types";
  * @param boxes Every box of the layout.
  * @param notes Every note of the layout.
  * @param edges The resolved lines.
+ * @param anchors The attach points chosen for lines.
  * @param hidden The boxes a view switch hides (not offered as the other end of a connection).
  * @param editable False hides every action that changes the diagram or the model.
  * @param onRemoveBox Takes an element off the diagram.
  * @param onConnect Starts a connection from a box to the element with the given id.
  * @param onOpenInside Opens (or creates) the diagram of the element's inside.
  * @param onDeleteElement Deletes the element from the model.
+ * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic).
  * @param onEditNote Sets a note's text.
  * @param onRemoveNote Removes a note.
  */
 export function DiagramSelectionPanel({
-  projectId, selection, boxes, notes, edges, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement, onEditNote, onRemoveNote,
+  projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
+  onAnchorChange, onEditNote, onRemoveNote,
 }: {
   projectId: string;
   selection: GraphCanvasSelection | null;
   boxes: EditorBox[];
   notes: EditorNote[];
   edges: DiagramViewEdge[];
+  anchors: DiagramAnchor[];
   hidden: ReadonlySet<string>;
   editable: boolean;
   onRemoveBox: (box: EditorBox) => void;
   onConnect: (box: EditorBox, targetId: string) => void;
   onOpenInside: (box: EditorBox) => void;
   onDeleteElement: (box: EditorBox) => void;
+  onAnchorChange: (edge: DiagramViewEdge, change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
   onEditNote: (key: string, text: string) => void;
   onRemoveNote: (key: string) => void;
 }) {
@@ -124,6 +131,7 @@ export function DiagramSelectionPanel({
             ))}
           </tbody>
         </table>
+        {editable && <LineEnds edge={edge} boxes={boxes} anchors={anchors} onChange={(change) => onAnchorChange(edge, change)} />}
       </>
     );
   } else {
@@ -143,6 +151,44 @@ export function DiagramSelectionPanel({
         />
       )}
     </DetailCard>
+  );
+}
+
+/**
+ * The attach points of a line's two ends, as two lists: Automatic (with the point it would use) or one of the box's eight
+ * points. A line whose end is not a box of the layout offers nothing.
+ */
+function LineEnds({
+  edge, boxes, anchors, onChange,
+}: {
+  edge: DiagramViewEdge;
+  boxes: EditorBox[];
+  anchors: DiagramAnchor[];
+  onChange: (change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
+}) {
+  const from = boxes.find((b) => b.elementId === edge.source_element_id);
+  const to = boxes.find((b) => b.elementId === edge.target_element_id);
+  if (!from || !to) return null;
+  const chosen = anchorOf(anchors, edge.source_element_id, edge.target_element_id);
+  // What Automatic would give each end with the other end as it is now.
+  const sourceAutomatic = lineAttachPoints(from, to, null, chosen.targetPoint)[0];
+  const targetAutomatic = lineAttachPoints(from, to, chosen.sourcePoint, null)[1];
+  const options = (automatic: AttachPoint) => [
+    { value: "", label: `Automatic (${ATTACH_POINT_LABEL[automatic]})` },
+    ...ATTACH_POINTS.map((p) => ({ value: p, label: ATTACH_POINT_LABEL[p] })),
+  ];
+  const parse = (value: string): AttachPoint | null => (ATTACH_POINTS.find((p) => p === value) ?? null);
+  return (
+    <>
+      <LabeledSelect
+        label="Line starts at" help={ARCHITECTURE_HELP.diagramLineFrom} placeholder={null} value={chosen.sourcePoint ?? ""}
+        options={options(sourceAutomatic)} onChange={(value) => onChange({ sourcePoint: parse(value) })}
+      />
+      <LabeledSelect
+        label="Line ends at" help={ARCHITECTURE_HELP.diagramLineTo} placeholder={null} value={chosen.targetPoint ?? ""}
+        options={options(targetAutomatic)} onChange={(value) => onChange({ targetPoint: parse(value) })}
+      />
+    </>
   );
 }
 

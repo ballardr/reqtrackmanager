@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 from app.modules.architecture import diagrams, records
 from app.modules.architecture.connection_tree import descendant_map
 from app.modules.architecture.diagram_resolver import ModelConnection, Resolution, resolve
-from app.modules.architecture.enums import ElementShape
+from app.modules.architecture.enums import AttachPoint, ElementShape
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
@@ -48,6 +48,7 @@ from app.modules.architecture.models import (
     ArchitectureElementType,
 )
 from app.modules.architecture.schemas import (
+    AnchorOut,
     DiagramView,
     NoteOut,
     ToggleOut,
@@ -142,7 +143,7 @@ def build_view(
         include_retired: Also draw retired connections.
 
     Returns:
-        The diagram's record, toggles with their state, nodes, lines and notes.
+        The diagram's record, toggles with their state, nodes, lines, notes and line anchors.
     """
     state = state or ToggleState()
     placements = diagrams.placements_of(db, diagram.id)
@@ -214,6 +215,14 @@ def build_view(
         nodes=_nodes(db, viewer, placements, elements, readable, types, resolution, hidden_elements, parents),
         edges=_edges(db, viewer, diagram, connections, connection_types, elements, readable, resolution),
         notes=[NoteOut(id=n.id, text=n.text, x=n.x, y=n.y, width=n.width, height=n.height) for n in notes],
+        anchors=[
+            AnchorOut(
+                source_element_id=a.source_element_id, target_element_id=a.target_element_id,
+                source_point=AttachPoint(a.source_point) if a.source_point else None,
+                target_point=AttachPoint(a.target_point) if a.target_point else None,
+            )
+            for a in diagrams.anchors_of(db, diagram.id)
+        ],
     )
 
 

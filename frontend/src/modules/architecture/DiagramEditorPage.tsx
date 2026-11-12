@@ -7,8 +7,8 @@
  * Selection card; Configuration holds the connection-detail setting and the view switches. Links and Activity are in the aside.
  * The pending layout, selection and undo history belong to the page, so a change of tab loses none of them.
  *
- * Editing model: boxes and notes are edited locally (move, resize, add, remove, drop from the Add menu, drag a line between
- * two boxes) with undo and redo, and stored together by Save, which quotes the diagram's version; a 409 offers a reload
+ * Editing model: boxes, notes and line anchors are edited locally (move, resize, add, remove, drop from the Add menu, drag a line
+ * between two boxes, drag a line's end to another attach point or choose it in the Selection card) with undo and redo, and stored together by Save, which quotes the diagram's version; a 409 offers a reload
  * instead of overwriting a newer save. Creating a connection or deleting an element writes to the model at once, so a
  * pending layout is saved first. Taking a box off the diagram never deletes its element; deleting the element is a separate,
  * confirmed action. View switches are stored when changed, but flipping one on the page changes only the address.
@@ -48,7 +48,7 @@ import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
   addBoxes, addNote, boxFromElement, canvasEdges, canvasNodes, editNote, moveItems, newNoteKey, nextFreePosition, removeBox,
-  removeNote, resizeItems, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH,
+  removeNote, resizeItems, setLineAnchor, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH,
 } from "./diagramEditorModel";
 import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
 import { DiagramFormModal } from "./DiagramFormModal";
@@ -451,6 +451,10 @@ export function DiagramEditorPage() {
                 readOnly={!editable} resizable selected={selection} onSelect={setSelection}
                 onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
                 onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
+                onEdgeAnchorChange={(edgeId, change) => {
+                  const line = resolved.edges.find((e) => e.id === edgeId);
+                  if (line) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
+                }}
                 onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected}
                 onDropItem={(payload, at) => {
                   if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
@@ -463,11 +467,12 @@ export function DiagramEditorPage() {
             </div>
             <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
               <DiagramSelectionPanel
-                projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} hidden={resolved.hidden} editable={editable}
+                projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} hidden={resolved.hidden} editable={editable}
                 onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
                 onConnect={(box, targetId) => void startConnection(box.elementId, targetId)}
                 onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
                 onDeleteElement={(box) => void deleteElement(box.elementId)}
+                onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
                 onEditNote={(key, text) => editor.edit((l) => editNote(l, key, text))}
                 onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); }}
               />

@@ -39,6 +39,8 @@ export const ARCHITECTURE_HELP = {
   diagramPopulate: "Places the scope element's child elements (or the top-level elements for the system context) on the diagram in a grid. You can move, add and remove boxes afterwards.",
   diagramActivate: "Creates the diagram as Active instead of Draft. A diagram has no approval step, so this needs no more than permission to create.",
   diagramConnectTo: "Starts a new connection from the selected element to the one you choose, the same as drawing a line between the two boxes. Use it when you cannot drag with a pointer.",
+  diagramLineFrom: "Where the line meets the box it starts from. Automatic uses the point nearest the other end. You can also drag the end of a selected line to another point on the same box.",
+  diagramLineTo: "Where the line meets the box it ends at. Automatic uses the point nearest the other end. You can also drag the end of a selected line to another point on the same box.",
   toggleName: "The name shown on the switch (for example Security devices). It is also what a report or export lists when it names the switch.",
   toggleDefault: "Whether the switch starts on. A report or export uses this state unless it names another. Viewers can flip the switch on the page without saving.",
   toggleRule: "Elements and connections that belong to the switch by type, domain or tag, besides any chosen by hand. A connection type also matches the types beneath it. Switching it off hides all of them; a hidden element between two others is bridged by a dashed line.",

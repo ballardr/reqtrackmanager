@@ -6,7 +6,8 @@ part, so a document shows what the screen shows.
 
 Responsibilities:
 - Draw each visible node as its symbol or its type's shape, its code and name, and its ports as small tabs.
-- Draw each line between the node boxes, dashed when indirect, with an arrowhead when it has one direction, a count
+- Draw each line between two attach points of its boxes (the ones a person chose, else the nearest pair; see
+  `diagram_points`), dashed when indirect, with an arrowhead when it has one direction, a count
   when several connections collapse into it, and (with connection detail on) its type and protocol.
 - Draw notes as plain text.
 
@@ -19,7 +20,7 @@ Design decisions:
 - **Deterministic.** Elements are drawn in the order of the view, so equal views give equal bytes.
 - A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
 
-Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows).
+Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points).
 """
 
 from __future__ import annotations
@@ -32,8 +33,10 @@ from xml.sax.saxutils import escape
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.architecture.diagram_points import line_points, point_xy
+from app.modules.architecture.enums import AttachPoint
 from app.modules.architecture.models import ArchitectureSymbol
-from app.modules.architecture.schemas import DiagramView, ViewEdge, ViewNode
+from app.modules.architecture.schemas import AnchorOut, DiagramView, ViewEdge, ViewNode
 from app.modules.architecture.symbols import symbol_svg
 
 _DEFAULT_COLOR = "#475569"
@@ -171,16 +174,20 @@ def _node(node: ViewNode, symbols: dict[uuid.UUID, str]) -> str:
     return "".join(parts)
 
 
-def _clip(cx: float, cy: float, w: float, h: float, tx: float, ty: float) -> tuple[float, float]:
-    """Where the line from a box's centre toward `(tx, ty)` leaves the box."""
-    dx, dy = tx - cx, ty - cy
-    if dx == 0 and dy == 0:
-        return cx, cy
-    scale = min((w / 2) / abs(dx) if dx else math.inf, (h / 2) / abs(dy) if dy else math.inf)
-    return cx + dx * scale, cy + dy * scale
+def _anchor_points(
+    anchors: list[AnchorOut], edge: ViewEdge,
+) -> tuple[AttachPoint | None, AttachPoint | None]:
+    """The points a person chose for the line, as (source end, target end); an anchor stored for the opposite direction
+    of the same pair applies with its ends swapped."""
+    for anchor in anchors:
+        if (anchor.source_element_id, anchor.target_element_id) == (edge.source_element_id, edge.target_element_id):
+            return anchor.source_point, anchor.target_point
+        if (anchor.source_element_id, anchor.target_element_id) == (edge.target_element_id, edge.source_element_id):
+            return anchor.target_point, anchor.source_point
+    return None, None
 
 
-def _edges(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode]) -> tuple[str, str]:
+def _edges(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode], anchors: list[AnchorOut]) -> tuple[str, str]:
     """The `<defs>` (arrowheads) and the lines."""
     colors: dict[str, int] = {}
     lines: list[str] = []
@@ -197,11 +204,11 @@ def _edges(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode]) -> tuple[str
         index = rank.get(key, 0)
         rank[key] = index + 1
         offset = (index - (totals[key] - 1) / 2) * 16
-        ax, ay, bx, by = a.x + a.width / 2, a.y + a.height / 2, b.x + b.width / 2, b.y + b.height / 2
-        length = math.hypot(bx - ax, by - ay) or 1.0
-        nx, ny = -(by - ay) / length * offset, (bx - ax) / length * offset
-        x1, y1 = _clip(ax, ay, a.width, a.height, bx + nx, by + ny)
-        x2, y2 = _clip(bx, by, b.width, b.height, ax + nx, ay + ny)
+        chosen = _anchor_points(anchors, edge)
+        pa, pb = line_points((a.x, a.y, a.width, a.height), (b.x, b.y, b.width, b.height), chosen[0], chosen[1])
+        (x1, y1), (x2, y2) = point_xy((a.x, a.y, a.width, a.height), pa), point_xy((b.x, b.y, b.width, b.height), pb)
+        length = math.hypot(x2 - x1, y2 - y1) or 1.0
+        nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
         x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
         color = _color(edge.color_light)
         marker = colors.setdefault(color, len(colors))
@@ -261,7 +268,7 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     else:
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
-        defs, edge_svg = _edges(drawn_edges, boxes)
+        defs, edge_svg = _edges(drawn_edges, boxes, view.anchors)
         notes = "".join(
             f'<g><rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" fill="#FEF9C3" stroke="#CA8A04"/>'
             + "".join(

@@ -200,3 +200,24 @@ def test_the_suggestions_migration_adds_the_link_table_and_reverses_cleanly(clie
     assert _count("architecture_element_types", org["id"]) == before
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM architecture_element_type_suggestions")).scalar_one() == 0
+
+
+def test_the_anchors_migration_adds_the_table_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0179 drops the anchor table and leaves the diagrams; upgrading recreates it empty (a line with no
+    anchor uses the nearest points, so no existing diagram changes)."""
+    from app.modules.architecture.tests._helpers import make_diagram, setup
+
+    _org, project, token = setup(client, admin_token, "Arch anchors migration")
+    diagram = make_diagram(client, token, project["id"], "Kept")
+    command.downgrade(build_alembic_config(), "0178")
+    try:
+        assert not _table_exists("architecture_diagram_anchors")
+        with engine.connect() as conn:
+            assert conn.execute(
+                text("SELECT count(*) FROM architecture_diagrams WHERE id = :i"), {"i": uuid.UUID(diagram["id"])},
+            ).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_diagram_anchors")
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM architecture_diagram_anchors")).scalar_one() == 0

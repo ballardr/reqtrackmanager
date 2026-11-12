@@ -21,7 +21,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.architecture.enums import Domain, ElementShape, LineStyle, PortDirection, RecordStatus
+from app.modules.architecture.enums import AttachPoint, Domain, ElementShape, LineStyle, PortDirection, RecordStatus
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
 
@@ -454,13 +454,30 @@ class NoteIn(BaseModel):
     height: Extent = 60.0
 
 
+class AnchorIn(BaseModel):
+    """Where a drawn line meets its two boxes, chosen by a person. The line is the one joining the two placed elements
+    (a merged or rolled-up line has one anchor for all it stands for); an end left `None` is automatic. At least one end
+    is given."""
+
+    source_element_id: UUID
+    target_element_id: UUID
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+
+
+class AnchorOut(AnchorIn):
+    """A stored anchor."""
+
+
 class LayoutSave(BaseModel):
-    """Replaces a diagram's placements and notes (what the editor saves). `version` is the optimistic lock; an element
-    left out of `placements` is removed from the diagram (never from the model)."""
+    """Replaces a diagram's placements, notes and line anchors (what the editor saves). `version` is the optimistic lock;
+    an element left out of `placements` is removed from the diagram (never from the model), with its anchors. `anchors`
+    left out (`None`) keeps the stored ones; an empty list clears them."""
 
     version: int
     placements: list[PlacementIn] = Field(default_factory=list, max_length=2000)
     notes: list[NoteIn] = Field(default_factory=list, max_length=200)
+    anchors: list[AnchorIn] | None = Field(default=None, max_length=5000)
 
 
 class PlacementAdd(PlacementIn):
@@ -594,13 +611,15 @@ class ViewEdge(BaseModel):
 
 
 class DiagramView(BaseModel):
-    """A diagram resolved for drawing: its record, toggles with their state, nodes, lines and notes."""
+    """A diagram resolved for drawing: its record, toggles with their state, nodes, lines, notes and the line anchors a
+    person chose (a line with none uses the nearest points)."""
 
     diagram: DiagramOut
     toggles: list[ToggleOut]
     nodes: list[ViewNode]
     edges: list[ViewEdge]
     notes: list[NoteOut]
+    anchors: list[AnchorOut] = Field(default_factory=list)
 
 
 class ModelElement(BaseModel):

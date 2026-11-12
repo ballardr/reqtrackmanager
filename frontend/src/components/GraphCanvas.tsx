@@ -6,7 +6,8 @@
  * lazy loader for the drawing itself (`GraphCanvasView`, the only file that imports `@xyflow/react`).
  *
  * Responsibilities:
- * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`) and the events it gets back.
+ * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`) and the events it gets back. A box
+ *   has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
  * - Load the canvas on first use, so React Flow stays out of the main bundle, and show the list view while it
  *   loads, if it fails to load, or when the person (or consumer) asks for the list.
  *
@@ -23,6 +24,7 @@
 import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import type { AttachPoint } from "./graphAttachPoints";
 import { Spinner } from "./Spinner";
 
 /** A box on the canvas. `x`/`y` are the top-left corner in canvas units. */
@@ -60,6 +62,13 @@ export interface GraphCanvasEdge {
   color?: string;
   /** Arrow heads: toward the target (default), at both ends, or none. */
   direction?: "forward" | "both" | "none";
+  /**
+   * The attach point a person fixed on the source box, or null/undefined for automatic. An automatic end is the point
+   * nearest the other end; with both automatic the line joins the two nearest points (see `graphAttachPoints`).
+   */
+  sourcePoint?: AttachPoint | null;
+  /** The attach point fixed on the target box, or null/undefined for automatic. */
+  targetPoint?: AttachPoint | null;
 }
 
 /** What is selected: one node or one connection. */
@@ -95,6 +104,12 @@ export interface GraphCanvasProps {
    * deletes nothing itself: what a delete means belongs to the consumer.
    */
   onDelete?: (selection: GraphCanvasSelection) => void;
+  /**
+   * Called once when a person drags one end of a line to another attach point of the same box (not in read-only mode),
+   * with the end or ends that moved. The canvas stores nothing: the consumer keeps the point and passes it back as the
+   * edge's `sourcePoint`/`targetPoint`. Dragging an end to a different box is ignored.
+   */
+  onEdgeAnchorChange?: (edgeId: string, change: { sourcePoint?: AttachPoint; targetPoint?: AttachPoint }) => void;
   /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */

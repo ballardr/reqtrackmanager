@@ -97,6 +97,7 @@ export function buildDiagramView(overrides: Partial<DiagramView> = {}): DiagramV
     ],
     edges: [buildViewEdge()],
     notes: [],
+    anchors: [],
     ...overrides,
   };
 }

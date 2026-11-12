@@ -36,6 +36,7 @@ import type {
   ElementType,
   ElementTypeValues,
   NoteValues,
+  DiagramAnchor,
   PlacementValues,
   Port,
   PortValues,
@@ -217,8 +218,8 @@ export const projectDiagramApi = (projectId: string) => {
     view: (id: string) => api.get<DiagramView>(`${base}/${id}/view`),
     /** The model data the diagram's lines are resolved from in the browser. */
     model: (id: string) => api.get<DiagramModel>(`${base}/${id}/model`),
-    saveLayout: (id: string, version: number, placements: PlacementValues[], notes: NoteValues[]) =>
-      api.put<ArchitectureDiagram>(`${base}/${id}/layout`, { version, placements, notes }),
+    saveLayout: (id: string, version: number, placements: PlacementValues[], notes: NoteValues[], anchors: DiagramAnchor[]) =>
+      api.put<ArchitectureDiagram>(`${base}/${id}/layout`, { version, placements, notes, anchors }),
     saveToggles: (id: string, version: number, toggles: DiagramToggleValues[]) =>
       api.put<ArchitectureDiagram>(`${base}/${id}/toggles`, { version, toggles }),
     /** The saved diagram drawn by the server as an SVG document, for the view-switch states named. */

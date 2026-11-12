@@ -13,9 +13,9 @@ The two vocabularies every architecture record is typed by, and the records:
 - `ArchitectureConnection` — an interface between two elements.
 - `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
   elements and who it is shared with (a project, optionally with its descendants, or a group).
-- `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s and
-  `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a saved view over the
-  project's model; it holds no truth of its own.
+- `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s,
+  `ArchitectureDiagramAnchor`s and `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a
+  saved view over the project's model; it holds no truth of its own.
 
 Each is one table whose owner is a project *or* an organisation (a CHECK keeps
 exactly one). An organisation row is a default every project of the organisation
@@ -572,6 +572,42 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     width: Mapped[float] = mapped_column(Float, default=160.0)
     height: Mapped[float] = mapped_column(Float, default=60.0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
+    """Where a drawn line meets its boxes, when a person has chosen it (otherwise the nearest points are used).
+
+    The anchor belongs to the *drawn line*, keyed by the pair of placed elements it joins, so a line that stands for
+    several connections (merged or rolled up) has one anchor for all of them. An end left empty is chosen
+    automatically: the point of its box nearest the other end.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its anchors.
+        source_element_id / target_element_id: The two placed elements; deleting either removes the anchor. Both must
+            be placed on the diagram, which the layout save enforces and an unplace repeats.
+        source_point / target_point: An `AttachPoint` value, or `None` for automatic (at least one is set).
+    """
+
+    __tablename__ = "architecture_diagram_anchors"
+    __table_args__ = (
+        UniqueConstraint("diagram_id", "source_element_id", "target_element_id", name="uq_architecture_diagram_anchors"),
+        CheckConstraint("source_element_id <> target_element_id", name="ck_architecture_diagram_anchors_distinct"),
+        CheckConstraint(
+            "source_point IS NOT NULL OR target_point IS NOT NULL", name="ck_architecture_diagram_anchors_something_set",
+        ),
+    )
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    source_element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    target_element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class ArchitectureDiagramToggle(UUIDPKMixin, TimestampMixin, Base):

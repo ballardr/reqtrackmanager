@@ -144,8 +144,8 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
   }, [diagram]);
 
   const save = useCallback(async () => {
-    const { placements, notes } = layoutToSave(history.present);
-    if (!(await store((version) => api.saveLayout(diagramId, version, placements, notes)))) return false;
+    const { placements, notes, anchors } = layoutToSave(history.present);
+    if (!(await store((version) => api.saveLayout(diagramId, version, placements, notes, anchors)))) return false;
     await read(history.present);
     return true;
   }, [store, read, api, diagramId, history.present]);

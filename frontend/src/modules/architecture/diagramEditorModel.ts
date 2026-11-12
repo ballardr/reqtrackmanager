@@ -1,13 +1,14 @@
 /**
  * Module: modules/architecture/diagramEditorModel
  *
- * The diagram editor's state as plain functions, with no React: the layout being edited (boxes and notes), an
+ * The diagram editor's state as plain functions, with no React: the layout being edited (boxes, notes and line anchors), an
  * undo/redo history over it, the merge of a freshly read view into that layout, and the mapping to the shared
  * canvas's nodes and lines.
  *
  * Responsibilities:
  * - `EditorLayout`: every placement of the diagram (including boxes a view switch hides and boxes the viewer cannot read,
- *   which a save must keep) and its notes. Edits return a new layout; none mutates.
+ *   which a save must keep), its notes and the attach points a person chose for lines. Edits return a new layout; none
+ *   mutates.
  * - `History`: past / present / future with a saved baseline, so the editor knows what is unsaved and Save is enabled
  *   only for a real change.
  * - `mergeView`: display data comes from the server's view, membership and geometry from the local layout, so a reload
@@ -19,8 +20,9 @@
  *   lines it is given.
  */
 import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
+import type { AttachPoint } from "../../components/graphAttachPoints";
 import type {
-  ArchitectureElement, DiagramNote, DiagramView, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues,
+  ArchitectureElement, DiagramAnchor, DiagramNote, DiagramView, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues,
   PlacementValues,
 } from "./types";
 
@@ -74,9 +76,11 @@ export interface EditorNote {
 export interface EditorLayout {
   boxes: EditorBox[];
   notes: EditorNote[];
+  /** Where lines meet their boxes where a person chose it; a line with none uses the nearest points. */
+  anchors: DiagramAnchor[];
 }
 
-export const EMPTY_LAYOUT: EditorLayout = { boxes: [], notes: [] };
+export const EMPTY_LAYOUT: EditorLayout = { boxes: [], notes: [], anchors: [] };
 
 /** @param node A placed element of a resolved view. @returns Its box. */
 export function boxFromNode(node: DiagramViewNode): EditorBox {
@@ -94,7 +98,7 @@ function noteFromView(note: DiagramNote): EditorNote {
 
 /** @param view A resolved view. @returns The layout it holds (every placement and note, hidden or not). */
 export function layoutFromView(view: DiagramView): EditorLayout {
-  return { boxes: view.nodes.map(boxFromNode), notes: view.notes.map(noteFromView) };
+  return { boxes: view.nodes.map(boxFromNode), notes: view.notes.map(noteFromView), anchors: view.anchors };
 }
 
 /**
@@ -114,6 +118,7 @@ export function mergeView(local: EditorLayout, view: DiagramView): EditorLayout 
       return { ...boxFromNode(n), x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed };
     }),
     notes: local.notes,
+    anchors: local.anchors,
   };
 }
 
@@ -134,21 +139,23 @@ export function boxFromElement(element: ArchitectureElement, type: ElementType |
 }
 
 /** @param layout The layout to save. @returns The request bodies of the layout save. */
-export function layoutToSave(layout: EditorLayout): { placements: PlacementValues[]; notes: NoteValues[] } {
+export function layoutToSave(layout: EditorLayout): { placements: PlacementValues[]; notes: NoteValues[]; anchors: DiagramAnchor[] } {
   return {
     placements: layout.boxes.map((b) => ({
       element_id: b.elementId, x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed,
     })),
     notes: layout.notes.map((n) => ({ id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height })),
+    anchors: layout.anchors,
   };
 }
 
 /** The part of a layout a save would send, as comparable text. */
 function signature(layout: EditorLayout): string {
-  const { placements, notes } = layoutToSave(layout);
+  const { placements, notes, anchors } = layoutToSave(layout);
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
     notes.map((n) => [n.text, n.x, n.y, n.width, n.height]),
+    anchors.map((a) => [a.source_element_id, a.target_element_id, a.source_point, a.target_point]).sort(),
   ]);
 }
 
@@ -158,6 +165,7 @@ function signature(layout: EditorLayout): string {
 export function moveItems(layout: EditorLayout, moves: { id: string; x: number; y: number }[]): EditorLayout {
   const to = new Map(moves.map((m) => [m.id, m]));
   return {
+    ...layout,
     boxes: layout.boxes.map((b) => (to.has(b.elementId) ? { ...b, x: to.get(b.elementId)!.x, y: to.get(b.elementId)!.y } : b)),
     notes: layout.notes.map((n) => {
       const m = to.get(NOTE_NODE_PREFIX + n.key);
@@ -172,6 +180,7 @@ export function resizeItems(
 ): EditorLayout {
   const to = new Map(changes.map((c) => [c.id, c]));
   return {
+    ...layout,
     boxes: layout.boxes.map((b) => {
       const c = to.get(b.elementId);
       return c ? { ...b, x: c.x, y: c.y, width: c.width, height: c.height } : b;
@@ -190,9 +199,54 @@ export function addBoxes(layout: EditorLayout, boxes: EditorBox[]): EditorLayout
   return fresh.length === 0 ? layout : { ...layout, boxes: [...layout.boxes, ...fresh] };
 }
 
-/** Takes an element off the diagram. The element itself is never touched. */
+/** Takes an element off the diagram, with the line anchors that named it. The element itself is never touched. */
 export function removeBox(layout: EditorLayout, elementId: string): EditorLayout {
-  return { ...layout, boxes: layout.boxes.filter((b) => b.elementId !== elementId) };
+  return {
+    ...layout,
+    boxes: layout.boxes.filter((b) => b.elementId !== elementId),
+    anchors: layout.anchors.filter((a) => a.source_element_id !== elementId && a.target_element_id !== elementId),
+  };
+}
+
+/** The points a person chose for the line from `sourceId` to `targetId`, oriented to that direction; null ends are automatic. */
+export function anchorOf(
+  anchors: readonly DiagramAnchor[], sourceId: string, targetId: string,
+): { sourcePoint: AttachPoint | null; targetPoint: AttachPoint | null } {
+  for (const a of anchors) {
+    if (a.source_element_id === sourceId && a.target_element_id === targetId) {
+      return { sourcePoint: a.source_point, targetPoint: a.target_point };
+    }
+    if (a.source_element_id === targetId && a.target_element_id === sourceId) {
+      return { sourcePoint: a.target_point, targetPoint: a.source_point };
+    }
+  }
+  return { sourcePoint: null, targetPoint: null };
+}
+
+/**
+ * Chooses attach points for the line from `sourceId` to `targetId`. An end the change does not name keeps what it had; a
+ * `null` end is made automatic. A line left with both ends automatic has no anchor at all.
+ *
+ * @param layout The layout being edited.
+ * @param sourceId The line's source element.
+ * @param targetId The line's target element.
+ * @param change The ends to set (`undefined` leaves an end as it is).
+ */
+export function setLineAnchor(
+  layout: EditorLayout, sourceId: string, targetId: string,
+  change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null },
+): EditorLayout {
+  const before = anchorOf(layout.anchors, sourceId, targetId);
+  const sourcePoint = change.sourcePoint === undefined ? before.sourcePoint : change.sourcePoint;
+  const targetPoint = change.targetPoint === undefined ? before.targetPoint : change.targetPoint;
+  const others = layout.anchors.filter((a) => !(
+    (a.source_element_id === sourceId && a.target_element_id === targetId) ||
+    (a.source_element_id === targetId && a.target_element_id === sourceId)
+  ));
+  const next = sourcePoint === null && targetPoint === null
+    ? others
+    : [...others, { source_element_id: sourceId, target_element_id: targetId, source_point: sourcePoint, target_point: targetPoint }];
+  return { ...layout, anchors: next };
 }
 
 export function addNote(layout: EditorLayout, note: EditorNote): EditorLayout {
@@ -323,7 +377,7 @@ function edgeLabel(edge: DiagramViewEdge): string | undefined {
 
 /**
  * @param edges The resolved lines.
- * @param layout The layout being edited; a line whose end is not a visible box (removed or switched off here) is left out.
+ * @param layout The layout being edited (its anchors give each line's chosen points); a line whose end is not a visible box (removed or switched off here) is left out.
  * @param hidden The elements a view switch hides.
  * @param theme Which of a line's two colours to use.
  */
@@ -336,6 +390,7 @@ export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidd
       dashed: e.indirect || (e.line_style !== null && e.line_style !== "solid"),
       color: pick(e.color_light, e.color_dark, theme),
       direction: e.two_way ? "none" : "forward",
+      ...anchorOf(layout.anchors, e.source_element_id, e.target_element_id),
     }));
 }
 

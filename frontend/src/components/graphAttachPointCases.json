@@ -1,0 +1,338 @@
+[
+  {
+    "name": "boxes side by side meet on the facing sides, not the facing corners",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "right",
+      "left"
+    ]
+  },
+  {
+    "name": "boxes side by side the other way round",
+    "source": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "left",
+      "right"
+    ]
+  },
+  {
+    "name": "boxes stacked meet on the facing sides",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      0,
+      200,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "bottom",
+      "top"
+    ]
+  },
+  {
+    "name": "a box up and to the right meets corner to corner",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      -200,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "top_right",
+      "bottom_left"
+    ]
+  },
+  {
+    "name": "a box down and to the left meets corner to corner",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      -300,
+      200,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "bottom_left",
+      "top_right"
+    ]
+  },
+  {
+    "name": "a box far to the right and slightly lower meets at the nearest corner of that box",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      400,
+      30,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "right",
+      "top_left"
+    ]
+  },
+  {
+    "name": "a box beside but offset meets the nearest pair of points",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      200,
+      120,
+      100,
+      60
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "bottom_right",
+      "top_left"
+    ]
+  },
+  {
+    "name": "a small box inside the reach of a large one",
+    "source": [
+      0,
+      0,
+      400,
+      300
+    ],
+    "target": [
+      500,
+      100,
+      60,
+      40
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "right",
+      "bottom_left"
+    ]
+  },
+  {
+    "name": "overlapping boxes still choose a pair",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      80,
+      40,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "right",
+      "top"
+    ]
+  },
+  {
+    "name": "identical boxes choose the first pair in the fixed order",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "top",
+      "top"
+    ]
+  },
+  {
+    "name": "fractional positions",
+    "source": [
+      0.5,
+      0.25,
+      160.5,
+      80.75
+    ],
+    "target": [
+      301.3,
+      10.1,
+      120.2,
+      60.6
+    ],
+    "source_point": null,
+    "target_point": null,
+    "expected": [
+      "right",
+      "left"
+    ]
+  },
+  {
+    "name": "a fixed source end makes the target the nearest point to it",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": "bottom",
+    "target_point": null,
+    "expected": [
+      "bottom",
+      "bottom_left"
+    ]
+  },
+  {
+    "name": "a fixed target end makes the source the nearest point to it",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": "top",
+    "expected": [
+      "top_right",
+      "top"
+    ]
+  },
+  {
+    "name": "a fixed source corner pulls the target to the nearest corner",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      200,
+      160,
+      80
+    ],
+    "source_point": "top_left",
+    "target_point": null,
+    "expected": [
+      "top_left",
+      "top_left"
+    ]
+  },
+  {
+    "name": "both ends fixed are used as given",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": "left",
+    "target_point": "right",
+    "expected": [
+      "left",
+      "right"
+    ]
+  },
+  {
+    "name": "a fixed end on the far side of its box is kept",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": "left",
+    "target_point": null,
+    "expected": [
+      "left",
+      "left"
+    ]
+  }
+]
