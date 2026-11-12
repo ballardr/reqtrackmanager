@@ -24,7 +24,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.30-alpine
+FROM nginx:1.31-alpine
 
 # Pull in Alpine security fixes released after the base image was built, so the
 # CI vulnerability gate (HIGH/CRITICAL with a fix available) does not fail on a
