@@ -106,6 +106,9 @@ export interface DefinitionListProps<T extends { id: string }> {
    * group of controls too wide for the row itself (link types'
    * "can link from/to" restrictions). */
   renderDetails?: (item: T) => ReactNode;
+  /** `layout="grid"` only: a row whose fields cannot be renamed here (an organisation default shown in a project,
+   * which that project can only hide); its inputs are unavailable and no rename button appears. */
+  isReadOnly?: (item: T) => boolean;
   /** The fewest items the list may hold (default 1); delete is disabled at
    * this floor. Scoring axes, for example, keep at least two levels. */
   minItems?: number;
@@ -143,6 +146,7 @@ export function DefinitionList<T extends { id: string }>({
   addLabel,
   renderExtra,
   renderDetails,
+  isReadOnly,
   minItems = 1,
   layout = "stack",
 }: DefinitionListProps<T>) {
@@ -261,16 +265,18 @@ export function DefinitionList<T extends { id: string }>({
 
   /** A grid cell's control: a one-line input, or a text area that starts at one row and grows with its content.
    * Only the add row shows the placeholder; an existing row is named by its column heading. */
-  function gridControl(f: DefinitionListField<T>, value: string, onChange: (next: string) => void, adding = false) {
+  function gridControl(
+    f: DefinitionListField<T>, value: string, onChange: (next: string) => void, adding = false, disabled = false,
+  ) {
     // The add row keeps the name it always had (its placeholder, except for a one-line field among several, which
     // takes its aria label), so a row's control and the add row's are told apart by name.
     const addName = f.multiline || fields.length === 1 ? f.placeholder : f.ariaLabel;
     const ariaLabel = adding ? (addName ?? f.ariaLabel ?? f.key) : (f.ariaLabel ?? f.placeholder ?? f.key);
     const placeholder = adding ? f.placeholder : undefined;
     return f.multiline ? (
-      <AutoGrowTextarea rows={1} aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} />
+      <AutoGrowTextarea rows={1} aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
     ) : (
-      <InlineTextInput type={f.inputType ?? "text"} ariaLabel={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} />
+      <InlineTextInput type={f.inputType ?? "text"} ariaLabel={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
     );
   }
 
@@ -286,13 +292,14 @@ export function DefinitionList<T extends { id: string }>({
           <span aria-hidden="true" className="definition-grid__head" />
           {items.map((item, idx) => {
             const draft = draftFor(item);
-            const dirty = isDirty(item, draft);
+            const readOnly = isReadOnly?.(item) ?? false;
+            const dirty = !readOnly && isDirty(item, draft);
             const atFloor = items.length <= minItems;
             return (
               <div key={item.id} className="definition-grid__row">
                 {fields.map((f) => (
                   <div key={f.key} className="definition-grid__cell">
-                    {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })))}
+                    {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })), false, readOnly)}
                   </div>
                 ))}
                 {renderExtra && <div className="definition-grid__actions">{renderExtra(item)}</div>}

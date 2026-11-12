@@ -27,7 +27,8 @@ Registered contributions:
   backfills existing organisations so a module switched on later has them.
 - `org_bundle_hooks` / `project_bundle_hooks` (`export.py`); the vocabularies are
   template configuration and the records are template records.
-- No `frontend_manifest` yet: the module has no screen, so it adds no navigation entry.
+- `frontend_manifest`: two navigation entries, "Architecture" (the elements) and "Connections"; the pages, the
+  "Create new" element dialog and the settings panels are served by `frontend/src/modules/architecture/module.ts`.
 
 `default_enabled=False`: an organisation opts in explicitly, as for the other
 modules; a fresh install is switched on through the server default table.
@@ -83,6 +84,8 @@ from app.modules.architecture.summaries import (
 from app.modules.registry import (
     LinkTypeSeed,
     ModuleDefinition,
+    ModuleFrontendManifest,
+    ModuleNavEntry,
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
@@ -195,8 +198,22 @@ MODULE_DEFINITION = ModuleDefinition(
             audit_entity_type=COLLECTION_ENTITY_TYPE, multi_valued=True, record_id_field="collection_id",
         ),
     ),
+    frontend_manifest=ModuleFrontendManifest(
+        tier="installed",
+        nav_label="Architecture",
+        nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}/elements",
+        nav_icon="network",
+        nav_sub_component=ELEMENT_SUBCOMPONENT_KEY,
+        additional_nav_entries=(
+            ModuleNavEntry(
+                nav_label="Connections",
+                nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}/connections",
+                nav_icon="network",
+                sub_component=CONNECTION_SUBCOMPONENT_KEY,
+            ),
+        ),
+    ),
     not_creatable_from_links={
-        ELEMENT_ARTEFACT_TYPE: "Elements are created from the Architecture screens, which add the Links panel creator.",
         CONNECTION_ARTEFACT_TYPE: "A connection needs two elements, so it is created from the Architecture screens.",
         DIAGRAM_ARTEFACT_TYPE: "A diagram is created from the Architecture screens, which add the Links panel creator.",
     },

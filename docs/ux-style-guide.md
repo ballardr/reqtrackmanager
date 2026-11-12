@@ -244,6 +244,7 @@ A project must be able to remove an organisation default it does not want. **Del
 - **Add organisation defaults** (`RestoreOrgDefaultsButton`) sits under the list and appears **only while something is hidden**, with the count. It opens a dialog listing the hidden defaults, all ticked, so the admin restores all or a chosen subset.
 - Hiding stops *new* use only: records that already hold the value keep it and still show it, and the project's rename/reorder override survives a hide and restore.
 - The list may legitimately end up empty (`minItems={0}`): hiding every default is the project's choice.
+- A vocabulary whose organisation rows cannot be overridden in a project (the Architecture types and symbols: to change a default, hide it and add a row of the project's own) passes `isReadOnly` to `DefinitionList` (grid layout), which makes that row's fields unavailable and removes its Rename button, leaving Hide. The row's other attributes are edited in a dialog from a button beside it.
 - Link types predate this pattern and use Hide / Show on the inherited row ([Pattern: one vocabulary panel for every scope](#pattern-one-vocabulary-panel-for-every-scope)); a new definition table uses this pattern.
 
 ```mermaid

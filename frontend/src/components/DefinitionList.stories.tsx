@@ -444,3 +444,31 @@ export const GridLayoutAlignsRowsUnderHeadings: Story = {
     await waitFor(() => expect(canvas.getByDisplayValue("Top")).toBeInTheDocument());
   },
 };
+
+/** `isReadOnly` (grid layout): a row that cannot be renamed here has unavailable inputs and no Rename button, but can still be deleted. */
+export const GridReadOnlyRowCannotBeRenamed: Story = {
+  render: () => (
+    <DefinitionList<Named>
+      layout="grid"
+      items={[{ id: "org", name: "Organisation default" }, { id: "own", name: "Project type" }]}
+      fields={[{ key: "name", getValue: (i) => i.name, label: "Name", placeholder: "Type name", ariaLabel: "Type name" }]}
+      getReassignLabel={(i) => i.name}
+      isReadOnly={(i) => i.id === "org"}
+      minItems={0}
+      onRename={fn(async () => {})}
+      onAdd={fn(async () => {})}
+      onDelete={fn(async () => {})}
+      deleteLabel="Delete type"
+      addLabel="Add type"
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const [locked, editable] = canvas.getAllByRole("textbox", { name: "Type name" }) as HTMLInputElement[];
+    await expect(locked).toBeDisabled();
+    await expect(editable).toBeEnabled();
+    await userEvent.type(editable, "!");
+    await expect(canvas.getAllByRole("button", { name: "Rename" })).toHaveLength(1);
+    await expect(canvas.getAllByRole("button", { name: "Delete type" })).toHaveLength(2);
+  },
+};

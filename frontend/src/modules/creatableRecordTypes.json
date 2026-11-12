@@ -1,5 +1,6 @@
 {
   "creatable": [
+    "architecture_element",
     "change_request",
     "compliance_evidence",
     "decision",
@@ -22,7 +23,6 @@
   "notCreatable": [
     "architecture_connection",
     "architecture_diagram",
-    "architecture_element",
     "compliance_required_action_assessment",
     "compliance_requirement",
     "project_compliance_requirement"
