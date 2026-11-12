@@ -1,6 +1,6 @@
 # Stages: `base` (application code and dependencies), `backup` (base plus the disaster-recovery tools), `profile`
 # (base plus the profilers, for developers) and `backend`, the last stage and so the default target, which is the API image every existing build produces.
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 # Build identity (GET /api/v1/system/version, app/version.py): supplied via
 # --build-arg by the docker-build CI job, which already computes a
