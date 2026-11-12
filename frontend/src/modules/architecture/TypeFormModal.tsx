@@ -3,8 +3,8 @@
  *
  * Create and edit dialog for an element type or a connection type, shared by the project and organisation panels
  * (and told apart from create by whether `initial` is passed, as the other module forms are). The two kinds share
- * the name, domain and colour pair; an element type adds a shape and a symbol, a connection type a line style and
- * whether it is one-way. Colours are optional and given for the light and the dark theme, so a type stays legible
+ * the name, domain and colour pair; an element type adds a shape, a symbol and the connection types it suggests, a
+ * connection type a line style, the groups it sits under and whether it is one-way. Colours are optional and given for the light and the dark theme, so a type stays legible
  * in both.
  */
 import { useState } from "react";
@@ -36,12 +36,13 @@ interface Draft {
   line_style: LineStyle;
   directional: boolean;
   parent_ids: string[];
+  suggested_connection_type_ids: string[];
 }
 
 function blankDraft(): Draft {
   return {
     name: "", domain: "any", color_light: "", color_dark: "", shape: "rectangle", symbol_id: null,
-    line_style: "solid", directional: true, parent_ids: [],
+    line_style: "solid", directional: true, parent_ids: [], suggested_connection_type_ids: [],
   };
 }
 
@@ -49,7 +50,9 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
   return {
     ...blankDraft(),
     name: row.name, domain: row.domain, color_light: row.color_light ?? "", color_dark: row.color_dark ?? "",
-    ...("shape" in row ? { shape: row.shape, symbol_id: row.symbol_id } : { line_style: row.line_style, directional: row.directional, parent_ids: row.parent_ids }),
+    ...("shape" in row
+      ? { shape: row.shape, symbol_id: row.symbol_id, suggested_connection_type_ids: row.suggested_connection_type_ids }
+      : { line_style: row.line_style, directional: row.directional, parent_ids: row.parent_ids }),
   };
 }
 
@@ -58,7 +61,7 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
  * @param initial The type being edited; omit to create.
  * @param symbols The symbols an element type may use (ignored for a connection type).
  * @param symbolUrl The API path of a symbol's content, for the preview.
- * @param connectionTypes The connection types a connection type may sit under (a connection type's dialog only).
+ * @param connectionTypes The connection types a connection type may sit under, or an element type may suggest.
  * @param error A save error to show.
  * @param onSave Called with the values for the kind.
  */
@@ -84,7 +87,7 @@ export function TypeFormModal({
       color_light: draft.color_light || null, color_dark: draft.color_dark || null,
     };
     onSave(kind === "element"
-      ? { ...common, shape: draft.shape, symbol_id: draft.symbol_id }
+      ? { ...common, shape: draft.shape, symbol_id: draft.symbol_id, suggested_connection_type_ids: draft.suggested_connection_type_ids }
       : { ...common, line_style: draft.line_style, directional: draft.directional, parent_ids: draft.parent_ids });
   }
 
@@ -123,6 +126,15 @@ export function TypeFormModal({
               <SymbolPicker
                 help={ARCHITECTURE_HELP.typeSymbol} label="Symbol" symbols={symbols} value={draft.symbol_id}
                 onChange={(next) => set("symbol_id", next)} urlFor={symbolUrl} emptyLabel="Draw the shape"
+              />
+            </FormGridFull>
+          )}
+          {kind === "element" && (
+            <FormGridFull>
+              <TreeSelectField
+                help={ARCHITECTURE_HELP.typeSuggestedConnections} label="Suggested connection types" searchable emptyLabel="None"
+                value={draft.suggested_connection_type_ids} onChange={(next) => set("suggested_connection_type_ids", next)}
+                nodes={connectionTypeNodes(connectionTypes)}
               />
             </FormGridFull>
           )}

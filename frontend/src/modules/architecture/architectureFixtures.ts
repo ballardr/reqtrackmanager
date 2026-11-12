@@ -135,9 +135,9 @@ export function buildDiagramModel(overrides: Partial<DiagramModel> = {}): Diagra
 }
 
 export const ELEMENT_TYPES: ElementType[] = [
-  { id: "et-1", project_id: null, organization_id: ORG_ID, name: "Service", domain: "software", shape: "rounded", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, sort_order: 0 },
-  { id: "et-2", project_id: null, organization_id: ORG_ID, name: "Board", domain: "hardware", shape: "chip", color_light: null, color_dark: null, symbol_id: null, sort_order: 1 },
-  { id: "et-3", project_id: PROJECT_ID, organization_id: null, name: "Custom block", domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, sort_order: 2 },
+  { id: "et-1", project_id: null, organization_id: ORG_ID, name: "Service", domain: "software", shape: "rounded", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, sort_order: 0, suggested_connection_type_ids: ["ct-1"] },
+  { id: "et-2", project_id: null, organization_id: ORG_ID, name: "Board", domain: "hardware", shape: "chip", color_light: null, color_dark: null, symbol_id: null, sort_order: 1, suggested_connection_type_ids: ["ct-2"] },
+  { id: "et-3", project_id: PROJECT_ID, organization_id: null, name: "Custom block", domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, sort_order: 2, suggested_connection_type_ids: [] },
 ];
 
 export const CONNECTION_TYPES: ConnectionType[] = [

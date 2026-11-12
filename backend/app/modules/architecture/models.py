@@ -4,7 +4,8 @@ Module: modules.architecture.models
 The two vocabularies every architecture record is typed by, and the records:
 
 - `ArchitectureSymbol` — a drawing (a sanitised SVG, or one of the built-in set) an element type or element is shown with.
-- `ArchitectureElementType` — what an element is (System, Service, Board, ...).
+- `ArchitectureElementType` — what an element is (System, Service, Board, ...); it may name suggested connection types
+  (`ArchitectureElementTypeSuggestion`) that a connection picker lists first.
 - `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...); a type sits in a tree of any depth
   and may have several parents (`ArchitectureConnectionTypeParent`), so a group is itself a usable type.
 - `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s; owned by a project
@@ -129,6 +130,7 @@ class ArchitectureElementType(OwnedVocabularyMixin, Base):
         shape: An `ElementShape` value, the outline drawn when no symbol is set.
         symbol_id: The symbol its elements are drawn with, or `None` to draw `shape`. `SET NULL` is a backstop: a
             symbol in use is never deleted.
+        suggestion_links: The connection types suggested for a connection that has an element of this type at an end.
     """
 
     __tablename__ = "architecture_element_types"
@@ -146,6 +148,42 @@ class ArchitectureElementType(OwnedVocabularyMixin, Base):
     )
     # Declared only so a flush inserts a new symbol before a type or element that names it; never loaded through.
     symbol: Mapped[ArchitectureSymbol | None] = relationship("ArchitectureSymbol", lazy="raise", viewonly=False)
+    # Loaded with the row (one extra statement per list) so an API list carries the ids without a read per row.
+    suggestion_links: Mapped[list[ArchitectureElementTypeSuggestion]] = relationship(
+        "ArchitectureElementTypeSuggestion", foreign_keys="ArchitectureElementTypeSuggestion.element_type_id",
+        lazy="selectin", cascade="all, delete-orphan", order_by="ArchitectureElementTypeSuggestion.connection_type_id",
+        back_populates="element_type",
+    )
+
+    @property
+    def suggested_connection_type_ids(self) -> list[uuid.UUID]:
+        """The ids of the connection types suggested for this element type (empty for none)."""
+        return [link.connection_type_id for link in self.suggestion_links]
+
+
+class ArchitectureElementTypeSuggestion(Base):
+    """One suggestion: a connection with an element of `element_type_id` at an end is offered `connection_type_id` first.
+
+    Guidance only: nothing is refused when another type is chosen. The connection type is in the element type's own
+    tier or an organisation default visible to it (the service checks). Deleting either type removes the row.
+
+    Attributes:
+        element_type_id: The element type the suggestion belongs to.
+        connection_type_id: The suggested connection type.
+    """
+
+    __tablename__ = "architecture_element_type_suggestions"
+
+    element_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_element_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    connection_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True,
+        index=True,
+    )
+    element_type: Mapped[ArchitectureElementType] = relationship(
+        "ArchitectureElementType", foreign_keys=[element_type_id], back_populates="suggestion_links", lazy="raise",
+    )
 
 
 class ArchitectureConnectionType(OwnedVocabularyMixin, Base):

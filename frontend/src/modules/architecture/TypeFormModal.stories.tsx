@@ -28,6 +28,7 @@ export const ElementTypeNeedsANameAndSavesShapeAndSymbol: Story = {
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith({
       name: "Sensor", domain: "any", shape: "hexagon", color_light: null, color_dark: null, symbol_id: "sym-1",
+      suggested_connection_type_ids: [],
     });
   },
 };
@@ -75,5 +76,36 @@ export const ParentsOfAGroupExcludeItsOwnBranch: Story = {
     await expect(within(document.body).getByRole("checkbox", { name: "Serial bus" })).toBeDisabled();
     await expect(within(document.body).getByRole("checkbox", { name: "I2C" })).toBeDisabled();
     await expect(within(document.body).getByRole("checkbox", { name: "REST API" })).toBeEnabled();
+  },
+};
+
+/** An element type names the connection types a connection picker lists first; they are chosen from the tree, groups included. */
+export const ElementTypeChoosesItsSuggestedConnectionTypes: Story = {
+  args: { kind: "element", initial: undefined, connectionTypes: CONNECTION_TYPES },
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.type(d.getByLabelText("Name"), "Sensor");
+    await userEvent.click(d.getByRole("button", { name: "Suggested connection types" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "I2C" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Serial bus" }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Sensor", suggested_connection_type_ids: ["ct-2", "ct-3"] }));
+  },
+};
+
+/** Editing shows the stored suggestions and a connection type's dialog has no such field. */
+export const EditShowsTheStoredSuggestions: Story = {
+  args: { initial: ELEMENT_TYPES[0], connectionTypes: CONNECTION_TYPES },
+  play: async () => {
+    const d = dialog();
+    await expect(d.getByRole("button", { name: "Suggested connection types" })).toHaveTextContent("REST API");
+  },
+};
+
+export const ConnectionTypeHasNoSuggestions: Story = {
+  args: { kind: "connection", initial: CONNECTION_TYPES[0], connectionTypes: CONNECTION_TYPES },
+  play: async () => {
+    await expect(dialog().queryByRole("button", { name: "Suggested connection types" })).not.toBeInTheDocument();
   },
 };

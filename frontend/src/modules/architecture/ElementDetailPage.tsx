@@ -258,8 +258,8 @@ export function ElementDetailPage() {
       )}
       {connecting && (
         <ConnectionFormModal
-          connectionTypes={reference.connectionTypes} elements={[...owned, ...shared]} projectId={projectId}
-          defaultSourceId={element.id} error={connectionForm.error}
+          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={[...owned, ...shared]}
+          projectId={projectId} defaultSourceId={element.id} error={connectionForm.error}
           onCancel={() => { setConnecting(false); connectionForm.clearError(); }} onSave={connectionForm.create}
         />
       )}

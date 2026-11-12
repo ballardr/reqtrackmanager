@@ -420,6 +420,8 @@ First and only call site so far: `OrgAdminPage.tsx`'s Users table Roles column, 
 
 **Choosing from a tree (`TreeSelect`, `TreeSelectField`).** A vocabulary that nests (the System Architecture connection types, where a type may sit under several groups) is chosen with `TreeSelectField` in a form: `single` for one choice (a radio per node; choosing closes the list), `searchable` for a search box that keeps the matching nodes and the ancestors that lead to them, and `clearLabel` for an entry that empties the choice. A form that takes several (parents) uses the same field without `single`. A filter panel keeps `FilterSelect`, and a control in a row keeps `InlineSelect`; those show the tree in order with each option labelled by its place ("Serial bus › I2C"), and the filter's `help` says that choosing a group includes the types beneath it.
 
+**Guided pickers (soft guidance).** A picker may order and filter its options by what fits the choices already made, but never refuses: it lists the fitting options with the suggested ones first in a "Suggested" group, offers the rest on a "Show all …" switch that says how many are hidden (the connection form's type picker, `connectionGuidance.ts`), keeps the current choice in the list, and shows a non-blocking warning, not an error, for a choice that does not fit. Use it where a legitimate pair the designer did not foresee must stay possible.
+
 ## Pattern: split-button trigger
 
 *(New 2026-08-24 — see [The "New Requirement" trigger](plans/completed/ux-audit-2026-08.md#the-new-requirement-trigger-doesnt-match-the-requested-split-button-interaction).)*

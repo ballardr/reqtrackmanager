@@ -48,17 +48,21 @@ class _VocabularyUpdate(BaseModel):
 
 
 class ElementTypeCreate(_VocabularyCreate):
-    """Create payload for an element type. `symbol_id` is a symbol the owner may use."""
+    """Create payload for an element type. `symbol_id` is a symbol the owner may use; `suggested_connection_type_ids` are
+    the connection types a connection picker lists first for it (guidance only)."""
 
     shape: ElementShape = ElementShape.RECTANGLE
     symbol_id: UUID | None = None
+    suggested_connection_type_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
 
 class ElementTypeUpdate(_VocabularyUpdate):
-    """Partial update of an element type. `symbol_id: null` clears the symbol (the shape is drawn)."""
+    """Partial update of an element type. `symbol_id: null` clears the symbol (the shape is drawn);
+    `suggested_connection_type_ids` replaces the suggestions (an empty list clears them)."""
 
     shape: ElementShape | None = None
     symbol_id: UUID | None = None
+    suggested_connection_type_ids: list[UUID] | None = Field(default=None, max_length=50)
 
 
 class ConnectionTypeCreate(_VocabularyCreate):
@@ -97,6 +101,7 @@ class ElementTypeOut(_VocabularyOut):
 
     shape: str
     symbol_id: UUID | None
+    suggested_connection_type_ids: list[UUID]
 
 
 class ConnectionTypeOut(_VocabularyOut):

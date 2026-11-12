@@ -484,8 +484,8 @@ export function DiagramEditorPage() {
       )}
       {connecting && (
         <ConnectionFormModal
-          connectionTypes={reference.connectionTypes} elements={elements} projectId={projectId}
-          defaultSourceId={connecting.source} defaultTargetId={connecting.target} error={createConnection.error}
+          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
+          projectId={projectId} defaultSourceId={connecting.source} defaultTargetId={connecting.target} error={createConnection.error}
           onCancel={() => { setConnecting(null); createConnection.clearError(); }} onSave={createConnection.create}
         />
       )}

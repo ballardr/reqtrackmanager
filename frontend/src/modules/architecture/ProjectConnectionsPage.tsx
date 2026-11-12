@@ -188,7 +188,8 @@ export function ProjectConnectionsPage() {
 
       {creating && (
         <ConnectionFormModal
-          connectionTypes={reference.connectionTypes} elements={elements} projectId={projectId} error={createForm.error}
+          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements} projectId={projectId}
+          error={createForm.error}
           onCancel={() => { setCreating(false); createForm.clearError(); }} onSave={createForm.create}
         />
       )}

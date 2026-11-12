@@ -24,6 +24,8 @@ export const ARCHITECTURE_HELP = {
   connectionDirectional: "A one-way type runs from the source to the target; a two-way type shows no arrow and the order of its ends is for display only.",
   connectionType: "The kind of interface (REST API, message queue, I2C bus). It sets how the line is drawn when a diagram shows connection detail. A group such as Serial bus can be chosen first and refined to a member later.",
   connectionTypeFilter: "Shows the connections of the chosen type. Choosing a group also shows the connections of every type beneath it.",
+  typeSuggestedConnections: "The connection types a connection picker lists first when an element of this type is at either end. Guidance only: any connection type can still be chosen.",
+  connectionTypeShowAll: "Off: the list offers the connection types whose domain fits both elements (hardware, software or any), with the types suggested for their element types first.\nOn: the list offers every connection type. A type that does not fit can be chosen and shows a warning.",
   typeParents: "The groups this type sits under, so it can be found several ways (I2C under Serial bus and under Board-to-board). A type with none is a top-level group or type. Any type can also be chosen as a connection's type, so a group is usable on its own.",
   connectionSource: "The element the connection starts from. It may be one of this project's elements or one that another owner shares with the project.",
   connectionTarget: "The element the connection ends at. It must differ from the source.",

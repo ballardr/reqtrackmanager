@@ -181,3 +181,22 @@ def test_the_type_tree_migration_adds_the_link_table_and_reverses_cleanly(client
     with engine.connect() as conn:
         # The seeded organisation's links are gone with the table; the types keep their rows and no row is invented.
         assert conn.execute(text("SELECT count(*) FROM architecture_connection_type_parents")).scalar_one() == 0
+
+
+def test_the_suggestions_migration_adds_the_link_table_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0178 drops the suggestion table and leaves the element types; upgrading recreates it empty (nothing is
+    seeded, so an existing organisation's element types are unchanged)."""
+    from app.modules.architecture.tests._helpers import setup
+
+    org, _project, _token = setup(client, admin_token, "Arch guidance migration")
+    before = _count("architecture_element_types", org["id"])
+    command.downgrade(build_alembic_config(), "0177")
+    try:
+        assert not _table_exists("architecture_element_type_suggestions")
+        assert _count("architecture_element_types", org["id"]) == before
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_element_type_suggestions")
+    assert _count("architecture_element_types", org["id"]) == before
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM architecture_element_type_suggestions")).scalar_one() == 0

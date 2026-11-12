@@ -78,6 +78,8 @@ interface VocabularyRow {
 export interface ElementType extends VocabularyRow {
   shape: ElementShape;
   symbol_id: string | null;
+  /** The connection types a connection picker lists first when an element of this type is at an end (guidance only). */
+  suggested_connection_type_ids: string[];
 }
 
 export interface ConnectionType extends VocabularyRow {
@@ -95,6 +97,8 @@ export interface ElementTypeValues {
   color_light: string | null;
   color_dark: string | null;
   symbol_id: string | null;
+  /** The suggested connection types; an empty list clears them. */
+  suggested_connection_type_ids: string[];
 }
 
 export interface ConnectionTypeValues {

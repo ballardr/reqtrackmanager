@@ -59,6 +59,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
   const [rows, setRows] = useState<TypeRow[] | null>(null);
   const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
   const [symbols, setSymbols] = useState<ArchitectureSymbol[]>([]);
+  const [connectionTypes, setConnectionTypes] = useState<ConnectionType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<TypeRow | "new" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -76,10 +77,15 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
       const found = kind === "element"
         ? await (scope.kind === "project" ? symbolApi.projectList(scopeId) : symbolApi.orgList(scopeId))
         : [];
+      // An element type's dialog chooses the connection types it suggests.
+      const connections = kind === "element"
+        ? await (scope.kind === "project" ? connectionTypeApi.projectList(scopeId) : connectionTypeApi.orgList(scopeId)).catch(() => [])
+        : [];
       const hiddenRows = scope.kind === "project" ? await calls.projectHidden(scopeId).catch(() => []) : [];
       if (!live) return;
       setRows(list);
       setSymbols(found);
+      setConnectionTypes(connections);
       setHidden(hiddenRows);
       setLoadError(null);
     };
@@ -145,7 +151,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
         }}
         onAdd={async (values) => {
           const blank = kind === "element"
-            ? { name: values.name, domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null }
+            ? { name: values.name, domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, suggested_connection_type_ids: [] }
             : { name: values.name, domain: "any", line_style: "solid", directional: true, color_light: null, color_dark: null, parent_ids: [] };
           await (scope.kind === "project" ? calls.projectCreate(scopeId, blank as never) : calls.orgCreate(scopeId, blank as never));
           showToast(`${noun[0].toUpperCase()}${noun.slice(1)} created.`);
@@ -211,7 +217,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
           initial={editing === "new" ? undefined : editing}
           symbols={symbols}
           symbolUrl={symbolUrl}
-          connectionTypes={kind === "connection" ? (rows as ConnectionType[]) : []}
+          connectionTypes={kind === "connection" ? (rows as ConnectionType[]) : connectionTypes}
           error={formError}
           onCancel={() => { setEditing(null); setFormError(null); }}
           onSave={save}

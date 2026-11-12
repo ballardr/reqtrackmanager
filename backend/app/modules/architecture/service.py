@@ -9,6 +9,8 @@ Responsibilities:
 - `ArchitectureVocabulary`, one instance per vocabulary, holds every rule so the
   two vocabularies and their routers cannot drift.
 - The default rows an organisation is created with.
+- `ElementTypeVocabulary` adds the suggested connection types (guidance a connection picker lists first; validated like a
+  parent and copied with an inherited configuration).
 - `ConnectionTypeVocabulary` adds the type tree: a type's parents are validated (same tier or a visible
   organisation default, no cycle, depth cap in `connection_tree`) and copied with an inherited configuration.
 - `SymbolLibrary` is a vocabulary of drawings (built-in or an uploaded SVG file) that
@@ -50,6 +52,7 @@ from app.modules.architecture.models import (
     ArchitectureConnectionType,
     ArchitectureConnectionTypeParent,
     ArchitectureElementType,
+    ArchitectureElementTypeSuggestion,
     ArchitectureSymbol,
 )
 from app.services import definition_suppression
@@ -135,6 +138,14 @@ DEFAULT_CONNECTION_TYPE_PARENTS: dict[str, tuple[str, ...]] = {
     "Analogue signal": ("Wired signal",),
     "REST API": ("Software interface",), "gRPC": ("Software interface",), "Database access": ("Software interface",),
     "Message queue": ("Data exchange",), "Event stream": ("Data exchange",), "File exchange": ("Data exchange",),
+}
+
+
+#: `{element type name: names of the connection types suggested for it}` for the seeded element types; a name not listed
+#: has no suggestion.
+DEFAULT_ELEMENT_TYPE_SUGGESTIONS: dict[str, tuple[str, ...]] = {
+    "Sensor": ("I2C", "SPI", "UART", "Analogue signal"),
+    "Service": ("REST API", "gRPC", "Message queue"),
 }
 
 
@@ -237,8 +248,9 @@ class ArchitectureVocabulary(ABC):
     # --- Writing ---------------------------------------------------------
 
     @abstractmethod
-    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
-        """Adds the default rows to a new organisation. The caller owns the transaction."""
+    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> Mapping[str, uuid.UUID] | None:
+        """Adds the default rows to a new organisation. The caller owns the transaction. A vocabulary other rows refer
+        to by name returns `{name: row id}`."""
 
     def _check_name(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, name: str,
                     exclude_id: uuid.UUID | None = None) -> None:
@@ -428,54 +440,170 @@ class ElementTypeVocabulary(ArchitectureVocabulary):
 
     def seed_defaults(
         self, db: Session, organization_id: uuid.UUID, symbol_ids: Mapping[str, uuid.UUID] | None = None,
+        connection_type_ids: Mapping[str, uuid.UUID] | None = None,
     ) -> None:
         """Adds the default element types to a new organisation. The caller owns the transaction.
 
         `symbol_ids` maps a built-in symbol key to the id of the row just added for the organisation
         (`SymbolLibrary.add_builtins`), so a type that has one in `DEFAULT_TYPE_SYMBOLS` is drawn with it.
+        `connection_type_ids` maps a connection type name to its new row id (`ConnectionTypeVocabulary.seed_defaults`),
+        so a type listed in `DEFAULT_ELEMENT_TYPE_SUGGESTIONS` gets its suggested connection types.
         """
         symbols = symbol_ids or {}
+        connections = connection_type_ids or {}
         for i, (name, shape, domain) in enumerate(DEFAULT_ELEMENT_TYPES):
             light, dark = DOMAIN_COLORS[domain]
-            db.add(ArchitectureElementType(
-                organization_id=organization_id, name=name, shape=shape, domain=domain,
+            row = ArchitectureElementType(
+                id=uuid.uuid4(), organization_id=organization_id, name=name, shape=shape, domain=domain,
                 color_light=light, color_dark=dark, sort_order=i, symbol_id=symbols.get(DEFAULT_TYPE_SYMBOLS.get(name, "")),
-            ))
+            )
+            db.add(row)
+            for suggested in DEFAULT_ELEMENT_TYPE_SUGGESTIONS.get(name, ()):
+                if suggested in connections:
+                    db.add(ArchitectureElementTypeSuggestion(element_type_id=row.id, connection_type_id=connections[suggested]))
 
-    def create(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, **fields):
-        """As the base class, checking that `symbol_id` (when given) is a symbol the owner may use.
+    def _check_suggestions(
+        self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, row: ArchitectureElementType | None,
+        connection_type_ids: list[uuid.UUID],
+    ) -> list[uuid.UUID]:
+        """Validates the connection types an element type is to suggest and returns them without duplicates.
+
+        A suggestion is a connection type of the owner's own tier or, for a project row, one the project lists. One the
+        row already has is kept even when the project has since hidden it.
 
         Raises:
-            ValueError: On a clashing name or a symbol the owner cannot use.
+            ValueError: If an id is not a connection type this owner can use.
+        """
+        wanted = list(dict.fromkeys(connection_type_ids))
+        if project_id is None:
+            visible = CONNECTION_TYPES.org_rows(db, organization_id)
+        else:
+            visible = CONNECTION_TYPES.resolve_effective(db, project_id, organization_id).rows
+        allowed = {r.id for r in visible} | (set(row.suggested_connection_type_ids) if row is not None else set())
+        if any(c not in allowed for c in wanted):
+            raise ValueError("A suggested connection type must be a connection type this owner can use.")
+        return wanted
+
+    def _set_suggestions(self, row: ArchitectureElementType, connection_type_ids: list[uuid.UUID]) -> None:
+        """Replaces a row's suggestions with `connection_type_ids` (already validated)."""
+        keep = set(connection_type_ids)
+        for link in list(row.suggestion_links):
+            if link.connection_type_id not in keep:
+                row.suggestion_links.remove(link)
+        have = {link.connection_type_id for link in row.suggestion_links}
+        for connection_type_id in connection_type_ids:
+            if connection_type_id not in have:
+                row.suggestion_links.append(ArchitectureElementTypeSuggestion(connection_type_id=connection_type_id))
+
+    def create(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, **fields):
+        """As the base class, checking that `symbol_id` (when given) is a symbol the owner may use, and adding
+        `suggested_connection_type_ids`.
+
+        Raises:
+            ValueError: On a clashing name, a symbol the owner cannot use or a connection type it cannot suggest.
         """
         if fields.get("symbol_id") is not None:
             SYMBOLS.assert_assignable(db, project_id=project_id, organization_id=organization_id, symbol_id=fields["symbol_id"])
-        return super().create(db, project_id=project_id, organization_id=organization_id, **fields)
+        suggested = self._check_suggestions(
+            db, project_id=project_id, organization_id=organization_id, row=None,
+            connection_type_ids=fields.pop("suggested_connection_type_ids", None) or [],
+        )
+        row = super().create(db, project_id=project_id, organization_id=organization_id, **fields)
+        self._set_suggestions(row, suggested)
+        db.flush()
+        return row
 
     def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
         """As the base class, plus `symbol_id`: given as `None` it clears the symbol, and a new one is checked against the
-        symbols the owner may use.
+        symbols the owner may use; and `suggested_connection_type_ids` (a list replaces the suggestions, `None` or
+        omitted leaves them).
 
         Raises:
-            ValueError: On a clashing name or a symbol the owner cannot use.
+            ValueError: On a clashing name, a symbol the owner cannot use or a connection type it cannot suggest.
         """
         given = "symbol_id" in fields
         symbol_id = fields.pop("symbol_id", None)
         if given and symbol_id is not None and symbol_id != row.symbol_id:
             SYMBOLS.assert_assignable(db, project_id=row.project_id, organization_id=organization_id, symbol_id=symbol_id)
+        given_suggestions = fields.pop("suggested_connection_type_ids", None)
+        suggested = None
+        if given_suggestions is not None:
+            suggested = self._check_suggestions(
+                db, project_id=row.project_id, organization_id=organization_id, row=row, connection_type_ids=given_suggestions,
+            )
         super().update(db, row, organization_id, **fields)
         if given:
             row.symbol_id = symbol_id
-            db.flush()
+        if suggested is not None:
+            self._set_suggestions(row, suggested)
+        db.flush()
+
+    def link_suggestions_by_names(
+        self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID,
+        suggestions_by_element_type: Mapping[str, list[str]],
+    ) -> list[str]:
+        """Adds suggestions named in a bundle, after the element types and the connection types all exist.
+
+        Args:
+            db: Session.
+            project_id: The project the rows belong to, or `None` for an organisation's rows.
+            organization_id: The organisation.
+            suggestions_by_element_type: `{element type name: connection type names}`; the element type is matched among
+                the owner's own rows.
+
+        Returns:
+            One message for each suggestion that could not be made (a connection type the owner cannot use).
+        """
+        if project_id is None:
+            own = {r.name.casefold(): r for r in self.org_rows(db, organization_id)}
+            visible = {r.name.casefold(): r for r in CONNECTION_TYPES.org_rows(db, organization_id)}
+        else:
+            own = {r.name.casefold(): r for r in self.project_rows(db, project_id)}
+            visible = {r.name.casefold(): r for r in CONNECTION_TYPES.resolve_effective(db, project_id, organization_id).rows}
+        problems: list[str] = []
+        for element_type_name, names in suggestions_by_element_type.items():
+            row = own.get(element_type_name.casefold())
+            if row is None:
+                continue
+            ids: list[uuid.UUID] = []
+            for name in names:
+                found = visible.get(name.casefold())
+                if found is None:
+                    problems.append(
+                        f"Connection type {name!r} (suggested for {element_type_name!r}) was not found and was skipped."
+                    )
+                else:
+                    ids.append(found.id)
+            self._set_suggestions(row, ids)
+        db.flush()
+        return problems
+
+    def materialize_inherited(self, db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+        """As the base class, then copies each row's suggestions. A suggestion names the same connection type: the
+        project's copy of the connection types is made, and the suggestions remapped, only when the project changes
+        them (`ConnectionTypeVocabulary.materialize_inherited`)."""
+        mapping = super().materialize_inherited(db, project_id)
+        for source_id, copy_id in mapping.items():
+            source = db.get(ArchitectureElementType, source_id)
+            copy = db.get(ArchitectureElementType, copy_id)
+            if source is None or copy is None:
+                continue
+            self._set_suggestions(copy, list(source.suggested_connection_type_ids))
+        db.flush()
+        return mapping
 
 
 class ConnectionTypeVocabulary(ArchitectureVocabulary):
     """The connection type vocabulary, whose rows form a tree: any depth, several parents per type, and a group is
     itself a usable type. Create and update take `parent_ids` (a given list replaces the parents; omitted leaves them)."""
 
-    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
+    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
         """Adds the default connection types, nested under their groups, to a new organisation. The caller owns the
-        transaction."""
+        transaction.
+
+        Returns:
+            `{connection type name: its new row id}`, for the element types' suggestions.
+        """
         ids = {name: uuid.uuid4() for name, _domain, _directional in DEFAULT_CONNECTION_TYPES}
         for i, (name, domain, directional) in enumerate(DEFAULT_CONNECTION_TYPES):
             light, dark = DOMAIN_COLORS[domain]
@@ -486,6 +614,7 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
         for name, parents in DEFAULT_CONNECTION_TYPE_PARENTS.items():
             for parent in parents:
                 db.add(ArchitectureConnectionTypeParent(child_id=ids[name], parent_id=ids[parent]))
+        return ids
 
     def _check_parents(
         self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, child: ArchitectureConnectionType | None,
@@ -602,6 +731,12 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
             if source is None or copy is None:
                 continue
             self._set_parents(copy, [mapping.get(p, p) for p in source.parent_ids])
+        if mapping:
+            # The project's own element types may suggest a type that is now the project's copy.
+            for element_type in ELEMENT_TYPES.project_rows(db, project_id):
+                ELEMENT_TYPES._set_suggestions(
+                    element_type, list(dict.fromkeys(mapping.get(c, c) for c in element_type.suggested_connection_type_ids)),
+                )
         db.flush()
         return mapping
 
@@ -697,5 +832,5 @@ def seed_org_defaults(db: Session, organization_id: uuid.UUID) -> None:
     """`ModuleDefinition.on_org_created`: gives a new organisation the built-in symbols and the default element and
     connection types."""
     symbol_ids = SYMBOLS.add_builtins(db, organization_id)
-    ELEMENT_TYPES.seed_defaults(db, organization_id, symbol_ids)
-    CONNECTION_TYPES.seed_defaults(db, organization_id)
+    connection_type_ids = CONNECTION_TYPES.seed_defaults(db, organization_id)
+    ELEMENT_TYPES.seed_defaults(db, organization_id, symbol_ids, connection_type_ids)

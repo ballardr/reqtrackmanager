@@ -26,7 +26,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
     await test.step("create a top-level element and activate it in one step", async () => {
       await page.goto(`/projects/${project.id}`);
       await page.getByRole("link", { name: "Architecture", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/architecture/elements$`));
+      await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/architecture/elements(\\?.*)?$`)); // the list adds its own filters (open=1) to the address
       await page.getByRole("button", { name: "New element" }).click();
       const dialog = page.getByRole("dialog", { name: "New element" });
       await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
