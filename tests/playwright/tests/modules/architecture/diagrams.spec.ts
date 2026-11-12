@@ -70,11 +70,12 @@ test.describe("System Architecture: diagram editor", () => {
       await dialog.getByRole("button", { name: "Add selected (2)" }).click();
       await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
       await expect(page.getByText(/Unsaved changes/)).toBeVisible();
-      // The line is drawn from the model data in the browser, so it is there before anything is stored.
-      await expect(page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true })).toBeVisible();
+      // The line is drawn from the model data in the browser, so it is there before anything is stored. (A straight line has
+      // no area, so it is attached rather than "visible".)
+      await expect(page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true })).toBeAttached();
       await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Diagram saved.")).toBeVisible();
-      await expect(page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true })).toBeVisible();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+      await expect(page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true })).toBeAttached();
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
     });
 
@@ -85,7 +86,7 @@ test.describe("System Architecture: diagram editor", () => {
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Diagram saved.")).toBeVisible();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
     });
 
     await test.step("undo a move, then remove a box: the element stays in the model", async () => {
@@ -99,7 +100,7 @@ test.describe("System Architecture: diagram editor", () => {
       await page.getByRole("button", { name: "Remove from diagram" }).click();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Diagram saved.")).toBeVisible();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
 
       await page.reload();
       await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
@@ -139,5 +140,61 @@ test.describe("System Architecture: diagram editor", () => {
     await alert.getByRole("button", { name: "Reload diagram" }).click();
     await expect(alert).toHaveCount(0);
     await expect(page.getByText(/Changed elsewhere/)).toBeVisible();
+  });
+
+  test("an architect works the whole diagram from the keyboard and the outline, and exports it", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchKeys", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const gateway = `Gateway ${suffix}`;
+    const orders = `Orders ${suffix}`;
+    await createElement(page.request, adminHeaders, project.id, gateway);
+    await createElement(page.request, adminHeaders, project.id, orders);
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Keys ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
+
+    await test.step("the outline lists the same elements and selecting there selects the box", async () => {
+      const outline = page.getByRole("region", { name: "Outline" });
+      await expect(outline.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${orders}`) })).toBeVisible();
+      await outline.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${orders}`) }).click();
+      await expect(page.getByRole("region", { name: "Selection" }).getByText(new RegExp(orders))).toBeVisible();
+    });
+
+    await test.step("Connect to starts a connection without dragging", async () => {
+      await selectNode(page, gateway);
+      const choose = page.getByRole("region", { name: "Selection" }).getByRole("combobox", { name: /Connect to/ });
+      await choose.selectOption(await choose.locator("option", { hasText: orders }).getAttribute("value") ?? "");
+      const dialog = page.getByRole("dialog", { name: "New connection" });
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+    });
+
+    await test.step("Alt+arrow resizes, Delete takes the box off the diagram and Undo brings it back", async () => {
+      await selectNode(page, orders);
+      await page.keyboard.press("Alt+ArrowRight");
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await page.keyboard.press("Delete");
+      await expect(page.getByLabel(`${orders}, node`, { exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Undo" }).click();
+      await page.getByRole("button", { name: "Undo" }).click();
+      await expect(page.getByLabel(`${orders}, node`, { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    });
+
+    await test.step("export downloads an SVG and the Mermaid text named after the diagram", async () => {
+      await page.getByRole("button", { name: "Export" }).click();
+      const svg = page.waitForEvent("download");
+      await page.getByRole("menuitem", { name: "SVG image" }).click();
+      expect((await svg).suggestedFilename()).toMatch(/^DGM-\d+-keys-.*\.svg$/);
+      await page.getByRole("button", { name: "Export" }).click();
+      const mermaid = page.waitForEvent("download");
+      await page.getByRole("menuitem", { name: "Download Mermaid text" }).click();
+      expect((await mermaid).suggestedFilename()).toMatch(/\.mmd$/);
+    });
   });
 });

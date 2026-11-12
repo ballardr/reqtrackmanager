@@ -270,7 +270,15 @@ export const ResizesTheSelectedNode: Story = {
       if (!found) throw new Error("no handle");
       return found as HTMLElement;
     });
-    const box = handle.getBoundingClientRect();
+    // The view fits itself to the nodes after they are measured; drag only once the handle has stopped moving.
+    let box = handle.getBoundingClientRect();
+    await waitFor(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const next = handle.getBoundingClientRect();
+      const still = next.left === box.left && next.top === box.top;
+      box = next;
+      if (!still) throw new Error("handle still moving");
+    });
     const x = box.left + box.width / 2;
     const y = box.top + box.height / 2;
     await userEvent.pointer([
@@ -284,5 +292,69 @@ export const ResizesTheSelectedNode: Story = {
     expect(calls).toHaveLength(1);
     expect(calls[0][0][0].id).toBe("sensor");
     expect(calls[0][0][0].width).toBeGreaterThan(160);
+  },
+};
+
+/** Alt with an arrow key resizes the selected node by one step and reports the final size once, as a pointer resize does. */
+export const ResizesTheSelectedNodeFromTheKeyboard: Story = {
+  args: { onNodesResize: fn() },
+  render: (args) => <Host resizable onNodesResize={args.onNodesResize} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Alt>}{ArrowRight}{ArrowDown}{/Alt}");
+    await waitFor(() => expect(args.onNodesResize).toHaveBeenCalledTimes(2));
+    const calls = (args.onNodesResize as ReturnType<typeof fn>).mock.calls as { id: string; width: number; height: number }[][][];
+    expect(calls[0][0][0]).toMatchObject({ id: "sensor", width: 170, height: 64 });
+    expect(calls[1][0][0]).toMatchObject({ id: "sensor", width: 170, height: 74 });
+    // Alt+arrow resizes only; the node did not move.
+    expect(calls[1][0][0]).toMatchObject({ x: 0, y: 0 });
+  },
+};
+
+/** A node never shrinks below its minimum size from the keyboard. */
+export const KeyboardResizeStopsAtTheMinimumSize: Story = {
+  args: { onNodesResize: fn() },
+  render: (args) => <Host resizable onNodesResize={args.onNodesResize} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    for (let i = 0; i < 12; i += 1) await userEvent.keyboard("{Alt>}{ArrowLeft}{/Alt}");
+    const calls = (args.onNodesResize as ReturnType<typeof fn>).mock.calls as { width: number }[][][];
+    expect(calls[calls.length - 1][0][0].width).toBe(80);
+  },
+};
+
+/** Delete and Backspace ask the consumer to delete the selection; the canvas deletes nothing itself. */
+export const ReportsADeleteKeyOnTheSelection: Story = {
+  args: { onDelete: fn() },
+  render: (args) => <Host onDelete={args.onDelete} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Delete}");
+    await expect(args.onDelete).not.toHaveBeenCalled(); // nothing is selected yet
+    await userEvent.keyboard("{Enter}{Delete}");
+    await expect(args.onDelete).toHaveBeenCalledWith({ kind: "node", id: "sensor" });
+    await expect(canvas.getByLabelText("Sensor, node")).toBeInTheDocument();
+  },
+};
+
+/** A read-only canvas does not report a delete, and does not advertise one. */
+export const ReadOnlyIgnoresTheDeleteKey: Story = {
+  args: { onDelete: fn() },
+  render: (args) => <Host readOnly onDelete={args.onDelete} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}{Delete}");
+    await expect(args.onDelete).not.toHaveBeenCalled();
+    await expect(canvasElement.querySelector("[aria-describedby]")).not.toHaveTextContent(/Delete or Backspace/);
   },
 };

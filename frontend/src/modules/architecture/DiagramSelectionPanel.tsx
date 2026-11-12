@@ -7,6 +7,8 @@
  * - A note: edit its text (applied when the field loses focus, as one undo step) or remove it.
  * - A line: the connections behind it (a rolled-up or merged line stands for several) and, for a bridged line, the hidden
  *   elements it passes through.
+ * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
+ *   line between two boxes does.
  * A box the viewer cannot read shows its code only and offers no actions beyond removing it from the diagram.
  */
 import { useState } from "react";
@@ -16,8 +18,11 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TextAreaField } from "../../components/FormFields";
+import { LabeledSelect } from "../../components/LabeledSelect";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { NOTE_NODE_PREFIX, type EditorBox, type EditorNote } from "./diagramEditorModel";
+import { boxName } from "./diagramOutlineModel";
+import { ARCHITECTURE_HELP } from "./help";
 import type { DiagramViewEdge } from "./types";
 
 /**
@@ -26,23 +31,27 @@ import type { DiagramViewEdge } from "./types";
  * @param boxes Every box of the layout.
  * @param notes Every note of the layout.
  * @param edges The resolved lines.
+ * @param hidden The boxes a view switch hides (not offered as the other end of a connection).
  * @param editable False hides every action that changes the diagram or the model.
  * @param onRemoveBox Takes an element off the diagram.
+ * @param onConnect Starts a connection from a box to the element with the given id.
  * @param onOpenInside Opens (or creates) the diagram of the element's inside.
  * @param onDeleteElement Deletes the element from the model.
  * @param onEditNote Sets a note's text.
  * @param onRemoveNote Removes a note.
  */
 export function DiagramSelectionPanel({
-  projectId, selection, boxes, notes, edges, editable, onRemoveBox, onOpenInside, onDeleteElement, onEditNote, onRemoveNote,
+  projectId, selection, boxes, notes, edges, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement, onEditNote, onRemoveNote,
 }: {
   projectId: string;
   selection: GraphCanvasSelection | null;
   boxes: EditorBox[];
   notes: EditorNote[];
   edges: DiagramViewEdge[];
+  hidden: ReadonlySet<string>;
   editable: boolean;
   onRemoveBox: (box: EditorBox) => void;
+  onConnect: (box: EditorBox, targetId: string) => void;
   onOpenInside: (box: EditorBox) => void;
   onDeleteElement: (box: EditorBox) => void;
   onEditNote: (key: string, text: string) => void;
@@ -73,6 +82,14 @@ export function DiagramSelectionPanel({
             <button type="button" className="btn btn-sm btn-danger" onClick={() => setDeleting(box)}>Delete element…</button>
           )}
         </div>
+        {editable && !box.locked && (
+          <LabeledSelect
+            label="Connect to" help={ARCHITECTURE_HELP.diagramConnectTo} value="" placeholder="Choose an element…"
+            options={boxes.filter((b) => b.elementId !== box.elementId && !b.locked && !hidden.has(b.elementId))
+              .map((b) => ({ value: b.elementId, label: boxName(b) }))}
+            onChange={(targetId) => { if (targetId) onConnect(box, targetId); }}
+          />
+        )}
       </>
     );
   } else if (note) {

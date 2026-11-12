@@ -3,7 +3,7 @@ Module: modules.architecture.diagram_routes
 
 The project-scoped endpoints for diagrams, added to the module's project router by `add_diagram_routes`: the diagram
 record and its lifecycle, saving its layout and toggles, placing and unplacing one element, and reading it resolved
-(JSON for the editor, SVG for documents).
+(JSON for the editor, SVG and Mermaid text for documents).
 
 Responsibilities:
 - Declare the routes and translate `records.RuleError` to its HTTP status.
@@ -27,6 +27,7 @@ from app.database import get_db
 from app.models.user import User
 from app.modules.architecture import diagrams
 from app.modules.architecture._shared import DIAGRAM_MANAGE_PERMISSION, require_architect
+from app.modules.architecture.diagram_mermaid import render_mermaid
 from app.modules.architecture.diagram_model import build_model
 from app.modules.architecture.diagram_svg import render_diagram
 from app.modules.architecture.diagram_view import ToggleState, build_view
@@ -166,6 +167,19 @@ def add_diagram_routes(router: APIRouter) -> None:
         return Response(
             content=render_diagram(db, view), media_type=report_images.SVG_TYPE,
             headers={**SVG_HEADERS, "Cache-Control": "private, no-store"},
+        )
+
+    @router.get("/diagrams/{diagram_id}/mermaid")
+    def get_diagram_mermaid(
+        project_id: uuid.UUID, diagram_id: uuid.UUID, toggle_on: list[uuid.UUID] = Query(default=[]),
+        toggle_off: list[uuid.UUID] = Query(default=[]), include_retired: bool = False,
+        current_user: User = Depends(view_diagrams), db: Session = Depends(get_db),
+    ):
+        """The same resolved diagram as Mermaid flowchart text (plain text, for pasting into documentation)."""
+        view = resolved(db, current_user, project_id, diagram_id, toggle_on, toggle_off, include_retired)
+        return Response(
+            content=render_mermaid(view), media_type="text/plain; charset=utf-8",
+            headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
         )
 
     @router.put("/diagrams/{diagram_id}", response_model=DiagramOut)

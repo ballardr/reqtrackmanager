@@ -117,8 +117,8 @@ def test_the_shared_reads_use_the_same_number_of_statements_however_many_element
     assert [count(u) for u in urls] == few
 
 
-def test_the_diagram_view_and_svg_use_the_same_number_of_statements_however_large_the_diagram(client, admin_token):
-    """The resolved view and the server SVG read a diagram's placements, connections, toggles and ancestors in bulk, so
+def test_the_diagram_view_svg_and_mermaid_use_the_same_number_of_statements_however_large_the_diagram(client, admin_token):
+    """The resolved view, the server SVG and the Mermaid text read a diagram's placements, connections, toggles and ancestors in bulk, so
     a larger diagram (more boxes, connections, toggles and shared elements) costs no more statements."""
     from app.modules.architecture.tests._helpers import make_diagram, place_all, save_toggles, view
 
@@ -139,6 +139,7 @@ def test_the_diagram_view_and_svg_use_the_same_number_of_statements_however_larg
     urls = [
         f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/view",
         f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/svg",
+        f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/mermaid",
     ]
 
     def count(url) -> int:

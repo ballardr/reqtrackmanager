@@ -11,6 +11,7 @@ import { api } from "../../api/client";
 import { appendScopeParam, type ScopeListFilters } from "../../api/projectScope";
 import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
+import type { ToggleStates } from "./diagramExport";
 import type {
   ArchitectureCollection,
   ArchitectureConnection,
@@ -220,8 +221,21 @@ export const projectDiagramApi = (projectId: string) => {
       api.put<ArchitectureDiagram>(`${base}/${id}/layout`, { version, placements, notes }),
     saveToggles: (id: string, version: number, toggles: DiagramToggleValues[]) =>
       api.put<ArchitectureDiagram>(`${base}/${id}/toggles`, { version, toggles }),
+    /** The saved diagram drawn by the server as an SVG document, for the view-switch states named. */
+    svg: async (id: string, states: ToggleStates) => (await api.getForBlob(`${base}/${id}/svg${statesQuery(states)}`)).text(),
+    /** The saved diagram as Mermaid flowchart text, for the view-switch states named. */
+    mermaid: async (id: string, states: ToggleStates) => (await api.getForBlob(`${base}/${id}/mermaid${statesQuery(states)}`)).text(),
   };
 };
+
+/** The query naming a page's view-switch states (`toggle_on` / `toggle_off` repeated per id). */
+function statesQuery(states: ToggleStates): string {
+  const query = new URLSearchParams();
+  states.on.forEach((id) => query.append("toggle_on", id));
+  states.off.forEach((id) => query.append("toggle_off", id));
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
 
 /** Collections of a project or an organisation: their members (the tops of the subtrees shared) and grants. */
 function collectionCalls(base: string) {

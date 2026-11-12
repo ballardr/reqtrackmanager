@@ -4687,6 +4687,8 @@ const en = {
       label ? `${label}, connection from ${from} to ${to}` : `Connection from ${from} to ${to}`,
     keyboardHelp:
       "Tab moves between nodes and connections. Enter or Space selects. Arrow keys move the selected node when editing is allowed. Drag a node's edge handle to resize it.",
+    keyboardResizeHelp: "Alt with an arrow key resizes the selected node.",
+    keyboardDeleteHelp: "Delete or Backspace removes the selected item.",
   },
   common: {
     requiredLegend: "* required",

@@ -11,6 +11,10 @@
  * instead of overwriting a newer save. Creating a connection or deleting an element writes to the model at once, so a
  * pending layout is saved first. Taking a box off the diagram never deletes its element; deleting the element is a separate,
  * confirmed action. View switches are stored when changed, but flipping one on the page changes only the address.
+ * An Outline card (elements as a tree, lines as a table) is the text alternative to the canvas and shares its selection; the
+ * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram) and the selection card
+ * can start a connection from a list. Export (PNG, SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks
+ * the server for the saved diagram drawn for the switch states on the page.
  * Lines, bridging and roll-up are worked out in the browser from the diagram's model data (`GET .../model`) by
  * `diagramLines`, so an added box or a flipped switch redraws at once; the server's resolved view (`GET .../view`) gives
  * the boxes, notes and switches on load and stays the authority for the SVG and documents.
@@ -18,9 +22,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { downloadBlob } from "../../utils/download";
+import { svgToPngBlob } from "../../utils/svgToPng";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Badge } from "../../components/Badge";
+import { MenuButton } from "../../components/MenuButton";
 import { DetailLayout } from "../../components/DetailLayout";
 import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
@@ -42,7 +49,9 @@ import {
   addBoxes, addNote, boxFromElement, canvasEdges, canvasNodes, editNote, moveItems, newNoteKey, nextFreePosition, removeBox,
   removeNote, resizeItems, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH,
 } from "./diagramEditorModel";
+import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
 import { DiagramFormModal } from "./DiagramFormModal";
+import { DiagramOutline } from "./DiagramOutline";
 import { DiagramPalette } from "./DiagramPalette";
 import { DiagramSelectionPanel } from "./DiagramSelectionPanel";
 import { DiagramTogglesPanel } from "./DiagramTogglesPanel";
@@ -88,6 +97,7 @@ export function DiagramEditorPage() {
   const [connecting, setConnecting] = useState<{ source: string; target: string } | null>(null);
   const [toggleForm, setToggleForm] = useState<{ initial?: DiagramToggleValues } | null>(null);
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const reloadModelLists = useCallback(() => {
     if (!projectId) return;
@@ -261,6 +271,44 @@ export function DiagramEditorPage() {
     }
   }
 
+  /** Removes the selected box or note from the diagram (an undoable local edit; the element itself is never touched). */
+  function removeSelected(chosen: GraphCanvasSelection) {
+    if (!editable || chosen.kind !== "node") return;
+    if (chosen.id.startsWith(NOTE_NODE_PREFIX)) editor.edit((l) => removeNote(l, chosen.id.slice(NOTE_NODE_PREFIX.length)));
+    else editor.edit((l) => removeBox(l, chosen.id));
+    setSelection(null);
+  }
+
+  /**
+   * Exports the saved diagram as the server draws it for the switch states on this page. A pending layout is saved first,
+   * since the export is of the stored diagram.
+   */
+  async function exportDiagram(kind: DiagramExportKind) {
+    if (!diagram || exporting) return;
+    setExporting(true);
+    try {
+      if (!(await ensureSaved())) return;
+      const states = toggleStates(toggles);
+      const file = (extension: string) => exportFileName(diagram.unique_code, diagram.name, extension);
+      if (kind === "svg") {
+        downloadBlob(new Blob([await diagramApi.svg(diagram.id, states)], { type: "image/svg+xml" }), file("svg"));
+      } else if (kind === "png") {
+        downloadBlob(await svgToPngBlob(await diagramApi.svg(diagram.id, states)), file("png"));
+      } else if (kind === "mermaid") {
+        downloadBlob(new Blob([await diagramApi.mermaid(diagram.id, states)], { type: "text/plain" }), file("mmd"));
+      } else {
+        await navigator.clipboard.writeText(await diagramApi.mermaid(diagram.id, states));
+        showToast("Mermaid text copied.");
+        return;
+      }
+      showToast("Diagram exported.");
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not export the diagram."), "error");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function flipToggle(toggle: DiagramToggle, on: boolean) {
     // The saved default needs no override; a state that differs from it is kept in the address.
     const without = (list: string[]) => list.filter((id) => id !== toggle.id);
@@ -370,20 +418,33 @@ export function DiagramEditorPage() {
           />
           <span>Connection detail</span>
         </span>
+        <MenuButton
+          label="Export" menuLabel="Export diagram" disabled={exporting}
+          items={[
+            { label: "PNG image", group: "Image", onSelect: () => void exportDiagram("png") },
+            { label: "SVG image", group: "Image", onSelect: () => void exportDiagram("svg") },
+            { label: "Download Mermaid text", key: "mermaid", group: "Text", onSelect: () => void exportDiagram("mermaid") },
+            { label: "Copy Mermaid text", key: "copy-mermaid", group: "Text", onSelect: () => void exportDiagram("copy-mermaid") },
+          ]}
+        />
         {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
       </div>
 
       <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }}>
-        <div style={{ flex: "3 1 32rem", minWidth: 0 }}>
+        <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
           <GraphCanvas
             nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={CANVAS_HEIGHT}
             readOnly={!editable} resizable selected={selection} onSelect={setSelection}
             onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
             onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
-            onConnect={(source, target) => void startConnection(source, target)}
+            onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected}
             onDropItem={(payload, at) => {
               if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
             }}
+          />
+          <DiagramOutline
+            boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} parents={model.parents} hidden={resolved.hidden}
+            selection={selection} onSelect={setSelection}
           />
         </div>
         <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
@@ -397,8 +458,9 @@ export function DiagramEditorPage() {
             onAdd={() => setToggleForm({})} onEdit={(t) => setToggleForm({ initial: toggleValues(t) })} onRemove={(t) => void removeToggle(t)}
           />
           <DiagramSelectionPanel
-            projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} editable={editable}
+            projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} hidden={resolved.hidden} editable={editable}
             onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
+            onConnect={(box, targetId) => void startConnection(box.elementId, targetId)}
             onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
             onDeleteElement={(box) => void deleteElement(box.elementId)}
             onEditNote={(key, text) => editor.edit((l) => editNote(l, key, text))}

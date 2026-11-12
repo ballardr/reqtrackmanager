@@ -1,10 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement, mockArchitectureReads, PROJECT_ID,
+  SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
 
@@ -327,5 +328,187 @@ export const APlainDiagramMergesParallelLines: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByLabelText("×2, connection from Gateway to Orders")).toBeInTheDocument();
+  },
+};
+
+/** Records the file names of downloads (an anchor click with a `download` name) instead of saving files. */
+function captureDownloads(): string[] {
+  const names: string[] = [];
+  spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { if (this.download) names.push(this.download); });
+  return names;
+}
+
+const PNG_SOURCE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20" width="40" height="20"><rect width="40" height="20" fill="#0f766e"/></svg>';
+
+/** Answers the export reads with a small SVG and Mermaid text; other blob reads (symbols) fall through to the fixture. */
+function mockExportReads() {
+  spyOn(api, "getForBlob").mockImplementation(async (path: string) => {
+    if (path.includes("/svg")) return new Blob([PNG_SOURCE], { type: "image/svg+xml" });
+    if (path.includes("/mermaid")) return new Blob(["flowchart LR\n"], { type: "text/plain" });
+    return SYMBOL_SVG;
+  });
+}
+
+/** Opens the Export menu and chooses an item. */
+async function exportAs(canvas: ReturnType<typeof within>, item: string) {
+  await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
+  await userEvent.click(await within(document.body).findByRole("menuitem", { name: item }));
+}
+
+export const TheOutlineFollowsTheViewSwitches: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const outline = within(await canvas.findByRole("region", { name: "Outline" }));
+    await expect(await outline.findByRole("button", { name: /^ELM-003 Firewall/ })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("switch", { name: "Security devices" }));
+    await waitFor(() => expect(outline.queryByRole("button", { name: /^ELM-003 Firewall/ })).not.toBeInTheDocument());
+    await expect(outline.getByText(/1 hidden by view switches\./)).toBeInTheDocument();
+  },
+};
+
+export const ChoosingInTheOutlineSelectsOnTheCanvasAndInTheSelectionCard: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const outline = within(await canvas.findByRole("region", { name: "Outline" }));
+    await userEvent.click(await outline.findByRole("button", { name: /^ELM-002 Orders/ }));
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(panel.getByText(/ELM-002 Orders/)).toBeInTheDocument();
+    await expect(outline.getByRole("button", { name: /^ELM-002 Orders/ })).toHaveAttribute("aria-current", "true");
+    await userEvent.click(outline.getByRole("button", { name: /^Line from/ }));
+    await expect(await panel.findByRole("link", { name: "CON-001" })).toBeInTheDocument();
+  },
+};
+
+export const ABoxAddedBeforeSavingIsInTheOutlineAtOnce: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const outline = within(await canvas.findByRole("region", { name: "Outline" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Add existing elements" }));
+    const dialog = within(within(document.body).getByRole("dialog"));
+    await userEvent.click(await dialog.findByRole("checkbox", { name: "Add Cache" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Add selected (1)" }));
+    await expect(await outline.findByRole("button", { name: /^ELM-004 Cache/ })).toBeInTheDocument();
+  },
+};
+
+export const ConnectToStartsAConnectionWithoutDragging: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    const choose = await panel.findByRole("combobox", { name: /Connect to/ });
+    // Only the other visible boxes are offered.
+    await expect(within(choose).queryByRole("option", { name: /Gateway/ })).not.toBeInTheDocument();
+    await userEvent.selectOptions(choose, "el-2");
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByRole("heading", { name: "New connection" })).toBeInTheDocument();
+  },
+};
+
+export const TheDeleteKeyTakesTheSelectedBoxOffTheDiagramOnly: Story = {
+  beforeEach: () => { spyOn(api, "delete").mockResolvedValue(undefined as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => expect(canvas.queryByLabelText("Orders, node")).not.toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
+    await expect(await canvas.findByLabelText("Orders, node")).toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
+  },
+};
+
+export const AnArchivedDiagramIgnoresTheDeleteKey: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: ELEMENTS, diagramView: buildDiagramView({ diagram: buildDiagram({ is_archived: true }) }) });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    await userEvent.keyboard("{Delete}");
+    await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument();
+    await expect(canvas.queryByRole("combobox", { name: /Connect to/ })).not.toBeInTheDocument();
+  },
+};
+
+export const ExportingSvgAsksTheServerForTheSwitchStatesOnThePage: Story = {
+  beforeEach: () => { mockExportReads(); },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await exportAs(canvas, "SVG image");
+    await waitFor(() => expect(names).toEqual(["DGM-001-platform-overview.svg"]));
+    expect(api.getForBlob).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/svg?toggle_on=tg-1`);
+  },
+};
+
+export const ExportingAfterSwitchingOffNamesTheSwitchAsOff: Story = {
+  beforeEach: () => { mockExportReads(); },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("switch", { name: "Security devices" }));
+    await exportAs(canvas, "Download Mermaid text");
+    await waitFor(() => expect(names).toEqual(["DGM-001-platform-overview.mmd"]));
+    expect(api.getForBlob).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/mermaid?toggle_off=tg-1`);
+  },
+};
+
+export const ExportingPngDrawsTheServersSvg: Story = {
+  beforeEach: () => { mockExportReads(); },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    await exportAs(within(canvasElement), "PNG image");
+    await waitFor(() => expect(names).toEqual(["DGM-001-platform-overview.png"]));
+  },
+};
+
+export const CopyingMermaidPutsTheTextOnTheClipboard: Story = {
+  beforeEach: () => {
+    mockExportReads();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: fn().mockResolvedValue(undefined) }, configurable: true });
+  },
+  play: async ({ canvasElement }) => {
+    await exportAs(within(canvasElement), "Copy Mermaid text");
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("flowchart LR\n"));
+  },
+};
+
+export const ExportingSavesAPendingLayoutFirst: Story = {
+  beforeEach: () => {
+    mockExportReads();
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await exportAs(canvas, "SVG image");
+    await waitFor(() => expect(names).toHaveLength(1));
+    const put = (api.put as unknown as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder[0];
+    const read = (api.getForBlob as unknown as { mock: { calls: [string][]; invocationCallOrder: number[] } }).mock;
+    const svgCall = read.calls.findIndex(([path]) => path.includes("/svg"));
+    expect(put).toBeLessThan(read.invocationCallOrder[svgCall]);
+  },
+};
+
+export const AFailedExportShowsAMessageAndDownloadsNothing: Story = {
+  beforeEach: () => {
+    spyOn(api, "getForBlob").mockImplementation(async (path: string) => {
+      if (path.includes("/svg")) throw new ApiError(500, "Server error");
+      return SYMBOL_SVG;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await exportAs(canvas, "SVG image");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("/svg")));
+    // The menu is usable again once the failure has been handled.
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeEnabled());
+    expect(names).toEqual([]);
   },
 };

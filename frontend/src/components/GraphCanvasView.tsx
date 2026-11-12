@@ -9,7 +9,8 @@
  * - Turn `GraphCanvasNode`/`GraphCanvasEdge` into React Flow nodes and edges, and report selection, moves and new
  *   connections back through the callbacks.
  * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
- *   selected node (React Flow's own handling, off in read-only mode), each with a spoken name.
+ *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
+ *   Backspace asks the consumer to delete it, each with a spoken name.
  *
  * Design decisions:
  * - Labels are React text children (nodes) or React Flow's SVG text (connections), never markup. A symbol is an
@@ -40,7 +41,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useCallback, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { safeSvgImage } from "../utils/safeSvgImage";
@@ -49,6 +50,16 @@ import { GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection } fro
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
+/** The smallest size a node can be resized to, by pointer or key, and the step of a key resize. */
+const MIN_WIDTH = 80;
+const MIN_HEIGHT = 40;
+const KEY_RESIZE_STEP = 10;
+const RESIZE_KEYS: Record<string, { width: number; height: number }> = {
+  ArrowRight: { width: KEY_RESIZE_STEP, height: 0 },
+  ArrowLeft: { width: -KEY_RESIZE_STEP, height: 0 },
+  ArrowDown: { width: 0, height: KEY_RESIZE_STEP },
+  ArrowUp: { width: 0, height: -KEY_RESIZE_STEP },
+};
 
 type NodeData = { label: string; caption?: string; symbol: string | null; accent?: string; dashed?: boolean; resizable: boolean };
 type FlowNode = Node<NodeData, "graph">;
@@ -60,7 +71,7 @@ function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
       className={data.dashed ? "graph-node graph-node-dashed" : "graph-node"}
       style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}
     >
-      {data.resizable && <NodeResizer isVisible={selected} minWidth={80} minHeight={40} />}
+      {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
       <Handle type="target" position={Position.Left} />
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
       <span className="graph-node-text">
@@ -93,6 +104,7 @@ export function GraphCanvasView({
   onConnect,
   resizable = false,
   onNodesResize,
+  onDelete,
   onDropItem,
   height = 480,
 }: GraphCanvasProps) {
@@ -241,6 +253,36 @@ export function GraphCanvasView({
     [onConnect],
   );
 
+  const keyResize = resizable && !readOnly && onNodesResize !== undefined;
+  const keyDelete = !readOnly && onDelete !== undefined;
+
+  /**
+   * Handles the keys React Flow does not: Alt with an arrow key resizes the selected node, and Delete or Backspace asks
+   * the consumer to delete the selection. Runs before React Flow's own key handling so Alt+arrow does not also move the node.
+   */
+  const handleKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!selection || target.closest("input, textarea, select, [contenteditable='true']")) return;
+    const step = RESIZE_KEYS[event.key];
+    if (keyResize && event.altKey && step && selection.kind === "node") {
+      const node = flow.current?.getNode(selection.id);
+      if (!node) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const width = Math.max(MIN_WIDTH, Math.round((node.width ?? DEFAULT_WIDTH) + step.width));
+      const height = Math.max(MIN_HEIGHT, Math.round((node.height ?? DEFAULT_HEIGHT) + step.height));
+      const base = nodes.find((n) => n.id === selection.id);
+      setSized((m) => ({
+        ...m,
+        [selection.id]: { width, height, baseWidth: base?.width ?? DEFAULT_WIDTH, baseHeight: base?.height ?? DEFAULT_HEIGHT },
+      }));
+      onNodesResize?.([{ id: selection.id, x: Math.round(node.position.x), y: Math.round(node.position.y), width, height }]);
+    } else if (keyDelete && (event.key === "Delete" || event.key === "Backspace")) {
+      event.preventDefault();
+      onDelete?.(selection);
+    }
+  };
+
   const dropEnabled = onDropItem !== undefined && !readOnly;
   const allowDrop = (event: DragEvent) => {
     if (!dropEnabled || !event.dataTransfer.types.includes(GRAPH_DROP_MIME)) return;
@@ -256,9 +298,14 @@ export function GraphCanvasView({
   };
 
   return (
-    <div role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }} onDragOver={allowDrop} onDrop={dropItem}>
+    <div
+      role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}
+      onDragOver={allowDrop} onDrop={dropItem} onKeyDownCapture={handleKey}
+    >
       <span id={helpId} className="sr-only">
         {text.keyboardHelp}
+        {keyResize ? ` ${text.keyboardResizeHelp}` : ""}
+        {keyDelete ? ` ${text.keyboardDeleteHelp}` : ""}
       </span>
       <ReactFlow
         className={readOnly ? "graph-canvas graph-canvas-readonly" : "graph-canvas"}

@@ -90,6 +90,11 @@ export interface GraphCanvasProps {
   resizable?: boolean;
   /** Called once when a resize ends, with the node's final position and size. */
   onNodesResize?: (changes: { id: string; x: number; y: number; width: number; height: number }[]) => void;
+  /**
+   * Called when Delete or Backspace is pressed on the selected node or connection (not in read-only mode). The canvas
+   * deletes nothing itself: what a delete means belongs to the consumer.
+   */
+  onDelete?: (selection: GraphCanvasSelection) => void;
   /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */
