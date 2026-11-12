@@ -35,24 +35,26 @@ export interface ConnectionCreateExtras {
  * @param elements Every element either end may be (the project's own and those shared with it).
  * @param projectId The connection's project, for quick links and tags.
  * @param defaultSourceId An element to preselect as the source of a new connection.
+ * @param defaultTargetId An element to preselect as the target (a line drawn between two boxes of a diagram).
  * @param error A save error to show.
  * @param onSave Called with the values and, for a new connection, the extras.
  */
 export function ConnectionFormModal({
-  initial, connectionTypes, elements, projectId, defaultSourceId = "", error, onCancel, onSave,
+  initial, connectionTypes, elements, projectId, defaultSourceId = "", defaultTargetId = "", error, onCancel, onSave,
 }: {
   initial?: ArchitectureConnection;
   connectionTypes: ConnectionType[];
   elements: ArchitectureElement[];
   projectId: string;
   defaultSourceId?: string;
+  defaultTargetId?: string;
   error?: string | null;
   onCancel: () => void;
   onSave: (values: ConnectionFieldValues, extras: ConnectionCreateExtras) => void;
 }) {
   const formatCode = useRecordCode();
   const [values, setValues] = useState<ConnectionFieldValues>(() =>
-    initial ? valuesFromConnection(initial) : blankConnectionValues(connectionTypes[0]?.id ?? "", defaultSourceId));
+    initial ? valuesFromConnection(initial) : blankConnectionValues(connectionTypes[0]?.id ?? "", defaultSourceId, defaultTargetId));
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const set = <K extends keyof ConnectionFieldValues>(key: K, value: ConnectionFieldValues[K]) =>

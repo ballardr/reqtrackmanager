@@ -1,0 +1,348 @@
+/**
+ * Module: modules/architecture/diagramEditorModel
+ *
+ * The diagram editor's state as plain functions, with no React: the layout being edited (boxes and notes), an
+ * undo/redo history over it, the merge of a freshly read view into that layout, and the mapping to the shared
+ * canvas's nodes and lines.
+ *
+ * Responsibilities:
+ * - `EditorLayout`: every placement of the diagram (including boxes a view switch hides and boxes the viewer cannot read,
+ *   which a save must keep) and its notes. Edits return a new layout; none mutates.
+ * - `History`: past / present / future with a saved baseline, so the editor knows what is unsaved and Save is enabled
+ *   only for a real change.
+ * - `mergeView`: display data comes from the server's view, membership and geometry from the local layout, so a reload
+ *   never discards unsaved work.
+ *
+ * Design decisions:
+ * - Which boxes a view switch hides and which lines are drawn are not stored in the layout: `diagramLines` works them out
+ *   from the layout and the model data, so a box added in the editor has its lines at once. This file only draws the
+ *   lines it is given.
+ */
+import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
+import type {
+  ArchitectureElement, DiagramNote, DiagramView, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues,
+  PlacementValues,
+} from "./types";
+
+export type EditorTheme = "light" | "dark";
+
+/** Default size of a new box. */
+export const BOX_WIDTH = 160;
+export const BOX_HEIGHT = 80;
+/** Default size of a new note. */
+export const NOTE_WIDTH = 160;
+export const NOTE_HEIGHT = 60;
+/** Gap left between boxes when new ones are placed in a grid. */
+const GRID_GAP = 40;
+/** How many steps of undo are kept. */
+export const HISTORY_LIMIT = 100;
+/** Prefix of a note's canvas node id, so a node is told from an element by its id alone. */
+export const NOTE_NODE_PREFIX = "note:";
+
+/** One placed element: what is drawn on it and where it sits. */
+export interface EditorBox {
+  elementId: string;
+  unique_code: string;
+  name: string;
+  locked: boolean;
+  shared: boolean;
+  status: DiagramViewNode["status"];
+  parent_id: string | null;
+  element_type_id: string | null;
+  element_type_name: string;
+  color_light: string | null;
+  color_dark: string | null;
+  symbol_id: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+}
+
+/** A plain-text note; `id` is null until it is saved, `key` is stable while editing. */
+export interface EditorNote {
+  key: string;
+  id: string | null;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface EditorLayout {
+  boxes: EditorBox[];
+  notes: EditorNote[];
+}
+
+export const EMPTY_LAYOUT: EditorLayout = { boxes: [], notes: [] };
+
+/** @param node A placed element of a resolved view. @returns Its box. */
+export function boxFromNode(node: DiagramViewNode): EditorBox {
+  return {
+    elementId: node.element_id, unique_code: node.unique_code, name: node.name, locked: node.locked, shared: node.shared,
+    status: node.status, parent_id: node.parent_id, element_type_id: node.element_type_id,
+    element_type_name: node.element_type_name, color_light: node.color_light, color_dark: node.color_dark,
+    symbol_id: node.symbol_id, x: node.x, y: node.y, width: node.width, height: node.height, collapsed: node.collapsed,
+  };
+}
+
+function noteFromView(note: DiagramNote): EditorNote {
+  return { key: note.id, id: note.id, text: note.text, x: note.x, y: note.y, width: note.width, height: note.height };
+}
+
+/** @param view A resolved view. @returns The layout it holds (every placement and note, hidden or not). */
+export function layoutFromView(view: DiagramView): EditorLayout {
+  return { boxes: view.nodes.map(boxFromNode), notes: view.notes.map(noteFromView) };
+}
+
+/**
+ * Applies a freshly read view to the layout being edited: membership and geometry stay local, while the display data
+ * (names, types, colours) comes from the view.
+ *
+ * @param local The layout being edited.
+ * @param view The view read from the server (for example after a connection was added).
+ * @returns The layout to show.
+ */
+export function mergeView(local: EditorLayout, view: DiagramView): EditorLayout {
+  const resolved = new Map(view.nodes.map((n) => [n.element_id, n]));
+  return {
+    boxes: local.boxes.map((b) => {
+      const n = resolved.get(b.elementId);
+      if (!n) return b;
+      return { ...boxFromNode(n), x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed };
+    }),
+    notes: local.notes,
+  };
+}
+
+/**
+ * The box for an element placed from the palette or a picker.
+ *
+ * @param element The element (this project's or one shared with it).
+ * @param type The element's type, for its colours.
+ * @param at Where its top-left corner goes.
+ */
+export function boxFromElement(element: ArchitectureElement, type: ElementType | undefined, at: { x: number; y: number }): EditorBox {
+  return {
+    elementId: element.id, unique_code: element.unique_code, name: element.name, locked: false, shared: element.shared,
+    status: element.status, parent_id: element.parent_id, element_type_id: element.element_type_id,
+    element_type_name: element.element_type_name, color_light: type?.color_light ?? null, color_dark: type?.color_dark ?? null,
+    symbol_id: element.effective_symbol_id, x: at.x, y: at.y, width: BOX_WIDTH, height: BOX_HEIGHT, collapsed: false,
+  };
+}
+
+/** @param layout The layout to save. @returns The request bodies of the layout save. */
+export function layoutToSave(layout: EditorLayout): { placements: PlacementValues[]; notes: NoteValues[] } {
+  return {
+    placements: layout.boxes.map((b) => ({
+      element_id: b.elementId, x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed,
+    })),
+    notes: layout.notes.map((n) => ({ id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height })),
+  };
+}
+
+/** The part of a layout a save would send, as comparable text. */
+function signature(layout: EditorLayout): string {
+  const { placements, notes } = layoutToSave(layout);
+  return JSON.stringify([
+    [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
+    notes.map((n) => [n.text, n.x, n.y, n.width, n.height]),
+  ]);
+}
+
+// --- Edits (each returns a new layout) ---
+
+/** Moves boxes and notes; `id`s are element ids or `note:`-prefixed note keys. */
+export function moveItems(layout: EditorLayout, moves: { id: string; x: number; y: number }[]): EditorLayout {
+  const to = new Map(moves.map((m) => [m.id, m]));
+  return {
+    boxes: layout.boxes.map((b) => (to.has(b.elementId) ? { ...b, x: to.get(b.elementId)!.x, y: to.get(b.elementId)!.y } : b)),
+    notes: layout.notes.map((n) => {
+      const m = to.get(NOTE_NODE_PREFIX + n.key);
+      return m ? { ...n, x: m.x, y: m.y } : n;
+    }),
+  };
+}
+
+/** Moves and resizes boxes and notes to the final geometry of a resize. */
+export function resizeItems(
+  layout: EditorLayout, changes: { id: string; x: number; y: number; width: number; height: number }[],
+): EditorLayout {
+  const to = new Map(changes.map((c) => [c.id, c]));
+  return {
+    boxes: layout.boxes.map((b) => {
+      const c = to.get(b.elementId);
+      return c ? { ...b, x: c.x, y: c.y, width: c.width, height: c.height } : b;
+    }),
+    notes: layout.notes.map((n) => {
+      const c = to.get(NOTE_NODE_PREFIX + n.key);
+      return c ? { ...n, x: c.x, y: c.y, width: c.width, height: c.height } : n;
+    }),
+  };
+}
+
+/** Adds boxes, skipping any element already on the diagram. */
+export function addBoxes(layout: EditorLayout, boxes: EditorBox[]): EditorLayout {
+  const have = new Set(layout.boxes.map((b) => b.elementId));
+  const fresh = boxes.filter((b) => !have.has(b.elementId));
+  return fresh.length === 0 ? layout : { ...layout, boxes: [...layout.boxes, ...fresh] };
+}
+
+/** Takes an element off the diagram. The element itself is never touched. */
+export function removeBox(layout: EditorLayout, elementId: string): EditorLayout {
+  return { ...layout, boxes: layout.boxes.filter((b) => b.elementId !== elementId) };
+}
+
+export function addNote(layout: EditorLayout, note: EditorNote): EditorLayout {
+  return { ...layout, notes: [...layout.notes, note] };
+}
+
+export function editNote(layout: EditorLayout, key: string, text: string): EditorLayout {
+  return { ...layout, notes: layout.notes.map((n) => (n.key === key ? { ...n, text } : n)) };
+}
+
+export function removeNote(layout: EditorLayout, key: string): EditorLayout {
+  return { ...layout, notes: layout.notes.filter((n) => n.key !== key) };
+}
+
+/**
+ * The first free slot of a grid, for a box added without a drop position.
+ *
+ * @param layout The layout the box joins.
+ * @param index Which of several boxes added together this is (they are not in the layout yet).
+ * @param columns Boxes per row of the grid.
+ */
+export function nextFreePosition(layout: EditorLayout, index = 0, columns = 4): { x: number; y: number } {
+  const taken = [...layout.boxes, ...layout.notes];
+  const hits = (x: number, y: number) =>
+    taken.some((t) => x < t.x + t.width && t.x < x + BOX_WIDTH && y < t.y + t.height && t.y < y + BOX_HEIGHT);
+  let free = -1;
+  for (let slot = 0; slot < 100_000; slot += 1) {
+    const x = (slot % columns) * (BOX_WIDTH + GRID_GAP);
+    const y = Math.floor(slot / columns) * (BOX_HEIGHT + GRID_GAP);
+    if (!hits(x, y)) free += 1;
+    if (free === index) return { x, y };
+  }
+  return { x: 0, y: 0 };
+}
+
+// --- History ---
+
+/** An undo/redo history over layouts; `saved` is the layout last stored on the server. */
+export interface History {
+  past: EditorLayout[];
+  present: EditorLayout;
+  future: EditorLayout[];
+  saved: EditorLayout;
+}
+
+/** @param layout The layout just loaded (it is also the saved baseline). */
+export function startHistory(layout: EditorLayout): History {
+  return { past: [], present: layout, future: [], saved: layout };
+}
+
+/** Records `next` as the new present, clearing redo; an edit that changes nothing adds no step. */
+export function commit(history: History, next: EditorLayout): History {
+  if (signature(next) === signature(history.present)) return history;
+  return {
+    ...history, past: [...history.past, history.present].slice(-HISTORY_LIMIT), present: next, future: [],
+  };
+}
+
+export function undo(history: History): History {
+  const previous = history.past[history.past.length - 1];
+  if (!previous) return history;
+  return { ...history, past: history.past.slice(0, -1), present: previous, future: [history.present, ...history.future] };
+}
+
+export function redo(history: History): History {
+  const [next, ...rest] = history.future;
+  if (!next) return history;
+  return { ...history, past: [...history.past, history.present], present: next, future: rest };
+}
+
+/** Replaces the present without a history step (a merged view's display data is not an edit). */
+export function refreshPresent(history: History, present: EditorLayout): History {
+  return { ...history, present };
+}
+
+/** Marks the present as stored on the server (after a successful save). */
+export function markSaved(history: History, saved: EditorLayout): History {
+  return { ...history, present: saved, saved };
+}
+
+/** True when the present differs from what the server holds. */
+export function isDirty(history: History): boolean {
+  return signature(history.present) !== signature(history.saved);
+}
+
+// --- Canvas mapping ---
+
+const pick = (light: string | null, dark: string | null, theme: EditorTheme): string | undefined =>
+  (theme === "dark" ? dark ?? light : light ?? dark) ?? undefined;
+
+/** What the canvas needs besides the layout. */
+export interface CanvasContext {
+  theme: EditorTheme;
+  /** The sanitised SVG of a symbol, once fetched. */
+  symbolSvg: (symbolId: string) => string | undefined;
+  /** Text shown on a box the viewer cannot read. */
+  lockedLabel: (code: string) => string;
+  /** Text shown on a note with no text yet. */
+  emptyNote: string;
+  /** The caption of a note. */
+  noteCaption: string;
+  /** The elements a view switch hides: they stay in the layout but are not drawn. */
+  hidden: ReadonlySet<string>;
+}
+
+/** @returns The canvas nodes for the boxes a view switch leaves visible, and for the notes. */
+export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanvasNode[] {
+  const boxes = layout.boxes.filter((b) => !ctx.hidden.has(b.elementId)).map<GraphCanvasNode>((b) => ({
+    id: b.elementId,
+    label: b.locked ? ctx.lockedLabel(b.unique_code) : b.name,
+    caption: b.locked ? undefined : `${b.unique_code} · ${b.element_type_name}`,
+    x: b.x, y: b.y, width: b.width, height: b.height,
+    symbolSvg: b.symbol_id && !b.locked ? ctx.symbolSvg(b.symbol_id) : undefined,
+    accent: pick(b.color_light, b.color_dark, ctx.theme),
+    dashed: b.locked || b.status === "retired",
+  }));
+  const notes = layout.notes.map<GraphCanvasNode>((n) => ({
+    id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: ctx.noteCaption,
+    x: n.x, y: n.y, width: n.width, height: n.height, dashed: true,
+  }));
+  return [...boxes, ...notes];
+}
+
+/** The label of a line: the text the view gives (which already counts several connections), else just the count when several. */
+function edgeLabel(edge: DiagramViewEdge): string | undefined {
+  return edge.label ?? (edge.count > 1 ? `×${edge.count}` : undefined);
+}
+
+/**
+ * @param edges The resolved lines.
+ * @param layout The layout being edited; a line whose end is not a visible box (removed or switched off here) is left out.
+ * @param hidden The elements a view switch hides.
+ * @param theme Which of a line's two colours to use.
+ */
+export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidden: ReadonlySet<string>, theme: EditorTheme): GraphCanvasEdge[] {
+  const visible = new Set(layout.boxes.filter((b) => !hidden.has(b.elementId)).map((b) => b.elementId));
+  return edges
+    .filter((e) => visible.has(e.source_element_id) && visible.has(e.target_element_id))
+    .map((e) => ({
+      id: e.id, source: e.source_element_id, target: e.target_element_id, label: edgeLabel(e),
+      dashed: e.indirect || (e.line_style !== null && e.line_style !== "solid"),
+      color: pick(e.color_light, e.color_dark, theme),
+      direction: e.two_way ? "none" : "forward",
+    }));
+}
+
+/** A fresh key for a note added in the editor. */
+export function newNoteKey(layout: EditorLayout): string {
+  const used = new Set(layout.notes.map((n) => n.key));
+  let n = layout.notes.length + 1;
+  while (used.has(`new-${n}`)) n += 1;
+  return `new-${n}`;
+}

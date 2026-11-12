@@ -81,7 +81,7 @@ class ToggleState:
         return toggle.id in self.on or toggle.default_on
 
 
-def _rule(toggle: ArchitectureDiagramToggle) -> ToggleRule:
+def toggle_rule(toggle: ArchitectureDiagramToggle) -> ToggleRule:
     """The stored rule as the API shape (an unreadable stored value reads as an empty rule)."""
     try:
         return ToggleRule.model_validate(toggle.rule or {})
@@ -89,7 +89,7 @@ def _rule(toggle: ArchitectureDiagramToggle) -> ToggleRule:
         return ToggleRule()
 
 
-def _matched(
+def matched_by_rules(
     rules: dict[uuid.UUID, ToggleRule], toggles_off: Collection[uuid.UUID], elements: dict[uuid.UUID, ArchitectureElement],
     connections: list[ArchitectureConnection], element_types: dict[uuid.UUID, ArchitectureElementType],
     connection_types: dict[uuid.UUID, ArchitectureConnectionType], element_tags: dict[uuid.UUID, list[str]],
@@ -166,7 +166,7 @@ def build_view(
         ))
     } if connections else {}
 
-    rules = {t.id: _rule(t) for t in toggles}
+    rules = {t.id: toggle_rule(t) for t in toggles}
     off = [t.id for t in toggles if not state.is_on(t)]
     uses_tags = any(rules[t].tags for t in off)
     readable_elements = {i: elements[i] for i in readable if i in elements}
@@ -177,7 +177,7 @@ def build_view(
             element_tags = tag_service.tag_names_for_records(db, ELEMENT_ARTEFACT_TYPE, readable_elements)
         if connections:
             connection_tags = tag_service.tag_names_for_records(db, CONNECTION_ARTEFACT_TYPE, [c.id for c in connections])
-    hidden_elements, hidden_connections = _matched(
+    hidden_elements, hidden_connections = matched_by_rules(
         rules, off, readable_elements, connections, types, connection_types, element_tags, connection_tags,
     )
     connection_ids = {c.id for c in connections}

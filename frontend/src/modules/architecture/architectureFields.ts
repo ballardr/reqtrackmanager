@@ -7,7 +7,7 @@
  */
 import { principalRef } from "../../api/types";
 import type {
-  ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ElementFieldValues,
+  ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ConnectionFieldValues, DiagramFieldValues, ElementFieldValues,
 } from "./types";
 
 /** An empty element form; `elementTypeId` preselects the first type. */
@@ -39,10 +39,10 @@ export function diffElementFields(before: ElementFieldValues, after: ElementFiel
 }
 
 /** An empty connection form. */
-export function blankConnectionValues(connectionTypeId = "", sourceElementId = ""): ConnectionFieldValues {
+export function blankConnectionValues(connectionTypeId = "", sourceElementId = "", targetElementId = ""): ConnectionFieldValues {
   return {
     name: "", connection_type_id: connectionTypeId, source_element_id: sourceElementId, source_port_id: null,
-    target_element_id: "", target_port_id: null, protocol: "", description: "",
+    target_element_id: targetElementId, target_port_id: null, protocol: "", description: "",
   };
 }
 
@@ -112,4 +112,26 @@ export function elementCodeRecord(element: ArchitectureElement) {
     unique_code: element.unique_code, scope: element.organization_id ? "organization" : "project",
     organization_id: element.organization_id, from_project_code: element.from_project_code,
   };
+}
+
+/** An empty diagram form; `scopeId` preselects the element the diagram shows the inside of. */
+export function blankDiagramValues(scopeId: string | null = null): DiagramFieldValues {
+  return { name: "", purpose: "", scope_element_id: scopeId, connection_detail: false };
+}
+
+/** The editable fields of a diagram, as the form holds them. */
+export function valuesFromDiagram(diagram: ArchitectureDiagram): DiagramFieldValues {
+  return {
+    name: diagram.name, purpose: diagram.purpose, scope_element_id: diagram.scope_element_id,
+    connection_detail: diagram.connection_detail,
+  };
+}
+
+/** The fields whose value differs between `before` and `after`. */
+export function diffDiagramFields(before: DiagramFieldValues, after: DiagramFieldValues): Partial<DiagramFieldValues> {
+  const changed: Partial<DiagramFieldValues> = {};
+  (Object.keys(after) as (keyof DiagramFieldValues)[]).forEach((key) => {
+    if (before[key] !== after[key]) (changed as Record<string, unknown>)[key] = after[key];
+  });
+  return changed;
 }

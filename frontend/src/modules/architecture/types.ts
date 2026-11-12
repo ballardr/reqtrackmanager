@@ -261,3 +261,211 @@ export interface CollectionGrantValues {
   group: PrincipalRef | null;
   include_descendants: boolean;
 }
+
+// --- Diagrams (mirror the diagram schemas in `backend/app/modules/architecture/schemas.py`) ---
+
+/** A diagram record with its counts. The scope element's name is blank when the viewer cannot read it. */
+export interface ArchitectureDiagram extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  name: string;
+  purpose: string;
+  scope_element_id: string | null;
+  scope_element_code: string | null;
+  scope_element_name: string | null;
+  connection_detail: boolean;
+  status: ArchitectureRecordStatus;
+  version: number;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  placement_count: number;
+  note_count: number;
+  toggle_count: number;
+}
+
+/** The fields the diagram create and edit forms share. */
+export interface DiagramFieldValues {
+  name: string;
+  purpose: string;
+  scope_element_id: string | null;
+  connection_detail: boolean;
+}
+
+/** Create payload: the shared fields plus what only a new diagram takes. */
+export interface DiagramCreateValues extends DiagramFieldValues {
+  activate: boolean;
+  populate: boolean;
+}
+
+/** What a toggle matches besides its manual members. */
+export interface DiagramToggleRule {
+  element_type_ids: string[];
+  connection_type_ids: string[];
+  domains: Domain[];
+  tags: string[];
+}
+
+/** A toggle as the view returns it; `on` is its state in this view. */
+export interface DiagramToggle {
+  id: string;
+  name: string;
+  default_on: boolean;
+  on: boolean;
+  rule: DiagramToggleRule;
+  element_ids: string[];
+  connection_ids: string[];
+  sort_order: number;
+}
+
+/** A toggle as saved (`id` keeps an existing one). */
+export interface DiagramToggleValues {
+  id: string | null;
+  name: string;
+  default_on: boolean;
+  rule: DiagramToggleRule;
+  element_ids: string[];
+  connection_ids: string[];
+}
+
+export interface DiagramViewPort {
+  id: string;
+  name: string;
+  direction: PortDirection;
+  connection_type_name: string | null;
+}
+
+/** A placed element as drawn. A `locked` node is one the viewer can no longer read (its code only). */
+export interface DiagramViewNode {
+  placement_id: string;
+  element_id: string;
+  unique_code: string;
+  name: string;
+  locked: boolean;
+  shared: boolean;
+  hidden: boolean;
+  status: ArchitectureRecordStatus;
+  parent_id: string | null;
+  element_type_id: string | null;
+  element_type_name: string;
+  shape: ElementShape;
+  color_light: string | null;
+  color_dark: string | null;
+  symbol_id: string | null;
+  ports: DiagramViewPort[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+  internal_connection_ids: string[];
+}
+
+/** A hidden element a bridged line passes through. */
+export interface DiagramViewHop {
+  element_id: string;
+  unique_code: string;
+  name: string;
+}
+
+/** A line between two placed elements and the connections behind it. */
+export interface DiagramViewEdge {
+  id: string;
+  source_element_id: string;
+  target_element_id: string;
+  two_way: boolean;
+  indirect: boolean;
+  rolled_up: boolean;
+  bridged: boolean;
+  count: number;
+  type_name: string | null;
+  line_style: LineStyle | null;
+  color_light: string | null;
+  color_dark: string | null;
+  label: string | null;
+  connections: ArchitectureConnection[];
+  hops: DiagramViewHop[];
+}
+
+export interface DiagramNote {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A diagram resolved for drawing. */
+export interface DiagramView {
+  diagram: ArchitectureDiagram;
+  toggles: DiagramToggle[];
+  nodes: DiagramViewNode[];
+  edges: DiagramViewEdge[];
+  notes: DiagramNote[];
+}
+
+/** An element as the editor needs it to draw a box and resolve lines; a `locked` one carries its code only. */
+export interface ModelElement {
+  id: string;
+  unique_code: string;
+  name: string;
+  locked: boolean;
+  shared: boolean;
+  status: ArchitectureRecordStatus;
+  element_type_id: string | null;
+  element_type_name: string;
+  color_light: string | null;
+  color_dark: string | null;
+  symbol_id: string | null;
+}
+
+/** A connection type's drawing attributes. */
+export interface ModelConnectionType {
+  id: string;
+  name: string;
+  directional: boolean;
+  line_style: LineStyle;
+  color_light: string | null;
+  color_dark: string | null;
+}
+
+/** What one view switch hides when it is off: its manual members plus whatever its rule matches. */
+export interface ModelToggleMembers {
+  toggle_id: string;
+  element_ids: string[];
+  connection_ids: string[];
+}
+
+/** The model data a diagram's lines are resolved from in the browser (`GET .../diagrams/{id}/model`). */
+export interface DiagramModel {
+  elements: ModelElement[];
+  /** Every element listed, connection end and ancestor of one, mapped to its parent (a root to null). */
+  parents: Record<string, string | null>;
+  connections: ArchitectureConnection[];
+  connection_types: ModelConnectionType[];
+  toggle_members: ModelToggleMembers[];
+}
+
+/** One box as saved. */
+export interface PlacementValues {
+  element_id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+}
+
+/** One note as saved (`id` keeps an existing note; none creates one). */
+export interface NoteValues {
+  id: string | null;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}

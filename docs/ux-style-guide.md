@@ -1425,7 +1425,7 @@ flowchart LR
     W -- "list view or load failure" --> L["GraphListView<br/>two tables"]
 ```
 
-- **Plain data in, events out.** The consumer supplies `GraphCanvasNode`/`GraphCanvasEdge` and owns the data; the canvas reports `onSelect`, `onNodesMove` (once, when a drag or key move ends) and `onConnect`. It never deletes: what a delete means belongs to the consumer.
+- **Plain data in, events out.** The consumer supplies `GraphCanvasNode`/`GraphCanvasEdge` and owns the data; the canvas reports `onSelect`, `onNodesMove` and `onNodesResize` (once, when a drag, key move or resize ends), `onConnect` and `onDropItem` (a palette item carrying `GRAPH_DROP_MIME`; every draggable item must also be a button, so the keyboard has the same action). It never deletes: what a delete means belongs to the consumer.
 - **Text and sanitised pictures only.** Labels are text. A symbol is the server-sanitised SVG; the canvas sanitises it again and shows it as an image, so it cannot run script.
 - **A text alternative always exists.** The list view (a toggle by default) holds the same nodes and connections, and is what a failed load degrades to. Every node and connection has a spoken name; Tab, Enter or Space and the arrow keys operate it.
 - **Read-only** (`readOnly`) removes moving and connecting, not selection or navigation.

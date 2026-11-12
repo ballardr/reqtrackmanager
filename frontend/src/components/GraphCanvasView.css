@@ -72,6 +72,23 @@
   object-fit: contain;
 }
 
+.graph-node-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  min-height: 0;
+}
+
+.graph-node-caption {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
 .graph-node-label {
   max-width: 100%;
   overflow: hidden;

@@ -48,7 +48,12 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.architecture import diagrams, records
-from app.modules.architecture._shared import CONNECTION_MANAGE_PERMISSION, ELEMENT_MANAGE_PERMISSION, require_architect
+from app.modules.architecture._shared import (
+    CONNECTION_MANAGE_PERMISSION,
+    DIAGRAM_MANAGE_PERMISSION,
+    ELEMENT_MANAGE_PERMISSION,
+    require_architect,
+)
 from app.modules.architecture.diagram_routes import filter_diagrams
 from app.modules.architecture.enums import PortDirection, RecordStatus
 from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL
@@ -652,6 +657,8 @@ DIAGRAM_TABLE = RecordTableProvider(
     prepare=_prepare_diagrams,
     filter_params=DIAGRAM_FILTERS,
     gate=(ARCHITECTURE_MODULE_KEY, DIAGRAM_SUBCOMPONENT_KEY),
+    # The table cannot import, but the Links panel's "Create new" asks it who may create a diagram.
+    can_create=lambda db, user, project_id: _allowed(db, user, project_id, DIAGRAM_MANAGE_PERMISSION),
     count=lambda db, user, project_id: count_rows(db, ArchitectureDiagram, project_id, live_only=True),
 )
 

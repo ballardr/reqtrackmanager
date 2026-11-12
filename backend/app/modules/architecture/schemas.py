@@ -593,3 +593,53 @@ class DiagramView(BaseModel):
     nodes: list[ViewNode]
     edges: list[ViewEdge]
     notes: list[NoteOut]
+
+
+class ModelElement(BaseModel):
+    """An element as the editor needs it to draw a box and to resolve lines in the browser.
+
+    A `locked` element is one the viewer cannot read: only its code is given, and its type, name and symbol are blank."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    locked: bool
+    shared: bool
+    status: str
+    element_type_id: UUID | None
+    element_type_name: str
+    color_light: str | None
+    color_dark: str | None
+    symbol_id: UUID | None
+
+
+class ModelConnectionType(BaseModel):
+    """A connection type's drawing attributes."""
+
+    id: UUID
+    name: str
+    directional: bool
+    line_style: str
+    color_light: str | None
+    color_dark: str | None
+
+
+class ModelToggleMembers(BaseModel):
+    """What one toggle switches off when it is off: its manual members plus whatever its rule matches."""
+
+    toggle_id: UUID
+    element_ids: list[UUID]
+    connection_ids: list[UUID]
+
+
+class DiagramModel(BaseModel):
+    """The model data a diagram's lines are resolved from, so the browser can redraw them while a layout is edited.
+
+    `parents` maps every element listed, every connection end and every ancestor of one to its parent (a root to
+    `None`). `connections` are the project's live connections as the viewer may read them."""
+
+    elements: list[ModelElement]
+    parents: dict[UUID, UUID | None]
+    connections: list[ConnectionOut]
+    connection_types: list[ModelConnectionType]
+    toggle_members: list[ModelToggleMembers]

@@ -28,6 +28,7 @@ import {
   Controls,
   Handle,
   MarkerType,
+  NodeResizer,
   Position,
   ReactFlow,
   type Connection,
@@ -36,31 +37,36 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useId, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
-import type { GraphCanvasProps, GraphCanvasSelection } from "./GraphCanvas";
+import { GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
 
-type NodeData = { label: string; symbol: string | null; accent?: string; dashed?: boolean };
+type NodeData = { label: string; caption?: string; symbol: string | null; accent?: string; dashed?: boolean; resizable: boolean };
 type FlowNode = Node<NodeData, "graph">;
 
 /** One box on the canvas: accent edge, optional symbol and the text label; handles are for drawing lines. */
-function GraphNodeBox({ data }: NodeProps<FlowNode>) {
+function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className={data.dashed ? "graph-node graph-node-dashed" : "graph-node"}
       style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}
     >
+      {data.resizable && <NodeResizer isVisible={selected} minWidth={80} minHeight={40} />}
       <Handle type="target" position={Position.Left} />
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
-      <span className="graph-node-label">{data.label}</span>
+      <span className="graph-node-text">
+        <span className="graph-node-label">{data.label}</span>
+        {data.caption && <span className="graph-node-caption">{data.caption}</span>}
+      </span>
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -69,6 +75,7 @@ function GraphNodeBox({ data }: NodeProps<FlowNode>) {
 const NODE_TYPES = { graph: GraphNodeBox };
 
 type Moved = Record<string, { x: number; y: number; baseX: number; baseY: number }>;
+type Sized = Record<string, { width: number; height: number; baseWidth: number; baseHeight: number }>;
 
 /**
  * Draws the canvas.
@@ -84,11 +91,18 @@ export function GraphCanvasView({
   onSelect,
   onNodesMove,
   onConnect,
+  resizable = false,
+  onNodesResize,
+  onDropItem,
   height = 480,
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
   const helpId = useId();
   const [moved, setMoved] = useState<Moved>({});
+  const [sized, setSized] = useState<Sized>({});
+  const flow = useRef<ReactFlowInstance<FlowNode, Edge> | null>(null);
+  /** The geometry a resize last reached, read when it ends (state is not yet committed inside that event). */
+  const resizing = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [localSelection, setLocalSelection] = useState<GraphCanvasSelection | null>(null);
   const selection = selected !== undefined ? selected : localSelection;
 
@@ -99,18 +113,25 @@ export function GraphCanvasView({
       nodes.map((n) => {
         const o = moved[n.id];
         const position = o && o.baseX === n.x && o.baseY === n.y ? { x: o.x, y: o.y } : { x: n.x, y: n.y };
+        const baseWidth = n.width ?? DEFAULT_WIDTH;
+        const baseHeight = n.height ?? DEFAULT_HEIGHT;
+        const z = sized[n.id];
+        const keep = z && z.baseWidth === baseWidth && z.baseHeight === baseHeight;
         return {
           id: n.id,
           type: "graph",
           position,
-          width: n.width ?? DEFAULT_WIDTH,
-          height: n.height ?? DEFAULT_HEIGHT,
+          width: keep ? z.width : baseWidth,
+          height: keep ? z.height : baseHeight,
           selected: selection?.kind === "node" && selection.id === n.id,
           ariaLabel: text.nodeAria(n.label),
-          data: { label: n.label, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null, accent: n.accent, dashed: n.dashed },
+          data: {
+            label: n.label, caption: n.caption, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
+            accent: n.accent, dashed: n.dashed, resizable: resizable && !readOnly,
+          },
         };
       }),
-    [nodes, moved, selection, text],
+    [nodes, moved, sized, selection, text, resizable, readOnly],
   );
 
   const flowEdges = useMemo<Edge[]>(
@@ -166,19 +187,49 @@ export function GraphCanvasView({
     (changes: NodeChange<FlowNode>[]) => {
       applySelect("node", changes);
       const base = new Map(nodes.map((n) => [n.id, n]));
+      const resizingIds = new Set<string>();
+      for (const c of changes) if (c.type === "dimensions" && c.resizing === true) resizingIds.add(c.id);
       const finished: { id: string; x: number; y: number }[] = [];
+      const resized: { id: string; x: number; y: number; width: number; height: number }[] = [];
       const patch: Moved = {};
+      const sizePatch: Sized = {};
       for (const c of changes) {
-        if (c.type !== "position" || !c.position || readOnly) continue;
+        if (readOnly) break;
+        if (c.type === "add") continue;
         const n = base.get(c.id);
         if (!n) continue;
-        patch[c.id] = { x: c.position.x, y: c.position.y, baseX: n.x, baseY: n.y };
-        if (c.dragging !== true) finished.push({ id: c.id, x: Math.round(c.position.x), y: Math.round(c.position.y) });
+        if (c.type === "position" && c.position) {
+          patch[c.id] = { x: c.position.x, y: c.position.y, baseX: n.x, baseY: n.y };
+          // A resize from the top or left edge moves the node too; that is part of the resize, not a move.
+          if (resizingIds.has(c.id)) {
+            resizing.current[c.id] = { ...(resizing.current[c.id] ?? { width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }), x: c.position.x, y: c.position.y };
+          } else if (c.dragging !== true) {
+            finished.push({ id: c.id, x: Math.round(c.position.x), y: Math.round(c.position.y) });
+          }
+        } else if (c.type === "dimensions" && c.dimensions && c.dimensions.width > 0 && c.dimensions.height > 0 && c.resizing === true) {
+          // A node measured as empty (its frame was momentarily not laid out) is not a size the person chose.
+          const { width, height } = c.dimensions;
+          sizePatch[c.id] = { width, height, baseWidth: n.width ?? DEFAULT_WIDTH, baseHeight: n.height ?? DEFAULT_HEIGHT };
+          const last = resizing.current[c.id] ?? { x: n.x, y: n.y, width, height };
+          resizing.current[c.id] = { ...last, width, height };
+        } else if (c.type === "dimensions" && c.resizing === false) {
+          const last = resizing.current[c.id];
+          delete resizing.current[c.id];
+          if (last) {
+            resized.push({
+              id: c.id, x: Math.round(last.x), y: Math.round(last.y),
+              width: Math.round(c.dimensions && c.dimensions.width > 0 ? c.dimensions.width : last.width),
+              height: Math.round(c.dimensions && c.dimensions.height > 0 ? c.dimensions.height : last.height),
+            });
+          }
+        }
       }
       if (Object.keys(patch).length > 0) setMoved((m) => ({ ...m, ...patch }));
+      if (Object.keys(sizePatch).length > 0) setSized((m) => ({ ...m, ...sizePatch }));
       if (finished.length > 0) onNodesMove?.(finished);
+      if (resized.length > 0) onNodesResize?.(resized);
     },
-    [applySelect, nodes, readOnly, onNodesMove],
+    [applySelect, nodes, readOnly, onNodesMove, onNodesResize],
   );
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => applySelect("edge", changes), [applySelect]);
@@ -190,8 +241,22 @@ export function GraphCanvasView({
     [onConnect],
   );
 
+  const dropEnabled = onDropItem !== undefined && !readOnly;
+  const allowDrop = (event: DragEvent) => {
+    if (!dropEnabled || !event.dataTransfer.types.includes(GRAPH_DROP_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const dropItem = (event: DragEvent) => {
+    if (!dropEnabled) return;
+    const payload = event.dataTransfer.getData(GRAPH_DROP_MIME);
+    if (!payload || !flow.current) return;
+    event.preventDefault();
+    onDropItem?.(payload, flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+  };
+
   return (
-    <div role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}>
+    <div role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }} onDragOver={allowDrop} onDrop={dropItem}>
       <span id={helpId} className="sr-only">
         {text.keyboardHelp}
       </span>
@@ -203,6 +268,7 @@ export function GraphCanvasView({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
+        onInit={(instance) => { flow.current = instance; }}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         nodesFocusable

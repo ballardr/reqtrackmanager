@@ -4686,7 +4686,7 @@ const en = {
     edgeAria: (from: string, to: string, label?: string) =>
       label ? `${label}, connection from ${from} to ${to}` : `Connection from ${from} to ${to}`,
     keyboardHelp:
-      "Tab moves between nodes and connections. Enter or Space selects. Arrow keys move the selected node when editing is allowed.",
+      "Tab moves between nodes and connections. Enter or Space selects. Arrow keys move the selected node when editing is allowed. Drag a node's edge handle to resize it.",
   },
   common: {
     requiredLegend: "* required",

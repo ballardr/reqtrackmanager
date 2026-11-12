@@ -14,6 +14,7 @@ import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton
 import type {
   ArchitectureCollection,
   ArchitectureConnection,
+  ArchitectureDiagram,
   ArchitectureElement,
   ArchitectureRecordStatus,
   ArchitectureSymbol,
@@ -24,10 +25,17 @@ import type {
   ConnectionFieldValues,
   ConnectionType,
   ConnectionTypeValues,
+  DiagramCreateValues,
+  DiagramFieldValues,
+  DiagramToggleValues,
+  DiagramModel,
+  DiagramView,
   ElementCreateValues,
   ElementFieldValues,
   ElementType,
   ElementTypeValues,
+  NoteValues,
+  PlacementValues,
   Port,
   PortValues,
 } from "./types";
@@ -179,6 +187,39 @@ export const projectConnectionApi = (projectId: string) => {
     archive: (id: string) => api.post<ArchitectureConnection>(`${base}/${id}/archive`),
     unarchive: (id: string) => api.post<ArchitectureConnection>(`${base}/${id}/unarchive`),
     remove: (id: string) => api.delete<void>(`${base}/${id}`),
+  };
+};
+
+/** Filters of the diagram list. */
+export interface DiagramListFilters extends TagListFilters, ScopeListFilters {
+  include_archived?: boolean;
+  status?: ArchitectureRecordStatus;
+  open_only?: boolean;
+  search?: string;
+}
+
+/** A project's diagrams: the record, its layout and toggles (each save quotes the version it was based on). */
+export const projectDiagramApi = (projectId: string) => {
+  const base = `${projectBase(projectId)}/diagrams`;
+  return {
+    list: (filters: DiagramListFilters = {}) => api.get<ArchitectureDiagram[]>(`${base}${listQuery(filters)}`),
+    create: (values: DiagramCreateValues) => api.post<ArchitectureDiagram>(base, values),
+    get: (id: string) => api.get<ArchitectureDiagram>(`${base}/${id}`),
+    update: (id: string, version: number, values: Partial<DiagramFieldValues>) =>
+      api.put<ArchitectureDiagram>(`${base}/${id}`, { version, ...values }),
+    setStatus: (id: string, version: number, status: ArchitectureRecordStatus) =>
+      api.post<ArchitectureDiagram>(`${base}/${id}/status`, { version, status }),
+    archive: (id: string) => api.post<ArchitectureDiagram>(`${base}/${id}/archive`),
+    unarchive: (id: string) => api.post<ArchitectureDiagram>(`${base}/${id}/unarchive`),
+    remove: (id: string) => api.delete<void>(`${base}/${id}`),
+    /** The diagram resolved for the caller on the saved view-switch defaults: its boxes, notes and switches. */
+    view: (id: string) => api.get<DiagramView>(`${base}/${id}/view`),
+    /** The model data the diagram's lines are resolved from in the browser. */
+    model: (id: string) => api.get<DiagramModel>(`${base}/${id}/model`),
+    saveLayout: (id: string, version: number, placements: PlacementValues[], notes: NoteValues[]) =>
+      api.put<ArchitectureDiagram>(`${base}/${id}/layout`, { version, placements, notes }),
+    saveToggles: (id: string, version: number, toggles: DiagramToggleValues[]) =>
+      api.put<ArchitectureDiagram>(`${base}/${id}/toggles`, { version, toggles }),
   };
 };
 

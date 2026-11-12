@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
-import { GraphCanvas, type GraphCanvasEdge, type GraphCanvasNode, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
+import { GRAPH_DROP_MIME, GraphCanvas, type GraphCanvasEdge, type GraphCanvasNode, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
 
 const SYMBOL =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="#3b5bdb"/></svg>';
@@ -50,6 +50,9 @@ const meta: Meta<typeof GraphCanvas> = {
   title: "Components/GraphCanvas",
   component: GraphCanvas,
   parameters: { layout: "padded" },
+  // The drawing is a lazily loaded chunk; fetching it before the story runs keeps a cold first load from racing the
+  // interaction test's wait for the first node.
+  loaders: [async () => { await import("./GraphCanvasView"); return {}; }],
 };
 export default meta;
 
@@ -214,5 +217,72 @@ export const Empty: Story = {
   render: () => <GraphCanvas nodes={[]} edges={[]} ariaLabel="Empty" initialView="list" />,
   play: async ({ canvasElement }) => {
     expect(within(canvasElement).getByText("Nothing to show.")).toBeInTheDocument();
+  },
+};
+
+/** A palette item dropped on the canvas reaches `onDropItem` with its text and a canvas position. */
+export const DropsAPaletteItem: Story = {
+  args: { onDropItem: fn() },
+  render: (args) => <Host onDropItem={args.onDropItem} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const group = await canvas.findByRole("group", { name: "Telemetry system" });
+    await canvas.findByLabelText("Sensor, node");
+    // React Flow reports its instance (needed to convert the drop point) a moment after the first render.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const data = new DataTransfer();
+    data.setData(GRAPH_DROP_MIME, "type:service");
+    const box = group.getBoundingClientRect();
+    group.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data, clientX: box.left + 100, clientY: box.top + 100 }));
+    await waitFor(() => expect(args.onDropItem).toHaveBeenCalledTimes(1));
+    const [payload, at] = (args.onDropItem as ReturnType<typeof fn>).mock.calls[0] as [string, { x: number; y: number }];
+    expect(payload).toBe("type:service");
+    expect(Number.isFinite(at.x) && Number.isFinite(at.y)).toBe(true);
+  },
+};
+
+/** Read-only ignores a drop. */
+export const ReadOnlyIgnoresDrops: Story = {
+  args: { onDropItem: fn() },
+  render: (args) => <Host readOnly onDropItem={args.onDropItem} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const group = await canvas.findByRole("group", { name: "Telemetry system" });
+    await canvas.findByLabelText("Sensor, node");
+    const data = new DataTransfer();
+    data.setData(GRAPH_DROP_MIME, "type:service");
+    group.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+    expect(args.onDropItem).not.toHaveBeenCalled();
+  },
+};
+
+/** The selected node shows resize handles when `resizable`; dragging one reports the final size once. */
+export const ResizesTheSelectedNode: Story = {
+  args: { onNodesResize: fn() },
+  render: (args) => <Host resizable onNodesResize={args.onNodesResize} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    const handle = await waitFor(() => {
+      const found = canvasElement.querySelector(".react-flow__resize-control.handle.bottom.right");
+      if (!found) throw new Error("no handle");
+      return found as HTMLElement;
+    });
+    const box = handle.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: handle, coords: { clientX: x, clientY: y } },
+      { target: handle, coords: { clientX: x + 30, clientY: y + 20 } },
+      { target: handle, coords: { clientX: x + 60, clientY: y + 40 } },
+      { keys: "[/MouseLeft]", target: handle, coords: { clientX: x + 60, clientY: y + 40 } },
+    ]);
+    await waitFor(() => expect(args.onNodesResize).toHaveBeenCalled());
+    const calls = (args.onNodesResize as ReturnType<typeof fn>).mock.calls as { id: string; width: number }[][][];
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0][0].id).toBe("sensor");
+    expect(calls[0][0][0].width).toBeGreaterThan(160);
   },
 };

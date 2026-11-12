@@ -15,7 +15,8 @@
  *   SVG drawing per node; labels are always rendered as text, never as markup.
  * - The list view is a real table of nodes and connections, so a person who cannot use a canvas has the same
  *   content; it is also what a failed chunk load degrades to.
- * - Positions come in as props and go out as `onNodesMove` on release; the consumer owns the data.
+ * - Positions and sizes come in as props and go out as `onNodesMove` / `onNodesResize` on release; the consumer
+ *   owns the data.
  *
  * Dependencies: `GraphCanvasView` (lazy), `TerminologyContext` strings.
  */
@@ -40,7 +41,12 @@ export interface GraphCanvasNode {
   accent?: string;
   /** Draws the border dashed (a placeholder or hidden-for-this-viewer node). */
   dashed?: boolean;
+  /** A short second line under the label (a type name, a code); text only. */
+  caption?: string;
 }
+
+/** The data-transfer type a consumer's draggable palette item sets, so a drop on the canvas reaches `onDropItem`. */
+export const GRAPH_DROP_MIME = "application/x-graph-item";
 
 /** A line between two nodes. */
 export interface GraphCanvasEdge {
@@ -80,6 +86,12 @@ export interface GraphCanvasProps {
   onNodesMove?: (moves: { id: string; x: number; y: number }[]) => void;
   /** Called when a person draws a line from one node to another. */
   onConnect?: (sourceId: string, targetId: string) => void;
+  /** Shows resize handles on the selected node (not in read-only mode). */
+  resizable?: boolean;
+  /** Called once when a resize ends, with the node's final position and size. */
+  onNodesResize?: (changes: { id: string; x: number; y: number; width: number; height: number }[]) => void;
+  /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
+  onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */
   height?: number | string;
 }

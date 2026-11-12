@@ -27,6 +27,7 @@ from app.database import get_db
 from app.models.user import User
 from app.modules.architecture import diagrams
 from app.modules.architecture._shared import DIAGRAM_MANAGE_PERMISSION, require_architect
+from app.modules.architecture.diagram_model import build_model
 from app.modules.architecture.diagram_svg import render_diagram
 from app.modules.architecture.diagram_view import ToggleState, build_view
 from app.modules.architecture.enums import RecordStatus
@@ -34,6 +35,7 @@ from app.modules.architecture.models import ArchitectureDiagram
 from app.modules.architecture.record_routes import _matches, as_http
 from app.modules.architecture.schemas import (
     DiagramCreate,
+    DiagramModel,
     DiagramOut,
     DiagramUpdate,
     DiagramView,
@@ -141,6 +143,17 @@ def add_diagram_routes(router: APIRouter) -> None:
         """The diagram resolved for the caller: its nodes, lines (after toggles, bridging, roll-up and merging), notes
         and toggles. `toggle_on` / `toggle_off` override the saved default of a toggle for this read only."""
         return resolved(db, current_user, project_id, diagram_id, toggle_on, toggle_off, include_retired)
+
+    @router.get("/diagrams/{diagram_id}/model", response_model=DiagramModel)
+    def get_diagram_model(
+        project_id: uuid.UUID, diagram_id: uuid.UUID,
+        current_user: User = Depends(view_diagrams), db: Session = Depends(get_db),
+    ):
+        """The data the diagram's lines are resolved from (elements, parents, connections, what each view switch hides),
+        as the caller may read it, so the editor redraws lines while a layout is edited. Nothing is stored."""
+        project = project_or_404(db, project_id)
+        diagram = as_http(lambda: diagrams.get_diagram(db, project_id, diagram_id))
+        return build_model(db, project_id, Viewer.of_user(current_user, project), diagram)
 
     @router.get("/diagrams/{diagram_id}/svg")
     def get_diagram_svg(

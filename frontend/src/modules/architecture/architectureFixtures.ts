@@ -11,7 +11,8 @@ import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
-  ArchitectureCollection, ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionType, ElementType, Port,
+  ArchitectureCollection, ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
+  DiagramModel, DiagramToggle, DiagramView, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType, ModelElement, Port,
 } from "./types";
 
 export const PROJECT_ID = "project-1";
@@ -53,6 +54,86 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
   };
 }
 
+export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): ArchitectureDiagram {
+  return {
+    id: "dgm-1", project_id: PROJECT_ID, unique_code: "DGM-001", name: "Platform overview", purpose: "How traffic reaches the services.",
+    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, status: "active",
+    version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
+    updated_at: "2026-11-01T00:00:00Z", placement_count: 3, note_count: 0, toggle_count: 1, ...overrides,
+  };
+}
+
+export function buildViewNode(overrides: Partial<DiagramViewNode> = {}): DiagramViewNode {
+  return {
+    placement_id: "pl-1", element_id: "el-1", unique_code: "ELM-001", name: "Gateway", locked: false, shared: false, hidden: false,
+    status: "active", parent_id: null, element_type_id: "et-1", element_type_name: "Service", shape: "rounded",
+    color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, ports: [], x: 0, y: 0, width: 160, height: 80,
+    collapsed: false, internal_connection_ids: [], ...overrides,
+  };
+}
+
+export function buildViewEdge(overrides: Partial<DiagramViewEdge> = {}): DiagramViewEdge {
+  return {
+    id: "edge-1", source_element_id: "el-1", target_element_id: "el-2", two_way: false, indirect: false, rolled_up: false,
+    bridged: false, count: 1, type_name: null, line_style: null, color_light: null, color_dark: null, label: null,
+    connections: [buildConnection()], hops: [], ...overrides,
+  };
+}
+
+export const FIREWALL_TOGGLE: DiagramToggle = {
+  id: "tg-1", name: "Security devices", default_on: true, on: true, sort_order: 0, element_ids: ["el-3"], connection_ids: [],
+  rule: { element_type_ids: [], connection_type_ids: [], domains: [], tags: [] },
+};
+
+/** Three placed elements (Gateway, Orders, Firewall), one line between the first two and one switch. */
+export function buildDiagramView(overrides: Partial<DiagramView> = {}): DiagramView {
+  return {
+    diagram: buildDiagram(),
+    toggles: [FIREWALL_TOGGLE],
+    nodes: [
+      buildViewNode(),
+      buildViewNode({ placement_id: "pl-2", element_id: "el-2", unique_code: "ELM-002", name: "Orders", x: 300, y: 0 }),
+      buildViewNode({ placement_id: "pl-3", element_id: "el-3", unique_code: "ELM-003", name: "Firewall", x: 150, y: 150 }),
+    ],
+    edges: [buildViewEdge()],
+    notes: [],
+    ...overrides,
+  };
+}
+
+/** An element as the diagram model lists it. */
+export function buildModelElement(overrides: Partial<ModelElement> = {}): ModelElement {
+  return {
+    id: "el-1", unique_code: "ELM-001", name: "Gateway", locked: false, shared: false, status: "active", element_type_id: "et-1",
+    element_type_name: "Service", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, ...overrides,
+  };
+}
+
+/** The connection type `buildConnection` uses, as the diagram model lists it. */
+export const MODEL_REST_TYPE: ModelConnectionType = {
+  id: "ct-1", name: "REST API", directional: true, line_style: "solid", color_light: null, color_dark: null,
+};
+
+/**
+ * The model data behind `buildDiagramView`: Gateway, Orders, Firewall and the unplaced Cache (no parents), one connection
+ * from Gateway to Orders, and the switch holding the Firewall.
+ */
+export function buildDiagramModel(overrides: Partial<DiagramModel> = {}): DiagramModel {
+  return {
+    elements: [
+      buildModelElement(),
+      buildModelElement({ id: "el-2", unique_code: "ELM-002", name: "Orders" }),
+      buildModelElement({ id: "el-3", unique_code: "ELM-003", name: "Firewall" }),
+      buildModelElement({ id: "el-4", unique_code: "ELM-004", name: "Cache" }),
+    ],
+    parents: { "el-1": null, "el-2": null, "el-3": null, "el-4": null },
+    connections: [buildConnection()],
+    connection_types: [MODEL_REST_TYPE],
+    toggle_members: [{ toggle_id: "tg-1", element_ids: ["el-3"], connection_ids: [] }],
+    ...overrides,
+  };
+}
+
 export const ELEMENT_TYPES: ElementType[] = [
   { id: "et-1", project_id: null, organization_id: ORG_ID, name: "Service", domain: "software", shape: "rounded", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, sort_order: 0 },
   { id: "et-2", project_id: null, organization_id: ORG_ID, name: "Board", domain: "hardware", shape: "chip", color_light: null, color_dark: null, symbol_id: null, sort_order: 1 },
@@ -91,6 +172,9 @@ export interface ArchitectureReads {
   collections?: ArchitectureCollection[];
   element?: ArchitectureElement;
   connection?: ArchitectureConnection;
+  diagrams?: ArchitectureDiagram[];
+  diagramView?: DiagramView;
+  diagramModel?: DiagramModel;
 }
 
 /**
@@ -115,6 +199,11 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.includes("/modules/architecture/elements/")) return reads.element ?? elements[0];
     if (base.endsWith("/modules/architecture/connections")) return reads.connections ?? [buildConnection()];
     if (base.includes("/modules/architecture/connections/")) return reads.connection ?? buildConnection();
+    if (base.endsWith("/modules/architecture/diagrams")) return reads.diagrams ?? [buildDiagram()];
+    if (base.includes("/modules/architecture/diagrams/") && base.endsWith("/view")) return reads.diagramView ?? buildDiagramView();
+    if (base.includes("/modules/architecture/diagrams/") && base.endsWith("/model")) return reads.diagramModel ?? buildDiagramModel();
+    if (base.includes("/modules/architecture/diagrams/")) return (reads.diagramView ?? buildDiagramView()).diagram;
+    if (path.endsWith("/records/architecture_diagram/columns")) return buildRecordColumns({ label: "Diagrams" });
     if (base.endsWith("/modules/architecture/collections")) return reads.collections ?? [buildCollection()];
     if (base.includes("/collections/") && base.endsWith("/members")) return [{ element_id: "el-1", unique_code: "ELM-001", name: "Gateway" }];
     if (base.endsWith("/users")) return ORG_USERS;

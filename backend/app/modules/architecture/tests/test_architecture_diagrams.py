@@ -12,6 +12,8 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
+from app.models.project import Project
+from app.models.user import User
 from app.modules.architecture.tests._helpers import (
     add_member,
     connection_types,
@@ -29,7 +31,8 @@ from app.modules.architecture.tests._helpers import (
     setup,
     view,
 )
-from app.modules.registry import get_artefact_summaries_in_project
+from app.modules.registry import get_artefact_summaries_in_project, get_module_registry
+from app.services.record_tables import creatable_record_types
 from tests.conftest import auth_headers, create_project
 
 
@@ -47,6 +50,28 @@ def _layout(diagram_view):
 
 
 # --- The record --------------------------------------------------------------
+
+
+def test_the_module_offers_a_diagrams_entry_gated_by_the_diagram_sub_component():
+    manifest = get_module_registry()["architecture"].frontend_manifest
+    assert manifest is not None
+    entries = {e.nav_label: e for e in manifest.additional_nav_entries}
+    assert entries["Diagrams"].nav_path == "/projects/{project_id}/modules/architecture/diagrams"
+    assert entries["Diagrams"].sub_component == "architecture_diagram"
+
+
+def test_the_links_panel_offers_to_create_a_diagram_only_to_an_architect(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch diagram creatable")
+    _uid, _member_token = add_member(client, token, org["id"], project["id"], "arch.diagram.plain@example.com")
+    architect = make_architect(client, token, org["id"], project["id"], "arch.diagram.creator@example.com")
+    assert architect
+    with SessionLocal() as db:
+        row = db.get(Project, uuid.UUID(project["id"]))
+        plain = db.scalar(select(User).where(User.email == "arch.diagram.plain@example.com"))
+        creator = db.scalar(select(User).where(User.email == "arch.diagram.creator@example.com"))
+        assert row is not None and plain is not None and creator is not None
+        assert "architecture_diagram" not in creatable_record_types(db, plain, row, ["architecture_diagram"])
+        assert "architecture_diagram" in creatable_record_types(db, creator, row, ["architecture_diagram"])
 
 
 def test_a_diagram_is_numbered_starts_draft_and_can_be_created_active(client, admin_token):

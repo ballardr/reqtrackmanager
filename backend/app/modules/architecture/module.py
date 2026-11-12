@@ -27,7 +27,7 @@ Registered contributions:
   backfills existing organisations so a module switched on later has them.
 - `org_bundle_hooks` / `project_bundle_hooks` (`export.py`); the vocabularies are
   template configuration and the records are template records.
-- `frontend_manifest`: two navigation entries, "Architecture" (the elements) and "Connections"; the pages, the
+- `frontend_manifest`: three navigation entries, "Architecture" (the elements), "Connections" and "Diagrams"; the pages, the
   "Create new" element dialog and the settings panels are served by `frontend/src/modules/architecture/module.ts`.
 
 `default_enabled=False`: an organisation opts in explicitly, as for the other
@@ -211,11 +211,16 @@ MODULE_DEFINITION = ModuleDefinition(
                 nav_icon="network",
                 sub_component=CONNECTION_SUBCOMPONENT_KEY,
             ),
+            ModuleNavEntry(
+                nav_label="Diagrams",
+                nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}/diagrams",
+                nav_icon="network",
+                sub_component=DIAGRAM_SUBCOMPONENT_KEY,
+            ),
         ),
     ),
     not_creatable_from_links={
         CONNECTION_ARTEFACT_TYPE: "A connection needs two elements, so it is created from the Architecture screens.",
-        DIAGRAM_ARTEFACT_TYPE: "A diagram is created from the Architecture screens, which add the Links panel creator.",
     },
     sub_components=(
         ModuleSubComponentDefinition(key=TYPE_SUBCOMPONENT_KEY, name="Types and symbols", default_enabled=True),
