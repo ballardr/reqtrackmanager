@@ -35,6 +35,7 @@ flowchart LR
     DEC["Decision Management<br/>how it was decided: decisions, supersession"]
     RSK["Risk Management<br/>what could go wrong: risks, scoring"]
     CMP["Compliance<br/>which standards: assessments, evidence"]
+    ARC["System Architecture<br/>which part: elements, ports, connections"]
     HUB(["Links, tags, search,<br/>reports and bundle export"])
 
     CS --- HUB
@@ -44,9 +45,10 @@ flowchart LR
     DEC --- HUB
     RSK --- HUB
     CMP --- HUB
+    ARC --- HUB
 ```
 
-First-party modules: **Compliance** (standards, clauses, assessments), **Context & Strategy** (strategy, future states, guiding principles, pain points with configurable scoring, open questions), **Decision Management** (decisions with approval and supersession), **Product Feedback** (enhancement requests per project or in an organisation inbox, with demand counted from who asked and reversible merging of duplicates; API and MCP tools today, screens to follow), **Risk Management** (risks, scoring matrices, reports) and **Stakeholders & Personas** (people, needs, engagements, research findings). Every record of every module shares the same machinery: a project-scoped human-readable code (`REQ-001`, `DEC-003`, qualified by the project code outside its own project), tags, links and traceability, an Activity timeline beside the record, global search, reports and bundle export. Create forms mark required fields with `*`, explain non-obvious fields with a `(?)` help tooltip, keep Save in a pinned header above the scrolling fields, and can link and tag the new record in the same step. Lists keep their scroll position after opening a record, filter panels collapse, and Pain Points can be scored in a bulk edit grid; the project overview shows a total-records chart split by type and can be rearranged by a project manager into gauges, charts and counts from a catalogue of metrics. Where projects are nested, any list can widen to parent and child projects. A module is added by registration, not by editing core code — see [docs/modules.md](docs/modules.md) and the website's "Building your own module".
+First-party modules: **Compliance** (standards, clauses, assessments), **Context & Strategy** (strategy, future states, guiding principles, pain points with configurable scoring, open questions), **Decision Management** (decisions with approval and supersession), **Product Feedback** (enhancement requests per project or in an organisation inbox, with demand counted from who asked and reversible merging of duplicates; API and MCP tools today, screens to follow), **Risk Management** (risks, scoring matrices, reports), **System Architecture** (elements in a tree with ports, and typed connections between them, with element and connection types set by the organisation and extended by a project; API today, screens to follow) and **Stakeholders & Personas** (people, needs, engagements, research findings). Every record of every module shares the same machinery: a project-scoped human-readable code (`REQ-001`, `DEC-003`, qualified by the project code outside its own project), tags, links and traceability, an Activity timeline beside the record, global search, reports and bundle export. Create forms mark required fields with `*`, explain non-obvious fields with a `(?)` help tooltip, keep Save in a pinned header above the scrolling fields, and can link and tag the new record in the same step. Lists keep their scroll position after opening a record, filter panels collapse, and Pain Points can be scored in a bulk edit grid; the project overview shows a total-records chart split by type and can be rearranged by a project manager into gauges, charts and counts from a catalogue of metrics. Where projects are nested, any list can widen to parent and child projects. A module is added by registration, not by editing core code — see [docs/modules.md](docs/modules.md) and the website's "Building your own module".
 
 ## Enterprise-ready
 

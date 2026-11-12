@@ -5,10 +5,15 @@ The System Architecture module: the structure of the product (elements, their
 connections and diagrams of them) alongside the requirements.
 
 Responsibilities (this package, as built so far):
-- `models`: the element type and connection type vocabularies.
+- `models`: the element type and connection type vocabularies, and the element,
+  port and connection records.
 - `service`: the vocabulary resolution, seeding and editing rules.
-- `router` / `project_router`: the organisation-scoped and project-scoped
-  vocabulary APIs.
+- `records` / `record_routes`: the rules and the project API for elements, ports and
+  connections.
+- `router` / `project_router`: the organisation-scoped and project-scoped APIs.
+- `summaries`, `search`, `report_fields`, `record_tables`, `scaling_probes`,
+  `perf_dataset`, `record_attachments`, `labels`: this module's registrations with
+  the shared mechanisms for links, search, reports, export and import, and profiling.
 - `export`: the organisation and project bundle sections.
 - `module`: this module's `MODULE_DEFINITION`.
 

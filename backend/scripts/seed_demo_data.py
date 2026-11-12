@@ -2468,6 +2468,68 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
     return out
 
 
+def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
+    """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
+    a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
+    REST API, Power). Returns the number of elements and connections created."""
+    enable_module(headers, org_id, "architecture")
+    base = f"{BASE}/projects/{project_id}/modules/architecture"
+
+    def effective(path: str) -> dict[str, str]:
+        r = httpx.get(f"{base}/{path}", headers=headers, timeout=30)
+        r.raise_for_status()
+        return {row["name"]: row["id"] for row in r.json()}
+
+    element_types, connection_types = effective("element-types"), effective("connection-types")
+
+    def element(name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = ()) -> dict:
+        r = httpx.post(
+            f"{base}/elements", headers=headers, timeout=30,
+            json={
+                "name": name, "description": description, "element_type_id": element_types[type_name],
+                "parent_id": parent, "activate": True,
+                "ports": [{"name": n, "direction": d, "connection_type_id": connection_types.get(t)} for n, d, t in ports],
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def connect(name: str, type_name: str, source: dict, source_port: str, target: dict, target_port: str, protocol: str) -> dict:
+        def port(item: dict, port_name: str) -> str | None:
+            return next((p["id"] for p in item["ports"] if p["name"] == port_name), None)
+
+        r = httpx.post(
+            f"{base}/connections", headers=headers, timeout=30,
+            json={
+                "name": name, "connection_type_id": connection_types[type_name], "protocol": protocol,
+                "source_element_id": source["id"], "source_port_id": port(source, source_port),
+                "target_element_id": target["id"], "target_port_id": port(target, target_port), "activate": True,
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+    drone = element("Falcon-3 drone", "System", "The inspection drone and its ground segment.")
+    airframe = element("Airframe electronics", "Subsystem", "Everything that flies.", parent=drone["id"])
+    fc = element(
+        "Flight controller", "Board", "Runs the control loop and the failsafes.", parent=airframe["id"],
+        ports=(("IMU bus", "both", "SPI"), ("GPS link", "in", "UART"), ("Telemetry link", "out", "UART")),
+    )
+    gps = element("GPS receiver", "Sensor", "Position and time.", parent=airframe["id"], ports=(("UART out", "out", "UART"),))
+    imu = element("IMU", "Sensor", "Attitude and acceleration.", parent=airframe["id"], ports=(("SPI", "both", "SPI"),))
+    radio = element(
+        "Telemetry radio", "Board", "Link to the ground station.", parent=airframe["id"],
+        ports=(("UART in", "in", "UART"), ("Downlink", "out", "Ethernet")),
+    )
+    ground = element("Ground station service", "Service", "Receives telemetry and sends missions.", parent=drone["id"],
+                     ports=(("Telemetry API", "in", "REST API"),))
+    connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz")
+    connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud")
+    connect("Telemetry out", "UART", fc, "Telemetry link", radio, "UART in", "MAVLink 2")
+    connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
+    return {"elements": 7, "connections": 4}
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -4333,6 +4395,11 @@ def main() -> None:
     for index, requirement in enumerate(list(cloud_reqs.values())[:3]):
         tag_record(h_pm, cloud["id"], "requirement", requirement["id"], [("Security", "Performance", "Availability")[index]])
 
+    print("Seeding System Architecture — enabling the module, then a small Falcon-3 block diagram: a drone System with"
+          " airframe electronics (flight controller, GPS, IMU, telemetry radio) and a ground-station service, joined by"
+          " SPI, UART and REST connections...")
+    architecture_counts = seed_architecture(h_pm, org["id"], drone["id"])
+
     # The project of this product's own records (requirements, decisions, SOC 2 assessment); a module of its own
     # because it loads a large fixture generated from the repository's documents.
     import seed_repo_demo
@@ -4405,6 +4472,9 @@ def main() -> None:
     print("  Evidence: every Falcon-3 requirement has a statement (six with equations); a Pain Point and the flight-controller Risk"
           " carry pictures and an SVG diagram; Pain Points, a Risk and a Decision are linked to requirements, so the"
           " 'Business Requirements Document (with evidence)' layout prints links, pictures and equations")
+    print(f"  System Architecture (enabled org-wide): {architecture_counts['elements']} elements on Falcon-3 in a tree"
+          f" (a System, a Subsystem, boards, sensors and a ground-station service, each with ports) and"
+          f" {architecture_counts['connections']} typed connections between them")
     if repo_counts:
         print(f"  {seed_repo_demo.PROJECT_NAME}: " + ", ".join(f"{count} {name}" for name, count in repo_counts.items())
               + " — loaded from this repository's documents (docs/decisions.md, docs/requirements.md, docs/soc2/)")

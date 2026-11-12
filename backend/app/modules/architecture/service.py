@@ -44,6 +44,14 @@ VocabularyModel = type[ArchitectureElementType] | type[ArchitectureConnectionTyp
 
 ARCHITECTURE_MODULE_KEY = "architecture"
 TYPE_SUBCOMPONENT_KEY = "architecture_type"
+ELEMENT_SUBCOMPONENT_KEY = "architecture_element"
+CONNECTION_SUBCOMPONENT_KEY = "architecture_connection"
+
+#: The registered artefact types and the prefix of their human-readable codes.
+ELEMENT_ARTEFACT_TYPE = "architecture_element"
+CONNECTION_ARTEFACT_TYPE = "architecture_connection"
+ELEMENT_CODE_PREFIX = "ELM"
+CONNECTION_CODE_PREFIX = "CON"
 
 ELEMENT_TYPE_KIND = "architecture_element_type"
 CONNECTION_TYPE_KIND = "architecture_connection_type"

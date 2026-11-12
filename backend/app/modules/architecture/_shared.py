@@ -3,11 +3,13 @@ Module: modules.architecture._shared
 
 The gates behind the Architecture routers.
 
-RBAC: any project member can read the vocabularies (a picker needs them) once the
-module's `architecture_type` sub-component is enabled; changing a project's
-vocabulary needs the project `architecture_admin` role and changing the
-organisation's defaults needs the organisation `architecture_org_admin` role. Both
-compose with server admin, organisation admin and (for a project) project manager.
+RBAC: any project member can read the vocabularies, elements and connections once
+the matching sub-component is enabled. Creating and changing elements, ports and
+connections needs the project `architect` role or a Fine-Grained Access Control
+`(architecture_element, manage)` / `(architecture_connection, manage)` grant;
+changing a project's vocabulary needs the project `architecture_admin` role and
+changing the organisation's defaults the organisation `architecture_org_admin` role.
+All compose with server admin, organisation admin and (for a project) project manager.
 """
 
 from __future__ import annotations
@@ -17,13 +19,43 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.models.enums import PermissionLevel
 from app.models.project import Project
 from app.models.user import User
-from app.modules.architecture.service import ARCHITECTURE_MODULE_KEY
-from app.services.rbac import user_satisfies_module_role
+from app.modules.architecture.service import (
+    ARCHITECTURE_MODULE_KEY,
+    CONNECTION_ARTEFACT_TYPE,
+    ELEMENT_ARTEFACT_TYPE,
+)
+from app.services.permissions import encode_permission
+from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
 
 ARCHITECTURE_ADMIN_ROLE = "architecture_admin"
 ARCHITECTURE_ORG_ADMIN_ROLE = "architecture_org_admin"
+ARCHITECT_ROLE = "architect"
+
+#: The Fine-Grained Access Control atoms the `architect` role carries.
+ELEMENT_MANAGE_PERMISSION = encode_permission(ELEMENT_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
+CONNECTION_MANAGE_PERMISSION = encode_permission(CONNECTION_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
+
+
+def require_architect(db: Session, current_user: User, project: Project, permission: str) -> None:
+    """Gate for creating and changing elements, ports and connections: the project `architect` role (composing
+    with server admin, organisation admin and project manager) or the given Fine-Grained Access Control atom
+    (`ELEMENT_MANAGE_PERMISSION` or `CONNECTION_MANAGE_PERMISSION`).
+
+    Raises:
+        HTTPException: 403 if neither holds.
+    """
+    if user_satisfies_module_role(
+        db, current_user, ARCHITECTURE_MODULE_KEY, ARCHITECT_ROLE,
+        organization_id=project.organization_id, project_id=project.id,
+    ):
+        return
+    held = get_effective_permissions(db, current_user.id, organization_id=project.organization_id, project_id=project.id)
+    if permission_satisfied(held, permission):
+        return
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an Architect (or admin/manager) may do this.")
 
 
 def require_architecture_admin(db: Session, current_user: User, project: Project) -> None:

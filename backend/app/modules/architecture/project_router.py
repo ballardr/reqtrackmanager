@@ -3,11 +3,13 @@ Module: modules.architecture.project_router
 
 Project-scoped API of the Architecture module, mounted at
 `/api/v1/projects/{project_id}/modules/architecture`: the project's effective
-element types and connection types, its own rows, and hiding and restoring the
-organisation's defaults.
+element types and connection types, its own rows, hiding and restoring the
+organisation's defaults, and the project's elements, ports and connections
+(`record_routes`).
 
-RBAC: the `architecture_type` sub-component and project membership to read;
-every change needs `_shared.require_architecture_admin`.
+RBAC: the record type's sub-component and project membership to read; a
+vocabulary change needs `_shared.require_architecture_admin` and a record change
+`_shared.require_architect`.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.modules.architecture import vocabulary_routes
+from app.modules.architecture.record_routes import add_record_routes
 from app.modules.architecture.schemas import (
     ConnectionTypeCreate,
     ConnectionTypeOut,
@@ -47,3 +50,5 @@ vocabulary_routes.add_project_routes(
     update_schema=ConnectionTypeUpdate, out_schema=ConnectionTypeOut, entity_type="architecture_connection_type",
     require_view=_require_view,
 )
+
+add_record_routes(router)

@@ -1,6 +1,6 @@
 # Module 18 — System Architecture (block diagrams and interfaces) — Plan
 
-**Status:** planned 2026-11-04; Phase 0 questions answered by the User 2026-11-04, reading tasks done and open points answered 2026-11-12, plan restructured to 17 phases the same day (Phase 0 signed off 2026-11-12); nothing is built. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** planned 2026-11-04; Phase 0 questions answered by the User 2026-11-04, reading tasks done and open points answered 2026-11-12, plan restructured to 17 phases the same day (Phase 0 signed off 2026-11-12); Phases 1 and 2 built. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 **Source:** user request 2026-11-04 (**Decided by: User**): a way of linking product elements as part of design. Elements have types (a package, a container, a hardware block) and communicate through defined means (queues, APIs, buses). Block diagrams for software and hardware are part of planning and sit alongside requirements. **Deployments (how many of an element run where) are out of scope** (**Decided by: User**, same day): the module covers systems/hardware and software architecture only.
 
@@ -8,7 +8,7 @@ See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for the c
 
 ## Status / Resume Here
 
-2 / 17 phases complete (0 to 16). Phase 0 signed off by the User 2026-11-12; Phase 1 built 2026-11-12 (uncommitted). Phase 2 is next, from migration 0173; it registers the three artefact types, adds the `architect` role and permission atoms, and fills `ELEMENT_TYPES.usage_checks` and `CONNECTION_TYPES.usage_checks`.
+3 / 17 phases complete (0 to 16). Phase 0 signed off by the User 2026-11-12; Phase 1 built and committed 2026-11-12; Phase 2 built 2026-11-12 (uncommitted). Phase 3 is next, from migration 0174: collections, grants, `organization_id` on elements, the visibility resolver. Phase 2 registered the element and connection types only: `architecture_diagram` is registered with its table in Phase 5, and Phase 7 removes the element from `not_creatable_from_links` when it adds the form dialog (see `docs/decisions.md`).
 
 Each phase ships everything its tables need in the same change: bundle section (project and organisation), template-project classification, scaling probe and generator, search, record tables, History kinds, seed-script updates and its own migration. Registry tests fail otherwise.
 
@@ -16,7 +16,7 @@ Each phase ships everything its tables need in the same change: bundle section (
 |---|-------|--------|
 | 0 | Design sign-off (section 6) | [x] |
 | 1 | Skeleton and vocabularies: registration, entitlement, roles and permissions, element and connection types (organisation tier, hide/restore, nested fallback), their bundle sections | [x] |
-| 2 | Elements, ports and connections (project-owned): hierarchy, codes, placements, tags, links, search, summaries, audit, record tables, bundle sections, probes | [ ] |
+| 2 | Elements, ports and connections (project-owned): hierarchy, codes, placements, tags, links, search, summaries, audit, record tables, bundle sections, probes | [x] |
 | 3 | Collections, grants, organisation-owned elements, cross-project access and the visibility resolver | [ ] |
 | 4 | Symbol library: sanitised SVG symbols, organisation and project tiers, built-in generic set, assignment to element types and elements, bundle sections | [ ] |
 | 5 | Diagram API: placements, scope, view toggles, connection detail, roll-up resolver, version lock, server SVG, bundle section | [ ] |
@@ -116,7 +116,7 @@ Everything else attaches through the core link system; no relation tables of our
 | Design (Module 6) | Describes / Described by | Element or Connection |
 | Verification action | Verifies / Verified by | Connection or Element |
 
-(The seeds target types that exist; a seed for a module that is off is simply not offered.)
+(The seeds target types that exist; a seed for a module that is off is simply not offered. Two rows are core defaults and need no seed: **Allocated to** reads "Has allocated" in reverse and is not restricted, and **Verified by** runs from the element or connection to the action, with "Verifies" as its reverse. A same-named seed with other phrases would be ignored, so the module reuses the core phrases.)
 
 **Suggested allocation.** Where a project-owned element is placed in a project component, each requirement in that component has a *suggested* allocation to the element (an element shared from another owner is allocated manually, since a component belongs to one project). Suggestions are computed, shown in the requirement's Architecture panel and the element's Requirements tab, and become real links only when a person accepts them (one click, or bulk accept). Accepting calls the generic link authoring path (the change request proposed-link table does not fit; Phase 0). A person may dismiss a suggestion; the dismissal is stored (table of requirement and element pairs, undo, audit, bundle entry) and cleared if the element is no longer placed in the requirement's component. **Decided by: User** (Phase 0).
 
@@ -272,8 +272,8 @@ Read `Baseline`/`BaselineItem`, the proposed-link mechanism and the state of the
 
 - **Why:** diagrams are the point; the roll-up rule must exist once, on the server.
 - **Risk:** the screen and the document drawing different things; lost updates on concurrent edits.
-- **Outcome:** diagram, placement, note and toggle tables, endpoints, scope handling, `connection_detail`, the single resolver (3.4: toggles, bridging, roll-up, merge), version lock on save, server-side SVG renderer for one diagram that draws symbols, bundle section, probe and generator (including a large diagram).
-- **Tests:** toggle cases (hidden transit bridged, a chain of hidden elements, a hidden dead end, a rule plus manual union, default states in exports, a bridged line never exposing a hidden element the person cannot see); roll-up cases (both ends placed, one ancestor placed, none, both inside one parent, several collapsing), stale-version conflict, an element the person cannot see rejected, hidden element drawn as a placeholder.
+- **Outcome:** diagram, placement, note and toggle tables, endpoints, scope handling, `connection_detail`, the single resolver (3.4: toggles, bridging, roll-up, merge), version lock on save, server-side SVG renderer for one diagram that draws symbols, bundle section, probe and generator (including a large diagram). **Registers the third artefact type, `architecture_diagram`** (deferred from Phase 2, which registered the element and connection only), with the `architecture_diagram` sub-component and the `architect` role's `(architecture_diagram, manage)` atom: code `DGM-001` (`ModuleDefinition.artefact_types`, label, summary provider), search provider, record table with a `not_importable` reason (layout is authored visually) and a `count` hook, report fields, `no_record_attachments` reason, scaling probe, perf generator and ratio in `profiles.yaml` (bump `version`; add it to the `SMALL` profile in `test_perf_dataset.py`), link-type and placement support (placeable), `frontend/src/modules/registeredArtefactTypes.json`, `creatableRecordTypes.json` and the frontend `artefactPaths`/`artefactListPaths`/status labels, and a `not_creatable_from_links` entry until Phase 8 adds the creator.
+- **Tests:** the registry tests pass with `architecture_diagram` registered (`test_search`, `test_scaling_shapes`, `test_perf_dataset`, `test_artefact_type_routes`, `test_creatable_record_types`, `test_record_tables`, `test_placements`); toggle cases (hidden transit bridged, a chain of hidden elements, a hidden dead end, a rule plus manual union, default states in exports, a bridged line never exposing a hidden element the person cannot see); roll-up cases (both ends placed, one ancestor placed, none, both inside one parent, several collapsing), stale-version conflict, an element the person cannot see rejected, hidden element drawn as a placeholder.
 
 ### Phase 6 — Shared graph canvas
 

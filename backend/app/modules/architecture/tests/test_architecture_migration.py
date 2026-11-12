@@ -1,6 +1,7 @@
 """Tests for the vocabulary migration (`migrations/0172_architecture_vocabularies.py`): downgrading drops both tables and
 upgrading recreates them and backfills the default types for an organisation that already exists, without doubling the
-types an organisation was already given. Runs the real migration and always upgrades back to head."""
+types an organisation was already given. A second test covers the record tables of `0173_architecture_records.py`.
+Runs the real migrations and always upgrades back to head."""
 
 from __future__ import annotations
 
@@ -51,4 +52,19 @@ def test_upgrading_twice_does_not_double_the_backfill(client, admin_token):
     command.upgrade(build_alembic_config(), "head")
     command.downgrade(build_alembic_config(), "0171")
     command.upgrade(build_alembic_config(), "head")
+    assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)
+
+
+def test_the_records_migration_drops_and_recreates_the_record_tables_leaving_the_vocabularies(client, admin_token):
+    """Downgrading 0173 removes elements, ports and connections only; upgrading recreates them empty."""
+    org, _token = create_org_admin_in(client, admin_token, "Arch records migration")
+    command.downgrade(build_alembic_config(), "0172")
+    try:
+        for table in ("architecture_elements", "architecture_ports", "architecture_connections"):
+            assert not _table_exists(table)
+        assert _table_exists("architecture_element_types") and _table_exists("architecture_connection_types")
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    for table in ("architecture_elements", "architecture_ports", "architecture_connections"):
+        assert _table_exists(table)
     assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)

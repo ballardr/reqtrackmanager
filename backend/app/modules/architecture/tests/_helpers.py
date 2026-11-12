@@ -53,3 +53,51 @@ def grant_org_role(client, token, org_id, user_id, role_key) -> None:
         json={"module_key": MODULE_KEY, "role_key": role_key}, headers=auth_headers(token),
     )
     assert resp.status_code == 204, resp.text
+
+
+def element_types(client, token, project_id) -> dict[str, str]:
+    """`{name: id}` of the project's effective element types."""
+    rows = client.get(f"{project_base(project_id)}/element-types", headers=auth_headers(token)).json()
+    return {r["name"]: r["id"] for r in rows}
+
+
+def connection_types(client, token, project_id) -> dict[str, str]:
+    """`{name: id}` of the project's effective connection types."""
+    rows = client.get(f"{project_base(project_id)}/connection-types", headers=auth_headers(token)).json()
+    return {r["name"]: r["id"] for r in rows}
+
+
+def make_element(client, token, project_id, name="Gateway", *, type_name="Component", expect=201, **fields) -> dict:
+    """Creates an element of the named type; returns the response body (or the response when `expect` is not 201)."""
+    body = {"name": name, "element_type_id": element_types(client, token, project_id)[type_name], **fields}
+    resp = client.post(f"{project_base(project_id)}/elements", json=body, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def make_connection(client, token, project_id, source, target, *, type_name="REST API", expect=201, **fields) -> dict:
+    """Creates a connection between two elements (ids); returns the response body."""
+    body = {
+        "connection_type_id": connection_types(client, token, project_id)[type_name],
+        "source_element_id": source, "target_element_id": target, **fields,
+    }
+    resp = client.post(f"{project_base(project_id)}/connections", json=body, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def make_architect(client, admin_token, org_id, project_id, email) -> str:
+    """A project member holding the `architect` role; returns their token."""
+    user_id, token = add_member(client, admin_token, org_id, project_id, email)
+    grant_project_role(client, admin_token, project_id, user_id, "architect")
+    return token
+
+
+def put_element(client, token, project_id, element, expect=200, **fields) -> dict:
+    """Edits an element quoting its current `version`; returns the response body."""
+    resp = client.put(
+        f"{project_base(project_id)}/elements/{element['id']}", json={"version": element["version"], **fields},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()
