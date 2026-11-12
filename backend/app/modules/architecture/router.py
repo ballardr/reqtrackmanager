@@ -3,7 +3,7 @@ Module: modules.architecture.router
 
 Organisation-scoped API of the Architecture module, mounted at
 `/api/v1/orgs/{organization_id}/modules/architecture`: the organisation's default
-element types and connection types.
+element types and connection types, its own elements and its collections.
 
 RBAC: the `architecture_type` sub-component to read; every change needs
 `_shared.require_architecture_org_admin`.
@@ -14,6 +14,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.modules.architecture import vocabulary_routes
+from app.modules.architecture.collection_routes import add_org_collection_routes
+from app.modules.architecture.record_routes import add_org_record_routes
 from app.modules.architecture.schemas import (
     ConnectionTypeCreate,
     ConnectionTypeOut,
@@ -46,3 +48,5 @@ vocabulary_routes.add_org_routes(
     update_schema=ConnectionTypeUpdate, out_schema=ConnectionTypeOut, entity_type="architecture_connection_type",
     require_view=_require_view,
 )
+add_org_record_routes(router)
+add_org_collection_routes(router)

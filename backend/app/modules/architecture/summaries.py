@@ -10,8 +10,12 @@ Responsibilities:
   flag) with a `status` facet for the finder, and offer one-query batch lookups for a viewing project.
 
 Design decisions:
-- A project sees only its own records here; a record of another project is reached through the
-  list scope filter, which checks access to that project.
+- A project sees its own records here and the elements other owners share with it (`visibility.Viewer.of_project`:
+  collection grants to the project or an ancestor with descendants). The hooks have no person, so a grant to a
+  group, or access through another project the person can open, is not applied here; that is only ever less
+  than the person's own view. An organisation-owned element carries no project and its organisation, and no
+  `list_for_organization` is offered: core resolves an organisation-qualified code for any member of the
+  organisation, which would show an element nobody shared with them.
 - A connection with no name is labelled by its code and its ends.
 
 Dependencies: this module's models and labels; `modules.registry` for the summary dataclasses;
@@ -27,8 +31,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
+from app.models.project import Project
 from app.modules.architecture.labels import RECORD_STATUS_LABEL
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement
+from app.modules.architecture.visibility import Viewer, granted_element_ids, visible_element_ids
 from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider, BrowseLevel
 from app.services.summary_facets import status_facet
 
@@ -47,8 +53,8 @@ def _element_query(*conditions: Any):
 def _element_summaries(elements: Sequence[ArchitectureElement]) -> list[ArtefactSummary]:
     return [
         ArtefactSummary(
-            id=e.id, project_id=e.project_id, label=f"{e.unique_code} {e.name}", status=e.status,
-            is_archived=e.is_archived, facets=_facets(e.status),
+            id=e.id, project_id=e.project_id, organization_id=e.organization_id, label=f"{e.unique_code} {e.name}",
+            status=e.status, is_archived=e.is_archived, facets=_facets(e.status),
         )
         for e in elements
     ]
@@ -59,16 +65,29 @@ def _get_element(db: Session, element_id: UUID) -> ArtefactSummary | None:
     return None if element is None else _element_summaries([element])[0]
 
 
+def _viewer(db: Session, project_id: UUID) -> Viewer:
+    """The project as a viewer with no person (see the module docstring)."""
+    organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+    assert organization_id is not None
+    return Viewer.of_project(project_id, organization_id)
+
+
 def _list_elements(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+    """The project's own open-or-draft elements and the unarchived, unretired elements shared with it."""
+    shared = granted_element_ids(db, _viewer(db, project_id))
     rows = db.scalars(_element_query(
-        ArchitectureElement.project_id == project_id, ArchitectureElement.is_archived.is_(False),
+        ArchitectureElement.is_archived.is_(False),
+        (ArchitectureElement.project_id == project_id)
+        | (ArchitectureElement.id.in_(shared) & (ArchitectureElement.status != "retired")),
     )).all()
     return sorted(_element_summaries(rows), key=lambda s: s.label)
 
 
 def _get_many_elements(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
-    rows = db.scalars(_element_query(ArchitectureElement.id.in_(ids), ArchitectureElement.project_id == project_id)).all()
-    return _element_summaries(rows)
+    visible = visible_element_ids(db, _viewer(db, project_id), ids)
+    if not visible:
+        return []
+    return _element_summaries(db.scalars(_element_query(ArchitectureElement.id.in_(visible))).all())
 
 
 ELEMENT_SUMMARY_PROVIDER = ArtefactSummaryProvider(

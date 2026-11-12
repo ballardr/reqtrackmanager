@@ -13,7 +13,8 @@ Design decisions:
 - Elements form a tree at most four levels deep (a share are roots); ports sit on most elements and a
   connection joins two elements, on a port each when both have one. Connections are generated after elements
   (`order`), so their ends exist.
-- Only project-owned records are generated (the organisation tier arrives with sharing).
+- Only project-owned records are generated. Organisation-owned elements, collections and grants are not (a
+  profile's unit is the project); the visibility resolver's cost is covered by the scaling-shape guard instead.
 
 Dependencies: `perf_dataset.records`, this module's models and service constants.
 """

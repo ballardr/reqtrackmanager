@@ -278,13 +278,16 @@ def test_audit_events_hold_ids_and_field_names_never_free_text(client, admin_tok
     assert events[1].detail == {"fields": ["description", "name"]}
 
 
-def test_another_projects_element_looks_absent(client, admin_token):
+def test_another_projects_element_looks_absent_and_is_never_writable_through_this_project(client, admin_token):
     org, project, token = setup(client, admin_token, "Arch element tenancy")
     other = create_project(client, token, org["id"], "Arch element tenancy other")
     element = make_element(client, token, other["id"], "Elsewhere")
     base = project_base(project["id"])
     h = auth_headers(token)
-    assert client.get(f"{base}/elements/{element['id']}", headers=h).status_code == 404
+    # A member of this project only cannot read it; a person who can open both projects can, but not change it here.
+    architect = make_architect(client, token, org["id"], project["id"], "arch.tenancy@example.com")
+    assert client.get(f"{base}/elements/{element['id']}", headers=auth_headers(architect)).status_code == 404
+    assert client.get(f"{base}/elements/{element['id']}", headers=h).status_code == 200
     assert client.put(f"{base}/elements/{element['id']}", json={"version": 1, "name": "x"}, headers=h).status_code == 404
     assert client.delete(f"{base}/elements/{element['id']}", headers=h).status_code == 404
     assert client.post(f"{base}/elements/{element['id']}/archive", headers=h).status_code == 404

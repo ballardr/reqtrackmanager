@@ -50,13 +50,15 @@ def test_a_connection_joins_two_elements_and_is_numbered(client, admin_token):
     assert (second["unique_code"], second["status"], second["directional"]) == ("CON-002", "active", False)
 
 
-def test_the_two_ends_must_differ_and_belong_to_the_project(client, admin_token):
+def test_the_two_ends_must_differ_and_be_elements_the_person_can_read(client, admin_token):
     org, project, token = setup(client, admin_token, "Arch connection ends")
     other = create_project(client, token, org["id"], "Arch connection ends other")
     a, b = _two(client, token, project["id"])
     foreign = make_element(client, token, other["id"], "Foreign")
+    architect = make_architect(client, token, org["id"], project["id"], "arch.ends@example.com")
     make_connection(client, token, project["id"], a["id"], a["id"], expect=400)
-    make_connection(client, token, project["id"], a["id"], foreign["id"], expect=400)
+    # The architect belongs to this project only: another project's element is hidden from them and looks missing.
+    make_connection(client, architect, project["id"], a["id"], foreign["id"], expect=400)
     make_connection(client, token, project["id"], str(uuid.uuid4()), b["id"], expect=400)
 
 

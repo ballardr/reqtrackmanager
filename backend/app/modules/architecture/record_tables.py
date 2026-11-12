@@ -11,8 +11,11 @@ Responsibilities:
   validation, the version counter and the audit event are the ones the screen applies.
 
 Design decisions:
-- The type is written by its name (the project's effective list); the parent and the two ends by the code of
-  an element of the same project, which must already exist, so a file cannot reach another project's record.
+- The type is written by its name (the project's effective list, or the organisation's rows at the organisation
+  tier); the parent by the code of an element of the same owner, which must already exist. A connection end
+  that another owner shares is written qualified by the owner's code (`PLAT-ELM-004`, or the organisation's code),
+  because a bare code would name one of the project's own elements; the parser resolves it through
+  `visibility`, so a file cannot reach an element the person cannot read.
 - `status` is importable because the module has no approval gate (an element or a connection may move
   between any two states); a new record can be created `Draft` or `Active`, not `Retired`.
 - `ports` is one list cell, `name:direction` per port (`Main:both;Debug:in`), the way the export writes it. An
@@ -20,7 +23,10 @@ Design decisions:
   changes nothing and removing a port stays a deliberate act on the element.
 - An import update quotes the record's current `version`: a file is applied to the record as it is now.
 
-Dependencies: `records` (rules), `record_routes` (filters), `services.record_tables_core`.
+The organisation tier (`OrganizationRecordTable`) lists the organisation-owned elements the person may read and
+imports through the organisation endpoints' own path (`records.ElementOwner.of_organization`).
+
+Dependencies: `records` (rules), `record_routes` (filters), `visibility`, `services.record_tables_core`.
 """
 
 from __future__ import annotations
@@ -32,9 +38,10 @@ from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.architecture import records
@@ -43,6 +50,7 @@ from app.modules.architecture.enums import PortDirection, RecordStatus
 from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement, ArchitecturePort
 from app.modules.architecture.record_routes import filter_connections, filter_elements
+from app.modules.architecture.records import ElementOwner
 from app.modules.architecture.schemas import (
     ConnectionCreate,
     ConnectionUpdate,
@@ -56,10 +64,19 @@ from app.modules.architecture.service import (
     CONNECTION_SUBCOMPONENT_KEY,
     CONNECTION_TYPES,
     ELEMENT_ARTEFACT_TYPE,
+    ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
     ELEMENT_TYPES,
 )
-from app.modules.registry import RecordCellError, RecordColumn, RecordFilters, RecordImportContext, RecordTableProvider
+from app.modules.architecture.visibility import Viewer, is_architecture_org_admin, visible_element_ids
+from app.modules.registry import (
+    OrganizationRecordTable,
+    RecordCellError,
+    RecordColumn,
+    RecordFilters,
+    RecordImportContext,
+    RecordTableProvider,
+)
 from app.services import tags as tag_service
 from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
@@ -112,9 +129,21 @@ def _allowed(db: Session, user: User, project_id: uuid.UUID, permission: str) ->
     return True
 
 
-def _type_names(vocabulary: Any, db: Session, project: Project) -> dict[str, uuid.UUID]:
-    """`{lower-case name: id}` of the project's effective types."""
-    return {row.name.casefold(): row.id for row in vocabulary.resolve_effective(db, project.id, project.organization_id).rows}
+def _effective_rows(vocabulary: Any, db: Session, scope: Project | Organization) -> list:
+    """The types an owner may use: a project's effective list, or an organisation's own rows."""
+    if isinstance(scope, Project):
+        return vocabulary.resolve_effective(db, scope.id, scope.organization_id).rows
+    return vocabulary.org_rows(db, scope.id)
+
+
+def _owner_of(ctx: RecordImportContext) -> ElementOwner:
+    """The owner an import writes as: the project, or the organisation at the organisation tier."""
+    return ElementOwner.of_project(ctx.project) if ctx.project is not None else ElementOwner.of_organization(ctx.organization)
+
+
+def _type_names(vocabulary: Any, db: Session, scope: Project | Organization) -> dict[str, uuid.UUID]:
+    """`{lower-case name: id}` of the owner's effective types."""
+    return {row.name.casefold(): row.id for row in _effective_rows(vocabulary, db, scope)}
 
 
 def _type_parser(vocabulary: Any, kind: str) -> Callable[[RecordImportContext, str], uuid.UUID]:
@@ -123,7 +152,8 @@ def _type_parser(vocabulary: Any, kind: str) -> Callable[[RecordImportContext, s
     def parse(ctx: RecordImportContext, text: str) -> uuid.UUID:
         if not text:
             raise RecordCellError(f"A {vocabulary.label.lower()} is required.")
-        found = cached_lookup(ctx, f"{kind}:names", lambda: _type_names(vocabulary, ctx.db, ctx.project)).get(text.casefold())
+        scope = ctx.project if ctx.project is not None else ctx.organization
+        found = cached_lookup(ctx, f"{kind}:names", lambda: _type_names(vocabulary, ctx.db, scope)).get(text.casefold())
         if found is None:
             raise RecordCellError(f"Unknown {vocabulary.label.lower()} '{text}'.")
         return found
@@ -132,7 +162,7 @@ def _type_parser(vocabulary: Any, kind: str) -> Callable[[RecordImportContext, s
 
 
 def _element_by_code_parser(field_name: str, *, blank_clears: bool) -> Callable[[RecordImportContext, str], uuid.UUID | None]:
-    """A parser for the code of an element of the importing project (`ELM-004`); an empty cell means none."""
+    """A parser for the code of an element of the importing owner (`ELM-004`); an empty cell means none."""
 
     def parse(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
         if not text:
@@ -141,14 +171,42 @@ def _element_by_code_parser(field_name: str, *, blank_clears: bool) -> Callable[
             raise RecordCellError(f"{field_name} is required.")
         codes = cached_lookup(ctx, "elements:codes", lambda: {
             code.upper(): element_id for element_id, code in ctx.db.execute(
-                select(ArchitectureElement.id, ArchitectureElement.unique_code).where(
-                    ArchitectureElement.project_id == ctx.project.id
-                )
+                select(ArchitectureElement.id, ArchitectureElement.unique_code).where(_owner_of(ctx).element_filter)
             )
         })
         found = codes.get(text.upper())
         if found is None:
-            raise RecordCellError(f"{field_name} '{text}' is not an element of this project.")
+            raise RecordCellError(f"{field_name} '{text}' is not an element of this {'project' if ctx.project else 'organisation'}.")
+        return found
+
+    return parse
+
+
+def _end_parser(field_name: str) -> Callable[[RecordImportContext, str], uuid.UUID | None]:
+    """A parser for a connection end: a bare code names the project's own element, a code qualified by a project's
+    or the organisation's code (`PLAT-ELM-004`) names an element that owner shares, which the person must be able to
+    read. The cell is required."""
+    own = _element_by_code_parser(field_name, blank_clears=False)
+
+    def parse(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
+        owner_code, separator, rest = text.upper().rpartition(f"-{ELEMENT_CODE_PREFIX}-")
+        if not text or not separator or not owner_code:
+            return own(ctx, text)
+        code = f"{ELEMENT_CODE_PREFIX}-{rest}"
+        organization_id = ctx.organization_id
+        found = ctx.db.scalar(
+            select(ArchitectureElement.id).join(Project, Project.id == ArchitectureElement.project_id).where(
+                func.upper(Project.code) == owner_code, Project.organization_id == organization_id,
+                ArchitectureElement.unique_code == code,
+            )
+        ) or ctx.db.scalar(
+            select(ArchitectureElement.id).join(Organization, Organization.id == ArchitectureElement.organization_id).where(
+                func.upper(Organization.code) == owner_code, Organization.id == organization_id,
+                ArchitectureElement.unique_code == code,
+            )
+        )
+        if found is None or found not in visible_element_ids(ctx.db, Viewer.of_user(ctx.user, ctx.project), [found]):
+            raise RecordCellError(f"{field_name} '{text}' is not an element this project can use.")
         return found
 
     return parse
@@ -164,13 +222,11 @@ def _status_column() -> RecordColumn:
 class _Prepared:
     """Lookups handed to every column's `get`: type names, people, tags, parent and end codes, port text."""
 
-    def __init__(self, db: Session, project: Project, records_: Sequence[Any], artefact_type: str) -> None:
+    def __init__(self, db: Session, scope: Project | Organization, records_: Sequence[Any], artefact_type: str) -> None:
         ids = [r.id for r in records_]
         self.tags = tag_service.tag_names_for_records(db, artefact_type, ids) if ids else {}
-        self.element_types = {row.id: row.name for row in ELEMENT_TYPES.resolve_effective(db, project.id, project.organization_id).rows}
-        self.connection_types = {
-            row.id: row.name for row in CONNECTION_TYPES.resolve_effective(db, project.id, project.organization_id).rows
-        }
+        self.element_types = {row.id: row.name for row in _effective_rows(ELEMENT_TYPES, db, scope)}
+        self.connection_types = {row.id: row.name for row in _effective_rows(CONNECTION_TYPES, db, scope)}
         self.codes: dict[uuid.UUID, str] = {}
         self.ports_text: dict[uuid.UUID, str] = {}
         self.port_names: dict[uuid.UUID, str] = {}
@@ -188,9 +244,19 @@ class _Prepared:
                     row.id: row.name for row in db.scalars(select(ArchitecturePort).where(ArchitecturePort.id.in_(port_ids)))
                 }
         if wanted:
-            self.codes = dict(db.execute(
-                select(ArchitectureElement.id, ArchitectureElement.unique_code).where(ArchitectureElement.id.in_(wanted))
-            ).tuples().all())
+            # An end another owner shares is written qualified by that owner's code (a bare code would name one of
+            # this project's own elements on re-import).
+            rows = db.execute(
+                select(
+                    ArchitectureElement.id, ArchitectureElement.unique_code, ArchitectureElement.project_id,
+                    Project.code, Organization.code,
+                ).outerjoin(Project, Project.id == ArchitectureElement.project_id)
+                .outerjoin(Organization, Organization.id == ArchitectureElement.organization_id)
+                .where(ArchitectureElement.id.in_(wanted))
+            ).all()
+            for element_id, code, element_project_id, project_code, org_code in rows:
+                own = element_project_id == scope.id if isinstance(scope, Project) else element_project_id is None
+                self.codes[element_id] = code if own else f"{project_code or org_code}-{code}"
 
 
 def _tags_column() -> RecordColumn:
@@ -200,27 +266,43 @@ def _tags_column() -> RecordColumn:
 # --- Element ---------------------------------------------------------------
 
 
-def _prepare_elements(db: Session, project: Project, records_: list[ArchitectureElement]) -> _Prepared:
-    return _Prepared(db, project, records_, ELEMENT_ARTEFACT_TYPE)
+def _prepare_elements(db: Session, scope: Project | Organization, records_: list[ArchitectureElement]) -> _Prepared:
+    return _Prepared(db, scope, records_, ELEMENT_ARTEFACT_TYPE)
 
 
-def _list_elements(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ArchitectureElement]:
-    project = project_or_404(db, project_id)
+def _filtered_elements(
+    db: Session, scope: Project | Organization, rows: list[ArchitectureElement], filters: RecordFilters,
+) -> list[ArchitectureElement]:
+    """The rows the list's filters keep (shared by the project and organisation tiers)."""
     type_name = filters.one("type")
     type_id = None
     if type_name is not None:
-        type_id = _type_names(ELEMENT_TYPES, db, project).get(type_name.casefold())
+        type_id = _type_names(ELEMENT_TYPES, db, scope).get(type_name.casefold())
         if type_id is None:
             return []
     status = enum_filter(filters, "status", RecordStatus)
     return filter_elements(
-        records.list_elements(db, project_id, include_archived=bool(filters.flag("include_archived"))),
-        status_=status.value if status else None, element_type_id=type_id, roots_only=bool(filters.flag("roots_only")),
-        open_only=bool(filters.flag("open_only")), search=filters.one("search"),
+        rows, status_=status.value if status else None, element_type_id=type_id,
+        roots_only=bool(filters.flag("roots_only")), open_only=bool(filters.flag("open_only")), search=filters.one("search"),
     )
 
 
-def _element_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _list_elements(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ArchitectureElement]:
+    project = project_or_404(db, project_id)
+    return _filtered_elements(
+        db, project, records.list_elements(db, project_id, include_archived=bool(filters.flag("include_archived"))), filters,
+    )
+
+
+def _list_org_elements(db: Session, user: User, organization: Organization, filters: RecordFilters) -> list[ArchitectureElement]:
+    return _filtered_elements(
+        db, organization,
+        records.list_org_elements_for(db, user, organization.id, include_archived=bool(filters.flag("include_archived"))),
+        filters,
+    )
+
+
+def _element_columns(db: Session, project: Project | Organization) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False, required=True),
         RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
@@ -241,8 +323,8 @@ def _element_columns(db: Session, project: Project) -> list[RecordColumn]:
     ]
 
 
-def _type_names_ordered(vocabulary: Any, db: Session, project: Project) -> list[str]:
-    return [row.name for row in vocabulary.resolve_effective(db, project.id, project.organization_id).rows]
+def _type_names_ordered(vocabulary: Any, db: Session, scope: Project | Organization) -> list[str]:
+    return [row.name for row in _effective_rows(vocabulary, db, scope)]
 
 
 def _ports_from_cell(entries: list[str]) -> list[PortCreate]:
@@ -266,7 +348,7 @@ def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> Arch
         "element_type_id": values.get("type"), "parent_id": values.get("parent"), "owner": values.get("owner"),
         "activate": status is RecordStatus.ACTIVE, "ports": _ports_from_cell(values.get("ports", [])),
     })
-    return _rule(lambda: records.create_element(ctx.db, ctx.project, ctx.user, payload))
+    return _rule(lambda: records.create_element(ctx.db, _owner_of(ctx), ctx.user, payload))
 
 
 def _update_element(ctx: RecordImportContext, element: ArchitectureElement, values: Mapping[str, Any]) -> None:
@@ -276,23 +358,29 @@ def _update_element(ctx: RecordImportContext, element: ArchitectureElement, valu
             fields[field] = values[key]
     if fields:
         payload = _payload(ElementUpdate, {"version": element.version, **fields})
-        _rule(lambda: records.update_element(ctx.db, ctx.project, ctx.user, element.id, payload))
+        _rule(lambda: records.update_element(ctx.db, _owner_of(ctx), ctx.user, element.id, payload))
     if "ports" in values:
         existing = {p.name.casefold() for p in records.ports_for(ctx.db, [element.id]).get(element.id, [])}
         for port in _ports_from_cell(values["ports"]):
             if port.name.casefold() not in existing:
-                _rule(partial(records.add_port, ctx.db, ctx.project, ctx.user, element.id, port))
+                _rule(partial(records.add_port, ctx.db, _owner_of(ctx), ctx.user, element.id, port))
                 existing.add(port.name.casefold())
     if values.get("status") is not None and values["status"].value != element.status:
         ctx.db.refresh(element)
         _rule(lambda: records.change_element_status(
-            ctx.db, ctx.project, ctx.user, element.id, element.version, values["status"],
+            ctx.db, _owner_of(ctx), ctx.user, element.id, element.version, values["status"],
         ))
 
 
 def _find_element(db: Session, project: Project, code: str) -> ArchitectureElement | None:
     return db.scalar(select(ArchitectureElement).where(
         ArchitectureElement.project_id == project.id, ArchitectureElement.unique_code == code.upper(),
+    ))
+
+
+def _find_org_element(db: Session, organization: Organization, code: str) -> ArchitectureElement | None:
+    return db.scalar(select(ArchitectureElement).where(
+        ArchitectureElement.organization_id == organization.id, ArchitectureElement.unique_code == code.upper(),
     ))
 
 
@@ -310,6 +398,19 @@ ELEMENT_TABLE = RecordTableProvider(
     can_create=lambda db, user, project_id: _allowed(db, user, project_id, ELEMENT_MANAGE_PERMISSION),
     can_update=lambda db, user, project_id: _allowed(db, user, project_id, ELEMENT_MANAGE_PERMISSION),
     count=lambda db, user, project_id: count_rows(db, ArchitectureElement, project_id, live_only=True),
+    organization=OrganizationRecordTable(
+        subcomponent=ELEMENT_SUBCOMPONENT_KEY,
+        columns=_element_columns,
+        list_records=_list_org_elements,
+        find=_find_org_element,
+        find_many=find_many_by_code(ArchitectureElement, "organization_id"),
+        prepare=_prepare_elements,
+        create=_create_element,
+        update=_update_element,
+        filter_params=ELEMENT_FILTERS,
+        can_create=lambda db, user, organization_id: is_architecture_org_admin(db, user, organization_id),
+        can_update=lambda db, user, organization_id: is_architecture_org_admin(db, user, organization_id),
+    ),
 )
 
 
@@ -355,7 +456,7 @@ def _connection_columns(db: Session, project: Project) -> list[RecordColumn]:
 
         return RecordColumn(
             side, f"{side.capitalize()} element", get,
-            _element_by_code_parser(f"{side.capitalize()} element", blank_clears=False), required=True,
+            _end_parser(f"{side.capitalize()} element"), required=True,
         )
 
     def port(side: str) -> RecordColumn:

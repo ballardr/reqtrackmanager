@@ -168,10 +168,15 @@ class StatusChange(BaseModel):
 
 
 class ElementOut(ProjectScopedRow):
-    """An element with its type name, resolved owner, ports and tree counts."""
+    """An element with its type name, resolved owner, ports and tree counts.
+
+    `project_id` / `organization_id` say who owns it (exactly one is set); `shared` is true when it is shown in a
+    project that does not own it, in which case its connection count covers only that project's connections."""
 
     id: UUID
-    project_id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None = None
+    shared: bool = False
     unique_code: str
     name: str
     description: str
@@ -220,7 +225,10 @@ class ConnectionUpdate(BaseModel):
 
 
 class ConnectionOut(ProjectScopedRow):
-    """A connection with its type and end names."""
+    """A connection with its type and end names.
+
+    An end is `locked` when the viewer can no longer read it (only its code is shown) and `shared` when another
+    owner shares it with the project."""
 
     id: UUID
     project_id: UUID
@@ -234,11 +242,15 @@ class ConnectionOut(ProjectScopedRow):
     source_element_name: str
     source_port_id: UUID | None
     source_port_name: str | None
+    source_locked: bool = False
+    source_shared: bool = False
     target_element_id: UUID
     target_element_code: str
     target_element_name: str
     target_port_id: UUID | None
     target_port_name: str | None
+    target_locked: bool = False
+    target_shared: bool = False
     protocol: str
     description: str
     status: str
@@ -246,5 +258,71 @@ class ConnectionOut(ProjectScopedRow):
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- Collections and sharing -----------------------------------------------
+
+
+class CollectionCreate(BaseModel):
+    """Create payload for a collection."""
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+
+
+class CollectionUpdate(BaseModel):
+    """Partial update of a collection."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+
+
+class CollectionMembersAdd(BaseModel):
+    """The owner's elements to put in a collection (the tops of the subtrees to share)."""
+
+    element_ids: list[UUID] = Field(min_length=1, max_length=500)
+
+
+class CollectionMemberOut(BaseModel):
+    """An element in a collection."""
+
+    element_id: UUID
+    unique_code: str
+    name: str
+
+
+class CollectionGrantCreate(BaseModel):
+    """Access for one project (optionally with its descendants) or one group; name exactly one target."""
+
+    project_id: UUID | None = None
+    group: PrincipalRef | None = None
+    include_descendants: bool = False
+
+
+class CollectionGrantOut(BaseModel):
+    """A grant with the name of what it reaches (`group` for a group grant, the project's name and code otherwise)."""
+
+    id: UUID
+    project_id: UUID | None
+    project_name: str | None
+    project_code: str | None
+    group: PrincipalOut | None
+    include_descendants: bool
+    created_at: datetime
+
+
+class CollectionOut(BaseModel):
+    """A collection with its counts; `grants` is filled for a reader who may see who has access."""
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    description: str
+    member_count: int
+    grant_count: int
+    grants: list[CollectionGrantOut]
     created_at: datetime
     updated_at: datetime

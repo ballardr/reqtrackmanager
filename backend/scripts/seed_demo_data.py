@@ -2471,7 +2471,8 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
 def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
     """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
-    REST API, Power). Returns the number of elements and connections created."""
+    REST API, Power), plus an organisation-owned identity service shared with the project through a collection.
+    Returns the number of elements and connections created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
 
@@ -2527,7 +2528,25 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud")
     connect("Telemetry out", "UART", fc, "Telemetry link", radio, "UART in", "MAVLink 2")
     connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
-    return {"elements": 7, "connections": 4}
+
+    # An element the organisation owns, shared with Falcon-3 through a collection, and a connection to it.
+    org_base = f"{BASE}/orgs/{org_id}/modules/architecture"
+    org_types = {r["name"]: r["id"] for r in httpx.get(f"{org_base}/element-types", headers=headers, timeout=30).json()}
+    identity = httpx.post(
+        f"{org_base}/elements", headers=headers, timeout=30,
+        json={"name": "Corporate identity service", "description": "Sign-in for every product.",
+              "element_type_id": org_types["Service"], "activate": True},
+    )
+    identity.raise_for_status()
+    collection = httpx.post(f"{org_base}/collections", headers=headers, timeout=30, json={"name": "Corporate services"})
+    collection.raise_for_status()
+    collection_url = f"{org_base}/collections/{collection.json()['id']}"
+    httpx.post(
+        f"{collection_url}/members", headers=headers, timeout=30, json={"element_ids": [identity.json()["id"]]},
+    ).raise_for_status()
+    httpx.post(f"{collection_url}/grants", headers=headers, timeout=30, json={"project_id": project_id}).raise_for_status()
+    connect("Operator sign-in", "REST API", ground, "", identity.json(), "", "OpenID Connect")
+    return {"elements": 8, "connections": 5}
 
 
 def main() -> None:

@@ -5,8 +5,11 @@ The two vocabularies every architecture record is typed by, and the records:
 
 - `ArchitectureElementType` — what an element is (System, Service, Board, ...).
 - `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...).
-- `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s.
+- `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s; owned by a project
+  or by the organisation.
 - `ArchitectureConnection` — an interface between two elements.
+- `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
+  elements and who it is shared with (a project, optionally with its descendants, or a group).
 
 Each is one table whose owner is a project *or* an organisation (a CHECK keeps
 exactly one). An organisation row is a default every project of the organisation
@@ -107,12 +110,13 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
 
     Elements form a tree through `parent_id` (the service enforces the same owner, no cycles and the depth
     cap). The record has no version rows: `version` is an optimistic counter that a save must quote, and the
-    audit trail holds the history. A record that only exists inside a project is project-owned; the
-    organisation tier arrives with sharing.
+    audit trail holds the history. An element is owned by a project or by the organisation (a CHECK keeps
+    exactly one); another owner reaches it only through the visibility rules in `visibility`.
 
     Attributes:
-        project_id: The owning project.
-        unique_code: Project-scoped identifier (`ELM-001`), from `services.sequences.generate_unique_code`.
+        project_id: The owning project, or `None` for an organisation-owned element.
+        organization_id: The owning organisation, or `None` for a project-owned element.
+        unique_code: Identifier unique within its owner (`ELM-001`), from `services.sequences.generate_unique_code`.
         name / description: Display name and free text.
         element_type_id: The element's type row, whichever tier owns it. No cascade (checked at the end of the
             statement, so a project's deletion can remove its types and elements together): the service never
@@ -129,13 +133,18 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "architecture_elements"
     __table_args__ = (
         UniqueConstraint("project_id", "unique_code", name="uq_architecture_elements_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_architecture_elements_org_unique_code"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_elements_one_owner"),
         CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_architecture_elements_not_own_parent"),
         principal_check_constraint("owner", nullable=True),
         Index("ix_architecture_elements_project_parent", "project_id", "parent_id"),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
     )
     unique_code: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(200))
@@ -191,8 +200,9 @@ class ArchitectureConnection(UUIDPKMixin, TimestampMixin, Base):
         unique_code: Project-scoped identifier (`CON-001`).
         name: Display name; may be empty in the API, in which case the summary shows the ends.
         connection_type_id: The interface type row. No cascade, as for `ArchitectureElement.element_type_id`.
-        source_element_id / target_element_id: The two ends (never the same element). No cascade: the service
-            refuses to delete an element a connection names, since the connection would lose an end.
+        source_element_id / target_element_id: The two ends (never the same element). An end may belong to
+            another owner the project can see (`visibility`). No cascade: the service refuses to delete an
+            element a connection names, since the connection would lose an end.
         source_port_id / target_port_id: A port of the matching end, or `None`. `SET NULL` when the port is removed.
         protocol: Free-text detail (version, topic, baud rate).
         description: Free text.
@@ -235,3 +245,93 @@ class ArchitectureConnection(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitectureCollection(UUIDPKMixin, TimestampMixin, Base):
+    """A named set of elements that an owner shares with projects and groups.
+
+    A collection has no code and no record page of its own: it is an access grouping, not something a
+    requirement or report names. Its owner is a project or the organisation (a CHECK keeps exactly one) and
+    its members belong to that same owner.
+
+    Attributes:
+        project_id / organization_id: The owner; exactly one is set.
+        name: Unique within the owner.
+        description: Free text.
+        creator_id: Who created it.
+    """
+
+    __tablename__ = "architecture_collections"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_collections_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_collections_org_name"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_collections_one_owner"),
+    )
+
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureCollectionMember(UUIDPKMixin, TimestampMixin, Base):
+    """An element in a collection. Its children follow it (the nearest member ancestor decides), so only the
+    top of a subtree is listed.
+
+    Attributes:
+        collection_id: The collection; deleting it removes its members.
+        element_id: The element, which the service keeps in the collection's owner; deleting the element removes
+            the membership.
+    """
+
+    __tablename__ = "architecture_collection_members"
+    __table_args__ = (UniqueConstraint("collection_id", "element_id", name="uq_architecture_collection_members"),)
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_collections.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+
+
+class ArchitectureCollectionGrant(UUIDPKMixin, TimestampMixin, Base):
+    """Access to a collection for one project or one group of the collection owner's organisation.
+
+    Exactly one target is set: a project (with `include_descendants`, resolved at read time so a child project
+    added later is covered), or a group (`group_type` is `org_group` or `project_group`). The group has no
+    foreign key (see `models.principal`); `PrincipalReference` blocks deleting a group a grant names.
+
+    Attributes:
+        collection_id: The collection; deleting it removes its grants.
+        project_id: The granted project, or `None` for a group grant.
+        group_type / group_id: The granted group, or `None` for a project grant.
+        include_descendants: For a project grant, whether every child project (now or later) is included.
+        created_by: Who granted it.
+    """
+
+    __tablename__ = "architecture_collection_grants"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "project_id", name="uq_architecture_collection_grants_project"),
+        UniqueConstraint("collection_id", "group_type", "group_id", name="uq_architecture_collection_grants_group"),
+        CheckConstraint("(project_id IS NULL) <> (group_id IS NULL)", name="ck_architecture_collection_grants_one_target"),
+        CheckConstraint("project_id IS NOT NULL OR NOT include_descendants", name="ck_architecture_collection_grants_descendants"),
+        CheckConstraint("group_type IS NULL OR group_type IN ('org_group', 'project_group')", name="ck_architecture_collection_grants_group_type"),
+        principal_check_constraint("group", nullable=True),
+    )
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_collections.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    group_type: Mapped[str | None] = principal_type_column(nullable=True)
+    group_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    include_descendants: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

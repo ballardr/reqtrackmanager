@@ -4,21 +4,23 @@ Module: modules.architecture.module
 Registers the System Architecture module into the modular feature system's
 registry via `MODULE_DEFINITION`. As built so far it delivers the element type and
 connection type vocabularies (an organisation's defaults, a project's own rows, and
-hiding and restoring a default in a project) and the project's elements, ports and
-connections.
+hiding and restoring a default in a project), the project's and the organisation's elements, ports and
+connections, and sharing: collections of elements granted to projects and groups, read through
+`visibility`.
 
 Registered contributions:
 - Roles (not additions to `ProjectRole`): `architect` (project; carries the
   Fine-Grained Access Control `(architecture_element, manage)` and
-  `(architecture_connection, manage)` atoms) creates and changes elements, ports and
-  connections; `architecture_admin` (project) changes a project's vocabularies and
-  `architecture_org_admin` (organisation) changes the organisation's defaults.
+  `(architecture_connection, manage)` atoms) creates and changes elements, ports,
+  connections and collections; `architecture_admin` (project) changes a project's vocabularies and
+  `architecture_org_admin` (organisation) changes the organisation's defaults, its own elements and its
+  collections, and reads every organisation-owned element.
 - Sub-components `architecture_type`, `architecture_element` and `architecture_connection`.
 - `artefact_types` for the element and the connection, with their summary providers,
   search, report fields, record tables (export and import), scaling probes, dataset
   generators and the link types the module adds (`LINK_TYPE_SEEDS`). Both are placeable
   and taggable through the shared tables, so they declare nothing for either.
-- `principal_references` for an element's owner (a user or a group).
+- `principal_references` for an element's owner and for the group a collection grant names.
 - `on_org_created` seeds each new organisation's default types; the migration
   backfills existing organisations so a module switched on later has them.
 - `org_bundle_hooks` / `project_bundle_hooks` (`export.py`); the vocabularies are
@@ -46,7 +48,8 @@ from app.modules.architecture._shared import (
     CONNECTION_MANAGE_PERMISSION,
     ELEMENT_MANAGE_PERMISSION,
 )
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement
+from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
+from app.modules.architecture.models import ArchitectureCollectionGrant, ArchitectureConnection, ArchitectureElement
 from app.modules.architecture.perf_dataset import generate_connections, generate_elements
 from app.modules.architecture.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.architecture.record_tables import RECORD_TABLES
@@ -116,8 +119,10 @@ def _artefact_ids_in_organization(db: Session, organization_id):
     """`ModuleDefinition.artefact_ids_in_organization`: every element and connection in the organisation's projects,
     for organisation deletion's polymorphic cleanup."""
     project_ids = select(Project.id).where(Project.organization_id == organization_id)
-    return set(db.scalars(select(ArchitectureElement.id).where(ArchitectureElement.project_id.in_(project_ids)))) | set(
-        db.scalars(select(ArchitectureConnection.id).where(ArchitectureConnection.project_id.in_(project_ids)))
+    return (
+        set(db.scalars(select(ArchitectureElement.id).where(ArchitectureElement.project_id.in_(project_ids))))
+        | set(db.scalars(select(ArchitectureElement.id).where(ArchitectureElement.organization_id == organization_id)))
+        | set(db.scalars(select(ArchitectureConnection.id).where(ArchitectureConnection.project_id.in_(project_ids))))
     )
 
 
@@ -139,6 +144,7 @@ MODULE_DEFINITION = ModuleDefinition(
     activity_metadata_types={
         "architecture_element_type": "structure",
         "architecture_connection_type": "structure",
+        "architecture_collection": "structure",
     },
     artefact_types=_BOTH,
     artefact_type_labels={ELEMENT_ARTEFACT_TYPE: "Element", CONNECTION_ARTEFACT_TYPE: "Connection"},
@@ -160,6 +166,11 @@ MODULE_DEFINITION = ModuleDefinition(
     principal_references=(
         PrincipalReference(
             model=ArchitectureElement, field="owner", label="element owners", audit_entity_type=ELEMENT_ARTEFACT_TYPE,
+        ),
+        # Deleting a group removes its grants (the access only narrows), so the field is not mandatory.
+        PrincipalReference(
+            model=ArchitectureCollectionGrant, field="group", label="architecture collection grants",
+            audit_entity_type=COLLECTION_ENTITY_TYPE, multi_valued=True, record_id_field="collection_id",
         ),
     ),
     not_creatable_from_links={

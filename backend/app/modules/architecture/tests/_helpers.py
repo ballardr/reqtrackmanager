@@ -101,3 +101,59 @@ def put_element(client, token, project_id, element, expect=200, **fields) -> dic
     )
     assert resp.status_code == expect, resp.text
     return resp.json()
+
+
+# --- Sharing ------------------------------------------------------------------
+
+
+def org_element_types(client, token, org_id) -> dict[str, str]:
+    """`{name: id}` of the organisation's own element types."""
+    rows = client.get(f"{org_base(org_id)}/element-types", headers=auth_headers(token)).json()
+    return {r["name"]: r["id"] for r in rows}
+
+
+def make_org_element(client, token, org_id, name="Platform", *, type_name="System", expect=201, **fields) -> dict:
+    """Creates an organisation-owned element; returns the response body (or the response when `expect` is not 201)."""
+    body = {"name": name, "element_type_id": org_element_types(client, token, org_id)[type_name], **fields}
+    resp = client.post(f"{org_base(org_id)}/elements", json=body, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def make_collection(client, token, base, name="Shared", *, members=(), expect=201) -> dict:
+    """Creates a collection under `base` (a project or organisation base URL) holding the given element ids."""
+    resp = client.post(f"{base}/collections", json={"name": name}, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    if expect != 201:
+        return resp.json()
+    collection = resp.json()
+    if members:
+        added = client.post(
+            f"{base}/collections/{collection['id']}/members", json={"element_ids": list(members)}, headers=auth_headers(token),
+        )
+        assert added.status_code == 200, added.text
+    return collection
+
+
+def grant(client, token, base, collection_id, *, project_id=None, group=None, descendants=False, expect=201) -> dict:
+    """Grants a collection to a project or a group (`{"type": ..., "id": ...}`); returns the grant (or the response)."""
+    body: dict = {"include_descendants": descendants}
+    if project_id is not None:
+        body["project_id"] = project_id
+    if group is not None:
+        body["group"] = group
+    resp = client.post(f"{base}/collections/{collection_id}/grants", json=body, headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def status_of(client, token, project_id, element_id) -> int:
+    """The HTTP status of reading an element through a project."""
+    return client.get(f"{project_base(project_id)}/elements/{element_id}", headers=auth_headers(token)).status_code
+
+
+def shared_names(client, token, project_id, **params) -> set[str]:
+    """Names of the elements shared with a project."""
+    resp = client.get(f"{project_base(project_id)}/elements/shared", params=params, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    return {e["name"] for e in resp.json()}
