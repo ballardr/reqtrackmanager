@@ -1,6 +1,6 @@
 # Module 18 — System Architecture (block diagrams and interfaces) — Plan
 
-**Status:** planned 2026-11-04; Phase 0 questions answered by the User 2026-11-04, reading tasks done and open points answered 2026-11-12, plan restructured to 17 phases the same day (Phase 0 signed off 2026-11-12); Phases 1 to 5 built. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** planned 2026-11-04; Phase 0 questions answered by the User 2026-11-04, reading tasks done and open points answered 2026-11-12, plan restructured to 17 phases the same day (Phase 0 signed off 2026-11-12); Phases 1 to 6 built. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 **Source:** user request 2026-11-04 (**Decided by: User**): a way of linking product elements as part of design. Elements have types (a package, a container, a hardware block) and communicate through defined means (queues, APIs, buses). Block diagrams for software and hardware are part of planning and sit alongside requirements. **Deployments (how many of an element run where) are out of scope** (**Decided by: User**, same day): the module covers systems/hardware and software architecture only.
 
@@ -8,7 +8,7 @@ See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for the c
 
 ## Status / Resume Here
 
-6 / 17 phases complete (0 to 5). Phase 0 signed off by the User 2026-11-12; Phases 1 to 4 built and committed 2026-11-12; Phase 5 built 2026-11-12 (uncommitted). Phase 6 (shared graph canvas) is next; the next migration is 0177. Phase 4 delivered the symbol library (built-in set in code, sanitised uploads, two tiers with hide, restore and nested fallback, assignment to element types and elements, the visibility rule for reading a symbol, bundles with files through new organisation-bundle file hooks; see `docs/decisions.md`); the symbol screens arrive in Phase 7. Phase 5 delivered the diagram API: the diagram type, the single resolver (toggles, bridging, roll-up, merging), the version lock, the server SVG and the bundle section (see `docs/decisions.md`); Phase 7 removes the element, and Phase 8 the diagram, from `not_creatable_from_links` when each adds its form dialog.
+7 / 17 phases complete (0 to 6). Phase 0 signed off by the User 2026-11-12; Phases 1 to 4 built and committed 2026-11-12; Phase 5 built 2026-11-12 (committed); Phase 6 built 2026-11-12 (uncommitted). Phase 7 (lists, detail, element tree) is next; the next migration is 0177. Phase 4 delivered the symbol library (built-in set in code, sanitised uploads, two tiers with hide, restore and nested fallback, assignment to element types and elements, the visibility rule for reading a symbol, bundles with files through new organisation-bundle file hooks; see `docs/decisions.md`); the symbol screens arrive in Phase 7. Phase 5 delivered the diagram API: the diagram type, the single resolver (toggles, bridging, roll-up, merging), the version lock, the server SVG and the bundle section (see `docs/decisions.md`); Phase 7 removes the element, and Phase 8 the diagram, from `not_creatable_from_links` when each adds its form dialog. Phase 6 delivered the shared `GraphCanvas` (`@xyflow/react`, lazy chunk, list view, sanitised symbols; see `docs/decisions.md` and the style guide's graph canvas pattern); the Playwright smoke test moves to Phase 8, the first consumer.
 
 Each phase ships everything its tables need in the same change: bundle section (project and organisation), template-project classification, scaling probe and generator, search, record tables, History kinds, seed-script updates and its own migration. Registry tests fail otherwise.
 
@@ -20,7 +20,7 @@ Each phase ships everything its tables need in the same change: bundle section (
 | 3 | Collections, grants, organisation-owned elements, cross-project access and the visibility resolver | [x] |
 | 4 | Symbol library: sanitised SVG symbols, organisation and project tiers, built-in generic set, assignment to element types and elements, bundle sections | [x] |
 | 5 | Diagram API: placements, scope, view toggles, connection detail, roll-up resolver, version lock, server SVG, bundle section | [x] |
-| 6 | Shared graph canvas in core components (reusable by Modules 16 and 17) | [ ] |
+| 6 | Shared graph canvas in core components (reusable by Modules 16 and 17) | [x] |
 | 7 | Frontend: lists, detail, element tree, ports, type vocabularies | [ ] |
 | 8 | Frontend: diagram editor interactions | [ ] |
 | 9 | Frontend: diagram accessibility (outline, keyboard) and export (PNG, SVG, Mermaid) | [ ] |

@@ -1412,3 +1412,20 @@ A settings panel that edits several fields per row (a scoring level's name, weig
 - **A table of named things** (the scoring criteria: axes and models with who defined each and a Hide or Edit action) is the same grid with fixed heading columns, not a list of loose badges.
 - **Foldable blocks.** Each block of a long panel (`ScoringSection`: default model, models shown, criteria, levels, rating bands) is a `CollapsibleSection`, and each repeated group inside it (one axis's levels) folds to its name and a count ("5 levels"), folded by default where the content is long and rarely changed. The fold is remembered per person; its preference key is at most 100 characters, so it never carries an id.
 - **Do not** put an input in a row without a column heading, size inputs with fixed `maxWidth` pixels that wrap at a narrow width, or add a `<textarea>` that is empty most of the time at its full height.
+
+## Pattern: graph canvas (nodes and connections)
+
+Any screen that draws boxes joined by lines uses `GraphCanvas` (`components/GraphCanvas.tsx`), never `@xyflow/react` directly (`scripts/check_graph_canvas_imports.py` fails otherwise).
+
+```mermaid
+flowchart LR
+    C["Consumer<br/>nodes, edges, callbacks"] --> W["GraphCanvas<br/>types, list view, lazy loader"]
+    W -- "diagram view" --> V["GraphCanvasView<br/>React Flow, lazy chunk"]
+    W -- "list view or load failure" --> L["GraphListView<br/>two tables"]
+```
+
+- **Plain data in, events out.** The consumer supplies `GraphCanvasNode`/`GraphCanvasEdge` and owns the data; the canvas reports `onSelect`, `onNodesMove` (once, when a drag or key move ends) and `onConnect`. It never deletes: what a delete means belongs to the consumer.
+- **Text and sanitised pictures only.** Labels are text. A symbol is the server-sanitised SVG; the canvas sanitises it again and shows it as an image, so it cannot run script.
+- **A text alternative always exists.** The list view (a toggle by default) holds the same nodes and connections, and is what a failed load degrades to. Every node and connection has a spoken name; Tab, Enter or Space and the arrow keys operate it.
+- **Read-only** (`readOnly`) removes moving and connecting, not selection or navigation.
+- **Theme.** `GraphCanvasView.css` points the library's variables at the product tokens; do not add colours in a consumer except the node `accent` and edge `color` it is meant to supply.

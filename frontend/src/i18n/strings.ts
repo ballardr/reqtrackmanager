@@ -4670,6 +4670,24 @@ const en = {
     retentionFailed: "Could not save the retention setting.",
     tableLabel: "Imported people",
   },
+  graphCanvas: {
+    loading: "Loading diagram…",
+    loadFailed: "The diagram could not be loaded. The content is shown as a list.",
+    empty: "Nothing to show.",
+    nodesCaption: "Nodes",
+    edgesCaption: "Connections",
+    nameColumn: "Name",
+    fromColumn: "From",
+    toColumn: "To",
+    labelColumn: "Label",
+    showAsList: "Show as list",
+    showAsDiagram: "Show as diagram",
+    nodeAria: (label: string) => `${label}, node`,
+    edgeAria: (from: string, to: string, label?: string) =>
+      label ? `${label}, connection from ${from} to ${to}` : `Connection from ${from} to ${to}`,
+    keyboardHelp:
+      "Tab moves between nodes and connections. Enter or Space selects. Arrow keys move the selected node when editing is allowed.",
+  },
   common: {
     requiredLegend: "* required",
     hexCode: (field: string) => `${field} (hex code)`,
