@@ -18,7 +18,7 @@
  *
  * Dependencies: `diagramResolver`, `types`.
  */
-import { resolveLines, type ResolvedLine } from "./diagramResolver";
+import { outerSide, resolveLines, type ResolvedLine, type ResolverBoundary } from "./diagramResolver";
 import type { ArchitectureConnection, DiagramModel, DiagramViewEdge, DiagramViewHop, ModelConnectionType } from "./types";
 
 /** What the editor knows besides the model. */
@@ -29,6 +29,16 @@ export interface LineState {
   togglesOff: ReadonlySet<string>;
   /** Whether the diagram shows connection detail (types, labels); off merges parallel lines. */
   connectionDetail: boolean;
+  /** The element the diagram shows the inside of, or null for the system context (no boundary boxes). */
+  scopeId?: string | null;
+  /** The boundary boxes drawn on the diagram (a scoped diagram's outer connections); none for the system context. */
+  boundaries?: readonly BoundaryState[];
+}
+
+/** A boundary box as the editor holds it: its id, the outer connection it stands for and where it sits. */
+export interface BoundaryState {
+  id: string;
+  connectionId: string;
 }
 
 /** The lines and the facts about boxes the same resolution gives. */
@@ -66,16 +76,34 @@ export function resolveDiagram(model: DiagramModel, state: LineState): ResolvedD
     members.connection_ids.forEach((id) => hiddenConnections.add(id));
   }
 
+  const parents = new Map(Object.entries(model.parents));
+  const realisedBy = new Map<string, string[]>();
+  for (const r of model.realisations) realisedBy.set(r.outer_connection_id, [...(realisedBy.get(r.outer_connection_id) ?? []), r.inner_connection_id]);
+  const boundaries: ResolverBoundary[] = [];
+  for (const box of state.boundaries ?? []) {
+    const outer = byId.get(box.connectionId);
+    const scope = state.scopeId;
+    if (!outer || !scope) continue;
+    const side = outerSide(scope, parents, outer.source_element_id, outer.target_element_id);
+    if (side === null) continue;
+    const outside = side === outer.source_element_id ? outer.target_element_id : outer.source_element_id;
+    boundaries.push({
+      id: box.id, elementId: side, outsideId: outside,
+      connectionIds: (realisedBy.get(outer.id) ?? []).filter((id) => byId.has(id)),
+    });
+  }
+
   const resolution = resolveLines({
     placed: state.placed,
-    parents: new Map(Object.entries(model.parents)),
+    parents,
     connections: model.connections
       .filter((c) => known.has(c.source_element_id) && known.has(c.target_element_id))
       .map((c) => ({ id: c.id, sourceId: c.source_element_id, targetId: c.target_element_id, directional: c.directional })),
-    hiddenElements, hiddenConnections, mergeParallel: !state.connectionDetail,
+    hiddenElements, hiddenConnections, mergeParallel: !state.connectionDetail, boundaries,
   });
 
-  const edges = resolution.lines.map((line) => edgeOf(line, byId, kinds, known, state.connectionDetail));
+  const boundaryIds = new Set((state.boundaries ?? []).map((b) => b.id));
+  const edges = resolution.lines.map((line) => edgeOf(line, byId, kinds, known, state.connectionDetail, boundaryIds));
   return { edges, hidden: resolution.hiddenPlaced, internal: resolution.internal };
 }
 
@@ -83,6 +111,7 @@ export function resolveDiagram(model: DiagramModel, state: LineState): ResolvedD
 function edgeOf(
   line: ResolvedLine, connections: ReadonlyMap<string, ArchitectureConnection>, kinds: ReadonlyMap<string, ModelConnectionType>,
   elements: ReadonlyMap<string, { unique_code: string; name: string; locked: boolean }>, detail: boolean,
+  boundaryIds: ReadonlySet<string>,
 ): DiagramViewEdge {
   const members = line.connectionIds.map((id) => connections.get(id)).filter((c): c is ArchitectureConnection => c !== undefined);
   const typeIds = new Set(members.map((m) => m.connection_type_id));
@@ -97,6 +126,8 @@ function edgeOf(
     id: `${line.sourceId}-${line.targetId}-${line.connectionIds[0]}`,
     source_element_id: line.sourceId,
     target_element_id: line.targetId,
+    source_is_boundary: boundaryIds.has(line.sourceId),
+    target_is_boundary: boundaryIds.has(line.targetId),
     two_way: line.twoWay,
     indirect: line.indirect,
     rolled_up: line.rolledUp,

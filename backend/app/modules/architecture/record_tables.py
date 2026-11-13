@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from functools import partial
 from typing import Any
 
@@ -631,7 +632,8 @@ def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
         ),
         RecordColumn("placements", "Elements", lambda t, r: str(t.counts[r.id].placement_count), text_parser),
-        _status_column(),
+        # A diagram has no import or update through its table, so its status is not edited in the bulk grid either.
+        replace(_status_column(), editable=False),
         _tags_column(),
     ]
 

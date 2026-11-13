@@ -228,3 +228,32 @@ def test_the_anchors_migration_adds_the_table_and_reverses_cleanly(client, admin
     assert _table_exists("architecture_diagram_anchors")
     with engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM architecture_diagram_anchors")).scalar_one() == 0
+
+
+def test_the_boundaries_migration_adds_both_tables_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0180 drops the boundary and realisation tables and leaves the diagrams and connections; upgrading
+    recreates them empty (a diagram with no box draws none, so no existing diagram changes)."""
+    from app.modules.architecture.tests._helpers import make_connection, make_diagram, make_element, setup
+
+    _org, project, token = setup(client, admin_token, "Arch boundaries migration")
+    a = make_element(client, token, project["id"], "Alpha")
+    b = make_element(client, token, project["id"], "Bravo")
+    connection = make_connection(client, token, project["id"], a["id"], b["id"])
+    diagram = make_diagram(client, token, project["id"], "Kept")
+    command.downgrade(build_alembic_config(), "0179")
+    try:
+        assert not _table_exists("architecture_diagram_boundaries")
+        assert not _table_exists("architecture_connection_realisations")
+        with engine.connect() as conn:
+            assert conn.execute(
+                text("SELECT count(*) FROM architecture_diagrams WHERE id = :i"), {"i": uuid.UUID(diagram["id"])},
+            ).scalar_one() == 1
+            assert conn.execute(
+                text("SELECT count(*) FROM architecture_connections WHERE id = :i"), {"i": uuid.UUID(connection["id"])},
+            ).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    for table in ("architecture_diagram_boundaries", "architecture_connection_realisations"):
+        assert _table_exists(table)
+        with engine.connect() as conn:
+            assert conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0

@@ -16,7 +16,9 @@ Design decisions:
   (`order`), so their ends exist, and diagrams after both.
 - The first diagram of a project is the large one (up to `_LARGE_DIAGRAM` elements, with a toggle and a note), so the
   view and the SVG are measured on a big drawing; the others place a handful of elements. A share of the lines between
-  neighbouring boxes carry anchors. Toggle rules name a domain, never a record.
+  neighbouring boxes carry anchors. Toggle rules name a domain, never a record. The first diagram and a few others are
+  scoped to an element that has outer connections and carry boundary boxes for them, with a realising inner connection
+  for some (the cap keeps the connection scan bounded at any size).
 - Only project-owned records are generated. Organisation-owned elements, collections and grants are not (a
   profile's unit is the project); the visibility resolver's cost is covered by the scaling-shape guard instead.
 
@@ -30,12 +32,15 @@ import uuid
 
 from sqlalchemy import select
 
+from app.modules.architecture.diagram_resolver import outer_side
 from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
+    ArchitectureConnectionRealisation,
     ArchitectureConnectionType,
     ArchitectureDiagram,
     ArchitectureDiagramAnchor,
+    ArchitectureDiagramBoundary,
     ArchitectureDiagramNote,
     ArchitectureDiagramPlacement,
     ArchitectureDiagramToggle,
@@ -64,6 +69,9 @@ _PORT_NAMES = ("Main", "Control", "Data", "Power", "Debug", "Status")
 _LARGE_DIAGRAM = 200
 _SMALL_DIAGRAM = (3, 12)
 _ATTACH_POINTS = [point.value for point in AttachPoint]
+#: How many diagrams besides the first are given boundary boxes, and the most boxes one diagram gets.
+_SCOPED_DIAGRAMS = 5
+_MAX_BOUNDARIES = 20
 
 
 def _type_ids(
@@ -172,6 +180,51 @@ def generate_connections(ctx: PerfProjectContext) -> dict[str, int]:
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}
 
 
+def _chain_ids(parents: dict[uuid.UUID, uuid.UUID | None], element_id: uuid.UUID) -> set[uuid.UUID]:
+    """The element and its ancestors."""
+    found: set[uuid.UUID] = set()
+    current: uuid.UUID | None = element_id
+    while current is not None and current not in found:
+        found.add(current)
+        current = parents.get(current)
+    return found
+
+
+def _scoped_boundaries(
+    ctx: PerfProjectContext, elements: list[uuid.UUID], taken: set[uuid.UUID],
+) -> tuple[uuid.UUID, list[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]]] | None:
+    """A scope element with outer connections and the boxes to draw for them.
+
+    Returns:
+        `(scope, [(outer connection, scope-side end, a connection inside that end that realises it or None)])`, or
+        `None` when no element in a bounded sample has an outer connection.
+    """
+    parents = dict(ctx.db.execute(
+        select(ArchitectureElement.id, ArchitectureElement.parent_id).where(ArchitectureElement.id.in_(elements))
+    ).tuples().all())
+    ends = ctx.db.execute(
+        select(ArchitectureConnection.id, ArchitectureConnection.source_element_id, ArchitectureConnection.target_element_id)
+        .where(ArchitectureConnection.source_element_id.in_(elements)).limit(5000)
+    ).tuples().all()
+    for scope in ctx.rng.sample([e for e in elements if e not in taken], min(len(elements) - len(taken), 25)):
+        sides = [(c, outer_side(scope, parents, a, b)) for c, a, b in ends]
+        outer = [(c, side) for c, side in sides if side is not None][:_MAX_BOUNDARIES]
+        if not outer:
+            continue
+        inside = [
+            (c, a, b) for c, a, b in ends if scope in _chain_ids(parents, a) and scope in _chain_ids(parents, b)
+        ]
+        rows: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]] = []
+        for connection_id, side in outer:
+            realising = next(
+                (c for c, a, b in inside if c != connection_id and side in _chain_ids(parents, a) and side in _chain_ids(parents, b)),
+                None,
+            ) if ctx.rng.random() < 0.5 else None
+            rows.append((connection_id, side, realising))
+        return scope, rows
+    return None
+
+
 def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
     """Writes the project's diagrams placing the elements `generate_elements` wrote.
 
@@ -188,15 +241,22 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
         return {}
     start = dict(ctx.counts)
     batch = RecordBatch.start(ctx, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX, ArchitectureDiagram)
+    scoped_left = _SCOPED_DIAGRAMS + 1
+    used_scopes: set[uuid.UUID] = set()
+    realised: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for index in range(count):
         creator, created = rng.choice(ctx.user_ids), created_at(rng)
         status = pick_weighted(rng, _STATUS_MIX)
         archived = rng.random() < 0.03
         name = textgen.title(rng)
+        scoped = _scoped_boundaries(ctx, elements, used_scopes) if scoped_left and (index == 0 or rng.random() < 0.3) else None
+        if scoped is not None:
+            scoped_left -= 1
+            used_scopes.add(scoped[0])
         record_id = batch.add(
             {
                 "name": name, "purpose": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
-                "scope_element_id": rng.choice(elements) if rng.random() < 0.3 else None,
+                "scope_element_id": scoped[0] if scoped else (rng.choice(elements) if rng.random() < 0.3 else None),
                 "connection_detail": rng.random() < 0.5, "status": status.value, "version": 1, "is_archived": archived,
                 "archived_at": created if archived else None, "archived_by": creator if archived else None,
             },
@@ -217,6 +277,18 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
                 batch.satellite(ArchitectureDiagramAnchor, {
                     "id": batch.new_id(), "diagram_id": record_id, "source_element_id": first, "target_element_id": second,
                     "source_point": points[0], "target_point": points[1] if rng.random() < 0.7 else None,
+                    "created_at": created, "updated_at": created,
+                })
+        for slot, (connection_id, _side, realising) in enumerate(scoped[1] if scoped else ()):
+            batch.satellite(ArchitectureDiagramBoundary, {
+                "id": batch.new_id(), "diagram_id": record_id, "connection_id": connection_id,
+                "x": float(-260 - slot % 2 * 140), "y": float(slot * 70), "width": 120.0, "height": 48.0,
+                "created_at": created, "updated_at": created,
+            })
+            if realising is not None and (realising, connection_id) not in realised:
+                realised.add((realising, connection_id))
+                batch.satellite(ArchitectureConnectionRealisation, {
+                    "id": batch.new_id(), "inner_connection_id": realising, "outer_connection_id": connection_id,
                     "created_at": created, "updated_at": created,
                 })
         for order in range(rng.choice((0, 1, 1, 2))):

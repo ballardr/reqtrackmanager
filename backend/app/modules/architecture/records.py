@@ -67,9 +67,11 @@ from app.modules.architecture.models import (
     ArchitectureElementType,
     ArchitecturePort,
 )
+from app.modules.architecture.realisations import prune_for_elements, prune_realisations, realisations_of
 from app.modules.architecture.schemas import (
     ConnectionCreate,
     ConnectionOut,
+    ConnectionRef,
     ConnectionUpdate,
     ElementCreate,
     ElementOut,
@@ -538,6 +540,8 @@ def update_element(
         return element
     _touch(element, **changes)
     db.flush()
+    if "parent_id" in changes:
+        prune_for_elements(db, [element.id])
     fields = sorted({"owner" if k.startswith("owner_") else k for k in changes})
     _audit_element(db, element.id, "moved" if fields == ["parent_id"] else "updated", actor, owner, fields=fields)
     return element
@@ -826,7 +830,11 @@ def update_connection(
         return connection
     _touch(connection, **changes)
     db.flush()
-    _audit_connection(db, connection.id, "updated", actor, project.id, fields=sorted(changes))
+    dropped = prune_realisations(db, connection) if any(k.endswith("_element_id") for k in changes) else 0
+    _audit_connection(
+        db, connection.id, "updated", actor, project.id, fields=sorted(changes),
+        **({"realisations_removed": dropped} if dropped else {}),
+    )
     return connection
 
 
@@ -997,6 +1005,21 @@ def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], 
             ArchitectureConnectionType.id.in_({c.connection_type_id for c in connections})
         ))
     } if connections else {}
+    realisation_rows = realisations_of(db, [c.id for c in connections])
+    named = {c.id: c for c in connections}
+    missing = {
+        i for r in realisation_rows for i in (r.inner_connection_id, r.outer_connection_id) if i not in named
+    }
+    if missing:
+        named.update({c.id: c for c in db.scalars(select(ArchitectureConnection).where(ArchitectureConnection.id.in_(missing)))})
+    realises: dict[uuid.UUID, list[ConnectionRef]] = defaultdict(list)
+    realised_by: dict[uuid.UUID, list[ConnectionRef]] = defaultdict(list)
+    for r in realisation_rows:
+        inner, outer = named.get(r.inner_connection_id), named.get(r.outer_connection_id)
+        if inner is None or outer is None:
+            continue
+        realises[inner.id].append(ConnectionRef(id=outer.id, unique_code=outer.unique_code, name=outer.name, status=outer.status))
+        realised_by[outer.id].append(ConnectionRef(id=inner.id, unique_code=inner.unique_code, name=inner.name, status=inner.status))
 
     def end(c: ArchitectureConnection, side: str) -> dict[str, Any]:
         element = ends[getattr(c, f"{side}_element_id")]
@@ -1017,7 +1040,7 @@ def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], 
             directional=types[c.connection_type_id].directional, **end(c, "source"), **end(c, "target"),
             protocol=c.protocol, description=c.description, status=c.status, version=c.version,
             creator_id=c.creator_id, is_archived=c.is_archived, archived_at=c.archived_at, created_at=c.created_at,
-            updated_at=c.updated_at,
+            updated_at=c.updated_at, realises=realises.get(c.id, []), realised_by=realised_by.get(c.id, []),
         )
         for c in connections
     ]

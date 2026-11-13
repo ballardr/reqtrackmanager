@@ -10,12 +10,14 @@ The two vocabularies every architecture record is typed by, and the records:
   and may have several parents (`ArchitectureConnectionTypeParent`), so a group is itself a usable type.
 - `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s; owned by a project
   or by the organisation.
-- `ArchitectureConnection` — an interface between two elements.
+- `ArchitectureConnection` — an interface between two elements; `ArchitectureConnectionRealisation` marks an inner
+  connection as realising an outer one.
 - `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
   elements and who it is shared with (a project, optionally with its descendants, or a group).
 - `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s,
-  `ArchitectureDiagramAnchor`s and `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a
-  saved view over the project's model; it holds no truth of its own.
+  `ArchitectureDiagramAnchor`s, `ArchitectureDiagramBoundary`s (the outer connections drawn inside a scope) and
+  `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a saved view over the project's
+  model; it holds no truth of its own.
 
 Each is one table whose owner is a project *or* an organisation (a CHECK keeps
 exactly one). An organisation row is a default every project of the organisation
@@ -608,6 +610,59 @@ class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
     )
     source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class ArchitectureDiagramBoundary(UUIDPKMixin, TimestampMixin, Base):
+    """A box that stands, inside a scoped diagram, for one connection between the scope (or a descendant) and an
+    element outside it (an *outer* connection), so inner elements can be connected to it.
+
+    A box is keyed by the outer connection, not by an element, so two links to the same outside element are two boxes.
+    Whether the connection is still outer (the model may have changed since) is decided when the view is built; a box
+    that is no longer outer is kept and simply not drawn.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its boxes.
+        connection_id: The outer connection; deleting it removes the box.
+        x / y / width / height: The box in diagram units.
+    """
+
+    __tablename__ = "architecture_diagram_boundaries"
+    __table_args__ = (UniqueConstraint("diagram_id", "connection_id", name="uq_architecture_diagram_boundaries"),)
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True
+    )
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=120.0)
+    height: Mapped[float] = mapped_column(Float, default=48.0)
+
+
+class ArchitectureConnectionRealisation(UUIDPKMixin, TimestampMixin, Base):
+    """An inner connection marked as realising an outer one: the lower layer's part of an interface the layer above
+    declares. Both connections belong to the same project; the rules (ends inside the outer end's element, no cycles)
+    are checked by `boundaries.set_realisations`.
+
+    Attributes:
+        inner_connection_id: The connection that realises; deleting it removes the row.
+        outer_connection_id: The connection realised; deleting it removes the row.
+    """
+
+    __tablename__ = "architecture_connection_realisations"
+    __table_args__ = (
+        UniqueConstraint("inner_connection_id", "outer_connection_id", name="uq_architecture_connection_realisations"),
+        CheckConstraint("inner_connection_id <> outer_connection_id", name="ck_architecture_connection_realisations_distinct"),
+    )
+
+    inner_connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True
+    )
+    outer_connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True
+    )
 
 
 class ArchitectureDiagramToggle(UUIDPKMixin, TimestampMixin, Base):

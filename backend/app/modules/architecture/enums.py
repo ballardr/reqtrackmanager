@@ -61,6 +61,17 @@ class PortDirection(str, enum.Enum):
     BOTH = "both"
 
 
+class BoundaryShape(str, enum.Enum):
+    """How a boundary box is drawn, from the direction of the outer connection it stands for, seen from inside the
+    scope: `INPUT` (the scope receives), `OUTPUT` (the scope sends), `BIDIRECTIONAL` (a two-way connection) and `DOT`
+    (no direction disclosed, as when the viewer cannot read the element outside)."""
+
+    INPUT = "input"
+    OUTPUT = "output"
+    BIDIRECTIONAL = "bidirectional"
+    DOT = "dot"
+
+
 class AttachPoint(str, enum.Enum):
     """One of the eight places on a box where a diagram line can meet it: the middle of each side and the four corners."""
 

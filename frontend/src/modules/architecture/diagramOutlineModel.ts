@@ -16,7 +16,7 @@
  *   current switch states.
  * - A box the viewer cannot read is named by its code only, never its name.
  */
-import type { EditorBox } from "./diagramEditorModel";
+import { boundaryNodeId, boundaryOutsideName, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
 import type { DiagramViewEdge } from "./types";
 
 /** The longest ancestor walk, matching the resolver's cap. */
@@ -140,17 +140,23 @@ export function outlineBranchIds(tree: readonly OutlineNode[]): string[] {
  *
  * @param edges The resolved lines.
  * @param boxes Every box of the layout, to name the ends.
+ * @param boundaries The boundary boxes, which also end lines (named by the outer connection's code and the element outside).
  * @returns One row per line whose ends are both on the diagram.
  */
-export function connectionRows(edges: readonly DiagramViewEdge[], boxes: readonly EditorBox[]): ConnectionRow[] {
-  const byId = new Map(boxes.map((b) => [b.elementId, b]));
+export function connectionRows(
+  edges: readonly DiagramViewEdge[], boxes: readonly EditorBox[], boundaries: readonly EditorBoundary[] = [],
+): ConnectionRow[] {
+  const names = new Map<string, string>([
+    ...boxes.map((b): [string, string] => [b.elementId, boxName(b)]),
+    ...boundaries.map((b): [string, string] => [boundaryNodeId(b.connectionId), `${b.connection_code} (${boundaryOutsideName(b)})`]),
+  ]);
   const rows: ConnectionRow[] = [];
   for (const edge of edges) {
-    const from = byId.get(edge.source_element_id);
-    const to = byId.get(edge.target_element_id);
-    if (!from || !to) continue;
+    const from = names.get(edge.source_element_id);
+    const to = names.get(edge.target_element_id);
+    if (from === undefined || to === undefined) continue;
     rows.push({
-      id: edge.id, from: boxName(from), to: boxName(to), twoWay: edge.two_way, detail: edge.label ?? "", count: edge.count,
+      id: edge.id, from, to, twoWay: edge.two_way, detail: edge.label ?? "", count: edge.count,
       route: edge.bridged ? "bridged" : edge.rolled_up ? "rolled_up" : "direct",
       via: edge.hops.map((h) => `${h.unique_code} ${h.name}`),
     });

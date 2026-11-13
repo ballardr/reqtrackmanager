@@ -16,7 +16,7 @@ import os
 import uuid
 from pathlib import Path
 
-from app.modules.architecture.diagram_resolver import MAX_HOPS, ModelConnection, resolve
+from app.modules.architecture.diagram_resolver import MAX_HOPS, Boundary, ModelConnection, outer_side, resolve
 
 CASES_FILE = (
     Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "diagramResolverCases.json"
@@ -30,24 +30,47 @@ def _id(kind: str, name: str) -> uuid.UUID:
 def _scenario(
     name: str, *, parents: dict[str, str | None], placed: list[str], connections: list[tuple], hidden: tuple[str, ...] = (),
     hidden_connections: tuple[str, ...] = (), merge_parallel: bool = False,
+    boundaries: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (), scope: str | None = None,
 ) -> dict:
     """One case: inputs by name (turned into ids) and the resolver's answer.
 
-    `connections` are `(name, source, target)` or `(name, source, target, "two-way")`."""
+    `connections` are `(name, source, target)` or `(name, source, target, "two-way")`. `boundaries` are
+    `(box name, scope-side element, element outside, realising connection names)`. A `scope` also records which connections are outer
+    for it (`outer_side`)."""
     elements = {n: _id("element", n) for n in parents}
     model = [
         ModelConnection(_id("connection", c[0]), elements[c[1]], elements[c[2]], not (len(c) > 3 and c[3] == "two-way"))
         for c in connections
     ]
+    boxes = [
+        Boundary(_id("boundary", box), elements[element], elements[outside], tuple(_id("connection", c) for c in realising))
+        for box, element, outside, realising in boundaries
+    ]
+    parent_ids = {elements[n]: (elements[p] if p else None) for n, p in parents.items()}
     result = resolve(
-        placed=[elements[n] for n in placed],
-        parents={elements[n]: (elements[p] if p else None) for n, p in parents.items()},
+        placed=[elements[n] for n in placed], parents=parent_ids,
         connections=model, hidden_elements=[elements[n] for n in hidden],
         hidden_connections=[_id("connection", n) for n in hidden_connections], merge_parallel=merge_parallel,
+        boundaries=boxes,
     )
+    extra: dict = {}
+    if boxes:
+        extra["boundaries"] = [
+            {
+                "id": str(b.id), "element_id": str(b.element_id), "outside_id": str(b.outside_id),
+                "connection_ids": [str(i) for i in b.connection_ids],
+            }
+            for b in boxes
+        ]
+    if scope is not None:
+        extra["scope"] = str(elements[scope])
+        extra["outer_sides"] = {
+            str(m.id): str(side) for m in model if (side := outer_side(elements[scope], parent_ids, m.source_id, m.target_id))
+        }
     return {
         "name": name,
-        "labels": {str(i): n for n, i in elements.items()} | {str(_id("connection", c[0])): c[0] for c in connections},
+        "labels": {str(i): n for n, i in elements.items()} | {str(_id("connection", c[0])): c[0] for c in connections}
+        | {str(b.id): box[0] for box, b in zip(boundaries, boxes, strict=True)},
         "placed": [str(elements[n]) for n in placed],
         "parents": {str(elements[n]): (str(elements[p]) if p else None) for n, p in parents.items()},
         "connections": [
@@ -57,6 +80,7 @@ def _scenario(
         "hidden_elements": [str(elements[n]) for n in hidden],
         "hidden_connections": [str(_id("connection", n)) for n in hidden_connections],
         "merge_parallel": merge_parallel,
+        **extra,
         "expected": {
             "hidden_placed": sorted(str(i) for i in result.hidden_placed),
             "internal": {str(k): [str(i) for i in v] for k, v in sorted(result.internal.items(), key=lambda kv: str(kv[0]))},
@@ -178,6 +202,33 @@ def cases() -> list[dict]:
             connections=[("bz", "b", "z")],
         ),
         _scenario(
+            "a connection that realises an outer one is drawn to its boundary box",
+            parents={"scope": None, "a": "scope", "b": "scope", "out": None}, placed=["a", "b"], scope="scope",
+            connections=[("outer", "scope", "out"), ("real", "a", "scope"), ("inner", "a", "b")],
+            boundaries=(("box", "scope", "out", ("real",)),),
+        ),
+        _scenario(
+            "a boundary box whose element is placed is a marker with no line",
+            parents={"scope": None, "a": "scope", "b": "scope", "out": None}, placed=["a", "b"], scope="a",
+            connections=[("outer", "a", "out"), ("real", "b", "a")], boundaries=(("box", "a", "out", ("real",)),),
+        ),
+        _scenario(
+            "one connection realising two outer connections is drawn to both boxes",
+            parents={"scope": None, "a": "scope", "x": None, "y": None}, placed=["a"], scope="scope",
+            connections=[("o1", "scope", "x"), ("o2", "y", "scope"), ("real", "a", "scope")],
+            boundaries=(("box1", "scope", "x", ("real",)), ("box2", "scope", "y", ("real",))),
+        ),
+        _scenario(
+            "a realising connection wholly inside draws between its own elements",
+            parents={"scope": None, "a": "scope", "b": "scope", "out": None}, placed=["a", "b"], scope="scope",
+            connections=[("outer", "scope", "out"), ("real", "a", "b")], boundaries=(("box", "scope", "out", ("real",)),),
+        ),
+        _scenario(
+            "a refinement to the element outside is drawn to its boundary box",
+            parents={"scope": None, "a": "scope", "out": None, "far": "out"}, placed=["a"], scope="scope",
+            connections=[("outer", "scope", "out"), ("real", "a", "far")], boundaries=(("box", "scope", "out", ("real",)),),
+        ),
+        _scenario(
             "a connection to an unplaced element under a hidden placed one is hidden with it",
             parents={"top": None, "sub": "top", "z": None}, placed=["top", "z"], hidden=("top",),
             connections=[("sz", "sub", "z")],
@@ -203,3 +254,9 @@ def test_the_cases_reach_every_resolver_behaviour():
     assert any(case["expected"]["internal"] for case in cases())
     assert any(case["expected"]["hidden_placed"] for case in cases())
     assert any(case["merge_parallel"] for case in cases())
+    assert any(case.get("boundaries") for case in cases())
+    boxed = [
+        ln for case in cases() for ln in case["expected"]["lines"]
+        if any(b["id"] in (ln["source_id"], ln["target_id"]) for b in case.get("boundaries", ()))
+    ]
+    assert len(boxed) >= 3 and any(case.get("outer_sides") for case in cases())

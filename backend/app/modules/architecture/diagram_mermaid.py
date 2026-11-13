@@ -17,6 +17,8 @@ Design decisions:
 - **Flat.** Placed elements are not nested as subgraphs: a rolled-up line already joins the nearest placed ancestors, and
   a line to a subgraph is drawn unreliably by Mermaid.
 - **Positions, notes and colours are left out**: Mermaid lays the graph out itself, and a note has no flowchart form.
+- A boundary box is one node in the outline of its direction (a trapezoid each way for an input or an output, a hexagon
+  for two-way, a circle where none is disclosed), labelled with the outer connection's code and the element outside.
 - A locked node (an element the viewer cannot read) is written with its code only.
 
 Dependencies: `schemas` (the view).
@@ -27,7 +29,7 @@ from __future__ import annotations
 import re
 import uuid
 
-from app.modules.architecture.schemas import DiagramView, ViewEdge, ViewNode
+from app.modules.architecture.schemas import DiagramView, ViewBoundary, ViewEdge, ViewNode
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f￾￿]+")
 #: Characters Mermaid would read as syntax inside a quoted label, written as its numeric entity (`#35;`).
@@ -56,6 +58,17 @@ def _node(key: str, node: ViewNode) -> str:
     return f'    {key}{opening}"{label}"{closing}'
 
 
+#: Opening and closing marks of a boundary box's outline, by shape.
+_BOUNDARY_SHAPES = {"input": ("[/", "\\]"), "output": ("[\\", "/]"), "bidirectional": ("{{", "}}"), "dot": ("((", "))")}
+
+
+def _boundary(key: str, box: ViewBoundary) -> str:
+    """One boundary box node line."""
+    name = box.outside_element_code if box.locked else f"{box.outside_element_code} {box.outside_element_name}"
+    opening, closing = _BOUNDARY_SHAPES.get(box.shape, ("((", "))"))
+    return f'    {key}{opening}"{_text(box.connection_code)}<br/>{_text(name)}"{closing}'
+
+
 def _edge(source: str, target: str, edge: ViewEdge) -> str:
     """One line: an arrow head at each end for a two-way line, dotted for an indirect one, labelled when it has a
     label or stands for several connections."""
@@ -76,7 +89,11 @@ def render_mermaid(view: DiagramView) -> str:
     visible = [n for n in view.nodes if not n.hidden]
     keys: dict[uuid.UUID, str] = {n.element_id: f"n{i}" for i, n in enumerate(visible, start=1)}
     lines = [f"%% {_CONTROL.sub(' ', f'{view.diagram.unique_code} {view.diagram.name}').strip()}", "flowchart LR"]
-    lines += [_node(keys[n.element_id], n) for n in visible] or ['    empty["Empty diagram"]']
+    keys.update({b.id: f"b{i}" for i, b in enumerate(view.boundaries, start=1)})
+    lines += [_node(keys[n.element_id], n) for n in visible]
+    lines += [_boundary(keys[b.id], b) for b in view.boundaries]
+    if not visible and not view.boundaries:
+        lines.append('    empty["Empty diagram"]')
     lines += [
         _edge(keys[e.source_element_id], keys[e.target_element_id], e)
         for e in view.edges if e.source_element_id in keys and e.target_element_id in keys

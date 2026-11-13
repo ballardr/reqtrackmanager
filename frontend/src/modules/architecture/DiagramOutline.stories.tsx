@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildUser, withRouter, withStatefulAuth } from "../../testing/storybook-helpers";
-import { buildConnection, buildViewEdge, buildViewNode } from "./architectureFixtures";
-import { boxFromNode } from "./diagramEditorModel";
+import { buildConnection, buildViewBoundary, buildViewEdge, buildViewNode } from "./architectureFixtures";
+import { boundaryFromView, boundaryNodeId, boxFromNode } from "./diagramEditorModel";
 import { DiagramOutline } from "./DiagramOutline";
 import { connectionRows, outlineSize, outlineTree } from "./diagramOutlineModel";
 import { exportFileName, toggleStates } from "./diagramExport";
@@ -20,7 +20,8 @@ const meta: Meta<typeof DiagramOutline> = {
   component: DiagramOutline,
   decorators: [withStatefulAuth(buildUser({ ui_preferences: {} })), withRouter("/")],
   args: {
-    boxes: [GATEWAY, ORDERS, API, FIREWALL], notes: [], edges: [buildViewEdge({ target_element_id: "el-5" })], parents: PARENTS,
+    boxes: [GATEWAY, ORDERS, API, FIREWALL], notes: [], boundaries: [], covered: new Set<string>(),
+    edges: [buildViewEdge({ target_element_id: "el-5" })], parents: PARENTS,
     hidden: new Set<string>(), selection: null, onSelect: fn(),
   },
 };
@@ -190,5 +191,33 @@ export const ExportNamesAndSwitchStates: Story = {
     expect(exportFileName("DGM-003", "???", "mmd")).toBe("DGM-003.mmd");
     expect(exportFileName("DGM-004", "x".repeat(200), "svg").length).toBeLessThan(80);
     expect(toggleStates([{ id: "a", on: true }, { id: "b", on: false }])).toEqual({ on: ["a"], off: ["b"] });
+  },
+};
+
+export const OuterConnectionsAreATableWithDirectionAndCoverageAndNameTheBoxOnALine: Story = {
+  args: {
+    boundaries: [boundaryFromView(buildViewBoundary()), boundaryFromView(buildViewBoundary({
+      id: "bx-2", connection_id: "con-12", connection_code: "CON-012", shape: "input", locked: true, outside_element_code: "ELM-020",
+      outside_element_name: "",
+    }))],
+    covered: new Set(["con-9"]),
+    edges: [buildViewEdge({ source_element_id: "el-1", target_element_id: boundaryNodeId("con-9") })],
+  },
+  play: async ({ canvasElement, args }) => {
+    const outline = within(canvasElement);
+    await expect(outline.getByText(/2 outer connections/)).toBeInTheDocument();
+    const table = outline.getByRole("table", { name: "Outer connections" });
+    const first = within(within(table).getByRole("button", { name: "CON-009" }).closest("tr")!);
+    await expect(first.getByText("ELM-008 Cloud")).toBeInTheDocument();
+    await expect(first.getByText("Output")).toBeInTheDocument();
+    await expect(first.getByText("Covered")).toBeInTheDocument();
+    // An outside element the viewer cannot read is named by its code alone.
+    const second = within(within(table).getByRole("button", { name: "CON-012" }).closest("tr")!);
+    await expect(second.getByText("ELM-020")).toBeInTheDocument();
+    await expect(second.getByText("Not covered")).toBeInTheDocument();
+    // The line to the box names the box by its connection and the element outside.
+    await expect(outline.getByRole("button", { name: "Line from ELM-001 Gateway to CON-009 (ELM-008 Cloud)" })).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole("button", { name: "CON-009" }));
+    await expect(args.onSelect).toHaveBeenCalledWith({ kind: "node", id: boundaryNodeId("con-9") });
   },
 };

@@ -12,6 +12,9 @@
  *   parallel lines when connection detail is off.
  * - Report which connections each line stands for, which hidden elements a bridged line passes through, and which
  *   connections are wholly inside a placed element.
+ * - Join a scoped diagram's boundary boxes: a connection that realises an outer connection is drawn to that connection's
+ *   box (`ResolverBoundary`), and `outerSide` says which end of a connection lies inside a scope, which is what makes it
+ *   an outer connection.
  *
  * Design decisions:
  * - **Pure, and kept equal to the server's by shared cases.** `diagramResolverCases.json` holds scenarios whose expected
@@ -36,6 +39,20 @@ export interface ResolverConnection {
   targetId: string;
   /** True for a one-way connection (source to target); false is two-way. */
   directional: boolean;
+}
+
+/**
+ * A boundary box of a scoped diagram, as the resolver sees it. A realising connection meets the box at its end that is
+ * `elementId` (the outer connection's scope-side element, when that is not itself placed) or that lies inside `outsideId`
+ * (the element outside the scope); that end is drawn at the box.
+ */
+export interface ResolverBoundary {
+  /** The box's own id; lines to it use this as their end. */
+  id: string;
+  elementId: string;
+  outsideId: string;
+  /** The connections that realise the outer connection. */
+  connectionIds: readonly string[];
 }
 
 /** One line to draw between two placed elements. */
@@ -94,6 +111,50 @@ function chain(parents: ReadonlyMap<string, string | null>, elementId: string): 
 }
 
 /**
+ * The end of a connection that lies inside `scopeId`, when the other end lies outside it; otherwise null. A connection with
+ * exactly one end in the scope's subtree (the scope itself or a descendant) is an *outer* connection of the scope.
+ */
+export function outerSide(
+  scopeId: string, parents: ReadonlyMap<string, string | null>, sourceId: string, targetId: string,
+): string | null {
+  const sourceIn = chain(parents, sourceId).includes(scopeId);
+  const targetIn = chain(parents, targetId).includes(scopeId);
+  if (sourceIn === targetIn) return null;
+  return sourceIn ? sourceId : targetId;
+}
+
+/**
+ * The connections with the end that meets a boundary swapped for its box: one connection per box a realising connection
+ * realises, the original dropped; a connection whose two ends would both meet the box, and every other connection, is
+ * unchanged.
+ */
+function attachBoundaries(
+  live: readonly ResolverConnection[], boundaries: readonly ResolverBoundary[], placed: ReadonlySet<string>,
+  parents: ReadonlyMap<string, string | null>,
+): ResolverConnection[] {
+  const byConnection = new Map<string, ResolverBoundary[]>();
+  for (const b of boundaries) {
+    for (const id of b.connectionIds) byConnection.set(id, [...(byConnection.get(id) ?? []), b]);
+  }
+  const meets = (b: ResolverBoundary, end: string) =>
+    (end === b.elementId && !placed.has(end)) || chain(parents, end).includes(b.outsideId);
+  const out: ResolverConnection[] = [];
+  for (const c of live) {
+    const swaps = (byConnection.get(c.id) ?? [])
+      .map((b) => ({ b, source: meets(b, c.sourceId), target: meets(b, c.targetId) }))
+      .filter((s) => s.source !== s.target);
+    if (swaps.length === 0) {
+      out.push(c);
+      continue;
+    }
+    for (const { b, source } of swaps) {
+      out.push({ ...c, sourceId: source ? b.id : c.sourceId, targetId: source ? c.targetId : b.id });
+    }
+  }
+  return out;
+}
+
+/**
  * Resolves the lines of a diagram.
  *
  * @param input.placed The elements placed on the diagram.
@@ -103,6 +164,7 @@ function chain(parents: ReadonlyMap<string, string | null>, elementId: string): 
  * @param input.hiddenElements The elements switched off (their descendants are hidden with them).
  * @param input.hiddenConnections The connections switched off.
  * @param input.mergeParallel True when connection detail is off: every line between the same two placed elements becomes one.
+ * @param input.boundaries The boundary boxes of a scoped diagram; a realising connection is drawn to its box.
  * @returns The lines, the hidden placed elements and the internal connections.
  */
 export function resolveLines(input: {
@@ -112,6 +174,7 @@ export function resolveLines(input: {
   hiddenElements?: Iterable<string>;
   hiddenConnections?: Iterable<string>;
   mergeParallel: boolean;
+  boundaries?: readonly ResolverBoundary[];
 }): Resolution {
   const { parents, connections, mergeParallel } = input;
   const switchedOff = new Set(input.hiddenElements ?? []);
@@ -125,7 +188,8 @@ export function resolveLines(input: {
     return value;
   };
 
-  const placedSet = new Set(input.placed);
+  const boundaries = input.boundaries ?? [];
+  const placedSet = new Set([...input.placed, ...boundaries.map((b) => b.id)]);
   const anchors = new Map<string, string | null>();
   const anchor = (elementId: string): string | null => {
     let value = anchors.get(elementId);
@@ -137,7 +201,8 @@ export function resolveLines(input: {
   };
 
   const switchedOffConnections = new Set(input.hiddenConnections ?? []);
-  const live = connections.filter((c) => !switchedOffConnections.has(c.id));
+  let live = connections.filter((c) => !switchedOffConnections.has(c.id));
+  if (boundaries.length > 0) live = attachBoundaries(live, boundaries, placedSet, parents);
   const candidates: Candidate[] = [];
   const arcs = new Map<string, Arc[]>();
   const addArc = (from: string, to: string, c: ResolverConnection) => {
@@ -245,7 +310,11 @@ function merge(rolled: readonly Rolled[], mergeParallel: boolean): ResolvedLine[
   for (const member of rolled) {
     const [pa, pb, candidate, rolledUp] = member;
     const pair = [pa, pb].sort(compareText).join("|");
-    const key = mergeParallel ? `pair:${pair}` : rolledUp || candidate.bridged ? `indirect:${pair}` : `direct:${candidate.connectionIds[0]}`;
+    const key = mergeParallel
+      ? `pair:${pair}`
+      : rolledUp || candidate.bridged
+        ? `indirect:${pair}`
+        : `direct:${candidate.connectionIds[0]}|${pa}|${pb}`;
     const list = groups.get(key);
     if (list) list.push(member);
     else groups.set(key, [member]);

@@ -1,14 +1,14 @@
 /**
  * Module: modules/architecture/diagramEditorModel
  *
- * The diagram editor's state as plain functions, with no React: the layout being edited (boxes, notes and line anchors), an
+ * The diagram editor's state as plain functions, with no React: the layout being edited (boxes, notes, line anchors and boundary boxes), an
  * undo/redo history over it, the merge of a freshly read view into that layout, and the mapping to the shared
  * canvas's nodes and lines.
  *
  * Responsibilities:
  * - `EditorLayout`: every placement of the diagram (including boxes a view switch hides and boxes the viewer cannot read,
- *   which a save must keep), its notes and the attach points a person chose for lines. Edits return a new layout; none
- *   mutates.
+ *   which a save must keep), its notes, the boundary boxes (one per outer connection) and the attach points a person chose
+ *   for lines. Edits return a new layout; none mutates.
  * - `History`: past / present / future with a saved baseline, so the editor knows what is unsaved and Save is enabled
  *   only for a real change.
  * - `mergeView`: display data comes from the server's view, membership and geometry from the local layout, so a reload
@@ -21,9 +21,10 @@
  */
 import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
+import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
-  ArchitectureElement, DiagramAnchor, DiagramNote, DiagramView, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues,
-  PlacementValues,
+  ArchitectureConnection, ArchitectureElement, BoundaryShape, BoundaryValues, DiagramAnchor, DiagramNote, DiagramView,
+  DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues, PlacementValues,
 } from "./types";
 
 export type EditorTheme = "light" | "dark";
@@ -40,6 +41,11 @@ const GRID_GAP = 40;
 export const HISTORY_LIMIT = 100;
 /** Prefix of a note's canvas node id, so a node is told from an element by its id alone. */
 export const NOTE_NODE_PREFIX = "note:";
+/** Prefix of a boundary box's canvas node id (the rest is its outer connection's id). */
+export const BOUNDARY_NODE_PREFIX = "boundary:";
+/** Default size of a new boundary box. */
+export const BOUNDARY_WIDTH = 140;
+export const BOUNDARY_HEIGHT = 56;
 
 /** One placed element: what is drawn on it and where it sits. */
 export interface EditorBox {
@@ -73,14 +79,74 @@ export interface EditorNote {
   height: number;
 }
 
+/**
+ * A boundary box: the stand-in, inside a scoped diagram, for one outer connection (the scope, or an element inside it, to an
+ * element outside). It carries the display data of the connection and of the element outside; whether it is covered is
+ * worked out from the model's realisations, so it is not stored here.
+ */
+export interface EditorBoundary {
+  connectionId: string;
+  connection_code: string;
+  connection_name: string;
+  type_name: string;
+  shape: BoundaryShape;
+  locked: boolean;
+  outside_element_id: string;
+  outside_element_code: string;
+  outside_element_name: string;
+  scope_end_element_id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface EditorLayout {
   boxes: EditorBox[];
   notes: EditorNote[];
   /** Where lines meet their boxes where a person chose it; a line with none uses the nearest points. */
   anchors: DiagramAnchor[];
+  /** The outer connections drawn as boundary boxes (a scoped diagram only). */
+  boundaries: EditorBoundary[];
 }
 
-export const EMPTY_LAYOUT: EditorLayout = { boxes: [], notes: [], anchors: [] };
+export const EMPTY_LAYOUT: EditorLayout = { boxes: [], notes: [], anchors: [], boundaries: [] };
+
+/** @param connectionId An outer connection. @returns The canvas node id of its boundary box. */
+export const boundaryNodeId = (connectionId: string): string => BOUNDARY_NODE_PREFIX + connectionId;
+
+/** @param box A boundary box of a resolved view. @returns Its editor form. */
+export function boundaryFromView(box: DiagramViewBoundary): EditorBoundary {
+  return {
+    connectionId: box.connection_id, connection_code: box.connection_code, connection_name: box.connection_name,
+    type_name: box.type_name, shape: box.shape, locked: box.locked, outside_element_id: box.outside_element_id,
+    outside_element_code: box.outside_element_code, outside_element_name: box.outside_element_name,
+    scope_end_element_id: box.scope_end_element_id, x: box.x, y: box.y, width: box.width, height: box.height,
+  };
+}
+
+/**
+ * The boundary box for an outer connection added from the Add menu.
+ *
+ * @param connection The outer connection (one end inside the diagram's scope, the other outside).
+ * @param scopeEndId The connection's end inside the scope.
+ * @param at Where the box's top-left corner goes.
+ */
+export function boundaryFromConnection(
+  connection: ArchitectureConnection, scopeEndId: string, at: { x: number; y: number },
+): EditorBoundary {
+  const scopeIsSource = scopeEndId === connection.source_element_id;
+  const locked = scopeIsSource ? connection.target_locked : connection.source_locked;
+  return {
+    connectionId: connection.id, connection_code: connection.unique_code, connection_name: locked ? "" : connection.name,
+    type_name: locked ? "" : connection.connection_type_name,
+    shape: locked ? "dot" : !connection.directional ? "bidirectional" : scopeIsSource ? "output" : "input", locked,
+    outside_element_id: scopeIsSource ? connection.target_element_id : connection.source_element_id,
+    outside_element_code: scopeIsSource ? connection.target_element_code : connection.source_element_code,
+    outside_element_name: scopeIsSource ? connection.target_element_name : connection.source_element_name,
+    scope_end_element_id: scopeEndId, x: at.x, y: at.y, width: BOUNDARY_WIDTH, height: BOUNDARY_HEIGHT,
+  };
+}
 
 /** @param node A placed element of a resolved view. @returns Its box. */
 export function boxFromNode(node: DiagramViewNode): EditorBox {
@@ -98,7 +164,10 @@ function noteFromView(note: DiagramNote): EditorNote {
 
 /** @param view A resolved view. @returns The layout it holds (every placement and note, hidden or not). */
 export function layoutFromView(view: DiagramView): EditorLayout {
-  return { boxes: view.nodes.map(boxFromNode), notes: view.notes.map(noteFromView), anchors: view.anchors };
+  return {
+    boxes: view.nodes.map(boxFromNode), notes: view.notes.map(noteFromView), anchors: view.anchors,
+    boundaries: view.boundaries.map(boundaryFromView),
+  };
 }
 
 /**
@@ -111,6 +180,7 @@ export function layoutFromView(view: DiagramView): EditorLayout {
  */
 export function mergeView(local: EditorLayout, view: DiagramView): EditorLayout {
   const resolved = new Map(view.nodes.map((n) => [n.element_id, n]));
+  const drawn = new Map(view.boundaries.map((b) => [b.connection_id, b]));
   return {
     boxes: local.boxes.map((b) => {
       const n = resolved.get(b.elementId);
@@ -119,6 +189,10 @@ export function mergeView(local: EditorLayout, view: DiagramView): EditorLayout 
     }),
     notes: local.notes,
     anchors: local.anchors,
+    boundaries: local.boundaries.map((b) => {
+      const v = drawn.get(b.connectionId);
+      return v ? { ...boundaryFromView(v), x: b.x, y: b.y, width: b.width, height: b.height } : b;
+    }),
   };
 }
 
@@ -139,23 +213,27 @@ export function boxFromElement(element: ArchitectureElement, type: ElementType |
 }
 
 /** @param layout The layout to save. @returns The request bodies of the layout save. */
-export function layoutToSave(layout: EditorLayout): { placements: PlacementValues[]; notes: NoteValues[]; anchors: DiagramAnchor[] } {
+export function layoutToSave(
+  layout: EditorLayout,
+): { placements: PlacementValues[]; notes: NoteValues[]; anchors: DiagramAnchor[]; boundaries: BoundaryValues[] } {
   return {
     placements: layout.boxes.map((b) => ({
       element_id: b.elementId, x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed,
     })),
     notes: layout.notes.map((n) => ({ id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height })),
     anchors: layout.anchors,
+    boundaries: layout.boundaries.map((b) => ({ connection_id: b.connectionId, x: b.x, y: b.y, width: b.width, height: b.height })),
   };
 }
 
 /** The part of a layout a save would send, as comparable text. */
 function signature(layout: EditorLayout): string {
-  const { placements, notes, anchors } = layoutToSave(layout);
+  const { placements, notes, anchors, boundaries } = layoutToSave(layout);
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
     notes.map((n) => [n.text, n.x, n.y, n.width, n.height]),
     anchors.map((a) => [a.source_element_id, a.target_element_id, a.source_point, a.target_point]).sort(),
+    [...boundaries].sort((a, b) => a.connection_id.localeCompare(b.connection_id)),
   ]);
 }
 
@@ -170,6 +248,10 @@ export function moveItems(layout: EditorLayout, moves: { id: string; x: number; 
     notes: layout.notes.map((n) => {
       const m = to.get(NOTE_NODE_PREFIX + n.key);
       return m ? { ...n, x: m.x, y: m.y } : n;
+    }),
+    boundaries: layout.boundaries.map((b) => {
+      const m = to.get(boundaryNodeId(b.connectionId));
+      return m ? { ...b, x: m.x, y: m.y } : b;
     }),
   };
 }
@@ -188,6 +270,10 @@ export function resizeItems(
     notes: layout.notes.map((n) => {
       const c = to.get(NOTE_NODE_PREFIX + n.key);
       return c ? { ...n, x: c.x, y: c.y, width: c.width, height: c.height } : n;
+    }),
+    boundaries: layout.boundaries.map((b) => {
+      const c = to.get(boundaryNodeId(b.connectionId));
+      return c ? { ...b, x: c.x, y: c.y, width: c.width, height: c.height } : b;
     }),
   };
 }
@@ -249,6 +335,18 @@ export function setLineAnchor(
   return { ...layout, anchors: next };
 }
 
+/** Adds boundary boxes, skipping any outer connection already drawn. */
+export function addBoundaries(layout: EditorLayout, boundaries: EditorBoundary[]): EditorLayout {
+  const have = new Set(layout.boundaries.map((b) => b.connectionId));
+  const fresh = boundaries.filter((b) => !have.has(b.connectionId));
+  return fresh.length === 0 ? layout : { ...layout, boundaries: [...layout.boundaries, ...fresh] };
+}
+
+/** Takes a boundary box off the diagram; the connection it stands for is never touched. */
+export function removeBoundary(layout: EditorLayout, connectionId: string): EditorLayout {
+  return { ...layout, boundaries: layout.boundaries.filter((b) => b.connectionId !== connectionId) };
+}
+
 export function addNote(layout: EditorLayout, note: EditorNote): EditorLayout {
   return { ...layout, notes: [...layout.notes, note] };
 }
@@ -269,7 +367,7 @@ export function removeNote(layout: EditorLayout, key: string): EditorLayout {
  * @param columns Boxes per row of the grid.
  */
 export function nextFreePosition(layout: EditorLayout, index = 0, columns = 4): { x: number; y: number } {
-  const taken = [...layout.boxes, ...layout.notes];
+  const taken = [...layout.boxes, ...layout.notes, ...layout.boundaries];
   const hits = (x: number, y: number) =>
     taken.some((t) => x < t.x + t.width && t.x < x + BOX_WIDTH && y < t.y + t.height && t.y < y + BOX_HEIGHT);
   let free = -1;
@@ -350,7 +448,16 @@ export interface CanvasContext {
   noteCaption: string;
   /** The elements a view switch hides: they stay in the layout but are not drawn. */
   hidden: ReadonlySet<string>;
+  /** The outer connections at least one connection realises (a boundary box shows "Covered" for each). */
+  covered: ReadonlySet<string>;
+  /** The word for a boundary box that is realised and for one that is not (neutral, never a warning). */
+  coverageLabel: (covered: boolean) => string;
 }
+
+/** The outline a boundary box is drawn with, from the direction of its connection. */
+const BOUNDARY_OUTLINE: Record<BoundaryShape, GraphNodeOutline> = {
+  input: "pointed-right", output: "pointed-left", bidirectional: "pointed-both", dot: "ellipse",
+};
 
 /** @returns The canvas nodes for the boxes a view switch leaves visible, and for the notes. */
 export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanvasNode[] {
@@ -367,7 +474,22 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
     id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: ctx.noteCaption,
     x: n.x, y: n.y, width: n.width, height: n.height, dashed: true,
   }));
-  return [...boxes, ...notes];
+  const boundaries = layout.boundaries.map<GraphCanvasNode>((b) => ({
+    id: boundaryNodeId(b.connectionId), label: b.connection_code,
+    caption: `${boundaryOutsideName(b)} · ${ctx.coverageLabel(ctx.covered.has(b.connectionId))}`,
+    x: b.x, y: b.y, width: b.width, height: b.height, outline: BOUNDARY_OUTLINE[b.shape], dashed: b.locked,
+  }));
+  return [...boxes, ...notes, ...boundaries];
+}
+
+/** What each boundary shape means, for lists and captions (the outline itself carries the same in its form). */
+export const BOUNDARY_SHAPE_LABEL: Record<BoundaryShape, string> = {
+  input: "Input", output: "Output", bidirectional: "Two-way", dot: "Direction not shown",
+};
+
+/** @param box A boundary box. @returns The element outside, for a list: code and name, or the code alone when unreadable. */
+export function boundaryOutsideName(box: Pick<EditorBoundary, "outside_element_code" | "outside_element_name" | "locked">): string {
+  return box.locked ? box.outside_element_code : `${box.outside_element_code} ${box.outside_element_name}`.trim();
 }
 
 /** The label of a line: the text the view gives (which already counts several connections), else just the count when several. */
@@ -382,7 +504,10 @@ function edgeLabel(edge: DiagramViewEdge): string | undefined {
  * @param theme Which of a line's two colours to use.
  */
 export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidden: ReadonlySet<string>, theme: EditorTheme): GraphCanvasEdge[] {
-  const visible = new Set(layout.boxes.filter((b) => !hidden.has(b.elementId)).map((b) => b.elementId));
+  const visible = new Set([
+    ...layout.boxes.filter((b) => !hidden.has(b.elementId)).map((b) => b.elementId),
+    ...layout.boundaries.map((b) => boundaryNodeId(b.connectionId)),
+  ]);
   return edges
     .filter((e) => visible.has(e.source_element_id) && visible.has(e.target_element_id))
     .map((e) => ({

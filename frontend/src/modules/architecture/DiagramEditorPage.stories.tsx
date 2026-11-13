@@ -4,8 +4,8 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api, ApiError } from "../../api/client";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
-  buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement, mockArchitectureReads, PROJECT_ID,
-  SYMBOL_SVG,
+  buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement,
+  mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
 
@@ -809,5 +809,117 @@ export const TheAddMenuEndsWithASetupEntryForAnArchitectureAdmin: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
     const items = await within(document.body).findAllByRole("menuitem");
     await expect(items[items.length - 1]).toHaveAccessibleName("Set up element types");
+  },
+};
+
+// --- Boundary boxes: the outer connections of a diagram of an element's inside ---
+
+/** Reads the scoped scene (a diagram of Platform's inside with one boundary box) instead of the default diagram. */
+function mockBoundaryScene(opts: { realised?: boolean; boundaries?: boolean } = {}) {
+  const scene = buildBoundaryScene({ realised: opts.realised });
+  mockArchitectureReads({
+    elements: scene.elements, connections: scene.model.connections, diagramView: opts.boundaries === false ? { ...scene.view, boundaries: [] } : scene.view,
+    diagramModel: scene.model,
+  });
+}
+
+export const ABoundaryBoxStandsForAnOuterConnectionAndShowsItIsCovered: Story = {
+  beforeEach: () => { mockBoundaryScene(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByLabelText("CON-009, node");
+    await expect(box).toHaveTextContent("ELM-008 Cloud · Covered");
+    // The connection realising it is drawn from the inner element to the box.
+    await expect(await canvas.findByLabelText("Connection from Gateway to CON-009")).toBeInTheDocument();
+    await expect(canvas.getByLabelText("Connection from Gateway to Orders")).toBeInTheDocument();
+  },
+};
+
+export const ABoundaryBoxWithNothingRealisingItReadsNotCovered: Story = {
+  beforeEach: () => { mockBoundaryScene({ realised: false }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByLabelText("CON-009, node")).toHaveTextContent("Not covered");
+    await expect(canvas.queryByLabelText("Connection from Gateway to CON-009")).not.toBeInTheDocument();
+  },
+};
+
+export const SelectingABoundaryBoxListsTheConnectionsThatRealiseIt: Story = {
+  beforeEach: () => { mockBoundaryScene(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "CON-009");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(panel.getByText("Covered by 1 connection.")).toBeInTheDocument();
+    await expect(panel.getByRole("link", { name: "CON-010" })).toBeInTheDocument();
+    await expect(panel.getByText(/Outside: ELM-008 Cloud/)).toBeInTheDocument();
+    await expect(panel.getByRole("link", { name: "Open connection" })).toBeInTheDocument();
+  },
+};
+
+export const TheAddMenuOffersTheOuterConnectionsAndDrawsTheChosenOne: Story = {
+  beforeEach: () => {
+    mockBoundaryScene({ boundaries: false });
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByLabelText("CON-009, node")).not.toBeInTheDocument();
+    await addFromMenu(canvas, "CON-009 · ELM-008 Cloud");
+    await expect(await canvas.findByLabelText("CON-009, node")).toBeInTheDocument();
+    // Drawn, the connection is no longer offered; the layout save sends the box with its outer connection.
+    await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
+    await expect(within(document.body).queryByRole("menuitem", { name: "CON-009 · ELM-008 Cloud" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({ boundaries: [expect.objectContaining({ connection_id: "con-9" })] }),
+    ));
+  },
+};
+
+export const ConnectToOnABoundaryBoxStartsAConnectionToTheElementOutside: Story = {
+  beforeEach: () => { mockBoundaryScene(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "CON-009");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: /Connect to/ }), "el-2");
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByRole("heading", { name: "New connection" })).toBeInTheDocument();
+  },
+};
+
+export const ALineSetsWhatItRealisesAndTheServersRefusalIsShown: Story = {
+  beforeEach: () => {
+    mockBoundaryScene({ realised: false });
+    spyOn(api, "put").mockRejectedValueOnce(new ApiError(400, "A connection can realise another only when it lies inside the interface the other declares."))
+      .mockResolvedValue(buildConnection({ version: 2 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const line = await canvas.findByLabelText("Connection from Gateway to Orders");
+    line.focus();
+    await userEvent.keyboard("{Enter}");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: "Add outer connection" }), "con-9");
+    await expect(await panel.findByRole("alert")).toHaveTextContent("lies inside the interface");
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Add outer connection" }), "con-9");
+    await waitFor(() => expect(api.put).toHaveBeenLastCalledWith(
+      `${BASE}/connections/con-11/realisations`, { version: 1, outer_connection_ids: ["con-9"] },
+    ));
+  },
+};
+
+export const TheOutlineListsTheOuterConnectionsWithTheirDirectionAndCoverage: Story = {
+  beforeEach: () => { mockBoundaryScene(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
+    const table = await canvas.findByRole("table", { name: "Outer connections" });
+    await expect(within(table).getByRole("button", { name: "CON-009" })).toBeInTheDocument();
+    await expect(within(table).getByText("Output")).toBeInTheDocument();
+    await expect(within(table).getByText("Covered")).toBeInTheDocument();
   },
 };

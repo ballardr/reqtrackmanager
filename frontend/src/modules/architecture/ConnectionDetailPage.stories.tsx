@@ -42,3 +42,32 @@ export const LockedEndShowsOnlyItsCode: Story = {
     await expect(canvas.queryByRole("link", { name: /ELM-002/ })).not.toBeInTheDocument();
   },
 };
+
+/** The connections it realises and the ones that realise it are listed as links, and appear only when there are any. */
+export const ListsWhatItRealisesAndWhatRealisesIt: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      connection: buildConnection({
+        realises: [{ id: "con-9", unique_code: "CON-009", name: "Platform uplink", status: "active" }],
+        realised_by: [{ id: "con-10", unique_code: "CON-010", name: "Gateway uplink", status: "draft" }],
+      }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: /Client traffic/ });
+    await expect(canvas.getByRole("link", { name: "CON-009" })).toHaveAttribute(
+      "href", `/projects/${PROJECT_ID}/modules/architecture/connections/con-9`,
+    );
+    await expect(canvas.getByRole("link", { name: "CON-010" })).toBeInTheDocument();
+  },
+};
+
+export const ShowsNoRealisationCardWhenThereAreNone: Story = {
+  beforeEach: () => { mockArchitectureReads({ connection: buildConnection() }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: /Client traffic/ });
+    await expect(canvas.queryByText("Realisation")).not.toBeInTheDocument();
+  },
+};

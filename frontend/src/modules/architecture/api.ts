@@ -36,6 +36,7 @@ import type {
   ElementType,
   ElementTypeValues,
   NoteValues,
+  BoundaryValues,
   DiagramAnchor,
   PlacementValues,
   Port,
@@ -194,6 +195,9 @@ export const projectConnectionApi = (projectId: string) => {
     archive: (id: string) => api.post<ArchitectureConnection>(`${base}/${id}/archive`),
     unarchive: (id: string) => api.post<ArchitectureConnection>(`${base}/${id}/unarchive`),
     remove: (id: string) => api.delete<void>(`${base}/${id}`),
+    /** Sets the outer connections a connection realises (the server checks the rule and refuses a cycle). */
+    setRealisations: (id: string, version: number, outerConnectionIds: string[]) =>
+      api.put<ArchitectureConnection>(`${base}/${id}/realisations`, { version, outer_connection_ids: outerConnectionIds }),
   };
 };
 
@@ -223,8 +227,10 @@ export const projectDiagramApi = (projectId: string) => {
     view: (id: string) => api.get<DiagramView>(`${base}/${id}/view`),
     /** The model data the diagram's lines are resolved from in the browser. */
     model: (id: string) => api.get<DiagramModel>(`${base}/${id}/model`),
-    saveLayout: (id: string, version: number, placements: PlacementValues[], notes: NoteValues[], anchors: DiagramAnchor[]) =>
-      api.put<ArchitectureDiagram>(`${base}/${id}/layout`, { version, placements, notes, anchors }),
+    saveLayout: (
+      id: string, version: number, placements: PlacementValues[], notes: NoteValues[], anchors: DiagramAnchor[],
+      boundaries: BoundaryValues[],
+    ) => api.put<ArchitectureDiagram>(`${base}/${id}/layout`, { version, placements, notes, anchors, boundaries }),
     saveToggles: (id: string, version: number, toggles: DiagramToggleValues[]) =>
       api.put<ArchitectureDiagram>(`${base}/${id}/toggles`, { version, toggles }),
     /** The saved diagram drawn by the server as an SVG document, for the view-switch states named. */

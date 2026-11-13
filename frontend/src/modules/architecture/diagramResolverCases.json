@@ -1257,6 +1257,409 @@
     }
   },
   {
+    "name": "a connection that realises an outer one is drawn to its boundary box",
+    "labels": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": "scope",
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "a",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3": "b",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": "out",
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "outer",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "real",
+      "f9f69541-3a82-5617-865d-47fbff36eb5b": "inner",
+      "4d9034df-ded1-5230-886d-a81256f1d58b": "box"
+    },
+    "placed": [
+      "63fdabcf-9a0b-572c-a519-ab969ead4979",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3"
+    ],
+    "parents": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": null,
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": null
+    },
+    "connections": [
+      {
+        "id": "29bec067-7c1a-5bb3-999e-d9b662641216",
+        "source_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "target_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "directional": true
+      },
+      {
+        "id": "324c7622-4b59-5f6e-b223-bbc503cfe961",
+        "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "target_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "directional": true
+      },
+      {
+        "id": "f9f69541-3a82-5617-865d-47fbff36eb5b",
+        "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "target_id": "5317b464-5a04-50ab-b045-3a282ffd6cd3",
+        "directional": true
+      }
+    ],
+    "hidden_elements": [],
+    "hidden_connections": [],
+    "merge_parallel": false,
+    "boundaries": [
+      {
+        "id": "4d9034df-ded1-5230-886d-a81256f1d58b",
+        "element_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "outside_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "connection_ids": [
+          "324c7622-4b59-5f6e-b223-bbc503cfe961"
+        ]
+      }
+    ],
+    "scope": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+    "outer_sides": {
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39"
+    },
+    "expected": {
+      "hidden_placed": [],
+      "internal": {},
+      "lines": [
+        {
+          "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "target_id": "4d9034df-ded1-5230-886d-a81256f1d58b",
+          "two_way": false,
+          "connection_ids": [
+            "324c7622-4b59-5f6e-b223-bbc503cfe961"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        },
+        {
+          "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "target_id": "5317b464-5a04-50ab-b045-3a282ffd6cd3",
+          "two_way": false,
+          "connection_ids": [
+            "f9f69541-3a82-5617-865d-47fbff36eb5b"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "a boundary box whose element is placed is a marker with no line",
+    "labels": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": "scope",
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "a",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3": "b",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": "out",
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "outer",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "real",
+      "4d9034df-ded1-5230-886d-a81256f1d58b": "box"
+    },
+    "placed": [
+      "63fdabcf-9a0b-572c-a519-ab969ead4979",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3"
+    ],
+    "parents": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": null,
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": null
+    },
+    "connections": [
+      {
+        "id": "29bec067-7c1a-5bb3-999e-d9b662641216",
+        "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "target_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "directional": true
+      },
+      {
+        "id": "324c7622-4b59-5f6e-b223-bbc503cfe961",
+        "source_id": "5317b464-5a04-50ab-b045-3a282ffd6cd3",
+        "target_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "directional": true
+      }
+    ],
+    "hidden_elements": [],
+    "hidden_connections": [],
+    "merge_parallel": false,
+    "boundaries": [
+      {
+        "id": "4d9034df-ded1-5230-886d-a81256f1d58b",
+        "element_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "outside_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "connection_ids": [
+          "324c7622-4b59-5f6e-b223-bbc503cfe961"
+        ]
+      }
+    ],
+    "scope": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+    "outer_sides": {
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "63fdabcf-9a0b-572c-a519-ab969ead4979"
+    },
+    "expected": {
+      "hidden_placed": [],
+      "internal": {},
+      "lines": [
+        {
+          "source_id": "5317b464-5a04-50ab-b045-3a282ffd6cd3",
+          "target_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "two_way": false,
+          "connection_ids": [
+            "324c7622-4b59-5f6e-b223-bbc503cfe961"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "one connection realising two outer connections is drawn to both boxes",
+    "labels": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": "scope",
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "a",
+      "547d2db6-69e3-5e1a-8906-c2175373f639": "x",
+      "1a19bd4e-a081-5b9c-b7ac-51832e9632ea": "y",
+      "1f8469d7-10f3-5696-9994-6aa48e755d4c": "o1",
+      "3e2a055e-a200-5fe0-b003-87cfebfab341": "o2",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "real",
+      "fc99aa81-0d65-5f42-ac81-67d4783eeb61": "box1",
+      "f23f656e-d648-5c8b-beba-b7796a962766": "box2"
+    },
+    "placed": [
+      "63fdabcf-9a0b-572c-a519-ab969ead4979"
+    ],
+    "parents": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": null,
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "547d2db6-69e3-5e1a-8906-c2175373f639": null,
+      "1a19bd4e-a081-5b9c-b7ac-51832e9632ea": null
+    },
+    "connections": [
+      {
+        "id": "1f8469d7-10f3-5696-9994-6aa48e755d4c",
+        "source_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "target_id": "547d2db6-69e3-5e1a-8906-c2175373f639",
+        "directional": true
+      },
+      {
+        "id": "3e2a055e-a200-5fe0-b003-87cfebfab341",
+        "source_id": "1a19bd4e-a081-5b9c-b7ac-51832e9632ea",
+        "target_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "directional": true
+      },
+      {
+        "id": "324c7622-4b59-5f6e-b223-bbc503cfe961",
+        "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "target_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "directional": true
+      }
+    ],
+    "hidden_elements": [],
+    "hidden_connections": [],
+    "merge_parallel": false,
+    "boundaries": [
+      {
+        "id": "fc99aa81-0d65-5f42-ac81-67d4783eeb61",
+        "element_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "outside_id": "547d2db6-69e3-5e1a-8906-c2175373f639",
+        "connection_ids": [
+          "324c7622-4b59-5f6e-b223-bbc503cfe961"
+        ]
+      },
+      {
+        "id": "f23f656e-d648-5c8b-beba-b7796a962766",
+        "element_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "outside_id": "1a19bd4e-a081-5b9c-b7ac-51832e9632ea",
+        "connection_ids": [
+          "324c7622-4b59-5f6e-b223-bbc503cfe961"
+        ]
+      }
+    ],
+    "scope": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+    "outer_sides": {
+      "1f8469d7-10f3-5696-9994-6aa48e755d4c": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "3e2a055e-a200-5fe0-b003-87cfebfab341": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39"
+    },
+    "expected": {
+      "hidden_placed": [],
+      "internal": {},
+      "lines": [
+        {
+          "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "target_id": "f23f656e-d648-5c8b-beba-b7796a962766",
+          "two_way": false,
+          "connection_ids": [
+            "324c7622-4b59-5f6e-b223-bbc503cfe961"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        },
+        {
+          "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "target_id": "fc99aa81-0d65-5f42-ac81-67d4783eeb61",
+          "two_way": false,
+          "connection_ids": [
+            "324c7622-4b59-5f6e-b223-bbc503cfe961"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "a realising connection wholly inside draws between its own elements",
+    "labels": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": "scope",
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "a",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3": "b",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": "out",
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "outer",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "real",
+      "4d9034df-ded1-5230-886d-a81256f1d58b": "box"
+    },
+    "placed": [
+      "63fdabcf-9a0b-572c-a519-ab969ead4979",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3"
+    ],
+    "parents": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": null,
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "5317b464-5a04-50ab-b045-3a282ffd6cd3": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": null
+    },
+    "connections": [
+      {
+        "id": "29bec067-7c1a-5bb3-999e-d9b662641216",
+        "source_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "target_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "directional": true
+      },
+      {
+        "id": "324c7622-4b59-5f6e-b223-bbc503cfe961",
+        "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "target_id": "5317b464-5a04-50ab-b045-3a282ffd6cd3",
+        "directional": true
+      }
+    ],
+    "hidden_elements": [],
+    "hidden_connections": [],
+    "merge_parallel": false,
+    "boundaries": [
+      {
+        "id": "4d9034df-ded1-5230-886d-a81256f1d58b",
+        "element_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "outside_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "connection_ids": [
+          "324c7622-4b59-5f6e-b223-bbc503cfe961"
+        ]
+      }
+    ],
+    "scope": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+    "outer_sides": {
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39"
+    },
+    "expected": {
+      "hidden_placed": [],
+      "internal": {},
+      "lines": [
+        {
+          "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "target_id": "5317b464-5a04-50ab-b045-3a282ffd6cd3",
+          "two_way": false,
+          "connection_ids": [
+            "324c7622-4b59-5f6e-b223-bbc503cfe961"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "a refinement to the element outside is drawn to its boundary box",
+    "labels": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": "scope",
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "a",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": "out",
+      "13f45a63-d47b-59b6-8ccf-293033afafad": "far",
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "outer",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "real",
+      "4d9034df-ded1-5230-886d-a81256f1d58b": "box"
+    },
+    "placed": [
+      "63fdabcf-9a0b-572c-a519-ab969ead4979"
+    ],
+    "parents": {
+      "8ec3c6a6-69a5-55fe-b681-ef47ae601d39": null,
+      "63fdabcf-9a0b-572c-a519-ab969ead4979": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed": null,
+      "13f45a63-d47b-59b6-8ccf-293033afafad": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed"
+    },
+    "connections": [
+      {
+        "id": "29bec067-7c1a-5bb3-999e-d9b662641216",
+        "source_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "target_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "directional": true
+      },
+      {
+        "id": "324c7622-4b59-5f6e-b223-bbc503cfe961",
+        "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+        "target_id": "13f45a63-d47b-59b6-8ccf-293033afafad",
+        "directional": true
+      }
+    ],
+    "hidden_elements": [],
+    "hidden_connections": [],
+    "merge_parallel": false,
+    "boundaries": [
+      {
+        "id": "4d9034df-ded1-5230-886d-a81256f1d58b",
+        "element_id": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+        "outside_id": "80b8d2ca-f3ba-58da-a65d-354b5d97c9ed",
+        "connection_ids": [
+          "324c7622-4b59-5f6e-b223-bbc503cfe961"
+        ]
+      }
+    ],
+    "scope": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+    "outer_sides": {
+      "29bec067-7c1a-5bb3-999e-d9b662641216": "8ec3c6a6-69a5-55fe-b681-ef47ae601d39",
+      "324c7622-4b59-5f6e-b223-bbc503cfe961": "63fdabcf-9a0b-572c-a519-ab969ead4979"
+    },
+    "expected": {
+      "hidden_placed": [],
+      "internal": {},
+      "lines": [
+        {
+          "source_id": "63fdabcf-9a0b-572c-a519-ab969ead4979",
+          "target_id": "4d9034df-ded1-5230-886d-a81256f1d58b",
+          "two_way": false,
+          "connection_ids": [
+            "324c7622-4b59-5f6e-b223-bbc503cfe961"
+          ],
+          "rolled_up": false,
+          "bridged": false,
+          "indirect": false,
+          "hops": []
+        }
+      ]
+    }
+  },
+  {
     "name": "a connection to an unplaced element under a hidden placed one is hidden with it",
     "labels": {
       "a1b85d24-21ff-5b3c-93a3-14b0db098df5": "top",

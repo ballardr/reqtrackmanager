@@ -37,6 +37,8 @@ modules; a fresh install is switched on through the server default table.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -64,6 +66,7 @@ from app.modules.architecture.perf_dataset import generate_connections, generate
 from app.modules.architecture.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.architecture.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.architecture.report_fields import REPORT_FIELDS
+from app.modules.architecture.reports import REPORT_DEFINITIONS
 from app.modules.architecture.scaling_probes import SCALING_PROBES
 from app.modules.architecture.search import SEARCH_PROVIDERS
 from app.modules.architecture.service import (
@@ -93,6 +96,7 @@ from app.modules.registry import (
     PerfDatasetGenerator,
     PrincipalReference,
 )
+from app.services.report_framework import report_mcp_tools
 
 _BOTH = (ELEMENT_ARTEFACT_TYPE, CONNECTION_ARTEFACT_TYPE)
 _ALL = (*_BOTH, DIAGRAM_ARTEFACT_TYPE)
@@ -119,6 +123,13 @@ def get_router() -> APIRouter | None:
     from app.modules.architecture.router import router
 
     return router
+
+
+#: The project router's mount prefix, which the report tools' paths fall under.
+_PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}"
+
+# Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
+_MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
 
 def get_project_router() -> APIRouter | None:
@@ -176,6 +187,9 @@ MODULE_DEFINITION = ModuleDefinition(
         DIAGRAM_ARTEFACT_TYPE: DIAGRAM_SUMMARY_PROVIDER,
     },
     search_providers=SEARCH_PROVIDERS,
+    reports=REPORT_DEFINITIONS,
+    mcp_tools=report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX),
+    mcp_guidance=_MCP_GUIDANCE,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,

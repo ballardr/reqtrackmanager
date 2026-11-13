@@ -531,3 +531,44 @@ export const OpeningZoomIsCappedForASmallGraph: Story = {
     await waitFor(() => expect(viewportScale(within(canvasElement).getByTestId("uncapped"))).toBeGreaterThan(1));
   },
 };
+
+export const ShapedNodesDrawTheirOutlineAndKeepTheirText: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Outlines" showViewToggle={false}
+      nodes={[
+        { id: "in", label: "Input", x: 0, y: 0, outline: "pointed-right" },
+        { id: "out", label: "Output", x: 200, y: 0, outline: "pointed-left" },
+        { id: "both", label: "Two-way", x: 400, y: 0, outline: "pointed-both" },
+        { id: "dot", label: "Unknown", x: 600, y: 0, outline: "ellipse", dashed: true },
+        { id: "plain", label: "Plain", x: 800, y: 0 },
+      ]}
+      edges={[]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    for (const name of ["Input", "Output", "Two-way", "Unknown", "Plain"]) {
+      await expect(await canvas.findByLabelText(`${name}, node`)).toHaveTextContent(name);
+    }
+    // Four of the five are drawn as an outline behind the text; the plain node keeps its own box.
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-node-outline")).toHaveLength(4));
+    await expect(canvasElement.querySelectorAll("svg.graph-node-outline polygon")).toHaveLength(3);
+    await expect(canvasElement.querySelectorAll("svg.graph-node-outline ellipse")).toHaveLength(1);
+  },
+};
+
+export const ChoosingALineWhileABoxIsSelectedSelectsTheLine: Story = {
+  render: () => <Host showViewToggle={false} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const sensor = await canvas.findByLabelText("Sensor, node");
+    sensor.focus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(canvas.getByTestId("selection")).toHaveTextContent("node:sensor"));
+    const line = await canvas.findByLabelText("SPI, connection from Sensor to Gateway");
+    line.focus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(canvas.getByTestId("selection")).toHaveTextContent("edge:e1"));
+  },
+};

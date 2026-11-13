@@ -27,6 +27,13 @@ import { useStrings } from "../context/TerminologyContext";
 import type { AttachPoint } from "./graphAttachPoints";
 import { Spinner } from "./Spinner";
 
+/**
+ * The outline a node is drawn with. `rectangle` (the default) is the usual box; the others are flags: a tip on the right
+ * (`pointed-right`), on the left (`pointed-left`), at both ends (`pointed-both`), or a rounded `ellipse`. A shaped node
+ * draws no accent edge and does not clip its text.
+ */
+export type GraphNodeOutline = "rectangle" | "pointed-right" | "pointed-left" | "pointed-both" | "ellipse";
+
 /** A box on the canvas. `x`/`y` are the top-left corner in canvas units. */
 export interface GraphCanvasNode {
   id: string;
@@ -45,6 +52,8 @@ export interface GraphCanvasNode {
   dashed?: boolean;
   /** A short second line under the label (a type name, a code); text only. */
   caption?: string;
+  /** The outline; defaults to `rectangle`. */
+  outline?: GraphNodeOutline;
 }
 
 /** The data-transfer type a consumer's draggable palette item sets, so a drop on the canvas reaches `onDropItem`. */

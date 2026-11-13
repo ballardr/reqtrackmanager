@@ -4,7 +4,8 @@
  * The editor's "Outline" card: the text alternative to the canvas, with the same content in a form a keyboard or screen
  * reader can use. It lists the elements shown as a tree (nested by their parent among the elements placed), the notes, and the
  * lines drawn as a table with their ends, direction, type, count and, for a bridged line, the hidden elements it passes
- * through.
+ * through. On a diagram of an element's inside the outer connections (boundary boxes) are a table too, each with its
+ * direction and whether it is covered.
  *
  * Responsibilities:
  * - Follow the page: it is built from the layout being edited, the lines resolved for the current view switches and the
@@ -27,7 +28,9 @@ import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
-import { NOTE_NODE_PREFIX, type EditorBox, type EditorNote } from "./diagramEditorModel";
+import {
+  BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, boundaryNodeId, boundaryOutsideName, type EditorBoundary, type EditorBox, type EditorNote,
+} from "./diagramEditorModel";
 import {
   boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
 } from "./diagramOutlineModel";
@@ -45,6 +48,8 @@ function noteSummary(text: string): string {
 /**
  * @param boxes Every box of the layout.
  * @param notes Every note of the layout.
+ * @param boundaries The boundary boxes (outer connections drawn on a diagram of an element's inside).
+ * @param covered The outer connections at least one connection realises.
  * @param edges The lines resolved for the current view.
  * @param parents `{element id: parent id}` for the placed elements and their ancestors.
  * @param hidden The placed elements a view switch hides.
@@ -52,10 +57,12 @@ function noteSummary(text: string): string {
  * @param onSelect Selects an element, note or line.
  */
 export function DiagramOutline({
-  boxes, notes, edges, parents, hidden, selection, onSelect,
+  boxes, notes, boundaries, covered, edges, parents, hidden, selection, onSelect,
 }: {
   boxes: EditorBox[];
   notes: EditorNote[];
+  boundaries: EditorBoundary[];
+  covered: ReadonlySet<string>;
   edges: DiagramViewEdge[];
   parents: Record<string, string | null>;
   hidden: ReadonlySet<string>;
@@ -63,7 +70,7 @@ export function DiagramOutline({
   onSelect: (selection: GraphCanvasSelection) => void;
 }) {
   const tree = outlineTree(boxes, parents, hidden);
-  const rows = connectionRows(edges, boxes);
+  const rows = connectionRows(edges, boxes, boundaries);
   const [elementView, setElementView] = useViewMode("architecture_outline_elements", "tree");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const branchIds = outlineBranchIds(tree);
@@ -76,6 +83,7 @@ export function DiagramOutline({
     <DetailCard heading="Outline">
       <p className="text-muted">
         {outlineSize(tree)} {outlineSize(tree) === 1 ? "element" : "elements"}, {rows.length} {rows.length === 1 ? "line" : "lines"}
+        {boundaries.length > 0 ? `, ${boundaries.length} outer ${boundaries.length === 1 ? "connection" : "connections"}` : ""}
         {notes.length > 0 ? `, ${notes.length} ${notes.length === 1 ? "note" : "notes"}` : ""}.
         {hiddenCount > 0 ? ` ${hiddenCount} hidden by view switches.` : ""}
       </p>
@@ -146,6 +154,41 @@ export function DiagramOutline({
           />
         )}
       </CollapsibleSection>
+
+      {boundaries.length > 0 && (
+        <CollapsibleSection sectionKey="architecture_outline_outer" title="Outer connections" variant="plain" summary={String(boundaries.length)}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="table" aria-label="Outer connections">
+              <thead>
+                <tr>
+                  <th scope="col">Connection</th>
+                  <th scope="col">Outside element</th>
+                  <th scope="col">Direction</th>
+                  <th scope="col">Coverage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {boundaries.map((b) => (
+                  <tr key={b.connectionId}>
+                    <td>
+                      <button
+                        type="button" className={isSelected("node", boundaryNodeId(b.connectionId)) ? "btn btn-sm btn-primary" : "btn btn-sm"}
+                        aria-current={isSelected("node", boundaryNodeId(b.connectionId)) ? "true" : undefined}
+                        onClick={() => onSelect({ kind: "node", id: boundaryNodeId(b.connectionId) })}
+                      >
+                        {b.connection_code}
+                      </button>
+                    </td>
+                    <td>{boundaryOutsideName(b)}</td>
+                    <td>{BOUNDARY_SHAPE_LABEL[b.shape]}</td>
+                    <td>{covered.has(b.connectionId) ? "Covered" : "Not covered"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CollapsibleSection>
+      )}
 
       {notes.length > 0 && (
         <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" variant="plain" summary={String(notes.length)}>

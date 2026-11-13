@@ -26,6 +26,7 @@ from app.modules.architecture import symbol_routes, vocabulary_routes
 from app.modules.architecture.collection_routes import add_project_collection_routes
 from app.modules.architecture.diagram_routes import add_diagram_routes
 from app.modules.architecture.record_routes import add_record_routes
+from app.modules.architecture.reports import REPORT_ROUTERS
 from app.modules.architecture.schemas import (
     CapabilitiesOut,
     ConnectionTypeCreate,
@@ -84,4 +85,5 @@ def get_capabilities(project_id: UUID, current_user: User = Depends(_require_vie
 
 add_record_routes(router)
 add_diagram_routes(router)
+router.include_router(REPORT_ROUTERS.project)
 add_project_collection_routes(router)

@@ -7,7 +7,7 @@
  * Selection card; Configuration holds the connection-detail setting and the view switches. Links and Activity are in the aside.
  * The pending layout, selection and undo history belong to the page, so a change of tab loses none of them.
  *
- * Editing model: boxes, notes and line anchors are edited locally (move, resize, add, remove, drop from the Add menu, drag a line
+ * Editing model: boxes, notes, line anchors and boundary boxes are edited locally (move, resize, add, remove, drop from the Add menu, drag a line
  * between two boxes, drag a line's end to another attach point or choose it in the Selection card) with undo and redo, and stored together by Save, which quotes the diagram's version; a 409 offers a reload
  * instead of overwriting a newer save. Creating a connection or deleting an element writes to the model at once, so a
  * pending layout is saved first. Taking a box off the diagram never deletes its element; deleting the element is a separate,
@@ -16,6 +16,9 @@
  * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram) and the selection card
  * can start a connection from a list. Export (PNG, SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks
  * the server for the saved diagram drawn for the switch states on the page.
+ * A diagram of an element's inside can draw the connections that cross the element's boundary as boundary boxes (Add to diagram,
+ * "Outside this element"); a line drawn from an inner element to a box (or the box's "Connect to" list) creates a connection and
+ * marks it as realising the outer connection, and a line's Selection card can set what it realises.
  * Lines, bridging and roll-up are worked out in the browser from the diagram's model data (`GET .../model`) by
  * `diagramLines`, so an added box or a flipped switch redraws at once; the server's resolved view (`GET .../view`) gives
  * the boxes, notes and switches on load and stays the authority for the SVG and documents.
@@ -50,9 +53,11 @@ import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
-  addBoxes, addNote, boxFromElement, canvasEdges, canvasNodes, editNote, moveItems, newNoteKey, nextFreePosition, removeBox,
-  removeNote, resizeItems, setLineAnchor, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH,
+  addBoundaries, addBoxes, addNote, boundaryFromConnection, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
+  canvasNodes, editNote, moveItems, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
+  setLineAnchor, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH,
 } from "./diagramEditorModel";
+import { outerSide } from "./diagramResolver";
 import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { DiagramAddMenu } from "./DiagramAddMenu";
@@ -114,7 +119,7 @@ export function DiagramEditorPage() {
   const [adding, setAdding] = useState(false);
   const [newElement, setNewElement] = useState<{ typeId: string; at: { x: number; y: number } } | null>(null);
   const [newElementError, setNewElementError] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState<{ source: string; target: string } | null>(null);
+  const [connecting, setConnecting] = useState<{ source: string; target: string; realises?: string } | null>(null);
   const [toggleForm, setToggleForm] = useState<{ initial?: DiagramToggleValues } | null>(null);
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -179,10 +184,22 @@ export function DiagramEditorPage() {
     };
   }, [projectId, reloadModelLists]);
 
-  const createConnection = useCreateConnection(projectId, () => {
+  const createConnection = useCreateConnection(projectId, (id) => {
+    const outerId = connecting?.realises;
     setConnecting(null);
     reloadModelLists();
-    void editor.reload(false);
+    void (async () => {
+      if (outerId) {
+        try {
+          const created = await projectConnectionApi(projectId).get(id);
+          await projectConnectionApi(projectId).setRealisations(id, created.version, [outerId]);
+          showToast("The connection realises the outer connection.");
+        } catch (err) {
+          showToast(toErrorMessage(err, "The connection was created but could not be marked as realising the outer connection."), "error");
+        }
+      }
+      await editor.reload(false);
+    })();
   });
 
   // A switch's state on this page: the address overrides the saved default (the choice is never stored).
@@ -191,23 +208,43 @@ export function DiagramEditorPage() {
     [view, toggleOn, toggleOff],
   );
   const connectionDetail = diagram?.connection_detail ?? false;
+  const scopeId = diagram?.scope_element_id ?? null;
   const resolved = useMemo(
     () => (model
       ? resolveDiagram(model, {
         placed: layout.boxes.map((b) => b.elementId), togglesOff: new Set(toggles.filter((t) => !t.on).map((t) => t.id)), connectionDetail,
+        scopeId, boundaries: layout.boundaries.map((b) => ({ id: boundaryNodeId(b.connectionId), connectionId: b.connectionId })),
       })
       : NO_LINES),
-    [model, layout.boxes, toggles, connectionDetail],
+    [model, layout.boxes, layout.boundaries, toggles, connectionDetail, scopeId],
   );
+  /** The model's connections by id, the outer connections realised, and which connection realises which. */
+  const connectionsById = useMemo(() => new Map((model?.connections ?? []).map((c) => [c.id, c])), [model]);
+  const realisedBy = useMemo(() => {
+    const found = new Map<string, string[]>();
+    for (const r of model?.realisations ?? []) found.set(r.outer_connection_id, [...(found.get(r.outer_connection_id) ?? []), r.inner_connection_id]);
+    return found;
+  }, [model]);
+  /** The connections that cross the scope's boundary and are not yet drawn, for the Add menu's "Outside this element" group. */
+  const outerChoices = useMemo(() => {
+    if (!model || !scopeId) return [];
+    const parents = new Map(Object.entries(model.parents));
+    const drawn = new Set(layout.boundaries.map((b) => b.connectionId));
+    return model.connections.flatMap((c) => {
+      const side = outerSide(scopeId, parents, c.source_element_id, c.target_element_id);
+      if (side === null || drawn.has(c.id) || c.is_archived) return [];
+      return [{ connection: c, side, box: boundaryFromConnection(c, side, { x: 0, y: 0 }) }];
+    });
+  }, [model, scopeId, layout.boundaries]);
 
   const symbolSvg = useSymbolSvgs(projectId, layout.boxes.map((b) => b.symbol_id));
   const effectiveTheme = resolveEffectiveTheme(theme);
   const nodes = useMemo(
     () => canvasNodes(layout, {
       theme: effectiveTheme, symbolSvg, lockedLabel: (code) => `${code} (not visible)`, emptyNote: "Empty note", noteCaption: "Note",
-      hidden: resolved.hidden,
+      hidden: resolved.hidden, covered: new Set(realisedBy.keys()), coverageLabel: (isCovered) => (isCovered ? "Covered" : "Not covered"),
     }),
-    [layout, effectiveTheme, symbolSvg, resolved.hidden],
+    [layout, effectiveTheme, symbolSvg, resolved.hidden, realisedBy],
   );
   const edges = useMemo(
     () => canvasEdges(resolved.edges, layout, resolved.hidden, effectiveTheme),
@@ -261,10 +298,49 @@ export function DiagramEditorPage() {
   }
 
   async function startConnection(source: string, target: string) {
+    const boundaryId = [source, target].find((id) => id.startsWith(BOUNDARY_NODE_PREFIX));
+    if (boundaryId !== undefined) {
+      const element = boundaryId === source ? target : source;
+      const box = layout.boundaries.find((b) => boundaryNodeId(b.connectionId) === boundaryId);
+      if (box && !element.startsWith(BOUNDARY_NODE_PREFIX)) await startBoundaryConnection(box.connectionId, element);
+      return;
+    }
     const ends = layout.boxes.filter((b) => b.elementId === source || b.elementId === target);
     if (source.startsWith(NOTE_NODE_PREFIX) || target.startsWith(NOTE_NODE_PREFIX) || ends.some((b) => b.locked)) return;
     if (!(await ensureSaved())) return;
     setConnecting({ source, target });
+  }
+
+  /**
+   * Starts a connection between an inner element and the element outside a boundary box, to be marked as realising the box's
+   * outer connection once created. The ends follow the outer connection's direction (an output starts at the inner element);
+   * the form lets the person change them. Nothing is offered for a box whose outside element the viewer cannot read.
+   */
+  async function startBoundaryConnection(connectionId: string, elementId: string) {
+    const box = layout.boundaries.find((b) => b.connectionId === connectionId);
+    const inner = layout.boxes.find((b) => b.elementId === elementId);
+    if (!box || !inner || inner.locked) return;
+    if (box.locked) {
+      showToast("The element outside is not visible to you, so a connection to it cannot be made here.", "error");
+      return;
+    }
+    if (!(await ensureSaved())) return;
+    const fromInner = box.shape !== "input";
+    setConnecting({
+      source: fromInner ? elementId : box.outside_element_id, target: fromInner ? box.outside_element_id : elementId, realises: connectionId,
+    });
+  }
+
+  function addOuter(connectionId: string) {
+    const choice = outerChoices.find((c) => c.connection.id === connectionId);
+    if (!choice) return;
+    editor.edit((l) => addBoundaries(l, [boundaryFromConnection(choice.connection, choice.side, nextFreePosition(l))]));
+  }
+
+  /** Stores what a connection realises at once, then reads the diagram again so the box shows its new coverage. */
+  async function setRealises(connection: ArchitectureConnection, outerIds: string[]) {
+    await projectConnectionApi(projectId).setRealisations(connection.id, connection.version, outerIds);
+    await editor.reload(false);
   }
 
   async function createElementAt(name: string) {
@@ -337,6 +413,7 @@ export function DiagramEditorPage() {
   function removeSelected(chosen: GraphCanvasSelection) {
     if (!editable || chosen.kind !== "node") return;
     if (chosen.id.startsWith(NOTE_NODE_PREFIX)) editor.edit((l) => removeNote(l, chosen.id.slice(NOTE_NODE_PREFIX.length)));
+    else if (chosen.id.startsWith(BOUNDARY_NODE_PREFIX)) editor.edit((l) => removeBoundary(l, chosen.id.slice(BOUNDARY_NODE_PREFIX.length)));
     else editor.edit((l) => removeBox(l, chosen.id));
     setSelection(null);
   }
@@ -447,6 +524,8 @@ export function DiagramEditorPage() {
         elementTypes={elementTypes} disabled={!editable}
         onAddType={(typeId) => setNewElement({ typeId, at: nextFreePosition(layout) })}
         onAddExisting={() => setAdding(true)} onAddNote={addNewNote}
+        outerConnections={outerChoices.map((c) => ({ id: c.connection.id, label: `${c.connection.unique_code} · ${boundaryOutsideName(c.box)}` }))}
+        onAddOuter={addOuter}
         onSetup={canManageTypes ? () => (dirty ? setLeaveForSetup(true) : navigate(SETUP_PATH(projectId))) : undefined}
       />
       <MenuButton
@@ -469,6 +548,10 @@ export function DiagramEditorPage() {
     <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
       <DiagramSelectionPanel
         projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} hidden={resolved.hidden} editable={editable}
+        boundaries={layout.boundaries} connectionsById={connectionsById} realisedBy={realisedBy}
+        onRemoveBoundary={(box) => { editor.edit((l) => removeBoundary(l, box.connectionId)); setSelection(null); }}
+        onConnectBoundary={(box, elementId) => void startBoundaryConnection(box.connectionId, elementId)}
+        onSetRealises={setRealises}
         elements={elements} connectionTypes={reference.connectionTypes}
         onEditElement={(box) => { setElementFormError(null); setEditingElement(elements.find((e) => e.id === box.elementId) ?? null); }}
         onAddPort={portsApi.add} onChangePort={portsApi.change} onRemovePort={portsApi.remove}
@@ -541,7 +624,7 @@ export function DiagramEditorPage() {
               onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
               onEdgeAnchorChange={(edgeId, change) => {
                 const line = resolved.edges.find((e) => e.id === edgeId);
-                if (line) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
+                if (line && !line.source_is_boundary && !line.target_is_boundary) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
               }}
               onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected} onNodeOpen={openBoxInside}
               onDropItem={(payload, at) => {
@@ -557,7 +640,8 @@ export function DiagramEditorPage() {
         <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }} {...tabPanelProps("diagram-editor", "outline")}>
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
             <DiagramOutline
-              boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} parents={model.parents} hidden={resolved.hidden}
+              boxes={layout.boxes} notes={layout.notes} boundaries={layout.boundaries} covered={new Set(realisedBy.keys())}
+              edges={resolved.edges} parents={model.parents} hidden={resolved.hidden}
               selection={selection} onSelect={setSelection}
             />
           </div>

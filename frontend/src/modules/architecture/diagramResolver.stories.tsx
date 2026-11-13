@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
 import cases from "./diagramResolverCases.json";
-import { resolveLines, type ResolvedLine } from "./diagramResolver";
+import { outerSide, resolveLines, type ResolvedLine } from "./diagramResolver";
 
 /** One shared case: its inputs and the server's resolver's answer (see `diagramResolverCases.json`). */
 interface Case {
@@ -13,6 +13,9 @@ interface Case {
   hidden_elements: string[];
   hidden_connections: string[];
   merge_parallel: boolean;
+  boundaries?: { id: string; element_id: string; outside_id: string; connection_ids: string[] }[];
+  scope?: string;
+  outer_sides?: Record<string, string>;
   expected: {
     hidden_placed: string[];
     internal: Record<string, string[]>;
@@ -52,6 +55,7 @@ export const MatchesTheServersResolverOnEverySharedCase: Story = {
         hiddenElements: c.hidden_elements,
         hiddenConnections: c.hidden_connections,
         mergeParallel: c.merge_parallel,
+        boundaries: (c.boundaries ?? []).map((b) => ({ id: b.id, elementId: b.element_id, outsideId: b.outside_id, connectionIds: b.connection_ids })),
       });
       const got = {
         hidden_placed: [...result.hiddenPlaced].sort(),
@@ -61,9 +65,20 @@ export const MatchesTheServersResolverOnEverySharedCase: Story = {
       if (JSON.stringify(got) !== JSON.stringify({ ...c.expected, internal: sorted(c.expected.internal, got.internal) })) {
         failures.push(c.name);
       }
+      if (c.scope !== undefined) {
+        const parents = new Map(Object.entries(c.parents));
+        const outer = Object.fromEntries(
+          c.connections.flatMap((k) => {
+            const side = outerSide(c.scope as string, parents, k.source_id, k.target_id);
+            return side === null ? [] : [[k.id, side]];
+          }),
+        );
+        if (JSON.stringify(outer) !== JSON.stringify(c.outer_sides)) failures.push(`${c.name} (outer connections)`);
+      }
     }
     expect(failures).toEqual([]);
     expect(CASES.length).toBeGreaterThan(20);
+    expect(CASES.some((c) => (c.boundaries ?? []).length > 0)).toBe(true);
   },
 };
 

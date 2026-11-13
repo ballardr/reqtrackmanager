@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.organization import Organization
 from app.models.user import User
-from app.modules.architecture import records
+from app.modules.architecture import boundaries, records
 from app.modules.architecture._shared import (
     CONNECTION_MANAGE_PERMISSION,
     ELEMENT_MANAGE_PERMISSION,
@@ -51,6 +51,7 @@ from app.modules.architecture.schemas import (
     PortCreate,
     PortOut,
     PortUpdate,
+    RealisationsSet,
     StatusChange,
 )
 from app.modules.architecture.service import (
@@ -348,6 +349,21 @@ def add_record_routes(router: APIRouter) -> None:
         project = project_or_404(db, project_id)
         require_architect(db, current_user, project, CONNECTION_MANAGE_PERMISSION)
         connection = as_http(lambda: records.update_connection(db, project, current_user, connection_id, payload))
+        db.commit()
+        return connection_out(db, connection, current_user, project_id)
+
+    @router.put("/connections/{connection_id}/realisations", response_model=ConnectionOut)
+    def set_connection_realisations(
+        project_id: uuid.UUID, connection_id: uuid.UUID, payload: RealisationsSet,
+        current_user: User = Depends(view_connections), db: Session = Depends(get_db),
+    ):
+        """Sets the outer connections this connection realises: both of its ends must lie inside one end of each outer
+        connection, and no cycle may form (400 otherwise). The body quotes the `version` (409 if stale)."""
+        project = project_or_404(db, project_id)
+        require_architect(db, current_user, project, CONNECTION_MANAGE_PERMISSION)
+        connection = as_http(lambda: boundaries.set_realisations(
+            db, project, current_user, connection_id, payload.version, payload.outer_connection_ids,
+        ))
         db.commit()
         return connection_out(db, connection, current_user, project_id)
 

@@ -3,7 +3,8 @@
  *
  * The editor's "Add to diagram" menu button: one entry per element type (grouped by domain, the domain-neutral ones under "New element"; choosing one creates an element
  * at the next free place, dragging one onto the canvas creates it where it is dropped), then "Add existing elements" and
- * "Add note". Dragging is only one way in: every entry is a menu item, so the menu is usable from the keyboard.
+ * "Add note". On a diagram of an element's inside, a last group "Outside this element" lists the connections that cross the
+ * element's boundary, each drawn as a boundary box. Dragging is only one way in: every entry is a menu item, so the menu is usable from the keyboard.
  * For a person who may manage the project's types, a last entry (a gear) leads to the Element Types settings, so a type
  * that is missing can be added without hunting for the page.
  */
@@ -17,6 +18,12 @@ import { DOMAIN_LABEL, type Domain, type ElementType } from "./types";
 
 const DOMAIN_ORDER: Domain[] = ["software", "hardware", "any"];
 
+/** An outer connection that can still be added as a boundary box: its id and the text the menu shows. */
+export interface OuterConnectionChoice {
+  id: string;
+  label: string;
+}
+
 /**
  * Builds the menu's entries: the element types in domain groups, then the two non-type entries.
  *
@@ -26,7 +33,10 @@ const DOMAIN_ORDER: Domain[] = ["software", "hardware", "any"];
  */
 function addMenuItems(
   elementTypes: ElementType[],
-  handlers: { onAddType: (typeId: string) => void; onAddExisting: () => void; onAddNote: () => void; onSetup?: () => void },
+  handlers: {
+    onAddType: (typeId: string) => void; onAddExisting: () => void; onAddNote: () => void; onSetup?: () => void;
+    outerConnections: readonly OuterConnectionChoice[]; onAddOuter: (connectionId: string) => void;
+  },
 ): ActionMenuItem[] {
   const typeItems = DOMAIN_ORDER.flatMap((domain) => elementTypes
     .filter((t) => t.domain === domain)
@@ -40,8 +50,12 @@ function addMenuItems(
         event.dataTransfer.effectAllowed = "copy";
       },
     })));
+  const outerItems = handlers.outerConnections.map((c): ActionMenuItem => ({
+    label: c.label, key: `outer:${c.id}`, group: "Outside this element", onSelect: () => handlers.onAddOuter(c.id),
+  }));
   return [
     ...typeItems,
+    ...outerItems,
     { label: "Add existing elements", key: "existing", group: "Other", onSelect: handlers.onAddExisting },
     { label: "Add note", key: "note", group: "Other", onSelect: handlers.onAddNote },
     ...(handlers.onSetup
@@ -57,9 +71,11 @@ function addMenuItems(
  * @param onAddExisting Called by "Add existing elements".
  * @param onAddNote Called by "Add note".
  * @param onSetup Called by "Set up element types"; leave undefined for a person who may not manage types (no entry).
+ * @param outerConnections The connections crossing the diagram's element boundary that are not yet drawn (none for the system context).
+ * @param onAddOuter Called with an outer connection's id when it is chosen.
  */
 export function DiagramAddMenu({
-  elementTypes, disabled, onAddType, onAddExisting, onAddNote, onSetup,
+  elementTypes, disabled, onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter,
 }: {
   elementTypes: ElementType[];
   disabled: boolean;
@@ -67,11 +83,13 @@ export function DiagramAddMenu({
   onAddExisting: () => void;
   onAddNote: () => void;
   onSetup?: () => void;
+  outerConnections: readonly OuterConnectionChoice[];
+  onAddOuter: (connectionId: string) => void;
 }) {
   return (
     <MenuButton
       label="Add to diagram" menuLabel="Add to diagram" disabled={disabled}
-      items={addMenuItems(elementTypes, { onAddType, onAddExisting, onAddNote, onSetup })}
+      items={addMenuItems(elementTypes, { onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter })}
     />
   );
 }

@@ -66,6 +66,51 @@
   box-shadow: 0 0 0 2px var(--color-primary);
 }
 
+/* A shaped node (flag or ellipse) draws its outline as an SVG behind the text, so the box itself has no border. */
+.graph-node-shaped {
+  position: relative;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.graph-node-shaped .graph-node-text {
+  position: relative;
+  padding: 0 var(--space-3);
+}
+
+.graph-node-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.graph-node-outline polygon,
+.graph-node-outline ellipse {
+  fill: var(--color-surface);
+  stroke: var(--graph-node-accent, var(--color-border-strong, var(--color-text-muted)));
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-node-dashed .graph-node-outline polygon,
+.graph-node-dashed .graph-node-outline ellipse {
+  stroke-dasharray: 6 4;
+}
+
+.react-flow__node.selected .graph-node-shaped {
+  box-shadow: none;
+}
+
+.react-flow__node.selected .graph-node-outline polygon,
+.react-flow__node.selected .graph-node-outline ellipse {
+  stroke: var(--color-primary);
+  stroke-width: 3px;
+}
+
 .graph-node-symbol {
   max-width: 100%;
   max-height: 60%;

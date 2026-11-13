@@ -277,6 +277,22 @@ class ConnectionUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=20000)
 
 
+class RealisationsSet(BaseModel):
+    """Sets the outer connections an inner connection realises (`version` is the connection's optimistic lock)."""
+
+    version: int
+    outer_connection_ids: list[UUID] = Field(default_factory=list, max_length=50)
+
+
+class ConnectionRef(BaseModel):
+    """A connection named from another connection's page: its code, name and the type it is."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    status: str
+
+
 class ConnectionOut(ProjectScopedRow):
     """A connection with its type and end names.
 
@@ -313,6 +329,8 @@ class ConnectionOut(ProjectScopedRow):
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    realises: list[ConnectionRef] = Field(default_factory=list)
+    realised_by: list[ConnectionRef] = Field(default_factory=list)
 
 
 # --- Collections and sharing -----------------------------------------------
@@ -479,15 +497,26 @@ class AnchorOut(AnchorIn):
     """A stored anchor."""
 
 
+class BoundaryIn(BaseModel):
+    """A boundary box: the outer connection it stands for and its box on the diagram."""
+
+    connection_id: UUID
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 120.0
+    height: Extent = 48.0
+
+
 class LayoutSave(BaseModel):
-    """Replaces a diagram's placements, notes and line anchors (what the editor saves). `version` is the optimistic lock;
-    an element left out of `placements` is removed from the diagram (never from the model), with its anchors. `anchors`
-    left out (`None`) keeps the stored ones; an empty list clears them."""
+    """Replaces a diagram's placements, notes, line anchors and boundary boxes (what the editor saves). `version` is the
+    optimistic lock; an element left out of `placements` is removed from the diagram (never from the model), with its
+    anchors. `anchors` and `boundaries` left out (`None`) keep the stored ones; an empty list clears them."""
 
     version: int
     placements: list[PlacementIn] = Field(default_factory=list, max_length=2000)
     notes: list[NoteIn] = Field(default_factory=list, max_length=200)
     anchors: list[AnchorIn] | None = Field(default=None, max_length=5000)
+    boundaries: list[BoundaryIn] | None = Field(default=None, max_length=2000)
 
 
 class PlacementAdd(PlacementIn):
@@ -588,6 +617,33 @@ class ViewNode(BaseModel):
     internal_connection_ids: list[UUID]
 
 
+class ViewBoundary(BaseModel):
+    """A boundary box as the diagram draws it: the outer connection it stands for and the element outside.
+
+    `shape` is a `BoundaryShape` value. A `locked` box is one whose outside element the viewer cannot read: only the
+    connection's and the element's codes are given. `scope_end_element_id` is the element inside the scope the outer
+    connection attaches to; `covered` is whether any connection realises the outer connection."""
+
+    id: UUID
+    connection_id: UUID
+    connection_code: str
+    connection_name: str
+    type_name: str
+    shape: str
+    locked: bool
+    outside_element_id: UUID
+    outside_element_code: str
+    outside_element_name: str
+    scope_end_element_id: UUID
+    scope_end_port_name: str | None
+    covered: bool
+    realised_by_count: int
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 class ViewHop(BaseModel):
     """A hidden element a bridged line passes through."""
 
@@ -606,6 +662,8 @@ class ViewEdge(BaseModel):
     id: str
     source_element_id: UUID
     target_element_id: UUID
+    source_is_boundary: bool = False
+    target_is_boundary: bool = False
     two_way: bool
     indirect: bool
     rolled_up: bool
@@ -630,6 +688,7 @@ class DiagramView(BaseModel):
     edges: list[ViewEdge]
     notes: list[NoteOut]
     anchors: list[AnchorOut] = Field(default_factory=list)
+    boundaries: list[ViewBoundary] = Field(default_factory=list)
 
 
 class ModelElement(BaseModel):
@@ -669,6 +728,13 @@ class ModelToggleMembers(BaseModel):
     connection_ids: list[UUID]
 
 
+class ModelRealisation(BaseModel):
+    """One inner connection realising one outer connection."""
+
+    inner_connection_id: UUID
+    outer_connection_id: UUID
+
+
 class DiagramModel(BaseModel):
     """The model data a diagram's lines are resolved from, so the browser can redraw them while a layout is edited.
 
@@ -680,3 +746,4 @@ class DiagramModel(BaseModel):
     connections: list[ConnectionOut]
     connection_types: list[ModelConnectionType]
     toggle_members: list[ModelToggleMembers]
+    realisations: list[ModelRealisation] = Field(default_factory=list)

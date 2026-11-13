@@ -12,7 +12,8 @@ import type { OrgUser } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
-  DiagramModel, DiagramToggle, DiagramView, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType, ModelElement, Port,
+  DiagramModel, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
+  ModelElement, Port,
 } from "./types";
 
 export const PROJECT_ID = "project-1";
@@ -50,7 +51,7 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
     source_shared: false, target_element_id: "el-2", target_element_code: "ELM-002", target_element_name: "Orders",
     target_port_id: null, target_port_name: null, target_locked: false, target_shared: false, protocol: "HTTPS/1.1",
     description: "", status: "active", version: 1, creator_id: "user-1", is_archived: false, archived_at: null,
-    created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
+    created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", realises: [], realised_by: [], ...overrides,
   };
 }
 
@@ -74,7 +75,7 @@ export function buildViewNode(overrides: Partial<DiagramViewNode> = {}): Diagram
 
 export function buildViewEdge(overrides: Partial<DiagramViewEdge> = {}): DiagramViewEdge {
   return {
-    id: "edge-1", source_element_id: "el-1", target_element_id: "el-2", two_way: false, indirect: false, rolled_up: false,
+    id: "edge-1", source_element_id: "el-1", target_element_id: "el-2", source_is_boundary: false, target_is_boundary: false, two_way: false, indirect: false, rolled_up: false,
     bridged: false, count: 1, type_name: null, line_style: null, color_light: null, color_dark: null, label: null,
     connections: [buildConnection()], hops: [], ...overrides,
   };
@@ -98,6 +99,7 @@ export function buildDiagramView(overrides: Partial<DiagramView> = {}): DiagramV
     edges: [buildViewEdge()],
     notes: [],
     anchors: [],
+    boundaries: [],
     ...overrides,
   };
 }
@@ -131,8 +133,73 @@ export function buildDiagramModel(overrides: Partial<DiagramModel> = {}): Diagra
     connections: [buildConnection()],
     connection_types: [MODEL_REST_TYPE],
     toggle_members: [{ toggle_id: "tg-1", element_ids: ["el-3"], connection_ids: [] }],
+    realisations: [],
     ...overrides,
   };
+}
+
+/** A boundary box of the scoped scene below (`buildBoundaryScene`): the outer connection CON-009 from Platform to Cloud. */
+export function buildViewBoundary(overrides: Partial<DiagramViewBoundary> = {}): DiagramViewBoundary {
+  return {
+    id: "bx-1", connection_id: "con-9", connection_code: "CON-009", connection_name: "Platform uplink", type_name: "REST API",
+    shape: "output", locked: false, outside_element_id: "el-8", outside_element_code: "ELM-008", outside_element_name: "Cloud",
+    scope_end_element_id: "el-9", scope_end_port_name: null, covered: true, realised_by_count: 1, x: 400, y: 40, width: 140, height: 56,
+    ...overrides,
+  };
+}
+
+/**
+ * A diagram of the inside of Platform (ELM-009): Gateway and Orders placed inside it, Cloud (ELM-008) outside it, the outer
+ * connection CON-009 (Platform to Cloud) drawn as a boundary box, and CON-010 (Gateway to Platform) realising it. The view's
+ * lines are not used by the editor (it resolves them from the model); `edges` holds the one drawn to the box for completeness.
+ */
+export function buildBoundaryScene(opts: { realised?: boolean } = {}): { view: DiagramView; model: DiagramModel; elements: ArchitectureElement[] } {
+  const realised = opts.realised ?? true;
+  const outer = buildConnection({
+    id: "con-9", unique_code: "CON-009", name: "Platform uplink", source_element_id: "el-9", source_element_code: "ELM-009",
+    source_element_name: "Platform", source_port_id: null, source_port_name: null, target_element_id: "el-8",
+    target_element_code: "ELM-008", target_element_name: "Cloud", target_port_id: null, protocol: "HTTPS",
+    realised_by: realised ? [{ id: "con-10", unique_code: "CON-010", name: "Gateway uplink", status: "active" }] : [],
+  });
+  const inner = buildConnection({
+    id: "con-10", unique_code: "CON-010", name: "Gateway uplink", source_element_id: "el-1", source_element_code: "ELM-001",
+    source_element_name: "Gateway", source_port_id: null, source_port_name: null, target_element_id: "el-9",
+    target_element_code: "ELM-009", target_element_name: "Platform", target_port_id: null, protocol: "HTTPS",
+    realises: realised ? [{ id: "con-9", unique_code: "CON-009", name: "Platform uplink", status: "active" }] : [],
+  });
+  const between = buildConnection({
+    id: "con-11", unique_code: "CON-011", name: "Order flow", source_element_id: "el-1", source_element_code: "ELM-001",
+    source_element_name: "Gateway", target_element_id: "el-2", target_element_code: "ELM-002", target_element_name: "Orders",
+  });
+  const view = buildDiagramView({
+    diagram: buildDiagram({ scope_element_id: "el-9", scope_element_code: "ELM-009", scope_element_name: "Platform", toggle_count: 0, placement_count: 2 }),
+    toggles: [],
+    nodes: [
+      buildViewNode({ parent_id: "el-9" }),
+      buildViewNode({ placement_id: "pl-2", element_id: "el-2", unique_code: "ELM-002", name: "Orders", x: 200, y: 160, parent_id: "el-9" }),
+    ],
+    edges: [buildViewEdge({
+      id: "edge-bx", source_element_id: "el-1", target_element_id: "bx-1", target_is_boundary: true, connections: [inner],
+    }), buildViewEdge({ id: "edge-order", source_element_id: "el-1", target_element_id: "el-2", connections: [between] })],
+    boundaries: [buildViewBoundary({ covered: realised, realised_by_count: realised ? 1 : 0 })],
+  });
+  const model = buildDiagramModel({
+    elements: [
+      buildModelElement(), buildModelElement({ id: "el-2", unique_code: "ELM-002", name: "Orders" }),
+      buildModelElement({ id: "el-9", unique_code: "ELM-009", name: "Platform" }),
+      buildModelElement({ id: "el-8", unique_code: "ELM-008", name: "Cloud" }),
+    ],
+    parents: { "el-1": "el-9", "el-2": "el-9", "el-9": null, "el-8": null },
+    connections: [outer, inner, between],
+    toggle_members: [],
+    realisations: realised ? [{ inner_connection_id: "con-10", outer_connection_id: "con-9" }] : [],
+  });
+  const elements = [
+    buildElement({ parent_id: "el-9" }), buildElement({ id: "el-2", unique_code: "ELM-002", name: "Orders", ports: [], parent_id: "el-9" }),
+    buildElement({ id: "el-9", unique_code: "ELM-009", name: "Platform", ports: [], child_count: 2 }),
+    buildElement({ id: "el-8", unique_code: "ELM-008", name: "Cloud", ports: [] }),
+  ];
+  return { view, model, elements };
 }
 
 export const ELEMENT_TYPES: ElementType[] = [

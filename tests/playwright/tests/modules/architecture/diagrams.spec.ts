@@ -9,10 +9,12 @@ installCleanupHook();
 const API = "http://localhost:8000";
 
 /** Creates an active element through the API and returns its id; the diagram is the subject here, not the element form. */
-async function createElement(request: APIRequestContext, headers: Record<string, string>, projectId: string, name: string): Promise<string> {
+async function createElement(
+  request: APIRequestContext, headers: Record<string, string>, projectId: string, name: string, parentId?: string,
+): Promise<string> {
   const base = `${API}/api/v1/projects/${projectId}/modules/architecture`;
   const types = await (await request.get(`${base}/element-types`, { headers })).json();
-  const created = await request.post(`${base}/elements`, { headers, data: { name, element_type_id: types[0].id, activate: true } });
+  const created = await request.post(`${base}/elements`, { headers, data: { name, element_type_id: types[0].id, activate: true, parent_id: parentId } });
   expect(created.ok(), await created.text()).toBeTruthy();
   return (await created.json()).id;
 }
@@ -403,6 +405,93 @@ test.describe("System Architecture: diagram editor", () => {
       const child = elements.find((e: { name: string }) => e.name === filter);
       const parent = elements.find((e: { name: string }) => e.name === head);
       expect(child.parent_id).toBe(parent.id);
+    });
+  });
+
+  test("an architect draws the connections that cross an element's boundary, marks one as realised and sees it covered", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchBoundary", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const scope = await createElement(page.request, adminHeaders, project.id, `Telemetry ${suffix}`);
+    const encoder = `Encoder ${suffix}`;
+    const framer = `Framer ${suffix}`;
+    const encoderId = await createElement(page.request, adminHeaders, project.id, encoder, scope);
+    const framerId = await createElement(page.request, adminHeaders, project.id, framer, scope);
+    const cloud = `Cloud ${suffix}`;
+    const cloudId = await createElement(page.request, adminHeaders, project.id, cloud);
+    const connectionTypes = await (await page.request.get(`${base}/connection-types`, { headers: adminHeaders })).json();
+    // A one-way type, so the box's direction (an output: the scope sends) is known.
+    const restApi = connectionTypes.find((t: { name: string }) => t.name === "REST API");
+    const connect = async (source: string, target: string, name: string) => {
+      const made = await page.request.post(`${base}/connections`, {
+        headers: adminHeaders,
+        data: { connection_type_id: restApi.id, source_element_id: source, target_element_id: target, name, activate: true },
+      });
+      expect(made.ok(), await made.text()).toBeTruthy();
+      return made.json();
+    };
+    const outer = await connect(scope, cloudId, `Uplink ${suffix}`);
+    const inner = await connect(encoderId, framerId, `Frames ${suffix}`);
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Inside ${suffix}`, activate: true, populate: true, scope_element_id: scope },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    const box = page.getByLabel(`${outer.unique_code}, node`, { exact: true });
+
+    await test.step("the Add menu lists the connection crossing the boundary and draws it as a box that is not covered yet", async () => {
+      await expect(box).toHaveCount(0);
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: new RegExp(`^${outer.unique_code} · ELM-\\d+ ${cloud}$`) }).click();
+      await expect(box).toBeVisible();
+      await expect(box).toContainText("Not covered");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+    });
+
+    await test.step("the box is kept on reload and the Outline lists it with its direction", async () => {
+      await page.reload();
+      await expect(box).toContainText("Not covered");
+      await page.getByRole("tab", { name: "Outline" }).click();
+      const row = page.getByRole("table", { name: "Outer connections" }).getByRole("row", { name: new RegExp(outer.unique_code) });
+      await expect(row).toContainText("Output");
+      await expect(row).toContainText("Not covered");
+      await page.getByRole("tab", { name: "Drawing" }).click();
+    });
+
+    await test.step("choosing the box lists what realises it and offers a connection to an inner element", async () => {
+      await selectNode(page, outer.unique_code);
+      const panel = page.getByRole("region", { name: "Selection" });
+      await expect(panel.getByText("Not covered.")).toBeVisible();
+      const choose = panel.getByRole("combobox", { name: /Connect to/ });
+      await choose.selectOption(await choose.locator("option", { hasText: encoder }).getAttribute("value") ?? "");
+      const dialog = page.getByRole("dialog", { name: "New connection" });
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+    });
+
+    await test.step("a line between inner elements is marked as realising the outer connection and the box reads covered", async () => {
+      const line = page.getByLabel(`Connection from ${encoder} to ${framer}`, { exact: true });
+      await expect(line).toBeAttached();
+      await line.focus();
+      await expect(line).toBeFocused();
+      await page.keyboard.press("Enter");
+      const panel = page.getByRole("region", { name: "Selection" });
+      await expect(panel.getByText("No outer connection.")).toBeVisible();
+      const choose = panel.getByRole("combobox", { name: "Add outer connection" });
+      await choose.selectOption(await choose.locator("option", { hasText: outer.unique_code }).getAttribute("value") ?? "");
+      await expect(box).toContainText("Covered");
+      await expect(box).not.toContainText("Not covered");
+    });
+
+    await test.step("the connection page lists both sides of the realisation", async () => {
+      await page.goto(`/projects/${project.id}/modules/architecture/connections/${inner.id}`);
+      await expect(page.getByText("Realises", { exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: outer.unique_code })).toBeVisible();
+      await page.goto(`/projects/${project.id}/modules/architecture/connections/${outer.id}`);
+      await expect(page.getByText("Realised by", { exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: inner.unique_code })).toBeVisible();
     });
   });
 });

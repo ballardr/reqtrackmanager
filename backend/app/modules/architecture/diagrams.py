@@ -2,7 +2,7 @@
 Module: modules.architecture.diagrams
 
 The rules for diagrams and what they hold: create, edit, move between statuses, archive and delete a diagram; replace
-its layout (placements, notes and line anchors) or its toggles; place or unplace one element. The read side (the resolved view) is in
+its layout (placements, notes, line anchors and boundary boxes) or its toggles; place or unplace one element. The read side (the resolved view) is in
 `diagram_view`.
 
 Responsibilities:
@@ -28,6 +28,9 @@ Design decisions:
 - **Line anchors follow the boxes.** An anchor joins two placed elements, so unplacing either removes it (the layout save and
   `remove_placement` both do), and a save may not name an element that is not placed. An anchor whose line is not drawn
   at the moment (a view switch hides an end, or roll-up draws another pair) is kept and simply unused.
+- **Boundary boxes follow the scope.** A box stands for an outer connection of the diagram's scope (`boundaries`), is
+  saved with the layout, and is removed when the scope changes; a stored box whose connection later stops being outer is
+  kept and not drawn.
 - **Toggle rules name vocabulary rows, domains and tag names, never records;** a toggle's manual members are the only
   record references, and each must be readable.
 
@@ -47,6 +50,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture.enums import RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -68,6 +72,7 @@ from app.modules.architecture.records import (
 )
 from app.modules.architecture.schemas import (
     AnchorIn,
+    BoundaryIn,
     DiagramCreate,
     DiagramOut,
     DiagramUpdate,
@@ -152,7 +157,7 @@ def _check_new_element(db: Session, viewer: Viewer, element_ids: Iterable[uuid.U
             raise RuleError("A retired element of another owner cannot be newly added.", 400)
 
 
-def _check_box(placement: PlacementIn | NoteIn) -> None:
+def _check_box(placement: PlacementIn | NoteIn | BoundaryIn) -> None:
     """Rejects a box that is not finite (the schema bounds each number; this guards a value that slips through)."""
     if not all(math.isfinite(v) for v in (placement.x, placement.y, placement.width, placement.height)):
         raise RuleError("A diagram box must have finite coordinates.", 400)
@@ -230,7 +235,11 @@ def update_diagram(
         return diagram
     _touch(diagram, **changes)
     db.flush()
-    _audit(db, diagram.id, "updated", actor, project.id, fields=sorted(changes))
+    cleared = boundary_rules.clear_boundaries(db, diagram.id) if "scope_element_id" in changes else 0
+    _audit(
+        db, diagram.id, "updated", actor, project.id, fields=sorted(changes),
+        **({"boundaries_removed": cleared} if cleared else {}),
+    )
     return diagram
 
 
@@ -378,7 +387,8 @@ def _box(row: ArchitectureDiagramPlacement | ArchitectureDiagramNote) -> tuple[f
 def save_layout(
     db: Session, project: Any, actor: User, diagram_id: uuid.UUID, payload: LayoutSave,
 ) -> ArchitectureDiagram:
-    """Replaces the diagram's placements, notes and (when given) line anchors with the lists given. The caller commits.
+    """Replaces the diagram's placements, notes and (when given) line anchors and boundary boxes with the lists given.
+    The caller commits.
 
     Elements already placed stay (even if now retired or unreadable); each newly placed element must pass
     `_check_new_element`. An element left out is unplaced, never deleted, and its line anchors go with it. Nothing
@@ -386,7 +396,8 @@ def save_layout(
 
     Raises:
         RuleError: 404 if absent, 409 on a stale `version`, 400 for a repeated or unavailable element, a note id that
-            is not this diagram's, a box that is not finite, or an anchor that is not between two placed elements.
+            is not this diagram's, a box that is not finite, an anchor that is not between two placed elements, or a
+            new boundary box that is not for an open outer connection of the diagram's scope.
     """
     diagram = get_diagram(db, project.id, diagram_id, lock=True)
     _check_version(diagram, payload.version)
@@ -400,6 +411,13 @@ def save_layout(
         _check_anchors(payload.anchors, set(wanted_ids))
     existing = {p.element_id: p for p in placements_of(db, diagram.id)}
     _check_new_element(db, Viewer.of_user(actor, project), [e for e in wanted_ids if e not in existing])
+    if payload.boundaries is not None:
+        for boundary_box in payload.boundaries:
+            _check_box(boundary_box)
+        boundary_rules.check_boundaries(
+            db, project.id, diagram.scope_element_id, payload.boundaries,
+            {b.connection_id: b for b in boundary_rules.boundaries_of(db, diagram.id)},
+        )
 
     added = removed = moved = 0
     for element_id, old in existing.items():
@@ -446,15 +464,16 @@ def save_layout(
             notes_changed += 1
 
     anchors_changed = _sync_anchors(db, diagram.id, payload.anchors, set(wanted_ids))
+    boundaries_changed = boundary_rules.sync_boundaries(db, diagram.id, payload.boundaries)
 
-    if not (added or removed or moved or notes_changed or anchors_changed):
+    if not (added or removed or moved or notes_changed or anchors_changed or boundaries_changed):
         return diagram
     diagram.version += 1
     db.flush()
     _audit(
         db, diagram.id, "layout_saved", actor, project.id,
         placements_added=added, placements_removed=removed, placements_moved=moved, notes_changed=notes_changed,
-        anchors_changed=anchors_changed,
+        anchors_changed=anchors_changed, boundaries_changed=boundaries_changed,
     )
     return diagram
 

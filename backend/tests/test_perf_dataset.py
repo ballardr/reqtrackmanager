@@ -617,6 +617,11 @@ def test_every_generated_type_populates_the_columns_its_api_create_path_populate
             assert resp.status_code in (200, 201), f"POST {path}: {resp.text}"
             return resp.json()
 
+        def put(self, path, body=None):
+            resp = client.put(f"/api/v1{path}", json=body or {}, headers=auth_headers(token))
+            assert resp.status_code in (200, 201), f"PUT {path}: {resp.text}"
+            return resp.json()
+
         def get(self, path):
             resp = client.get(f"/api/v1{path}", headers=auth_headers(token))
             assert resp.status_code == 200, f"GET {path}: {resp.text}"

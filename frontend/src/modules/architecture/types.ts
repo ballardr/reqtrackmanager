@@ -186,6 +186,14 @@ export interface ElementCreateValues extends ElementFieldValues {
   ports: PortValues[];
 }
 
+/** A connection named from another connection's page (what it realises, or what realises it). */
+export interface ConnectionRef {
+  id: string;
+  unique_code: string;
+  name: string;
+  status: ArchitectureRecordStatus;
+}
+
 export interface ArchitectureConnection extends ProjectScopedRow {
   id: string;
   project_id: string;
@@ -217,6 +225,10 @@ export interface ArchitectureConnection extends ProjectScopedRow {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  /** The outer connections this one realises (it lies inside the interface each declares). */
+  realises: ConnectionRef[];
+  /** The inner connections that realise this one. */
+  realised_by: ConnectionRef[];
 }
 
 /** The fields the connection create and edit forms share. */
@@ -383,8 +395,11 @@ export interface DiagramViewHop {
 /** A line between two placed elements and the connections behind it. */
 export interface DiagramViewEdge {
   id: string;
+  /** An element id, or a boundary box's id when `source_is_boundary`. */
   source_element_id: string;
   target_element_id: string;
+  source_is_boundary: boolean;
+  target_is_boundary: boolean;
   two_way: boolean;
   indirect: boolean;
   rolled_up: boolean;
@@ -397,6 +412,34 @@ export interface DiagramViewEdge {
   label: string | null;
   connections: ArchitectureConnection[];
   hops: DiagramViewHop[];
+}
+
+/** How a boundary box is drawn, from the direction of the outer connection it stands for, seen from inside the scope. */
+export type BoundaryShape = "input" | "output" | "bidirectional" | "dot";
+
+/**
+ * A boundary box: a scoped diagram's stand-in for one outer connection (the scope, or an element inside it, to an element
+ * outside). A `locked` box is one whose outside element the viewer cannot read: codes only, drawn as a dot.
+ */
+export interface DiagramViewBoundary {
+  id: string;
+  connection_id: string;
+  connection_code: string;
+  connection_name: string;
+  type_name: string;
+  shape: BoundaryShape;
+  locked: boolean;
+  outside_element_id: string;
+  outside_element_code: string;
+  outside_element_name: string;
+  scope_end_element_id: string;
+  scope_end_port_name: string | null;
+  covered: boolean;
+  realised_by_count: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface DiagramNote {
@@ -416,6 +459,7 @@ export interface DiagramView {
   edges: DiagramViewEdge[];
   notes: DiagramNote[];
   anchors: DiagramAnchor[];
+  boundaries: DiagramViewBoundary[];
 }
 
 /** Where a drawn line meets its two boxes, when a person chose it; an end that is null is automatic. */
@@ -466,6 +510,14 @@ export interface DiagramModel {
   connections: ArchitectureConnection[];
   connection_types: ModelConnectionType[];
   toggle_members: ModelToggleMembers[];
+  /** Which connection realises which (both live), so the editor can join a realising connection to its boundary box. */
+  realisations: ModelRealisation[];
+}
+
+/** One inner connection realising one outer connection. */
+export interface ModelRealisation {
+  inner_connection_id: string;
+  outer_connection_id: string;
 }
 
 /** One box as saved. */
@@ -482,6 +534,15 @@ export interface PlacementValues {
 export interface NoteValues {
   id: string | null;
   text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** One boundary box as saved: the outer connection it stands for and its box. */
+export interface BoundaryValues {
+  connection_id: string;
   x: number;
   y: number;
   width: number;

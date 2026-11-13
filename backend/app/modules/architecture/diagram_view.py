@@ -15,6 +15,8 @@ Responsibilities:
 Design decisions:
 - **The viewer's project's connections only.** A connection belongs to the project that created it, so a diagram draws
   that project's connections, even where an end is an element another owner shares.
+- **Boundary boxes are drawn from the stored boxes that are still outer.** Each is a placed element with no parent for the
+  resolver, so a realising connection reaches it; a box whose outside element the viewer cannot read is locked.
 - **Retired and archived connections are left out** (retired only unless `include_retired`), as the lists' "Open only".
   A retired or archived *element* stays drawn, flagged by its status, since a diagram is a view of what was placed.
 - **Rules are evaluated over every element the diagram involves** (placed elements and connection ends), so a transit
@@ -35,9 +37,10 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import diagrams, records
 from app.modules.architecture.connection_tree import descendant_map
-from app.modules.architecture.diagram_resolver import ModelConnection, Resolution, resolve
+from app.modules.architecture.diagram_resolver import Boundary, ModelConnection, Resolution, outer_side, resolve
 from app.modules.architecture.enums import AttachPoint, ElementShape
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -47,12 +50,14 @@ from app.modules.architecture.models import (
     ArchitectureElement,
     ArchitectureElementType,
 )
+from app.modules.architecture.realisations import realisations_of
 from app.modules.architecture.schemas import (
     AnchorOut,
     DiagramView,
     NoteOut,
     ToggleOut,
     ToggleRule,
+    ViewBoundary,
     ViewEdge,
     ViewHop,
     ViewNode,
@@ -197,6 +202,7 @@ def build_view(
             if member.connection_id is not None and member.connection_id in connection_ids:
                 hidden_connections.add(member.connection_id)
 
+    boundary_boxes = _boundary_boxes(db, viewer, diagram, connections, readable, parents)
     resolution = resolve(
         placed=placed_ids, parents=parents,
         connections=[
@@ -206,14 +212,17 @@ def build_view(
             for c in connections if c.source_element_id in elements and c.target_element_id in elements
         ],
         hidden_elements=hidden_elements, hidden_connections=hidden_connections,
-        merge_parallel=not diagram.connection_detail,
+        merge_parallel=not diagram.connection_detail, boundaries=[b[0] for b in boundary_boxes],
     )
 
     return DiagramView(
         diagram=diagrams.diagram_outs(db, [diagram], viewer)[0],
         toggles=_toggle_outs(toggles, members, rules, state),
         nodes=_nodes(db, viewer, placements, elements, readable, types, resolution, hidden_elements, parents),
-        edges=_edges(db, viewer, diagram, connections, connection_types, elements, readable, resolution),
+        edges=_edges(
+            db, viewer, diagram, connections, connection_types, elements, readable, resolution,
+            {b[0].id for b in boundary_boxes},
+        ),
         notes=[NoteOut(id=n.id, text=n.text, x=n.x, y=n.y, width=n.width, height=n.height) for n in notes],
         anchors=[
             AnchorOut(
@@ -223,7 +232,58 @@ def build_view(
             )
             for a in diagrams.anchors_of(db, diagram.id)
         ],
+        boundaries=[b[1] for b in boundary_boxes],
     )
+
+
+def _boundary_boxes(
+    db: Session, viewer: Viewer, diagram: ArchitectureDiagram, connections: list[ArchitectureConnection], readable,
+    parents,
+) -> list[tuple[Boundary, ViewBoundary]]:
+    """The diagram's boundary boxes that can be drawn, each as the resolver's input and the API shape.
+
+    A stored box whose connection is no longer live (retired, archived) or no longer outer for the scope is left out
+    (kept in the database, not drawn). A box whose outside element the viewer cannot read is locked: codes only and a
+    dot shape, so no direction is disclosed.
+    """
+    scope_id = diagram.scope_element_id
+    rows = boundary_rules.boundaries_of(db, diagram.id) if scope_id is not None else []
+    if scope_id is None or not rows:
+        return []
+    by_id = {c.id: c for c in connections}
+    drawn = [
+        (row, by_id[row.connection_id], side) for row in rows if row.connection_id in by_id
+        if (side := outer_side(scope_id, parents, by_id[row.connection_id].source_element_id, by_id[row.connection_id].target_element_id)) is not None
+    ]
+    if not drawn:
+        return []
+    outs = {o.id: o for o in records.connection_outs(db, [c for _row, c, _side in drawn], viewer)}
+    realised: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for r in realisations_of(db, [c.id for _row, c, _side in drawn]):
+        if r.outer_connection_id in outs and r.inner_connection_id in by_id:
+            realised.setdefault(r.outer_connection_id, []).append(r.inner_connection_id)
+    result: list[tuple[Boundary, ViewBoundary]] = []
+    for row, c, side in drawn:
+        out = outs[c.id]
+        scope_is_source = side == c.source_element_id
+        outside_id = c.target_element_id if scope_is_source else c.source_element_id
+        locked = outside_id not in readable
+        inner = realised.get(c.id, [])
+        shape = boundary_rules.shape_for(out.directional, scope_is_source, not locked)
+        result.append((
+            Boundary(id=row.id, element_id=side, outside_id=outside_id, connection_ids=tuple(inner)),
+            ViewBoundary(
+                id=row.id, connection_id=c.id, connection_code=c.unique_code, connection_name="" if locked else c.name,
+                type_name="" if locked else out.connection_type_name, shape=shape.value, locked=locked,
+                outside_element_id=outside_id,
+                outside_element_code=out.target_element_code if scope_is_source else out.source_element_code,
+                outside_element_name=out.target_element_name if scope_is_source else out.source_element_name,
+                scope_end_element_id=side,
+                scope_end_port_name=out.source_port_name if scope_is_source else out.target_port_name,
+                covered=bool(inner), realised_by_count=len(inner), x=row.x, y=row.y, width=row.width, height=row.height,
+            ),
+        ))
+    return result
 
 
 def _toggle_outs(toggles, members, rules, state: ToggleState) -> list[ToggleOut]:
@@ -303,7 +363,7 @@ def _edge_label(count: int, type_name: str | None, protocol: str) -> str | None:
 
 def _edges(
     db: Session, viewer: Viewer, diagram: ArchitectureDiagram, connections, connection_types, elements, readable,
-    resolution: Resolution,
+    resolution: Resolution, boundary_ids: Collection[uuid.UUID] = (),
 ) -> list[ViewEdge]:
     """The lines to draw, each with the connections behind it (as the viewer may read them)."""
     by_id = {c.id: c for c in connections}
@@ -319,7 +379,8 @@ def _edges(
         protocols = {m.protocol for m in members}
         edges.append(ViewEdge(
             id=f"{line.source_id}-{line.target_id}-{line.connection_ids[0]}", source_element_id=line.source_id,
-            target_element_id=line.target_id, two_way=line.two_way, indirect=line.indirect, rolled_up=line.rolled_up,
+            target_element_id=line.target_id, source_is_boundary=line.source_id in boundary_ids,
+            target_is_boundary=line.target_id in boundary_ids, two_way=line.two_way, indirect=line.indirect, rolled_up=line.rolled_up,
             bridged=line.bridged, count=len(members),
             type_name=kind.name if detail and kind is not None else None,
             line_style=kind.line_style if detail and kind is not None else None,

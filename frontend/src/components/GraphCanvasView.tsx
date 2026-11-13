@@ -45,12 +45,12 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
-import { GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
+import { GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection, type GraphNodeOutline } from "./GraphCanvas";
 import { ATTACH_POINTS, lineAttachPoints, type AttachPoint } from "./graphAttachPoints";
 
 const DEFAULT_WIDTH = 160;
@@ -66,7 +66,15 @@ const RESIZE_KEYS: Record<string, { width: number; height: number }> = {
   ArrowUp: { width: 0, height: -KEY_RESIZE_STEP },
 };
 
-type NodeData = { label: string; caption?: string; symbol: string | null; accent?: string; dashed?: boolean; resizable: boolean };
+type NodeData = {
+  label: string;
+  caption?: string;
+  symbol: string | null;
+  accent?: string;
+  dashed?: boolean;
+  outline: GraphNodeOutline;
+  resizable: boolean;
+};
 type FlowNode = Node<NodeData, "graph">;
 
 /**
@@ -84,13 +92,33 @@ const HANDLE_STYLE: Partial<Record<AttachPoint, CSSProperties>> = {
   top_left: { top: 0, left: 0, transform: "translate(-50%, -50%)" },
 };
 
+/**
+ * The points of a shaped node's outline in a 0-100 square that is stretched over the box (the stroke does not stretch), or
+ * null for an ellipse (drawn as an ellipse) and a rectangle (the box's own border).
+ */
+const OUTLINE_POINTS: Partial<Record<GraphNodeOutline, string>> = {
+  "pointed-right": "0,0 88,0 100,50 88,100 0,100",
+  "pointed-left": "12,0 100,0 100,100 12,100 0,50",
+  "pointed-both": "12,0 88,0 100,50 88,100 12,100 0,50",
+};
+
+/** The drawn outline of a shaped node: a filled, stroked polygon or ellipse behind the label. */
+function NodeOutline({ outline }: { outline: GraphNodeOutline }) {
+  const points = OUTLINE_POINTS[outline];
+  return (
+    <svg className="graph-node-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      {points ? <polygon points={points} /> : <ellipse cx="50" cy="50" rx="49" ry="49" />}
+    </svg>
+  );
+}
+
 /** One box on the canvas: accent edge, optional symbol and the text label; the eight handles are for drawing lines. */
 function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
+  const shaped = data.outline !== "rectangle";
+  const classes = ["graph-node", data.dashed ? "graph-node-dashed" : "", shaped ? "graph-node-shaped" : ""].filter(Boolean).join(" ");
   return (
-    <div
-      className={data.dashed ? "graph-node graph-node-dashed" : "graph-node"}
-      style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}
-    >
+    <div className={classes} style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}>
+      {shaped && <NodeOutline outline={data.outline} />}
       {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
       <span className="graph-node-text">
@@ -141,6 +169,14 @@ export function GraphCanvasView({
   const resizing = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [localSelection, setLocalSelection] = useState<GraphCanvasSelection | null>(null);
   const selection = selected !== undefined ? selected : localSelection;
+  /**
+   * The selection as the latest change left it. Choosing an element makes React Flow report two changes in one event (the
+   * old selection is cleared through the node callback and the new one set through the edge callback, or the reverse), and
+   * both callbacks would otherwise start from the selection of the last render: the later one then undid the earlier one
+   * and an edge chosen while a node was selected ended with nothing selected.
+   */
+  const latestSelection = useRef(selection);
+  useLayoutEffect(() => { latestSelection.current = selection; }, [selection]);
 
   const labels = useMemo(() => new Map(nodes.map((n) => [n.id, n.label])), [nodes]);
 
@@ -163,7 +199,7 @@ export function GraphCanvasView({
           ariaLabel: text.nodeAria(n.label),
           data: {
             label: n.label, caption: n.caption, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
-            accent: n.accent, dashed: n.dashed, resizable: resizable && !readOnly,
+            accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", resizable: resizable && !readOnly,
           },
         };
       }),
@@ -199,6 +235,7 @@ export function GraphCanvasView({
 
   const choose = useCallback(
     (next: GraphCanvasSelection | null) => {
+      latestSelection.current = next;
       setLocalSelection(next);
       onSelect?.(next);
     },
@@ -208,7 +245,7 @@ export function GraphCanvasView({
   /** Applies a batch of select changes in order, so "deselect old, select new" ends on the new one. */
   const applySelect = useCallback(
     (kind: "node" | "edge", changes: { type: string; id?: string; selected?: boolean }[]) => {
-      let next = selection;
+      let next = latestSelection.current;
       let changed = false;
       for (const c of changes) {
         if (c.type !== "select" || c.id === undefined) continue;
@@ -222,7 +259,7 @@ export function GraphCanvasView({
       }
       if (changed) choose(next);
     },
-    [selection, choose],
+    [choose],
   );
 
   const onNodesChange = useCallback(

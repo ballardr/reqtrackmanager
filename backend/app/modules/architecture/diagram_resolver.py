@@ -11,6 +11,9 @@ Responsibilities:
   parallel lines when connection detail is off.
 - Report which underlying connections each line stands for, which hidden elements a bridged line passes through,
   and which connections are wholly inside a placed element (and so drawn on no line).
+- Join a scoped diagram's boundary boxes: an inner connection that realises an outer connection and ends at the outer
+  connection's scope-side element is drawn to that connection's box (`Boundary`), and `outer_side` says which end of a
+  connection lies inside a scope, which is what makes it an outer connection.
 
 Design decisions:
 - **Pure.** The function reads only the plain data it is given (ids, parents, ends); the loader that builds that data
@@ -23,6 +26,11 @@ Design decisions:
   cannot make the work explode. A hidden element with a single neighbour joins nothing and just disappears.
 - **A line is dashed ("indirect") only when every connection behind it is rolled up or bridged.** A merged line that
   includes a direct connection stays solid.
+- **A boundary box is a placed element with no parent.** `resolve` swaps the end of each realising connection that meets
+  the box (the outer connection's scope-side element, or an element inside the one outside the scope) for the box (one
+  candidate per box, so a connection realising two outer connections is drawn to both) and drops the original, which
+  would otherwise be drawn to nothing. A scope-side element that is itself placed keeps its own lines there: the box is
+  then a coverage marker, or a line to the element outside.
 - **Order is deterministic** (lines sorted by their ends and first connection), so equal inputs draw equal diagrams.
 
 Dependencies: none beyond the standard library.
@@ -55,6 +63,24 @@ class ModelConnection:
     source_id: uuid.UUID
     target_id: uuid.UUID
     directional: bool
+
+
+@dataclass(frozen=True)
+class Boundary:
+    """A boundary box of a scoped diagram, as the resolver sees it.
+
+    Attributes:
+        id: The box (its own id, never an element's); lines to it use this id as their end.
+        element_id: The outer connection's scope-side end element: the element inside the scope that the outer
+            connection attaches to (the scope itself or a descendant).
+        outside_id: The outer connection's other end, the element outside the scope.
+        connection_ids: The inner connections that realise the outer connection.
+    """
+
+    id: uuid.UUID
+    element_id: uuid.UUID
+    outside_id: uuid.UUID
+    connection_ids: tuple[uuid.UUID, ...]
 
 
 @dataclass(frozen=True)
@@ -119,10 +145,68 @@ def _chain(parents: Mapping[uuid.UUID, uuid.UUID | None], element_id: uuid.UUID)
         current = parents.get(current)
 
 
+def outer_side(
+    scope_id: uuid.UUID, parents: Mapping[uuid.UUID, uuid.UUID | None], source_id: uuid.UUID, target_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """The end of a connection that lies inside `scope_id`, when the other end lies outside it; otherwise `None`.
+
+    A connection with exactly one end in the scope's subtree (the scope itself or a descendant) is an *outer*
+    connection of that scope: it crosses the scope's boundary.
+
+    Args:
+        scope_id: The element whose inside a diagram shows.
+        parents: `{element id: parent id}` covering both ends and their ancestors.
+        source_id / target_id: The connection's two end elements.
+
+    Returns:
+        The end element inside the scope, or `None` for a connection wholly inside or wholly outside.
+    """
+    source_in = scope_id in _chain(parents, source_id)
+    target_in = scope_id in _chain(parents, target_id)
+    if source_in == target_in:
+        return None
+    return source_id if source_in else target_id
+
+
+def _attach_boundaries(
+    live: Sequence[ModelConnection], boundaries: Sequence[Boundary], placed: Collection[uuid.UUID],
+    parents: Mapping[uuid.UUID, uuid.UUID | None],
+) -> list[ModelConnection]:
+    """The connections with the end that meets a boundary swapped for its box.
+
+    A realising connection meets the box at its end that is the outer connection's scope-side element (when that element
+    is not itself placed) or that lies inside the element outside the scope. It becomes one connection per box it
+    realises, the end swapped; the original is dropped. A connection whose two ends would both meet the box, and every
+    other connection, is unchanged.
+    """
+    by_connection: dict[uuid.UUID, list[Boundary]] = {}
+    for boundary in boundaries:
+        for connection_id in boundary.connection_ids:
+            by_connection.setdefault(connection_id, []).append(boundary)
+
+    def meets(boundary: Boundary, end: uuid.UUID) -> bool:
+        return (end == boundary.element_id and end not in placed) or boundary.outside_id in _chain(parents, end)
+
+    out: list[ModelConnection] = []
+    for c in live:
+        swaps = [
+            (b, meets(b, c.source_id), meets(b, c.target_id)) for b in by_connection.get(c.id, ())
+        ]
+        swaps = [(b, s_, t_) for b, s_, t_ in swaps if s_ != t_]
+        if not swaps:
+            out.append(c)
+            continue
+        for b, source_meets, _target_meets in swaps:
+            out.append(ModelConnection(
+                c.id, b.id if source_meets else c.source_id, c.target_id if source_meets else b.id, c.directional,
+            ))
+    return out
+
+
 def resolve(
     *, placed: Collection[uuid.UUID], parents: Mapping[uuid.UUID, uuid.UUID | None],
     connections: Sequence[ModelConnection], hidden_elements: Collection[uuid.UUID] = (),
-    hidden_connections: Collection[uuid.UUID] = (), merge_parallel: bool,
+    hidden_connections: Collection[uuid.UUID] = (), merge_parallel: bool, boundaries: Sequence[Boundary] = (),
 ) -> Resolution:
     """Resolves the lines of a diagram.
 
@@ -134,6 +218,7 @@ def resolve(
         hidden_elements: The elements switched off (their descendants are hidden with them).
         hidden_connections: The connections switched off.
         merge_parallel: True when connection detail is off: every line between the same two placed elements becomes one.
+        boundaries: The boundary boxes of a scoped diagram; a realising connection is drawn to its box (see `Boundary`).
 
     Returns:
         The decision; see `Resolution`.
@@ -146,7 +231,7 @@ def resolve(
             hidden_cache[element_id] = bool(switched_off) and any(a in switched_off for a in _chain(parents, element_id))
         return hidden_cache[element_id]
 
-    placed_set = set(placed)
+    placed_set = set(placed) | {b.id for b in boundaries}
     anchors: dict[uuid.UUID, uuid.UUID | None] = {}
 
     def anchor(element_id: uuid.UUID) -> uuid.UUID | None:
@@ -156,6 +241,8 @@ def resolve(
 
     switched_off_connections = set(hidden_connections)
     live = [c for c in connections if c.id not in switched_off_connections]
+    if boundaries:
+        live = _attach_boundaries(live, boundaries, placed_set, parents)
     candidates: list[_Candidate] = []
     arcs: dict[uuid.UUID, list[tuple[uuid.UUID, ModelConnection]]] = {}
     for c in live:
@@ -247,7 +334,7 @@ def _merge(rolled: Sequence[tuple[uuid.UUID, uuid.UUID, _Candidate, bool]], merg
         elif indirect:
             key = ("indirect", frozenset((pa, pb)))
         else:
-            key = ("direct", candidate.connection_ids[0])
+            key = ("direct", candidate.connection_ids[0], pa, pb)
         groups.setdefault(key, []).append((pa, pb, candidate, rolled_up))
     lines: list[Line] = []
     for members in groups.values():

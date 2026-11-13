@@ -19,6 +19,8 @@ Design decisions:
 - **Parent ids of an element the viewer cannot read are included.** The resolver rolls a connection up through an
   ancestor, as the server does, so the chain has to be whole; the ids are the ones the connection the viewer may read
   already names, and no name or type comes with them.
+- **Realisations are listed whole** (both connections live), so the browser can join a realising connection to its
+  boundary box the way `diagram_resolver.resolve` does; the stored boxes themselves come with the view.
 - **Retired connections are left out and retired or archived elements stay**, as in the view: a diagram is a view of
   what was placed.
 
@@ -43,7 +45,14 @@ from app.modules.architecture.models import (
     ArchitectureElement,
     ArchitectureElementType,
 )
-from app.modules.architecture.schemas import DiagramModel, ModelConnectionType, ModelElement, ModelToggleMembers
+from app.modules.architecture.realisations import project_realisations
+from app.modules.architecture.schemas import (
+    DiagramModel,
+    ModelConnectionType,
+    ModelElement,
+    ModelRealisation,
+    ModelToggleMembers,
+)
 from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
 from app.modules.architecture.symbols import visible_symbol_ids
 from app.modules.architecture.visibility import Viewer, ancestor_parents, granted_element_ids, visible_element_ids
@@ -66,6 +75,7 @@ def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: Arc
     toggles = diagrams.toggles_of(db, diagram.id)
     members = diagrams.toggle_members(db, [t.id for t in toggles])
     connections = [c for c in records.list_connections(db, project_id) if c.status != "retired"]
+    live_ids = {c.id for c in connections}
     ends = {c.source_element_id for c in connections} | {c.target_element_id for c in connections}
 
     # The project's own elements and those shared with it are listed so the editor can place any of them; an archived
@@ -111,6 +121,11 @@ def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: Arc
         toggle_members=_toggle_members(
             db, toggles, members, {i: elements[i] for i in readable}, connections, element_types, connection_types,
         ),
+        realisations=[
+            ModelRealisation(inner_connection_id=r.inner_connection_id, outer_connection_id=r.outer_connection_id)
+            for r in project_realisations(db, project_id)
+            if r.inner_connection_id in live_ids and r.outer_connection_id in live_ids
+        ],
     )
 
 

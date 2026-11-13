@@ -11,6 +11,8 @@ Responsibilities:
 
 Design decisions:
 - No type has a comment thread, so `has_comments` is off.
+- Diagrams are of the inside of one scope element and each draws its outer connection as a boundary box, realised by an
+  inner connection, so the box reads are part of the measurement.
 - Each diagram places the same fixed number of elements, so the statements behind a diagram's list, detail and
   bundle export are compared at two diagram counts, not two diagram sizes; the resolver's cost with a large diagram
   is guarded by its own test.
@@ -78,31 +80,57 @@ _PLACED = 3
 
 
 def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[str]:
+    """Creates `count` diagrams of the inside of one scope element, each placing the same inner elements and drawing the
+    scope's outer connection as a boundary box that an inner connection realises, so the boundary reads and the bundle
+    section are measured. The last `post` places an element (the request the creation check runs as another person)."""
     element_type, connection_type = _vocabulary_ids(api, project_id)
+    base = f"/projects/{project_id}/{_BASE}"
+    scope = api.post(f"{base}/elements", {"name": f"Probe scope {start}", "element_type_id": element_type, "ports": [{"name": "Main"}]})
+    outside = api.post(f"{base}/elements", {"name": f"Probe outside {start}", "element_type_id": element_type})
     ends = [
         api.post(
-            f"/projects/{project_id}/{_BASE}/elements",
-            {"name": f"Probe diagram element {start}-{i}", "element_type_id": element_type, "ports": [{"name": "Main"}]},
+            f"{base}/elements",
+            {"name": f"Probe diagram element {start}-{i}", "element_type_id": element_type, "parent_id": scope["id"], "ports": [{"name": "Main"}]},
         )
         for i in range(_PLACED)
     ]
     api.post(
-        f"/projects/{project_id}/{_BASE}/connections",
+        f"{base}/connections",
         {
             "name": f"Probe diagram connection {start}", "connection_type_id": connection_type,
             "source_element_id": ends[0]["id"], "target_element_id": ends[1]["id"],
         },
     )
+    outer = api.post(
+        f"{base}/connections",
+        {
+            "name": f"Probe outer connection {start}", "connection_type_id": connection_type,
+            "source_element_id": scope["id"], "target_element_id": outside["id"],
+        },
+    )
+    inner = api.post(
+        f"{base}/connections",
+        {
+            "name": f"Probe realising connection {start}", "connection_type_id": connection_type,
+            "source_element_id": ends[0]["id"], "target_element_id": scope["id"],
+        },
+    )
+    api.put(f"{base}/connections/{inner['id']}/realisations", {"version": inner["version"], "outer_connection_ids": [outer["id"]]})
     ids: list[str] = []
     for i in range(count):
         diagram = api.post(
-            f"/projects/{project_id}/{_BASE}/diagrams", {"name": f"Probe diagram {start + i}", "purpose": "A view of the probe system."},
+            f"{base}/diagrams",
+            {"name": f"Probe diagram {start + i}", "purpose": "A view of the probe system.", "scope_element_id": scope["id"]},
         )
-        for order, end in enumerate(ends):
-            diagram = api.post(
-                f"/projects/{project_id}/{_BASE}/diagrams/{diagram['id']}/placements",
-                {"version": diagram["version"], "element_id": end["id"], "x": order * 200, "y": 0},
-            )
+        diagram = api.put(f"{base}/diagrams/{diagram['id']}/layout", {
+            "version": diagram["version"],
+            "placements": [{"element_id": end["id"], "x": order * 200, "y": 0} for order, end in enumerate(ends[:-1])],
+            "boundaries": [{"connection_id": outer["id"], "x": -240, "y": 0}],
+        })
+        diagram = api.post(
+            f"{base}/diagrams/{diagram['id']}/placements",
+            {"version": diagram["version"], "element_id": ends[-1]["id"], "x": (_PLACED - 1) * 200, "y": 0},
+        )
         ids.append(diagram["id"])
     return ids
 

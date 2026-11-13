@@ -2471,8 +2471,9 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
 def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
     """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
-    REST API, Power; one left on the "Serial bus" group to show a connection refined later), an organisation-owned
-    identity service shared with the project through a collection, and a diagram of the airframe with a toggle that hides its sensors.
+    REST API, Power; one left on the "Serial bus" group to show a connection refined later; the airframe's own link to the
+    ground station, realised by the radio's upload), an organisation-owned identity service shared with the project
+    through a collection, and a diagram of the airframe with a boundary box for that link and a toggle that hides its sensors.
     The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
     drone with a symbol uploaded to the project's own library. Returns the number of elements, connections and diagrams created."""
     enable_module(headers, org_id, "architecture")
@@ -2559,7 +2560,13 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud")
     # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.
     connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2")
-    connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
+    upload = connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
+    # The interface as the layer above declares it (the airframe to the ground station); the radio's upload realises it.
+    downlink = connect("Airframe downlink", "REST API", airframe, "", ground, "Telemetry API", "HTTPS, JSON")
+    httpx.put(
+        f"{base}/connections/{upload['id']}/realisations", headers=headers, timeout=30,
+        json={"version": upload["version"], "outer_connection_ids": [downlink["id"]]},
+    ).raise_for_status()
 
     # An element the organisation owns, shared with Falcon-3 through a collection, and a connection to it.
     org_base = f"{BASE}/orgs/{org_id}/modules/architecture"
@@ -2588,20 +2595,24 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     )
     diagram.raise_for_status()
     placed = diagram.json()
-    for index, item in enumerate((gps, imu, fc, radio, ground)):
-        placed = httpx.post(
-            f"{base}/diagrams/{placed['id']}/placements", headers=headers, timeout=30,
-            json={"version": placed["version"], "element_id": item["id"], "x": index * 220, "y": 0 if index < 2 else 140},
-        )
-        placed.raise_for_status()
-        placed = placed.json()
+    boxes = [
+        {"element_id": item["id"], "x": index * 220, "y": 0 if index < 2 else 140}
+        for index, item in enumerate((gps, imu, fc, radio, ground))
+    ]
+    # The airframe's outer connection is drawn as a boundary box; the radio's upload is drawn to it.
+    placed = httpx.put(
+        f"{base}/diagrams/{placed['id']}/layout", headers=headers, timeout=30,
+        json={"version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 600, "y": 280}]},
+    )
+    placed.raise_for_status()
+    placed = placed.json()
     httpx.put(
         f"{base}/diagrams/{placed['id']}/toggles", headers=headers, timeout=30,
         json={"version": placed["version"], "toggles": [
             {"name": "Sensors", "default_on": True, "rule": {"element_type_ids": [element_types["Sensor"]]}},
         ]},
     ).raise_for_status()
-    return {"elements": 8, "connections": 5, "diagrams": 1}
+    return {"elements": 8, "connections": 6, "diagrams": 1}
 
 
 def main() -> None:

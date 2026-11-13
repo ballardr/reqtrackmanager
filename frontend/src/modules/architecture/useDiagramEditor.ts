@@ -150,8 +150,8 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
 
   const save = useCallback(async () => {
     const sent = history.present;
-    const { placements, notes, anchors } = layoutToSave(sent);
-    if (!(await store((version) => api.saveLayout(diagramId, version, placements, notes, anchors)))) return false;
+    const { placements, notes, anchors, boundaries } = layoutToSave(sent);
+    if (!(await store((version) => api.saveLayout(diagramId, version, placements, notes, anchors, boundaries)))) return false;
     // The stored layout is the baseline at once: the read-back below may be overtaken by a later read, which must not
     // leave the saved layout looking unsaved.
     setHistory((h) => ({ ...h, saved: sent }));

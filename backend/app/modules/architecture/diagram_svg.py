@@ -9,6 +9,8 @@ Responsibilities:
 - Draw each line between two attach points of its boxes (the ones a person chose, else the nearest pair; see
   `diagram_points`), dashed when indirect, with an arrowhead when it has one direction, a count
   when several connections collapse into it, and (with connection detail on) its type and protocol.
+- Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with the
+  connection's code, the element outside and a covered or not covered marker.
 - Draw notes as plain text.
 
 Design decisions:
@@ -17,6 +19,9 @@ Design decisions:
   of `symbols.symbol_svg` is ever used (a symbol that cannot be read falls back to the type's shape).
 - **Light-theme colours.** The server document is for reports and files, so it uses the type's light colour (or a
   neutral default) on a transparent background; the browser themes its own canvas.
+- **Boundary shapes** are drawn from a flag outline: the tip is on the right for an input (the flow runs into the
+  scope), on the left for an output, at both ends for a two-way connection, and a circle where no direction is disclosed.
+  The coverage marker is a filled or empty dot, with no warning colour.
 - **Deterministic.** Elements are drawn in the order of the view, so equal views give equal bytes.
 - A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
 
@@ -36,7 +41,7 @@ from sqlalchemy.orm import Session
 from app.modules.architecture.diagram_points import line_points, point_xy
 from app.modules.architecture.enums import AttachPoint
 from app.modules.architecture.models import ArchitectureSymbol
-from app.modules.architecture.schemas import AnchorOut, DiagramView, ViewEdge, ViewNode
+from app.modules.architecture.schemas import AnchorOut, DiagramView, ViewBoundary, ViewEdge, ViewNode
 from app.modules.architecture.symbols import symbol_svg
 
 _DEFAULT_COLOR = "#475569"
@@ -174,6 +179,45 @@ def _node(node: ViewNode, symbols: dict[uuid.UUID, str]) -> str:
     return "".join(parts)
 
 
+def _boundary_outline(shape: str, x: float, y: float, w: float, h: float) -> str:
+    """The outline of a boundary box: a flag with its tip on the right (input) or left (output), a hexagon (both ways)
+    or an ellipse (no direction disclosed)."""
+    style = 'fill="#F8FAFC" stroke="#475569" stroke-width="2"'
+    k = min(h / 2, 18.0)
+    if shape == "input":
+        pts = [(x, y), (x + w - k, y), (x + w, y + h / 2), (x + w - k, y + h), (x, y + h)]
+    elif shape == "output":
+        pts = [(x + k, y), (x + w, y), (x + w, y + h), (x + k, y + h), (x, y + h / 2)]
+    elif shape == "bidirectional":
+        pts = [(x + k, y), (x + w - k, y), (x + w, y + h / 2), (x + w - k, y + h), (x + k, y + h), (x, y + h / 2)]
+    else:
+        return f'<ellipse cx="{x + w / 2:.1f}" cy="{y + h / 2:.1f}" rx="{w / 2:.1f}" ry="{h / 2:.1f}" {style}/>'
+    return f'<polygon points="{" ".join(f"{px:.1f},{py:.1f}" for px, py in pts)}" {style}/>'
+
+
+def _boundary(box: ViewBoundary) -> str:
+    """One boundary box: its outline, the outer connection's code, the element outside and the coverage marker."""
+    x, y, w, h = box.x, box.y, box.width, box.height
+    name = box.outside_element_code if box.locked else f"{box.outside_element_code} {box.outside_element_name}".strip()
+    marker = "#475569" if box.covered else "none"
+    state = "Realised" if box.covered else "Not realised"
+    parts = [
+        f'<g data-boundary="{box.id}">', _boundary_outline(box.shape, x, y, w, h),
+        f'<text x="{x + w / 2:.1f}" y="{y + h / 2 - 3:.1f}" text-anchor="middle" font-size="10" fill="#64748B">'
+        f'{_text(box.connection_code)}</text>',
+    ]
+    for i, line in enumerate(_wrap(name, max(int(w / 7), 6), 1)):
+        parts.append(
+            f'<text x="{x + w / 2:.1f}" y="{y + h / 2 + 10 + i * 12:.1f}" text-anchor="middle" font-size="11" font-weight="600" '
+            f'fill="{_TEXT_COLOR}">{_text(line)}</text>'
+        )
+    parts.append(
+        f'<circle cx="{x + w - 9:.1f}" cy="{y + 9:.1f}" r="4" fill="{marker}" stroke="#475569" stroke-width="1.5">'
+        f"<title>{state}</title></circle></g>"
+    )
+    return "".join(parts)
+
+
 def _anchor_points(
     anchors: list[AnchorOut], edge: ViewEdge,
 ) -> tuple[AttachPoint | None, AttachPoint | None]:
@@ -187,7 +231,9 @@ def _anchor_points(
     return None, None
 
 
-def _edges(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode], anchors: list[AnchorOut]) -> tuple[str, str]:
+def _edges(
+    edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut],
+) -> tuple[str, str]:
     """The `<defs>` (arrowheads) and the lines."""
     colors: dict[str, int] = {}
     lines: list[str] = []
@@ -257,10 +303,12 @@ def render_diagram(db: Session, view: DiagramView) -> str:
                 symbols[row.id] = symbol_svg(db, row)
             except LookupError:
                 continue
-    boxes = {n.element_id: n for n in visible}
+    boxes: dict[uuid.UUID, ViewNode | ViewBoundary] = {n.element_id: n for n in visible}
+    boxes.update({b.id: b for b in view.boundaries})
     drawn_edges = [e for e in view.edges if e.source_element_id in boxes and e.target_element_id in boxes]
-    xs = [v for n in visible for v in (n.x, n.x + n.width)] + [v for n in view.notes for v in (n.x, n.x + n.width)]
-    ys = [v for n in visible for v in (n.y - 6, n.y + n.height + 6)] + [v for n in view.notes for v in (n.y, n.y + n.height)]
+    drawn_boxes: list[ViewNode | ViewBoundary] = [*visible, *view.boundaries]
+    xs = [v for n in drawn_boxes for v in (n.x, n.x + n.width)] + [v for n in view.notes for v in (n.x, n.x + n.width)]
+    ys = [v for n in drawn_boxes for v in (n.y - 6, n.y + n.height + 6)] + [v for n in view.notes for v in (n.y, n.y + n.height)]
     if not xs:
         min_x, min_y, width, height = 0.0, 0.0, 320.0, 120.0
         body = '<text x="160" y="60" text-anchor="middle" font-size="12" fill="#64748B">Empty diagram</text>'
@@ -277,7 +325,7 @@ def render_diagram(db: Session, view: DiagramView) -> str:
             ) + "</g>"
             for n in view.notes
         )
-        body = f"{edge_svg}{''.join(_node(n, symbols) for n in visible)}{notes}"
+        body = f"{edge_svg}{''.join(_node(n, symbols) for n in visible)}{''.join(_boundary(b) for b in view.boundaries)}{notes}"
     title = _text(f"{view.diagram.unique_code} {view.diagram.name}")
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{min_x:.1f} {min_y:.1f} {width:.1f} {height:.1f}" '

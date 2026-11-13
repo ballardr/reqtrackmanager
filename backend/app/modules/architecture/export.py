@@ -35,6 +35,10 @@ Design decisions:
   names vocabulary rows by name (never an id) and its manual members by code, so a bundle holds no ids; an import
   numbers the diagram afresh and drops, with a warning, a box, member, anchor or scope it cannot resolve. A diagram is a
   template record, reset to a fresh draft that places only the template's own elements.
+- Realisations and boundary boxes: a connection lists the codes of the outer connections it realises (`realises`) and a
+  diagram its boundary boxes (the outer connection's code and the box); both name connections of the same bundle only.
+  An import re-applies each realisation through the same rule as the editor and drops, with a warning, one that no
+  longer holds, and drops a box whose connection is not an outer connection of the imported diagram's scope.
 - Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
   an import can never publish anything to a project or a group by itself. An organisation bundle carries the
   organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
@@ -57,13 +61,16 @@ from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
+from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureCollection,
     ArchitectureCollectionMember,
     ArchitectureConnection,
+    ArchitectureConnectionRealisation,
     ArchitectureDiagram,
     ArchitectureDiagramAnchor,
+    ArchitectureDiagramBoundary,
     ArchitectureDiagramNote,
     ArchitectureDiagramPlacement,
     ArchitectureDiagramToggle,
@@ -72,6 +79,8 @@ from app.modules.architecture.models import (
     ArchitecturePort,
     ArchitectureSymbol,
 )
+from app.modules.architecture.realisations import project_realisations, reaches, realises_rule_holds
+from app.modules.architecture.schemas import BoundaryIn
 from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
     CONNECTION_CODE_PREFIX,
@@ -85,7 +94,7 @@ from app.modules.architecture.service import (
     ArchitectureVocabulary,
 )
 from app.modules.architecture.symbols import BUILTIN_SVG, clean_symbol_svg
-from app.modules.architecture.visibility import Viewer, visible_element_ids
+from app.modules.architecture.visibility import Viewer, ancestor_parents, visible_element_ids
 from app.services import definition_suppression, report_images
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.bundle_links import export_artefact_links, import_artefact_links
@@ -646,6 +655,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     foreign = _foreign_refs(db, {
         end for c in connections for end in (c.source_element_id, c.target_element_id) if end not in codes
     })
+    connection_codes = {c.id: c.unique_code for c in connections}
+    realises: dict[UUID, list[str]] = {}
+    for row in project_realisations(db, project.id):
+        if row.outer_connection_id in connection_codes:
+            realises.setdefault(row.inner_connection_id, []).append(connection_codes[row.outer_connection_id])
     data[CONNECTIONS_KEY] = [
         {
             "unique_code": c.unique_code, "name": c.name, "type_name": type_names.get(c.connection_type_id),
@@ -654,6 +668,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "target_code": codes.get(c.target_element_id), "target_port": port_names.get(c.target_port_id) if c.target_port_id else None,
             "target_ref": foreign.get(c.target_element_id),
             "protocol": c.protocol, "description": c.description, "status": c.status,
+            "realises": realises.get(c.id, []),
             "created_by_email": _email(emails, c.creator_id), "created_at": _stamp(c.created_at),
             "is_archived": c.is_archived, "archived_at": _stamp(c.archived_at), "archived_by_email": _email(emails, c.archived_by),
             "tags": record_tag_names(db, CONNECTION_ARTEFACT_TYPE, c.id),
@@ -704,6 +719,10 @@ def _diagrams_json(
         select(ArchitectureDiagramAnchor).where(ArchitectureDiagramAnchor.diagram_id.in_(ids))
         .order_by(ArchitectureDiagramAnchor.created_at, ArchitectureDiagramAnchor.id)
     ))
+    boundaries = list(db.scalars(
+        select(ArchitectureDiagramBoundary).where(ArchitectureDiagramBoundary.diagram_id.in_(ids))
+        .order_by(ArchitectureDiagramBoundary.created_at, ArchitectureDiagramBoundary.id)
+    ))
     toggles = list(db.scalars(
         select(ArchitectureDiagramToggle).where(ArchitectureDiagramToggle.diagram_id.in_(ids))
         .order_by(ArchitectureDiagramToggle.sort_order, ArchitectureDiagramToggle.name)
@@ -727,6 +746,9 @@ def _diagrams_json(
     by_diagram_anchors: dict[UUID, list[ArchitectureDiagramAnchor]] = {}
     for anchor in anchors:
         by_diagram_anchors.setdefault(anchor.diagram_id, []).append(anchor)
+    by_diagram_boundaries: dict[UUID, list[ArchitectureDiagramBoundary]] = {}
+    for boundary in boundaries:
+        by_diagram_boundaries.setdefault(boundary.diagram_id, []).append(boundary)
     by_diagram_toggles: dict[UUID, list[ArchitectureDiagramToggle]] = {}
     for toggle in toggles:
         by_diagram_toggles.setdefault(toggle.diagram_id, []).append(toggle)
@@ -770,6 +792,10 @@ def _diagrams_json(
                  "source_point": a.source_point, "target_point": a.target_point}
                 for a in by_diagram_anchors.get(d.id, ())
             ],
+            "boundaries": [
+                {"connection_code": connection_codes[b.connection_id], "x": b.x, "y": b.y, "width": b.width, "height": b.height}
+                for b in by_diagram_boundaries.get(d.id, ()) if b.connection_id in connection_codes
+            ],
             "toggles": [toggle_json(t) for t in by_diagram_toggles.get(d.id, ())],
             "created_by_email": _email(emails, d.creator_id), "created_at": _stamp(d.created_at),
             "is_archived": d.is_archived, "archived_at": _stamp(d.archived_at), "archived_by_email": _email(emails, d.archived_by),
@@ -793,6 +819,8 @@ def reset_for_template(data: dict[str, Any]) -> None:
         c for c in data.get(CONNECTIONS_KEY, []) if c.get("source_code") in kept and c.get("target_code") in kept
     ]
     kept_connections = {c["unique_code"] for c in data[CONNECTIONS_KEY]}
+    for connection in data[CONNECTIONS_KEY]:
+        connection["realises"] = [code for code in connection.get("realises", []) if code in kept_connections]
 
     def own(ref: dict[str, Any] | None) -> bool:
         return ref is not None and ref.get("code") in kept
@@ -800,6 +828,7 @@ def reset_for_template(data: dict[str, Any]) -> None:
     for diagram in data.get(DIAGRAMS_KEY, []):
         diagram["scope"] = diagram.get("scope") if own(diagram.get("scope")) else None
         diagram["boxes"] = [b for b in diagram.get("boxes", []) if own(b)]
+        diagram["boundaries"] = [b for b in diagram.get("boundaries", []) if b.get("connection_code") in kept_connections]
         for toggle in diagram.get("toggles", []):
             toggle["elements"] = [e for e in toggle.get("elements", []) if own(e)]
             toggle["connection_codes"] = [c for c in toggle.get("connection_codes", []) if c in kept_connections]
@@ -880,6 +909,57 @@ def _import_anchors(
         ))
 
 
+def _import_boundaries(
+    db: Session, diagram: ArchitectureDiagram, connections: dict[str, UUID], entries: list[dict[str, Any]], code: str,
+    warnings: BundleImportWarnings,
+) -> None:
+    """Recreates a diagram's boundary boxes. A box needs a scope and a connection of this import that crosses the
+    scope's boundary; any other is dropped with a warning."""
+    if not entries:
+        return
+    rows = {
+        c.id: c for c in db.scalars(select(ArchitectureConnection).where(ArchitectureConnection.id.in_(connections.values())))
+    } if connections else {}
+    wanted = [(entry, connections.get(entry.get("connection_code") or "")) for entry in entries]
+    boxes = [BoundaryIn(connection_id=cid, **{k: entry.get(k, d) for k, d in (("x", 0.0), ("y", 0.0), ("width", 120.0), ("height", 48.0))})
+             for entry, cid in wanted if cid in rows]
+    if diagram.scope_element_id is None:
+        crossing: set[UUID] = set()
+    else:
+        crossing = set(boundary_rules.outer_sides(db, diagram.scope_element_id, [rows[b.connection_id] for b in boxes]))
+    kept = [b for b in boxes if b.connection_id in crossing]
+    if len(kept) != len(entries):
+        warnings.add(f"Diagram {code}: a boundary box could not be restored — left out.")
+    boundary_rules.sync_boundaries(db, diagram.id, kept)
+
+
+def _import_realisations(
+    db: Session, entries: list[dict[str, Any]], connections: dict[str, UUID], warnings: BundleImportWarnings,
+) -> None:
+    """Re-applies each connection's realisations. A pair the rule does not accept here (an end that did not import, a
+    cycle) is dropped with a warning."""
+    pairs = [
+        (code, outer) for entry in entries for code in [entry.get("unique_code", "")] for outer in entry.get("realises", [])
+        if code in connections
+    ]
+    if not pairs:
+        return
+    rows = {c.id: c for c in db.scalars(select(ArchitectureConnection).where(ArchitectureConnection.id.in_(connections.values())))}
+    parents = ancestor_parents(db, {e for c in rows.values() for e in (c.source_element_id, c.target_element_id)})
+    edges: dict[UUID, set[UUID]] = {}
+    for code, outer_code in pairs:
+        inner_id, outer_id = connections[code], connections.get(outer_code)
+        if (
+            outer_id is None or inner_id == outer_id or not realises_rule_holds(parents, rows[inner_id], rows[outer_id])
+            or reaches(edges, outer_id, inner_id)
+        ):
+            warnings.add(f"Connection {code}: a realisation of {outer_code} could not be restored — left out.")
+            continue
+        edges.setdefault(inner_id, set()).add(outer_id)
+        db.add(ArchitectureConnectionRealisation(inner_connection_id=inner_id, outer_connection_id=outer_id))
+    db.flush()
+
+
 def _import_diagrams(
     db: Session, project: Project, entries: list[dict[str, Any]], elements: dict[str, UUID], connections: dict[str, UUID],
     current_user: User, users: UserResolver, warnings: BundleImportWarnings,
@@ -921,6 +1001,7 @@ def _import_diagrams(
                 width=box.get("width", 160.0), height=box.get("height", 80.0), collapsed=bool(box.get("collapsed")),
             ))
         _import_anchors(db, project, current_user, elements, diagram.id, entry.get("anchors", []), seen, code, warnings)
+        _import_boundaries(db, diagram, connections, entry.get("boundaries", []), code, warnings)
         for order, note in enumerate(entry.get("notes", [])):
             db.add(ArchitectureDiagramNote(
                 diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
@@ -1098,6 +1179,7 @@ def import_project_data(
             db, project_id=project.id, actor_id=creator, artefact_type=CONNECTION_ARTEFACT_TYPE,
             artefact_id=connection.id, entries=entry.get("placements"),
         )
+    _import_realisations(db, data.get(CONNECTIONS_KEY, []), connections, warnings)
     diagram_ids = _import_diagrams(db, project, data.get(DIAGRAMS_KEY, []), elements, connections, current_user, users, warnings)
     _import_collections(
         db, data.get(COLLECTIONS_KEY, []), owner={"project_id": project.id},

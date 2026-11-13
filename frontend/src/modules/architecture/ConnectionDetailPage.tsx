@@ -3,7 +3,8 @@
  *
  * One connection as a routed page (`/projects/:projectId/modules/architecture/connections/:connectionId`, also the
  * target other records' links follow): its type, protocol, both ends with their ports (each end links to its element), and
- * description. The Links panel and the activity timeline sit in the aside and tags in the header. An end the viewer can no
+ * description, and (when it has any) the connections it realises and the connections that realise it. The Links panel and the
+ * activity timeline sit in the aside and tags in the header. An end the viewer can no
  * longer read shows only its code. Edits send only the changed fields with the version they were based on (a stale
  * version, 409, is shown in the dialog); the server enforces the Architect role and a refusal appears as a message.
  */
@@ -28,11 +29,24 @@ import { diffConnectionFields, valuesFromConnection } from "./architectureFields
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ConnectionEnd } from "./connectionEnds";
+import { ARCHITECTURE_HELP } from "./help";
 import { useArchitectureReference } from "./useArchitectureReference";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type ConnectionFieldValues,
+  type ArchitectureRecordStatus, type ConnectionFieldValues, type ConnectionRef,
 } from "./types";
+
+/** A list of connections as links (code and name), or a dash when there are none. */
+function ConnectionRefs({ refs, base }: { refs: ConnectionRef[]; base: string }) {
+  if (refs.length === 0) return <span>—</span>;
+  return (
+    <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
+      {refs.map((c) => (
+        <li key={c.id}><Link to={`${base}/${c.id}`}>{c.unique_code}</Link>{c.name ? ` ${c.name}` : ""}</li>
+      ))}
+    </ul>
+  );
+}
 
 export function ConnectionDetailPage() {
   const { projectId = "", connectionId = "" } = useParams<{ projectId: string; connectionId: string }>();
@@ -171,6 +185,18 @@ export function ConnectionDetailPage() {
           </div>
           <RecordField label="Description" value={connection.description || "—"} />
         </DetailCard>
+        {(connection.realises.length > 0 || connection.realised_by.length > 0) && (
+          <DetailCard heading="Realisation">
+            <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
+              <RecordFieldGroup label="Realises" help={ARCHITECTURE_HELP.connectionRealises}>
+                <ConnectionRefs refs={connection.realises} base={`/projects/${projectId}/modules/architecture/connections`} />
+              </RecordFieldGroup>
+              <RecordFieldGroup label="Realised by" help={ARCHITECTURE_HELP.connectionRealisedBy}>
+                <ConnectionRefs refs={connection.realised_by} base={`/projects/${projectId}/modules/architecture/connections`} />
+              </RecordFieldGroup>
+            </div>
+          </DetailCard>
+        )}
       </div>
 
       {editing && (

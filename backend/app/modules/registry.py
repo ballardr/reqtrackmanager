@@ -2055,10 +2055,15 @@ class ScalingProbe:
 
 
 class ScalingProbeApi:
-    """The calls a `ScalingProbe.create` makes: `post(path, body)` and `get(path)` return the decoded JSON and
-    raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation."""
+    """The calls a `ScalingProbe.create` makes: `post(path, body)`, `put(path, body)` and `get(path)` return the decoded
+    JSON and raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation. A
+    probe's last `post` must be the request that creates the record under test, because the creation-permission check
+    runs that one as another person; a `put` never takes that role."""
 
     def post(self, path: str, body: dict[str, Any] | None = None) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def put(self, path: str, body: dict[str, Any] | None = None) -> Any:  # pragma: no cover - interface
         raise NotImplementedError
 
     def get(self, path: str) -> Any:  # pragma: no cover - interface
