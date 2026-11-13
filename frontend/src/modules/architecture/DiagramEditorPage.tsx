@@ -36,6 +36,7 @@ import { DetailLayout } from "../../components/DetailLayout";
 import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
+import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
 import { RecordHeader } from "../../components/RecordHeader";
 import { FieldHelp } from "../../components/FieldHelp";
 import { RecordTags } from "../../components/RecordTags";
@@ -79,7 +80,8 @@ import {
   type ArchitectureRecordStatus, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues,
 } from "./types";
 
-const CANVAS_HEIGHT = 560;
+/** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
+const CANVAS_MIN_HEIGHT = 300;
 
 /** The project's Element Types settings. */
 const SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architecture/architecture-element-types`;
@@ -114,6 +116,8 @@ export function DiagramEditorPage() {
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
   const [connections, setConnections] = useState<ArchitectureConnection[]>([]);
   const [selection, setSelection] = useState<GraphCanvasSelection | null>(null);
+  const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
+  const canvasHeight = useFillViewportHeight(canvasBox, CANVAS_MIN_HEIGHT);
   const [editingDiagram, setEditingDiagram] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -575,7 +579,7 @@ export function DiagramEditorPage() {
         recordLabel="Diagram"
         title={diagram.name}
         code={diagram.unique_code}
-        tags={<RecordTags projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} />}
+        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
         badges={
           <>
@@ -617,8 +621,9 @@ export function DiagramEditorPage() {
                 Nothing is inside this element yet. Use Add to diagram, then a type, to create its sub-elements here; each becomes a child of {diagram.scope_element_name || "it"}.
               </p>
             )}
+            <div ref={setCanvasBox}>
             <GraphCanvas
-              nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={CANVAS_HEIGHT}
+              nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
               readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
               onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
               onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
@@ -631,6 +636,7 @@ export function DiagramEditorPage() {
                 if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
               }}
             />
+            </div>
           </div>
           {selectionColumn}
         </div>

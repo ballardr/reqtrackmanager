@@ -3602,6 +3602,8 @@ const en = {
   },
   tags: {
     label: "Tags",
+    /** The header's compact tags control: the button and the dialog it opens. */
+    editLabel: "Tags and components",
     none: "No tags",
     addTag: "Add tag",
     done: "Done",

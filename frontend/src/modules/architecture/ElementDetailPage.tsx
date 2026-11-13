@@ -167,7 +167,7 @@ export function ElementDetailPage() {
         title={element.name}
         code={element.unique_code}
         codeOwner={ownerCode}
-        tags={<RecordTags projectId={projectId} artefactType="architecture_element" artefactId={element.id} />}
+        tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_element" artefactId={element.id} />}
         back={{ to: architectureTabPath(projectId, "elements"), label: "Elements" }}
         badges={
           <>

@@ -3,7 +3,8 @@
  *
  * The header of every record detail page: back link, title (with the record's
  * code as a muted suffix), status pills, the Edit icon button and the object-action
- * menu, with the record's visible workflow buttons beneath.
+ * menu, with the record's visible workflow buttons beneath. Tags go on their own line, or with `tagsInline` on the
+ * badge line beside the version.
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
  * - Edit and the menu sit at the right edge of the title row, in an `ItemRow`, so they
@@ -40,6 +41,7 @@ const BACK_ARROW = "← ";
  * @param badges Status and scope pills, shown on the line under the title.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
  * @param tags The record's tags (`RecordTags`), shown under the badges.
+ * @param tagsInline Draw `tags` on the badge line after the version instead of on a line of its own. The page passes `<RecordTags inline />`, which draws nothing for a record with no tags or components, so the header carries no empty line.
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
@@ -56,6 +58,7 @@ export function RecordHeader({
   badges,
   version,
   tags,
+  tagsInline = false,
   back,
   headingLevel = "h1",
   onEdit,
@@ -71,6 +74,7 @@ export function RecordHeader({
   badges?: ReactNode;
   version?: number;
   tags?: ReactNode;
+  tagsInline?: boolean;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
   headingLevel?: "h1" | "h2";
   onEdit?: () => void;
@@ -110,7 +114,7 @@ export function RecordHeader({
           {titleAddon}
         </span>
       </ItemRow>
-      {(badges || version !== undefined) && (
+      {(badges || version !== undefined || (tagsInline && tags)) && (
         <div className="row">
           {badges}
           {version !== undefined && (
@@ -118,9 +122,10 @@ export function RecordHeader({
               Version {version}
             </span>
           )}
+          {tagsInline && tags}
         </div>
       )}
-      {tags && <div>{tags}</div>}
+      {tags && !tagsInline && <div>{tags}</div>}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
       {transitions && <div className="row">{transitions}</div>}
     </header>

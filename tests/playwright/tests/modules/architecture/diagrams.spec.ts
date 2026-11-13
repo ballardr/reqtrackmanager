@@ -136,6 +136,58 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
+  test("the drawing fits the screen without scrolling, and tags and components are set from one button beside the version", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchFit", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    await createElement(page.request, adminHeaders, project.id, `Gateway ${suffix}`);
+    const component = await page.request.post(`${API}/api/v1/projects/${project.id}/components`, {
+      headers: adminHeaders, data: { name: "Hardware", prefix: "HW" },
+    });
+    expect(component.ok(), await component.text()).toBeTruthy();
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Fit ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    const canvas = page.getByLabel(`Diagram Fit ${suffix}`, { exact: true });
+    await expect(canvas).toBeVisible();
+
+    await test.step("the whole canvas is inside the window without scrolling", async () => {
+      await expect(page.getByLabel(`Gateway ${suffix}, node`, { exact: true })).toBeVisible();
+      const box = await canvas.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(720);
+    });
+
+    await test.step("a record with no tags or components shows no empty line, only the button", async () => {
+      await expect(page.getByText("Not placed in a component")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Tags and components" })).toBeVisible();
+    });
+
+    await test.step("a tag and a component are added from the dialog and appear beside the version", async () => {
+      await page.getByRole("button", { name: "Tags and components" }).click();
+      const dialog = page.getByRole("dialog", { name: "Tags and components" });
+      await dialog.getByRole("button", { name: "Add tag" }).click();
+      await page.getByRole("combobox", { name: "Tags" }).fill("Core");
+      await page.keyboard.press("Enter");
+      await expect(dialog.getByRole("button", { name: "Remove tag Core" })).toBeVisible();
+      await page.getByRole("combobox", { name: "Tags" }).press("Escape");
+      await dialog.getByRole("button", { name: "Components and categories" }).click();
+      await page.getByRole("checkbox", { name: "Hardware", exact: true }).click();
+      await page.keyboard.press("Escape");
+      await expect(dialog.getByRole("button", { name: "Remove Hardware" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      const header = page.locator("header.record-header");
+      await expect(header.getByText("Core", { exact: true })).toBeVisible();
+      await expect(header.getByText("Hardware", { exact: true })).toBeVisible();
+    });
+  });
+
   test("a save from a stale copy is refused and the architect is offered a reload", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchConflict", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

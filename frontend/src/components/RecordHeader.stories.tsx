@@ -116,3 +116,22 @@ export const ManyBadges: Story = {
 };
 
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** With `tagsInline` the tags sit on the badge line after the version, not on a line of their own. */
+export const TagsInlineBesideTheVersion: Story = {
+  args: { tagsInline: true, tags: <span>Safety</span> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const line = canvas.getByText("Version 3").parentElement;
+    await expect(line).toContainElement(canvas.getByText("Safety"));
+    await expect(line).toContainElement(canvas.getByText("Active"));
+  },
+};
+
+/** Tags alone still open the badge line (a record with no badges and no version). */
+export const TagsInlineWithNoBadgesOrVersion: Story = {
+  args: { tagsInline: true, tags: <span>Safety</span>, badges: undefined, version: undefined },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Safety").closest(".row")).not.toBeNull();
+  },
+};
