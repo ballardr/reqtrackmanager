@@ -13,6 +13,7 @@ Design decisions:
 - No type has a comment thread, so `has_comments` is off.
 - Diagrams are of the inside of one scope element and each draws its outer connection as a boundary box, realised by an
   inner connection, so the box reads are part of the measurement.
+- Every record goes in a two-level folder, so the folder paths read for a list, a detail and a bundle are measured.
 - Each diagram places the same fixed number of elements, so the statements behind a diagram's list, detail and
   bundle export are compared at two diagram counts, not two diagram sizes; the resolver's cost with a large diagram
   is guarded by its own test.
@@ -37,13 +38,21 @@ def _vocabulary_ids(api: Any, project_id: str) -> tuple[str, str]:
     return element_type, connection_type
 
 
+def _folder_id(api: Any, project_id: str, kind: str, start: int) -> str:
+    """A two-level folder for the probe's records (so the folder paths are part of what is measured); the folder is
+    created before the records so a probe's last `post` is still the record under test."""
+    top = api.post(f"/projects/{project_id}/{_BASE}/{kind}-folders", {"name": f"Probe folder {start}"})
+    return api.post(f"/projects/{project_id}/{_BASE}/{kind}-folders", {"name": "Sub", "parent_id": top["id"]})["id"]
+
+
 def _create_elements(api: Any, project_id: str, start: int, count: int) -> list[str]:
     element_type, connection_type = _vocabulary_ids(api, project_id)
+    folder_id = _folder_id(api, project_id, "element", start)
     ids: list[str] = []
     for i in range(count):
         body: dict[str, Any] = {
             "name": f"Probe element {start + i}", "description": "A part of the probe system.",
-            "element_type_id": element_type,
+            "element_type_id": element_type, "folder_id": folder_id,
             "ports": [{"name": "Main", "direction": "both", "connection_type_id": connection_type}],
         }
         if ids:
@@ -54,6 +63,7 @@ def _create_elements(api: Any, project_id: str, start: int, count: int) -> list[
 
 def _create_connections(api: Any, project_id: str, start: int, count: int) -> list[str]:
     element_type, connection_type = _vocabulary_ids(api, project_id)
+    folder_id = _folder_id(api, project_id, "connection", start)
     ends = [
         api.post(
             f"/projects/{project_id}/{_BASE}/elements",
@@ -68,7 +78,7 @@ def _create_connections(api: Any, project_id: str, start: int, count: int) -> li
                 "name": f"Probe connection {start + i}", "connection_type_id": connection_type,
                 "source_element_id": ends[i]["id"], "source_port_id": ends[i]["ports"][0]["id"],
                 "target_element_id": ends[i + 1]["id"], "target_port_id": ends[i + 1]["ports"][0]["id"],
-                "protocol": "v1",
+                "protocol": "v1", "folder_id": folder_id,
             },
         )["id"]
         for i in range(count)
@@ -85,6 +95,7 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
     section are measured. The last `post` places an element (the request the creation check runs as another person)."""
     element_type, connection_type = _vocabulary_ids(api, project_id)
     base = f"/projects/{project_id}/{_BASE}"
+    folder_id = _folder_id(api, project_id, "diagram", start)
     scope = api.post(f"{base}/elements", {"name": f"Probe scope {start}", "element_type_id": element_type, "ports": [{"name": "Main"}]})
     outside = api.post(f"{base}/elements", {"name": f"Probe outside {start}", "element_type_id": element_type})
     ends = [
@@ -120,7 +131,10 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
     for i in range(count):
         diagram = api.post(
             f"{base}/diagrams",
-            {"name": f"Probe diagram {start + i}", "purpose": "A view of the probe system.", "scope_element_id": scope["id"]},
+            {
+                "name": f"Probe diagram {start + i}", "purpose": "A view of the probe system.", "scope_element_id": scope["id"],
+                "folder_id": folder_id,
+            },
         )
         diagram = api.put(f"{base}/diagrams/{diagram['id']}/layout", {
             "version": diagram["version"],

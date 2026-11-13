@@ -440,6 +440,20 @@ def _usable_symbol(db: Session, owner: ElementOwner, symbol_id: uuid.UUID) -> No
         raise RuleError(str(exc), 400) from exc
 
 
+def _usable_folder(db: Session, owner: ElementOwner, kind: str, folder_id: uuid.UUID) -> None:
+    """Checks the owner's folder of `kind` exists (see `folders.usable_folder`; imported late because `folders` builds on this module)."""
+    from app.modules.architecture import folders
+
+    folders.usable_folder(db, owner, kind, folder_id)
+
+
+def folder_paths(db: Session, folder_ids: Iterable[uuid.UUID | None]) -> dict[uuid.UUID, str]:
+    """The path of each folder named, read in bulk (see `folders.paths_for`)."""
+    from app.modules.architecture import folders
+
+    return folders.paths_for(db, folder_ids)
+
+
 def _usable_connection_type(db: Session, project: Project, type_id: uuid.UUID):
     try:
         return CONNECTION_TYPES.usable_row(db, project.id, project.organization_id, type_id)
@@ -478,6 +492,8 @@ def create_element(db: Session, owner: ElementOwner, actor: User, payload: Eleme
         _usable_symbol(db, owner, payload.symbol_id)
     if payload.parent_id is not None:
         _check_parent(db, owner, None, payload.parent_id)
+    if payload.folder_id is not None:
+        _usable_folder(db, owner, "element", payload.folder_id)
     _validate_owner(db, owner, payload.owner)
     _validate_ports(payload.ports)
     for port in payload.ports:
@@ -487,7 +503,7 @@ def create_element(db: Session, owner: ElementOwner, actor: User, payload: Eleme
         **owner.columns,
         unique_code=generate_unique_code(db, owner.code_owner, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
         name=payload.name.strip(), description=payload.description, element_type_id=payload.element_type_id,
-        parent_id=payload.parent_id, symbol_id=payload.symbol_id,
+        parent_id=payload.parent_id, symbol_id=payload.symbol_id, folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value, version=1, creator_id=actor.id,
         is_archived=False, **principal_columns("owner", payload.owner),
     )
@@ -533,6 +549,10 @@ def update_element(
         if payload.symbol_id is not None:
             _usable_symbol(db, owner, payload.symbol_id)
         changes["symbol_id"] = payload.symbol_id
+    if "folder_id" in given and payload.folder_id != element.folder_id:
+        if payload.folder_id is not None:
+            _usable_folder(db, owner, "element", payload.folder_id)
+        changes["folder_id"] = payload.folder_id
     if "owner" in given and principal_ref(element.owner_type, element.owner_id) != _ref(payload.owner):
         _validate_owner(db, owner, payload.owner)
         changes.update(principal_columns("owner", payload.owner))
@@ -771,13 +791,15 @@ def create_connection(db: Session, project: Project, actor: User, payload: Conne
         raise RuleError("A connection joins two different elements.", 400)
     _check_end(db, viewer, payload.source_element_id, payload.source_port_id, "source")
     _check_end(db, viewer, payload.target_element_id, payload.target_port_id, "target")
+    if payload.folder_id is not None:
+        _usable_folder(db, ElementOwner.of_project(project), "connection", payload.folder_id)
     connection = ArchitectureConnection(
         project_id=project.id,
         unique_code=generate_unique_code(db, project, CONNECTION_ARTEFACT_TYPE, CONNECTION_CODE_PREFIX),
         name=payload.name.strip(), connection_type_id=payload.connection_type_id,
         source_element_id=payload.source_element_id, source_port_id=payload.source_port_id,
         target_element_id=payload.target_element_id, target_port_id=payload.target_port_id,
-        protocol=payload.protocol.strip(), description=payload.description,
+        protocol=payload.protocol.strip(), description=payload.description, folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value,
         version=1, creator_id=actor.id, is_archived=False,
     )
@@ -808,6 +830,10 @@ def update_connection(
             changes[key] = value.strip()
     if payload.description is not None and payload.description != connection.description:
         changes["description"] = payload.description
+    if "folder_id" in given and payload.folder_id != connection.folder_id:
+        if payload.folder_id is not None:
+            _usable_folder(db, ElementOwner.of_project(project), "connection", payload.folder_id)
+        changes["folder_id"] = payload.folder_id
     ends: dict[str, Any] = {
         "source_element_id": connection.source_element_id, "source_port_id": connection.source_port_id,
         "target_element_id": connection.target_element_id, "target_port_id": connection.target_port_id,
@@ -968,6 +994,7 @@ def element_outs(
                 if element_id not in shared_ids or project_id == viewer_project_id:
                     connection_counts[element_id] += count
     labels = principal_labels(db, [principal_ref(e.owner_type, e.owner_id) for e in elements])
+    paths = folder_paths(db, (e.folder_id for e in elements))
     return [
         ElementOut(
             id=e.id, project_id=e.project_id, organization_id=e.organization_id,
@@ -977,7 +1004,9 @@ def element_outs(
             element_type_name=element_types[e.element_type_id].name if e.element_type_id in element_types else "",
             symbol_id=e.symbol_id,
             effective_symbol_id=e.symbol_id or (element_types[e.element_type_id].symbol_id if e.element_type_id in element_types else None),
-            parent_id=e.parent_id, owner=label_of(labels, e.owner_type, e.owner_id), status=e.status,
+            parent_id=e.parent_id, folder_path=paths.get(e.folder_id) if e.folder_id else None,
+            folder_id=None if viewer_project_id is not None and e.project_id != viewer_project_id else e.folder_id,
+            owner=label_of(labels, e.owner_type, e.owner_id), status=e.status,
             allowed_status_moves=allowed_moves(e.status), version=e.version, creator_id=e.creator_id,
             is_archived=e.is_archived, archived_at=e.archived_at, created_at=e.created_at,
             updated_at=e.updated_at, child_count=child_counts.get(e.id, 0), connection_count=connection_counts.get(e.id, 0),
@@ -1008,6 +1037,7 @@ def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], 
             ArchitectureConnectionType.id.in_({c.connection_type_id for c in connections})
         ))
     } if connections else {}
+    paths = folder_paths(db, (c.folder_id for c in connections))
     realisation_rows = realisations_of(db, [c.id for c in connections])
     named = {c.id: c for c in connections}
     missing = {
@@ -1041,7 +1071,8 @@ def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], 
             id=c.id, project_id=c.project_id, unique_code=c.unique_code, name=c.name,
             connection_type_id=c.connection_type_id, connection_type_name=types[c.connection_type_id].name,
             directional=types[c.connection_type_id].directional, **end(c, "source"), **end(c, "target"),
-            protocol=c.protocol, description=c.description, status=c.status,
+            protocol=c.protocol, description=c.description, folder_id=c.folder_id,
+            folder_path=paths.get(c.folder_id) if c.folder_id else None, status=c.status,
             allowed_status_moves=allowed_moves(c.status), version=c.version,
             creator_id=c.creator_id, is_archived=c.is_archived, archived_at=c.archived_at, created_at=c.created_at,
             updated_at=c.updated_at, realises=realises.get(c.id, []), realised_by=realised_by.get(c.id, []),

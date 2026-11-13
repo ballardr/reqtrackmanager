@@ -12,6 +12,7 @@ The two vocabularies every architecture record is typed by, and the records:
   or by the organisation.
 - `ArchitectureConnection` — an interface between two elements; `ArchitectureConnectionRealisation` marks an inner
   connection as realising an outer one.
+- `ArchitectureFolder` — a name in a tree that organises the list of elements, connections or diagrams; navigation only.
 - `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
   elements and who it is shared with (a project, optionally with its descendants, or a group).
 - `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s,
@@ -245,6 +246,45 @@ class ArchitectureConnectionTypeParent(Base):
     )
 
 
+class ArchitectureFolder(UUIDPKMixin, TimestampMixin, Base):
+    """A name in a tree that organises one list (elements, connections or diagrams): navigation only.
+
+    A folder has no code, is not linkable and means nothing to the roll-up, the resolver or a report. Each kind has its
+    own tree. A project owns folders of any kind; the organisation owns element folders only (a CHECK keeps that).
+    A record is in one folder or none; deleting a folder moves its records and sub-folders to its parent.
+
+    Attributes:
+        project_id / organization_id: The owner; exactly one is set.
+        kind: A `FolderKind` value.
+        name: Unique among the folders of one parent (ignoring case); never contains `/`, which separates a path.
+        parent_id: The containing folder, or `None` for a top-level one. `SET NULL` is a backstop only: the service
+            moves a folder's children up before deleting it.
+        sort_order: Order among siblings.
+        creator_id: Who created it.
+    """
+
+    __tablename__ = "architecture_folders"
+    __table_args__ = (
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_folders_one_owner"),
+        CheckConstraint("organization_id IS NULL OR kind = 'element'", name="ck_architecture_folders_org_elements_only"),
+        CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_architecture_folders_not_own_parent"),
+    )
+
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(100))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
 class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
     """A part of the product: a system, service, board, sensor and so on.
 
@@ -264,6 +304,7 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
         parent_id: The containing element, or `None` for a root. `SET NULL` is a backstop only: the service
             refuses to delete an element that has children.
         owner_type / owner_id: Optional principal (a user or a group) accountable for the element.
+        folder_id: The folder the element is listed in, or `None` for the top level (an owner's own element folder).
         symbol_id: A symbol drawn instead of the type's, or `None` to use the type's. The owner's own symbol (a project
             element: the project's effective library; an organisation element: the organisation's). `SET NULL` is a backstop.
         status: A `RecordStatus` value.
@@ -304,6 +345,9 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
     )
     # Declared only so a flush inserts a new symbol before a type or element that names it; never loaded through.
     symbol: Mapped[ArchitectureSymbol | None] = relationship("ArchitectureSymbol", lazy="raise", viewonly=False)
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -353,6 +397,7 @@ class ArchitectureConnection(UUIDPKMixin, TimestampMixin, Base):
         source_port_id / target_port_id: A port of the matching end, or `None`. `SET NULL` when the port is removed.
         protocol: Free-text detail (version, topic, baud rate).
         description: Free text.
+        folder_id: The project's connection folder the connection is listed in, or `None` for the top level.
         status: A `RecordStatus` value.
         version: Optimistic counter.
         creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
@@ -386,6 +431,9 @@ class ArchitectureConnection(UUIDPKMixin, TimestampMixin, Base):
     )
     protocol: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -499,6 +547,7 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
             root elements). `SET NULL` when the element is deleted.
         connection_detail: When false the diagram draws plain lines (no type, protocol or port labels) and
             parallel lines collapse into one; when true connections are typed and labelled.
+        folder_id: The project's diagram folder the diagram is listed in, or `None` for the top level.
         status: A `RecordStatus` value.
         version: Optimistic counter.
         creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
@@ -517,6 +566,9 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True
     )
     connection_detail: Mapped[bool] = mapped_column(Boolean, default=False)
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

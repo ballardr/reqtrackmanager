@@ -17,6 +17,7 @@ import type {
   ArchitectureConnection,
   ArchitectureDiagram,
   ArchitectureElement,
+  ArchitectureFolder,
   ArchitectureRecordStatus,
   ArchitectureSymbol,
   CollectionGrant,
@@ -35,6 +36,7 @@ import type {
   ElementFieldValues,
   ElementType,
   ElementTypeValues,
+  FolderKind,
   NoteValues,
   BoundaryValues,
   DiagramAnchor,
@@ -268,3 +270,21 @@ function collectionCalls(base: string) {
 
 export const projectCollectionApi = (projectId: string) => collectionCalls(projectBase(projectId));
 export const orgCollectionApi = (organizationId: string) => collectionCalls(orgBase(organizationId));
+
+/** Folders of one kind in a project, or (elements only) in an organisation: a tree that organises a list. */
+function folderCalls(base: string, kind: FolderKind) {
+  const url = `${base}/${kind}-folders`;
+  return {
+    list: () => api.get<ArchitectureFolder[]>(url),
+    create: (values: { name: string; parent_id: string | null }) => api.post<ArchitectureFolder>(url, values),
+    update: (id: string, values: { name?: string; parent_id?: string | null }) => api.put<ArchitectureFolder>(`${url}/${id}`, values),
+    /** Deletes a folder; its records and sub-folders move to its parent. */
+    remove: (id: string) => api.delete<void>(`${url}/${id}`),
+    /** Puts records in a folder (null: the top level); resolves with how many changed. */
+    moveRecords: (recordIds: string[], folderId: string | null) =>
+      api.post<{ moved: number }>(`${url}/move-records`, { record_ids: recordIds, folder_id: folderId }),
+  };
+}
+
+export const projectFolderApi = (projectId: string, kind: FolderKind) => folderCalls(projectBase(projectId), kind);
+export const orgFolderApi = (organizationId: string) => folderCalls(orgBase(organizationId), "element");

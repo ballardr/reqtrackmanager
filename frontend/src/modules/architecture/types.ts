@@ -169,6 +169,10 @@ export interface ArchitectureElement extends ProjectScopedRow {
   symbol_id: string | null;
   effective_symbol_id: string | null;
   parent_id: string | null;
+  /** The folder in the owner's tree; null at the top level, and for a shared element (the owner's tree is not disclosed). */
+  folder_id: string | null;
+  /** The folder's path (`Software/Modules`): only the names on the way to this record, also for a shared element. */
+  folder_path: string | null;
   owner: Principal | null;
   status: ArchitectureRecordStatus;
   /** The states the server lets this record move to, in menu order (one map on the server). */
@@ -190,6 +194,7 @@ export interface ElementFieldValues {
   description: string;
   element_type_id: string;
   parent_id: string | null;
+  folder_id: string | null;
   owner: PrincipalRef | null;
   symbol_id: string | null;
 }
@@ -232,6 +237,8 @@ export interface ArchitectureConnection extends ProjectScopedRow {
   target_shared: boolean;
   protocol: string;
   description: string;
+  folder_id: string | null;
+  folder_path: string | null;
   status: ArchitectureRecordStatus;
   /** The states the server lets this record move to, in menu order (one map on the server). */
   allowed_status_moves: ArchitectureRecordStatus[];
@@ -257,6 +264,7 @@ export interface ConnectionFieldValues {
   target_port_id: string | null;
   protocol: string;
   description: string;
+  folder_id: string | null;
 }
 
 export interface ConnectionCreateValues extends ConnectionFieldValues {
@@ -312,6 +320,8 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
   scope_element_code: string | null;
   scope_element_name: string | null;
   connection_detail: boolean;
+  folder_id: string | null;
+  folder_path: string | null;
   status: ArchitectureRecordStatus;
   /** The states the server lets this record move to, in menu order (one map on the server). */
   allowed_status_moves: ArchitectureRecordStatus[];
@@ -332,6 +342,7 @@ export interface DiagramFieldValues {
   purpose: string;
   scope_element_id: string | null;
   connection_detail: boolean;
+  folder_id: string | null;
 }
 
 /** Create payload: the shared fields plus what only a new diagram takes. */
@@ -565,4 +576,24 @@ export interface BoundaryValues {
   y: number;
   width: number;
   height: number;
+}
+
+// --- Folders (mirror the folder schemas in `backend/app/modules/architecture/schemas.py`) ---
+
+/** Which list a folder organises; each kind has its own tree. */
+export type FolderKind = "element" | "connection" | "diagram";
+
+/** A folder: a name in a tree that organises one list. Navigation only. */
+export interface ArchitectureFolder {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  kind: FolderKind;
+  name: string;
+  parent_id: string | null;
+  sort_order: number;
+  /** Names from the top, joined by `/`. */
+  path: string;
+  /** Records directly in the folder (not in its sub-folders). */
+  record_count: number;
 }

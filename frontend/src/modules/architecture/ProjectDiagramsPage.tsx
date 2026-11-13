@@ -38,6 +38,7 @@ import { projectDiagramApi, projectElementApi } from "./api";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { ARCHITECTURE_HELP } from "./help";
 import { useCreateDiagram } from "./useCreateDiagram";
+import { useFolderListControls } from "./useFolderListControls";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureDiagram, type ArchitectureElement,
   type ArchitectureRecordStatus, isOutOfUse,
@@ -59,11 +60,12 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+  const folders = useFolderListControls({ projectId }, "diagram", "diagrams", () => setRefreshKey((k) => k + 1));
   const [diagrams, setDiagrams] = useState<ArchitectureDiagram[] | null>(null);
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const createForm = useCreateDiagram(projectId, (id) => navigate(`/projects/${projectId}/modules/architecture/diagrams/${id}`));
 
   useEffect(() => {
@@ -89,9 +91,10 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
     return (d: ArchitectureDiagram, applyOpenOnly: boolean) => {
       if (applyOpenOnly && isOutOfUse(d.status)) return false;
       if (statusFilter && d.status !== statusFilter) return false;
+      if (!folders.matches(d.folder_path)) return false;
       return !needle || `${d.unique_code} ${d.name} ${d.purpose} ${d.scope_element_name ?? ""}`.toLowerCase().includes(needle);
     };
-  }, [search, statusFilter]);
+  }, [search, statusFilter, folders]);
   const filtered = useMemo(() => (diagrams ?? []).filter((d) => matches(d, openOnly)), [diagrams, matches, openOnly]);
   const sorted = useMemo(() => sortRows(filtered, sort, DIAGRAM_SORT_VALUES), [filtered, sort]);
 
@@ -105,6 +108,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
     if (search.trim()) params.set("search", search.trim());
     if (includeArchived) params.set("include_archived", "true");
     if (openOnly) params.set("open_only", "true");
+    folders.addParams(params);
     addSharedListFilters(params, tagFilter, projectScope);
     return params;
   }
@@ -112,6 +116,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
   const columns: DirectoryColumn<ArchitectureDiagram>[] = [
     { key: "code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
     { key: "name", label: "Name", sortable: true, render: (d) => <>{d.name}<ProjectScopeLabel row={d} /></> },
+    { key: "folder", label: "Folder", sortable: true, render: (d) => d.folder_path ?? "—" },
     { key: "scope", label: "Scope", sortable: true, render: (d) => (d.scope_element_id ? `${d.scope_element_code ?? ""} ${d.scope_element_name ?? ""}`.trim() || "—" : <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>) },
     { key: "boxes", label: "Elements", sortable: true, render: (d) => d.placement_count },
     { key: "toggles", label: "Switches", sortable: true, render: (d) => d.toggle_count },
@@ -146,14 +151,20 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
               options={labelOptions(ARCHITECTURE_STATUS_LABEL)}
             />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+            {folders.panel}
             <ProjectScopeFilter scope={projectScope} />
             <TagFilterField projectId={projectId} filter={tagFilter} />
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
       >
+        {folders.bar}
         <DirectoryTable
           ariaLabel="Diagrams" columns={columns} rows={sorted} rowKey={(d) => d.id}
+          selection={{
+            selected: folders.selected, onChange: folders.setSelected, label: (d) => `Select ${d.unique_code}`,
+            selectable: (d) => d.project_id === projectId, allLabel: "Select all diagrams",
+          }}
           sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
           placements={{ projectId, artefactType: "architecture_diagram", rowId: (d) => d.id }}
           rowHref={(d) => `/projects/${rowProjectId(d, projectId)}/modules/architecture/diagrams/${d.id}`}
@@ -167,6 +178,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
         />
       </ListPageLayout>
 
+      {folders.dialog}
       {creating && (
         <DiagramFormModal
           elements={elements} projectId={projectId} error={createForm.error}

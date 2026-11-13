@@ -49,7 +49,7 @@ from sqlalchemy.orm import Session
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
-from app.modules.architecture import diagrams, records
+from app.modules.architecture import diagrams, folders, records
 from app.modules.architecture._shared import (
     CONNECTION_MANAGE_PERMISSION,
     DIAGRAM_MANAGE_PERMISSION,
@@ -114,9 +114,9 @@ from app.services.record_tables_core import (
     text_parser,
 )
 
-ELEMENT_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search", "roots_only"})
-CONNECTION_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search"})
-DIAGRAM_FILTERS = frozenset({"include_archived", "status", "open_only", "search"})
+ELEMENT_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search", "roots_only", "folder", "subfolders"})
+CONNECTION_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search", "folder", "subfolders"})
+DIAGRAM_FILTERS = frozenset({"include_archived", "status", "open_only", "search", "folder", "subfolders"})
 
 _STATUS_TONES = {"Draft": "info", "Active": "accent", "Retired": "muted"}
 _DIRECTION_BY_LABEL = {label.casefold(): value for value, label in PORT_DIRECTION_LABEL.items()}
@@ -246,6 +246,32 @@ def _end_parser(field_name: str) -> Callable[[RecordImportContext, str], uuid.UU
     return parse
 
 
+def _folder_parser(kind: str) -> Callable[[RecordImportContext, str], uuid.UUID | None]:
+    """A parser for a folder path of the importing owner (`Software/Modules`); an empty cell means the top level."""
+
+    def parse(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
+        if not text:
+            return None
+        found = cached_lookup(ctx, f"{kind}:folders", lambda: folders.path_index(ctx.db, _owner_of(ctx), kind)).get(text.strip().casefold())
+        if found is None:
+            raise RecordCellError(f"Unknown folder '{text}'.")
+        return found
+
+    return parse
+
+
+def _folder_column(kind: str) -> RecordColumn:
+    return RecordColumn("folder", "Folder", lambda t, r: t.folders.get(r.folder_id, "") if r.folder_id else "", _folder_parser(kind))
+
+
+def _folder_filtered(
+    db: Session, owner: ElementOwner, kind: str, rows: list[Any], filters: RecordFilters,
+) -> list[Any]:
+    """The rows in the folder the list's `folder` filter names (and, with `subfolders`, below it)."""
+    wanted = folders.filter_ids(db, owner, kind, filters.one("folder"), include_subfolders=bool(filters.flag("subfolders")))
+    return rows if wanted is None else [r for r in rows if r.folder_id in wanted]
+
+
 def _status_column() -> RecordColumn:
     return RecordColumn(
         "status", "Status", lambda t, r: RECORD_STATUS_LABEL[r.status], enum_parser(RecordStatus, "Status"),
@@ -261,6 +287,7 @@ class _Prepared:
         self.tags = tag_service.tag_names_for_records(db, artefact_type, ids) if ids else {}
         self.element_types = {row.id: row.name for row in _effective_rows(ELEMENT_TYPES, db, scope)}
         self.connection_types = {row.id: row.name for row in _effective_rows(CONNECTION_TYPES, db, scope)}
+        self.folders = folders.paths_for(db, (r.folder_id for r in records_))
         self.codes: dict[uuid.UUID, str] = {}
         self.symbols: dict[uuid.UUID, str] = {}
         self.ports_text: dict[uuid.UUID, str] = {}
@@ -323,10 +350,11 @@ def _filtered_elements(
         if type_id is None:
             return []
     status = enum_filter(filters, "status", RecordStatus)
-    return filter_elements(
+    owner = ElementOwner.of_project(scope) if isinstance(scope, Project) else ElementOwner.of_organization(scope)
+    return _folder_filtered(db, owner, "element", filter_elements(
         rows, status_=status.value if status else None, element_type_id=type_id,
         roots_only=bool(filters.flag("roots_only")), open_only=bool(filters.flag("open_only")), search=filters.one("search"),
-    )
+    ), filters)
 
 
 def _list_elements(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ArchitectureElement]:
@@ -360,6 +388,7 @@ def _element_columns(db: Session, project: Project | Organization) -> list[Recor
             "parent", "Parent element", lambda t, r: t.codes.get(r.parent_id, "") if r.parent_id else "",
             _element_by_code_parser("Parent element", blank_clears=True),
         ),
+        _folder_column("element"),
         RecordColumn(
             "owner", "Owner", lambda t, r: t.people.text(r.owner_type, r.owner_id), person_parser("owner"), kind="principal",
         ),
@@ -392,7 +421,8 @@ def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> Arch
     payload = _payload(ElementCreate, {
         "name": values.get("name", ""), "description": values.get("description", ""),
         "element_type_id": values.get("type"), "symbol_id": values.get("symbol"), "parent_id": values.get("parent"),
-        "owner": values.get("owner"), "activate": status is RecordStatus.ACTIVE, "ports": _ports_from_cell(values.get("ports", [])),
+        "folder_id": values.get("folder"), "owner": values.get("owner"), "activate": status is RecordStatus.ACTIVE,
+        "ports": _ports_from_cell(values.get("ports", [])),
     })
     element = _rule(lambda: records.create_element(ctx.db, _owner_of(ctx), ctx.user, payload))
     if status is RecordStatus.PROPOSED:
@@ -404,7 +434,7 @@ def _update_element(ctx: RecordImportContext, element: ArchitectureElement, valu
     fields: dict[str, Any] = {}
     for key, field in (
         ("name", "name"), ("description", "description"), ("type", "element_type_id"), ("symbol", "symbol_id"),
-        ("parent", "parent_id"), ("owner", "owner"),
+        ("parent", "parent_id"), ("folder", "folder_id"), ("owner", "owner"),
     ):
         if key in values:
             fields[field] = values[key]
@@ -482,12 +512,12 @@ def _list_connections(db: Session, user: User, project_id: uuid.UUID, filters: R
         if type_id is None:
             return []
     status = enum_filter(filters, "status", RecordStatus)
-    return filter_connections(
+    return _folder_filtered(db, ElementOwner.of_project(project), "connection", filter_connections(
         records.list_connections(db, project_id, include_archived=bool(filters.flag("include_archived"))),
         status_=status.value if status else None,
         connection_type_ids=closure_of(db, [type_id]) if type_id is not None else None,
         open_only=bool(filters.flag("open_only")), search=filters.one("search"),
-    )
+    ), filters)
 
 
 def _port_by_name(ctx: RecordImportContext, element_id: uuid.UUID | None, name: str, side: str) -> uuid.UUID | None:
@@ -528,6 +558,7 @@ def _connection_columns(db: Session, project: Project) -> list[RecordColumn]:
         end("source"), port("source"), end("target"), port("target"),
         RecordColumn("protocol", "Protocol", lambda t, r: r.protocol, text_parser),
         RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        _folder_column("connection"),
         _status_column(),
         _tags_column(),
     ]
@@ -543,7 +574,7 @@ def _create_connection(ctx: RecordImportContext, values: Mapping[str, Any]) -> A
         "source_port_id": _port_by_name(ctx, source, values.get("source_port", ""), "source"),
         "target_element_id": target, "target_port_id": _port_by_name(ctx, target, values.get("target_port", ""), "target"),
         "protocol": values.get("protocol", ""), "description": values.get("description", ""),
-        "activate": status is RecordStatus.ACTIVE,
+        "folder_id": values.get("folder"), "activate": status is RecordStatus.ACTIVE,
     })
     connection = _rule(lambda: records.create_connection(ctx.db, ctx.project, ctx.user, payload))
     if status is RecordStatus.PROPOSED:
@@ -553,7 +584,10 @@ def _create_connection(ctx: RecordImportContext, values: Mapping[str, Any]) -> A
 
 def _update_connection(ctx: RecordImportContext, connection: ArchitectureConnection, values: Mapping[str, Any]) -> None:
     fields: dict[str, Any] = {}
-    for key, field in (("name", "name"), ("type", "connection_type_id"), ("protocol", "protocol"), ("description", "description")):
+    for key, field in (
+        ("name", "name"), ("type", "connection_type_id"), ("protocol", "protocol"), ("description", "description"),
+        ("folder", "folder_id"),
+    ):
         if key in values:
             fields[field] = values[key]
     source = values.get("source", connection.source_element_id)
@@ -604,6 +638,7 @@ class _DiagramPrepared:
     def __init__(self, db: Session, project: Project, records_: Sequence[ArchitectureDiagram]) -> None:
         ids = [r.id for r in records_]
         self.tags = tag_service.tag_names_for_records(db, DIAGRAM_ARTEFACT_TYPE, ids) if ids else {}
+        self.folders = folders.paths_for(db, (r.folder_id for r in records_))
         scope_ids = {r.scope_element_id for r in records_ if r.scope_element_id}
         self.scopes: dict[uuid.UUID, str] = {}
         if scope_ids:
@@ -624,10 +659,11 @@ def _prepare_diagrams(db: Session, project: Project, records_: list[Architecture
 
 def _list_diagrams(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ArchitectureDiagram]:
     status = enum_filter(filters, "status", RecordStatus)
-    return filter_diagrams(
+    project = project_or_404(db, project_id)
+    return _folder_filtered(db, ElementOwner.of_project(project), "diagram", filter_diagrams(
         diagrams.list_diagrams(db, project_id, include_archived=bool(filters.flag("include_archived"))),
         status_=status.value if status else None, open_only=bool(filters.flag("open_only")), search=filters.one("search"),
-    )
+    ), filters)
 
 
 def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -639,6 +675,7 @@ def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
         ),
         RecordColumn("placements", "Elements", lambda t, r: str(t.counts[r.id].placement_count), text_parser),
+        _folder_column("diagram"),
         # A diagram has no import or update through its table, so its status is not edited in the bulk grid either.
         replace(_status_column(), editable=False),
         _tags_column(),

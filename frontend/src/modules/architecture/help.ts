@@ -54,5 +54,11 @@ export const ARCHITECTURE_HELP = {
   toggleRule: "Elements and connections that belong to the switch by type, domain or tag, besides any chosen by hand. A connection type also matches the types beneath it. Switching it off hides all of them; a hidden element between two others is bridged by a dashed line.",
   toggleMembers: "Elements and connections chosen by hand. They belong to the switch together with those its rule matches.",
   connectionPrompt: "Connections are real records: this one is created in the model and drawn here, and it appears on both elements and in the Connections list.",
+  folderField: "Where the record is listed. Folders only organise the list; they never change the model, a diagram or a report. Leave it empty for the top level.",
+  folderFilter: "Shows the records in the chosen folder. With Include sub-folders ticked it also shows everything in the folders below it. Folders are made and changed here; each list has its own folders.",
+  folderPicker: "Narrows the list to the elements of the chosen owners and folders. Each owner (this project, the organisation, another project) lists only the folders that lead to an element you may read. Choosing a folder includes the folders below it.",
+  folderIncludeSub: "Ticked: the list also shows the records in the folders below the chosen one. Unticked: only the chosen folder's own records.",
+  folderParent: "The folder this one sits in. Leave it empty for the top level. A folder can be moved into another folder, but not into itself or one of its own sub-folders.",
+  folderDelete: "The folder's records and sub-folders move up to its parent; nothing else is deleted.",
   symbolUpload: "An SVG drawing (or an EPS or PDF when conversion is available). It is sanitised on upload. Upload only artwork the organisation is licensed to use.",
 } as const;

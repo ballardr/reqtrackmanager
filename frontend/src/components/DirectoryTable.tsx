@@ -26,6 +26,9 @@
  *   handler for row navigation, so there's no case where preferring
  *   `onRowClick` instead would be the better silent choice.
  *
+ * - Optionally (`selection`) adds a leading checkbox column, with a header box that selects every selectable row on
+ *   the page, for a bulk action the caller offers above the table. The component only reports the chosen keys.
+ *
  * Deliberately excluded (each already has a better home elsewhere; folding
  * these in would duplicate or misplace them):
  * - No search box — that's `FilterPanel`'s own `search`/`onSearchChange`
@@ -43,6 +46,7 @@
  *   click — the caller owns `sort` state and decides how to re-sort
  *   (refetch or re-slice), then passes new `rows` back in.
  */
+import { useEffect, useRef } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -50,9 +54,24 @@ import { placementsText, type RecordPlacementsApi } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";
 import { usePagePlacements } from "../hooks/usePagePlacements";
 
+import { InlineCheckbox } from "./FormFields";
 import { LoadMoreButton } from "./LoadMoreButton";
 import { SortableHeader } from "./SortableHeader";
 import type { SortState } from "./sortState";
+
+/** Row selection for a bulk action: a leading column of checkboxes, with a box in the header that selects every row that can be. */
+export interface DirectoryTableSelection<Row> {
+  /** The keys (`rowKey`) of the selected rows. The caller owns the set. */
+  selected: ReadonlySet<string>;
+  /** Called with the new set when a box is ticked or cleared. */
+  onChange: (next: Set<string>) => void;
+  /** The box's accessible name for a row ("Select ELM-001"). */
+  label: (row: Row) => string;
+  /** A row that cannot be selected (another owner's record) shows no box; omit when every row can be. */
+  selectable?: (row: Row) => boolean;
+  /** The header box's accessible name (default "Select all rows"). */
+  allLabel?: string;
+}
 
 export interface DirectoryColumn<Row> {
   key: string;
@@ -92,6 +111,7 @@ export function DirectoryTable<Row>({
   rowHref,
   emptyState,
   placements,
+  selection,
 }: {
   /** Accessible name for the `<table>` itself. */
   ariaLabel: string;
@@ -133,10 +153,19 @@ export function DirectoryTable<Row>({
    * whole page at once. The column appears only when a row on the page is placed somewhere, so a project that does
    * not use components sees no new column. `api` is injectable for stories. */
   placements?: { projectId: string | undefined; artefactType: string; rowId: (row: Row) => string; api?: RecordPlacementsApi };
+  /** Adds a leading column of checkboxes for a bulk action; the caller owns the selected keys and the action itself. */
+  selection?: DirectoryTableSelection<Row>;
 }): JSX.Element {
   const strings = useStrings();
   const placed = usePagePlacements(placements?.projectId, placements?.artefactType, rows.map((r) => placements?.rowId(r) ?? ""), placements?.api);
   const showPlacements = placements !== undefined && rows.some((r) => (placed[placements.rowId(r)] ?? []).length > 0);
+  const selectAll = useRef<HTMLInputElement>(null);
+  const choosable = selection ? rows.filter((r) => selection.selectable?.(r) ?? true) : [];
+  const chosen = selection ? choosable.filter((r) => selection.selected.has(rowKey(r))).length : 0;
+  // `indeterminate` is a DOM property only, so it is set after render: some, but not all, of the choosable rows are selected.
+  useEffect(() => {
+    if (selectAll.current) selectAll.current.indeterminate = chosen > 0 && chosen < choosable.length;
+  }, [chosen, choosable.length]);
   if (rows.length === 0) {
     return <>{emptyState}</>;
   }
@@ -147,6 +176,19 @@ export function DirectoryTable<Row>({
         <table aria-label={ariaLabel}>
           <thead>
             <tr>
+              {selection && (
+                <th style={{ width: "2rem" }}>
+                  <input
+                    ref={selectAll} type="checkbox" aria-label={selection.allLabel ?? "Select all rows"}
+                    checked={choosable.length > 0 && chosen === choosable.length} disabled={choosable.length === 0}
+                    onChange={(e) => {
+                      const next = new Set(selection.selected);
+                      choosable.forEach((r) => (e.target.checked ? next.add(rowKey(r)) : next.delete(rowKey(r))));
+                      selection.onChange(next);
+                    }}
+                  />
+                </th>
+              )}
               {columns.map((column) =>
                 column.sortable && onSort ? (
                   <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} />
@@ -162,6 +204,21 @@ export function DirectoryTable<Row>({
           <tbody>
             {rows.map((row) => (
               <tr key={rowKey(row)}>
+                {selection && (
+                  <td>
+                    {(selection.selectable?.(row) ?? true) && (
+                      <InlineCheckbox
+                        ariaLabel={selection.label(row)} checked={selection.selected.has(rowKey(row))}
+                        onChange={(checked) => {
+                          const next = new Set(selection.selected);
+                          if (checked) next.add(rowKey(row));
+                          else next.delete(rowKey(row));
+                          selection.onChange(next);
+                        }}
+                      />
+                    )}
+                  </td>
+                )}
                 {columns.map((column, index) => (
                   <td key={column.key}>
                     {index === 0

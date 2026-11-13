@@ -15,6 +15,7 @@ from fastapi import APIRouter
 
 from app.modules.architecture import symbol_routes, vocabulary_routes
 from app.modules.architecture.collection_routes import add_org_collection_routes
+from app.modules.architecture.folder_routes import add_org_folder_routes
 from app.modules.architecture.record_routes import add_org_record_routes
 from app.modules.architecture.schemas import (
     ConnectionTypeCreate,
@@ -58,3 +59,4 @@ vocabulary_routes.add_org_routes(
 symbol_routes.add_org_symbol_routes(router, require_view=_require_view)
 add_org_record_routes(router)
 add_org_collection_routes(router)
+add_org_folder_routes(router)

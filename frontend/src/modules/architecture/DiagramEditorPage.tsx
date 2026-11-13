@@ -380,7 +380,7 @@ export function DiagramEditorPage() {
     try {
       const created = await projectElementApi(projectId).create({
         name, description: "", element_type_id: newElement.typeId, parent_id: diagram.scope_element_id, owner: null,
-        symbol_id: null, activate: false, ports: [],
+        symbol_id: null, folder_id: null, activate: false, ports: [],
       });
       const type = elementTypes.find((t) => t.id === created.element_type_id);
       editor.edit((l) => addBoxes(l, [boxFromElement(created, type, newElement.at)]));
@@ -418,7 +418,7 @@ export function DiagramEditorPage() {
       const box = layout.boxes.find((b) => b.elementId === elementId);
       const created = await diagramApi.create({
         name: `${box?.name ?? "Element"} internals`, purpose: "", scope_element_id: elementId, connection_detail: false,
-        activate: false, populate: true,
+        folder_id: null, activate: false, populate: true,
       });
       showToast("Diagram created for the element's inside.");
       navigate(`${base}/diagrams/${created.id}`);

@@ -13,7 +13,7 @@ import type { OrgUser } from "../../api/types";
 import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
-  ArchitectureCollection, ArchitectureConnection, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
+  ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramModel, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
   ModelElement, Port,
 } from "./types";
@@ -50,7 +50,7 @@ export function buildElement(overrides: Partial<ArchitectureElement> = {}): Arch
   return {
     id: "el-1", project_id: PROJECT_ID, organization_id: null, shared: false, unique_code: "ELM-001", name: "Gateway",
     description: "Terminates client traffic.", element_type_id: "et-1", element_type_name: "Service", symbol_id: null,
-    effective_symbol_id: null, parent_id: null, owner: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 1, creator_id: "user-1",
+    effective_symbol_id: null, parent_id: null, folder_id: null, folder_path: null, owner: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 1, creator_id: "user-1",
     is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z",
     child_count: 0, connection_count: 1, ports: [buildPort()], ...overrides,
   };
@@ -63,8 +63,8 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
     source_element_name: "Gateway", source_port_id: "port-1", source_port_name: "HTTPS API", source_locked: false,
     source_shared: false, target_element_id: "el-2", target_element_code: "ELM-002", target_element_name: "Orders",
     target_port_id: null, target_port_name: null, target_locked: false, target_shared: false, protocol: "HTTPS/1.1",
-    description: "", status: "active", allowed_status_moves: movesFrom(overrides.status), version: 1, creator_id: "user-1",
-    is_archived: false, archived_at: null,
+    description: "", folder_id: null, folder_path: null, status: "active", allowed_status_moves: movesFrom(overrides.status),
+    version: 1, creator_id: "user-1", is_archived: false, archived_at: null,
     created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", realises: [], realised_by: [], ...overrides,
   };
 }
@@ -72,8 +72,8 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
 export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): ArchitectureDiagram {
   return {
     id: "dgm-1", project_id: PROJECT_ID, unique_code: "DGM-001", name: "Platform overview", purpose: "How traffic reaches the services.",
-    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, status: "active",
-    allowed_status_moves: movesFrom(overrides.status), version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
+    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false,
+    folder_id: null, folder_path: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", placement_count: 3, note_count: 0, toggle_count: 1, ...overrides,
   };
 }
@@ -242,6 +242,14 @@ export function buildCollection(overrides: Partial<ArchitectureCollection> = {})
   };
 }
 
+export function buildFolder(overrides: Partial<ArchitectureFolder> = {}): ArchitectureFolder {
+  const name = overrides.name ?? "Software";
+  return {
+    id: "fold-1", project_id: PROJECT_ID, organization_id: null, kind: "element", name, parent_id: null, sort_order: 0,
+    path: name, record_count: 0, ...overrides,
+  };
+}
+
 /** A minimal SVG a story's symbol request answers with. */
 export const SYMBOL_SVG = new Blob(
   ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'], { type: "image/svg+xml" },
@@ -260,6 +268,8 @@ export interface ArchitectureReads {
   diagramModel?: DiagramModel;
   /** Sub-components switched off for the project (the page hides their tabs). */
   disabledSubComponents?: string[];
+  /** The project's (or organisation's) folders, answered for every kind and filtered by the kind in the address. */
+  folders?: ArchitectureFolder[];
   /** Whether the viewer may manage the project's types (shows the Add menu's setup entry). */
   canManageTypes?: boolean;
   /** `{element id: places}`; when given, the project has the shared component tree and the elements' places are readable and editable. */
@@ -283,6 +293,8 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     }
     if (path.endsWith("/records/architecture_element/columns")) return buildRecordColumns({ label: "Elements" });
     if (path.endsWith("/records/architecture_connection/columns")) return buildRecordColumns({ label: "Connections" });
+    const folderKind = /\/modules\/architecture\/(element|connection|diagram)-folders$/.exec(base);
+    if (folderKind) return (reads.folders ?? []).filter((f) => f.kind === folderKind[1]);
     if (base.endsWith("/modules/architecture/element-types")) return ELEMENT_TYPES;
     if (base.endsWith("/modules/architecture/connection-types")) return CONNECTION_TYPES;
     if (base.endsWith("/modules/architecture/symbols")) return SYMBOLS;

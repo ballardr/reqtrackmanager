@@ -2473,7 +2473,8 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
     REST API, Power; one left on the "Serial bus" group to show a connection refined later; the airframe's own link to the
     ground station, realised by the radio's upload), an organisation-owned identity service shared with the project
-    through a collection, and a diagram of the airframe with a boundary box for that link and a toggle that hides its sensors.
+    through a collection, a diagram of the airframe with a boundary box for that link and a toggle that hides its sensors, and
+    folders that organise the three lists (Hardware with Boards and Sensors, Software, Buses, Overviews, and the organisation's Shared services).
     The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
     drone with a symbol uploaded to the project's own library. Returns the number of elements, connections and diagrams created."""
     enable_module(headers, org_id, "architecture")
@@ -2500,6 +2501,19 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         return {row["name"]: row["id"] for row in r.json()}
 
     element_types, connection_types = effective("element-types"), effective("connection-types")
+
+    def make_folder(url: str, kind: str, name: str, parent: str | None = None) -> str:
+        r = httpx.post(f"{url}/{kind}-folders", headers=headers, timeout=30, json={"name": name, "parent_id": parent})
+        r.raise_for_status()
+        return r.json()["id"]
+
+    # Folders only organise the lists: elements by discipline, the buses and the overview diagrams in a folder each.
+    hardware = make_folder(base, "element", "Hardware")
+    boards = make_folder(base, "element", "Boards", hardware)
+    sensors = make_folder(base, "element", "Sensors", hardware)
+    software = make_folder(base, "element", "Software")
+    buses = make_folder(base, "connection", "Buses")
+    overviews = make_folder(base, "diagram", "Overviews")
     quadcopter = (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" '
         'stroke-linecap="round"><circle cx="14" cy="14" r="8"/><circle cx="50" cy="14" r="8"/><circle cx="14" cy="50" r="8"/>'
@@ -2513,19 +2527,23 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
 
     def element(
         name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = (), symbol: str | None = None,
+        folder: str | None = None,
     ) -> dict:
         r = httpx.post(
             f"{base}/elements", headers=headers, timeout=30,
             json={
                 "name": name, "description": description, "element_type_id": element_types[type_name],
-                "parent_id": parent, "activate": True, "symbol_id": symbol,
+                "parent_id": parent, "folder_id": folder, "activate": True, "symbol_id": symbol,
                 "ports": [{"name": n, "direction": d, "connection_type_id": connection_types.get(t)} for n, d, t in ports],
             },
         )
         r.raise_for_status()
         return r.json()
 
-    def connect(name: str, type_name: str, source: dict, source_port: str, target: dict, target_port: str, protocol: str) -> dict:
+    def connect(
+        name: str, type_name: str, source: dict, source_port: str, target: dict, target_port: str, protocol: str,
+        folder: str | None = None,
+    ) -> dict:
         def port(item: dict, port_name: str) -> str | None:
             return next((p["id"] for p in item["ports"] if p["name"] == port_name), None)
 
@@ -2535,6 +2553,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
                 "name": name, "connection_type_id": connection_types[type_name], "protocol": protocol,
                 "source_element_id": source["id"], "source_port_id": port(source, source_port),
                 "target_element_id": target["id"], "target_port_id": port(target, target_port), "activate": True,
+                "folder_id": folder,
             },
         )
         r.raise_for_status()
@@ -2546,20 +2565,21 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     airframe = element("Airframe electronics", "Subsystem", "Everything that flies.", parent=drone["id"])
     fc = element(
         "Flight controller", "Board", "Runs the control loop and the failsafes.", parent=airframe["id"],
-        ports=(("IMU bus", "both", "SPI"), ("GPS link", "in", "UART"), ("Telemetry link", "out", "UART")),
+        ports=(("IMU bus", "both", "SPI"), ("GPS link", "in", "UART"), ("Telemetry link", "out", "UART")), folder=boards,
     )
-    gps = element("GPS receiver", "Sensor", "Position and time.", parent=airframe["id"], ports=(("UART out", "out", "UART"),))
-    imu = element("IMU", "Sensor", "Attitude and acceleration.", parent=airframe["id"], ports=(("SPI", "both", "SPI"),))
+    gps = element("GPS receiver", "Sensor", "Position and time.", parent=airframe["id"], ports=(("UART out", "out", "UART"),), folder=sensors)
+    imu = element("IMU", "Sensor", "Attitude and acceleration.", parent=airframe["id"], ports=(("SPI", "both", "SPI"),), folder=sensors)
     radio = element(
         "Telemetry radio", "Board", "Link to the ground station.", parent=airframe["id"],
-        ports=(("UART in", "in", "UART"), ("Downlink", "out", "Ethernet")),
+        ports=(("UART in", "in", "UART"), ("Downlink", "out", "Ethernet")), folder=boards,
     )
     ground = element("Ground station service", "Service", "Receives telemetry and sends missions.", parent=drone["id"],
-                     ports=(("Telemetry API", "in", "REST API"),))
-    connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz")
-    connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud")
+                     ports=(("Telemetry API", "in", "REST API"),),
+                     folder=software)
+    connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz", folder=buses)
+    connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud", folder=buses)
     # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.
-    connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2")
+    connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2", folder=buses)
     upload = connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
     # The interface as the layer above declares it (the airframe to the ground station); the radio's upload realises it.
     downlink = connect("Airframe downlink", "REST API", airframe, "", ground, "Telemetry API", "HTTPS, JSON")
@@ -2574,7 +2594,8 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     identity = httpx.post(
         f"{org_base}/elements", headers=headers, timeout=30,
         json={"name": "Corporate identity service", "description": "Sign-in for every product.",
-              "element_type_id": org_types["Service"], "activate": True},
+              "element_type_id": org_types["Service"], "activate": True,
+              "folder_id": make_folder(org_base, "element", "Shared services")},
     )
     identity.raise_for_status()
     collection = httpx.post(f"{org_base}/collections", headers=headers, timeout=30, json={"name": "Corporate services"})
@@ -2591,7 +2612,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     diagram = httpx.post(
         f"{base}/diagrams", headers=headers, timeout=30,
         json={"name": "Airframe data flow", "purpose": "How readings reach the ground station.", "activate": True,
-              "scope_element_id": airframe["id"], "connection_detail": True},
+              "scope_element_id": airframe["id"], "connection_detail": True, "folder_id": overviews},
     )
     diagram.raise_for_status()
     placed = diagram.json()

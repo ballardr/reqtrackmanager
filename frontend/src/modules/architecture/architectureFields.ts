@@ -11,15 +11,19 @@ import type {
 } from "./types";
 
 /** An empty element form; `elementTypeId` preselects the first type. */
-export function blankElementValues(elementTypeId = "", parentId: string | null = null): ElementFieldValues {
-  return { name: "", description: "", element_type_id: elementTypeId, parent_id: parentId, owner: null, symbol_id: null };
+export function blankElementValues(
+  elementTypeId = "", parentId: string | null = null, folderId: string | null = null,
+): ElementFieldValues {
+  return {
+    name: "", description: "", element_type_id: elementTypeId, parent_id: parentId, folder_id: folderId, owner: null, symbol_id: null,
+  };
 }
 
 /** The editable fields of an element, as the form holds them. */
 export function valuesFromElement(element: ArchitectureElement): ElementFieldValues {
   return {
     name: element.name, description: element.description, element_type_id: element.element_type_id,
-    parent_id: element.parent_id, owner: principalRef(element.owner), symbol_id: element.symbol_id,
+    parent_id: element.parent_id, folder_id: element.folder_id, owner: principalRef(element.owner), symbol_id: element.symbol_id,
   };
 }
 
@@ -39,10 +43,12 @@ export function diffElementFields(before: ElementFieldValues, after: ElementFiel
 }
 
 /** An empty connection form. */
-export function blankConnectionValues(connectionTypeId = "", sourceElementId = "", targetElementId = ""): ConnectionFieldValues {
+export function blankConnectionValues(
+  connectionTypeId = "", sourceElementId = "", targetElementId = "", folderId: string | null = null,
+): ConnectionFieldValues {
   return {
     name: "", connection_type_id: connectionTypeId, source_element_id: sourceElementId, source_port_id: null,
-    target_element_id: targetElementId, target_port_id: null, protocol: "", description: "",
+    target_element_id: targetElementId, target_port_id: null, protocol: "", description: "", folder_id: folderId,
   };
 }
 
@@ -52,7 +58,7 @@ export function valuesFromConnection(connection: ArchitectureConnection): Connec
     name: connection.name, connection_type_id: connection.connection_type_id,
     source_element_id: connection.source_element_id, source_port_id: connection.source_port_id,
     target_element_id: connection.target_element_id, target_port_id: connection.target_port_id,
-    protocol: connection.protocol, description: connection.description,
+    protocol: connection.protocol, description: connection.description, folder_id: connection.folder_id,
   };
 }
 
@@ -115,15 +121,15 @@ export function elementCodeRecord(element: ArchitectureElement) {
 }
 
 /** An empty diagram form; `scopeId` preselects the element the diagram shows the inside of. */
-export function blankDiagramValues(scopeId: string | null = null): DiagramFieldValues {
-  return { name: "", purpose: "", scope_element_id: scopeId, connection_detail: false };
+export function blankDiagramValues(scopeId: string | null = null, folderId: string | null = null): DiagramFieldValues {
+  return { name: "", purpose: "", scope_element_id: scopeId, connection_detail: false, folder_id: folderId };
 }
 
 /** The editable fields of a diagram, as the form holds them. */
 export function valuesFromDiagram(diagram: ArchitectureDiagram): DiagramFieldValues {
   return {
     name: diagram.name, purpose: diagram.purpose, scope_element_id: diagram.scope_element_id,
-    connection_detail: diagram.connection_detail,
+    connection_detail: diagram.connection_detail, folder_id: diagram.folder_id,
   };
 }
 

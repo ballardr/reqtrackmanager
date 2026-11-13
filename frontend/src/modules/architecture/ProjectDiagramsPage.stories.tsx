@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
+import { buildDiagram, buildFolder, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectDiagramsPage } from "./ProjectDiagramsPage";
 
 const DIAGRAMS = [
@@ -69,5 +69,26 @@ export const BoxCountHeaderSortsTheList: Story = {
     await userEvent.click(within(table).getByRole("button", { name: "Elements" }));
     await waitFor(() => expect(within(table).getAllByRole("link").map((link) => link.textContent)).toEqual(["DGM-002", "DGM-001"]));
     await expect(within(table).getByRole("columnheader", { name: "Elements" })).toHaveAttribute("aria-sort", "ascending");
+  },
+};
+
+/** The Folder column shows each diagram's path, and choosing a folder in the filter panel narrows the list to it. */
+export const FolderColumnAndFilterNarrowTheList: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      diagrams: [
+        buildDiagram({ folder_id: "df-1", folder_path: "Overviews" }),
+        buildDiagram({ id: "dgm-2", unique_code: "DGM-002", name: "Loose", folder_id: null, folder_path: null }),
+      ],
+      folders: [buildFolder({ id: "df-1", kind: "diagram", name: "Overviews", path: "Overviews", record_count: 1 })],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Diagrams" });
+    await expect(within(within(table).getByRole("link", { name: "DGM-001" }).closest("tr")!).getByText("Overviews")).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Folder Overviews" }));
+    await waitFor(() => expect(within(table).queryByRole("link", { name: "DGM-002" })).not.toBeInTheDocument());
+    await expect(within(table).getByRole("link", { name: "DGM-001" })).toBeInTheDocument();
   },
 };

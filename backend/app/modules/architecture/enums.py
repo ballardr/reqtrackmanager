@@ -85,3 +85,11 @@ class AttachPoint(str, enum.Enum):
     BOTTOM_RIGHT = "bottom_right"
     BOTTOM_LEFT = "bottom_left"
     TOP_LEFT = "top_left"
+
+
+class FolderKind(str, enum.Enum):
+    """Which list a folder organises; each kind has its own tree of folders."""
+
+    ELEMENT = "element"
+    CONNECTION = "connection"
+    DIAGRAM = "diagram"

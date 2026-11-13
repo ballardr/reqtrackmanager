@@ -18,6 +18,7 @@ import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { blankDiagramValues, valuesFromDiagram } from "./architectureFields";
+import { FolderField } from "./FolderField";
 import { ARCHITECTURE_HELP } from "./help";
 import type { ArchitectureDiagram, ArchitectureElement, DiagramFieldValues } from "./types";
 import { isOutOfUse } from "./types";
@@ -81,6 +82,7 @@ export function DiagramFormModal({
             placeholder="System context (top-level elements)" options={scopeOptions}
             onChange={(next) => set("scope_element_id", next || null)}
           />
+          <FolderField kind="diagram" owner={{ projectId }} value={values.folder_id} onChange={(next) => set("folder_id", next)} />
           <CheckboxField
             heading="Connections" label="Show connection detail" checked={values.connection_detail}
             help={ARCHITECTURE_HELP.diagramConnectionDetail} onChange={(checked) => set("connection_detail", checked)}

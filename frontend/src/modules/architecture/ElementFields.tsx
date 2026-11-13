@@ -1,7 +1,7 @@
 /**
  * Module: modules/architecture/ElementFields
  *
- * The fields of an element that both the create and the edit form take (name, type, parent, owner, symbol,
+ * The fields of an element that both the create and the edit form take (name, type, parent, folder, owner, symbol,
  * description), as one group so a field added later reaches both. The element type, parent and symbol choices belong
  * to the element's owner (a project or the organisation), so the caller supplies them.
  */
@@ -12,6 +12,7 @@ import { FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import { useRecordCode } from "../../hooks/useRecordCode";
+import { FolderField } from "./FolderField";
 import { ARCHITECTURE_HELP } from "./help";
 import { SymbolPicker } from "./SymbolPicker";
 import type { ArchitectureElement, ArchitectureSymbol, ElementFieldValues, ElementType } from "./types";
@@ -56,6 +57,10 @@ export function ElementFields({
         help={ARCHITECTURE_HELP.elementParent} label="Parent element" value={values.parent_id ?? ""} placeholder="None (top level)"
         onChange={(next) => onChange("parent_id", next || null)}
         options={parents.map((e) => ({ value: e.id, label: `${formatCode.code(e.unique_code)} ${e.name}` }))}
+      />
+      <FolderField
+        kind="element" owner={projectId ? { projectId } : { organizationId }} value={values.folder_id}
+        onChange={(next) => onChange("folder_id", next)}
       />
       <PrincipalFormField
         help={ARCHITECTURE_HELP.elementOwner} label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}

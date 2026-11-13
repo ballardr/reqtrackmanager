@@ -175,6 +175,7 @@ MODULE_DEFINITION = ModuleDefinition(
         "architecture_element_type": "structure",
         "architecture_connection_type": "structure",
         "architecture_collection": "structure",
+        "architecture_folder": "structure",
         "architecture_symbol": "structure",
     },
     artefact_types=_ALL,

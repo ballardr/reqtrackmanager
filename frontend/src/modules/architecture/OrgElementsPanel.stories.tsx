@@ -2,9 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withAuth, withToast } from "../../testing/storybook-helpers";
-import { buildUser } from "../../testing/storybook-helpers";
-import { buildElement, mockArchitectureReads, ORG_ID } from "./architectureFixtures";
+import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildElement, buildFolder, mockArchitectureReads, ORG_ID } from "./architectureFixtures";
 import { OrgElementsPanel } from "./OrgElementsPanel";
 
 const ORG_ELEMENT = buildElement({ id: "oel-1", project_id: null, organization_id: ORG_ID, unique_code: "ELM-001", name: "Identity service", ports: [] });
@@ -13,7 +12,7 @@ const meta: Meta<typeof OrgElementsPanel> = {
   title: "Modules/Architecture/OrgElementsPanel",
   component: OrgElementsPanel,
   args: { orgId: ORG_ID },
-  decorators: [withAuth(buildUser({ id: "user-1" })), withToast()],
+  decorators: [withAuth(buildUser({ id: "user-1" })), withRouter("/"), withToast()],
   beforeEach: () => {
     const get = mockArchitectureReads({ elements: [ORG_ELEMENT] });
     return () => get.mockRestore();
@@ -56,5 +55,27 @@ export const CollectionsTabManagesSharing: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("tab", { name: "Collections" }));
     await expect(await canvas.findByRole("region", { name: "Shared infrastructure" })).toBeInTheDocument();
+  },
+};
+
+/** The organisation's element folders: a Folder column, and choosing a folder narrows the table to it. */
+export const FolderColumnAndPanelNarrowTheTable: Story = {
+  beforeEach: () => {
+    const get = mockArchitectureReads({
+      elements: [
+        buildElement({ ...ORG_ELEMENT, folder_id: "of-1", folder_path: "Platform" }),
+        buildElement({ ...ORG_ELEMENT, id: "oel-2", unique_code: "ELM-002", name: "Message bus", folder_id: null, folder_path: null }),
+      ],
+      folders: [buildFolder({ id: "of-1", project_id: null, organization_id: ORG_ID, name: "Platform", path: "Platform", record_count: 1 })],
+    });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Organisation elements" });
+    await expect(within(table).getByText("Platform")).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Folder Platform" }));
+    await waitFor(() => expect(within(table).queryByText("Message bus")).not.toBeInTheDocument());
+    await expect(within(table).getByText("Identity service")).toBeInTheDocument();
   },
 };

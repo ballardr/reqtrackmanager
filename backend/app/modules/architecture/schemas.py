@@ -21,7 +21,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.architecture.enums import AttachPoint, Domain, ElementShape, LineStyle, PortDirection, RecordStatus
+from app.modules.architecture.enums import (
+    AttachPoint,
+    Domain,
+    ElementShape,
+    FolderKind,
+    LineStyle,
+    PortDirection,
+    RecordStatus,
+)
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
 
@@ -193,13 +201,14 @@ class ElementCreate(BaseModel):
     parent_id: UUID | None = None
     owner: PrincipalRef | None = None
     symbol_id: UUID | None = None
+    folder_id: UUID | None = None
     activate: bool = False
     ports: list[PortCreate] = Field(default_factory=list, max_length=200)
 
 
 class ElementUpdate(BaseModel):
     """Edit of an element. `version` is required (the optimistic lock); a field left out is kept, and
-    `parent_id` / `owner` / `symbol_id` set to `null` clear the field."""
+    `parent_id` / `owner` / `symbol_id` / `folder_id` set to `null` clear the field."""
 
     version: int
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -208,6 +217,7 @@ class ElementUpdate(BaseModel):
     parent_id: UUID | None = None
     owner: PrincipalRef | None = None
     symbol_id: UUID | None = None
+    folder_id: UUID | None = None
 
 
 class StatusChange(BaseModel):
@@ -236,6 +246,8 @@ class ElementOut(ProjectScopedRow):
     symbol_id: UUID | None
     effective_symbol_id: UUID | None
     parent_id: UUID | None
+    folder_id: UUID | None = None
+    folder_path: str | None = None
     owner: PrincipalOut | None
     status: str
     allowed_status_moves: list[str]
@@ -261,6 +273,7 @@ class ConnectionCreate(BaseModel):
     target_port_id: UUID | None = None
     protocol: str = Field(default="", max_length=200)
     description: str = Field(default="", max_length=20000)
+    folder_id: UUID | None = None
     activate: bool = False
 
 
@@ -276,6 +289,7 @@ class ConnectionUpdate(BaseModel):
     target_port_id: UUID | None = None
     protocol: str | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=20000)
+    folder_id: UUID | None = None
 
 
 class RealisationsSet(BaseModel):
@@ -323,6 +337,8 @@ class ConnectionOut(ProjectScopedRow):
     target_shared: bool = False
     protocol: str
     description: str
+    folder_id: UUID | None = None
+    folder_path: str | None = None
     status: str
     allowed_status_moves: list[str]
     version: int
@@ -333,6 +349,51 @@ class ConnectionOut(ProjectScopedRow):
     updated_at: datetime
     realises: list[ConnectionRef] = Field(default_factory=list)
     realised_by: list[ConnectionRef] = Field(default_factory=list)
+
+
+# --- Folders ---------------------------------------------------------------
+
+
+class FolderCreate(BaseModel):
+    """Create payload for a folder: a name in the tree of the kind the route names, under `parent_id` or at the top level."""
+
+    name: str = Field(min_length=1, max_length=100)
+    parent_id: UUID | None = None
+
+
+class FolderUpdate(BaseModel):
+    """Rename or move a folder. A field left out is kept; `parent_id` set to `null` moves it to the top level."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    parent_id: UUID | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class FolderOut(BaseModel):
+    """A folder with its path (names from the top, joined by `/`) and the number of records directly in it."""
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    kind: FolderKind
+    name: str
+    parent_id: UUID | None
+    sort_order: int
+    path: str
+    record_count: int
+
+
+class FolderMove(BaseModel):
+    """Moves records of the kind the route names into `folder_id` (`null` is the top level)."""
+
+    record_ids: list[UUID] = Field(min_length=1, max_length=500)
+    folder_id: UUID | None = None
+
+
+class FolderMoveOut(BaseModel):
+    """How many records a move changed (a record already in the folder is not counted)."""
+
+    moved: int
 
 
 # --- Collections and sharing -----------------------------------------------
@@ -422,6 +483,7 @@ class DiagramCreate(BaseModel):
     purpose: str = Field(default="", max_length=20000)
     scope_element_id: UUID | None = None
     connection_detail: bool = False
+    folder_id: UUID | None = None
     activate: bool = False
     populate: bool = False
 
@@ -435,6 +497,7 @@ class DiagramUpdate(BaseModel):
     purpose: str | None = Field(default=None, max_length=20000)
     scope_element_id: UUID | None = None
     connection_detail: bool | None = None
+    folder_id: UUID | None = None
 
 
 class DiagramOut(ProjectScopedRow):
@@ -450,6 +513,8 @@ class DiagramOut(ProjectScopedRow):
     scope_element_code: str | None = None
     scope_element_name: str | None = None
     connection_detail: bool
+    folder_id: UUID | None = None
+    folder_path: str | None = None
     status: str
     allowed_status_moves: list[str]
     version: int

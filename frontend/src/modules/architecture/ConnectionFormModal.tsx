@@ -27,6 +27,7 @@ import { useRecordCode } from "../../hooks/useRecordCode";
 import { blankConnectionValues, valuesFromConnection } from "./architectureFields";
 import { guideConnectionTypes, mismatchWarning, suggestedGroup } from "./connectionGuidance";
 import { connectionTypeNodes } from "./connectionTypeTree";
+import { FolderField } from "./FolderField";
 import { ARCHITECTURE_HELP } from "./help";
 import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType } from "./types";
 import { isOutOfUse } from "./types";
@@ -151,6 +152,7 @@ export function ConnectionFormModal({
               options={portOptions(values.target_element_id)} onChange={(next) => set("target_port_id", next || null)}
             />
           )}
+          <FolderField kind="connection" owner={{ projectId }} value={values.folder_id} onChange={(next) => set("folder_id", next)} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => set("description", value)} />
           </FormGridFull>

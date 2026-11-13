@@ -25,6 +25,7 @@ import { diffElementFields, elementCodeRecord, valuesFromElement } from "./archi
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { ElementFormModal, type ElementCreateExtras } from "./ElementFormModal";
+import { useFolderListControls } from "./useFolderListControls";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureRecordStatus,
   type ArchitectureSymbol, type ConnectionType, type ElementFieldValues, type ElementType,
@@ -49,6 +50,7 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
+  const folders = useFolderListControls({ organizationId: orgId }, "element", "elements", reload, false);
 
   useEffect(() => {
     let live = true;
@@ -72,6 +74,8 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
 
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (elements === null) return <Spinner />;
+
+  const shown = elements.filter((e) => folders.matches(e.folder_path));
 
   async function save(values: ElementFieldValues, extras: ElementCreateExtras) {
     setFormError(null);
@@ -105,6 +109,7 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
     { key: "code", label: "Code", render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
     { key: "name", label: "Name", render: (e) => e.name },
     { key: "type", label: "Type", render: (e) => e.element_type_name },
+    { key: "folder", label: "Folder", render: (e) => e.folder_path ?? "—" },
     { key: "owner", label: "Owner", render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
     {
       key: "status", label: "Status",
@@ -151,15 +156,23 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
               <button className="btn btn-primary" onClick={() => { setFormError(null); setEditing("new"); }}>New element</button>
               <CheckboxField helpNotNeeded label="Show archived" checked={showArchived} onChange={setShowArchived} />
             </div>
-            <DirectoryTable
-              ariaLabel="Organisation elements" columns={columns} rows={elements} rowKey={(e) => e.id}
-              emptyState={<p className="text-muted">The organisation has no elements of its own yet.</p>}
-            />
+            <div className="side-grid">
+              <div className="stack">
+                {folders.bar}
+                <DirectoryTable
+                  ariaLabel="Organisation elements" columns={columns} rows={shown} rowKey={(e) => e.id}
+                  selection={{ selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`, allLabel: "Select all elements" }}
+                      emptyState={<p className="text-muted">{elements.length === 0 ? "The organisation has no elements of its own yet." : "No elements match the chosen folder."}</p>}
+                />
+              </div>
+              <div className="stack">{folders.panel}</div>
+            </div>
           </>
         ) : (
           <CollectionsPanel scope={scope} elements={elements.filter((e) => !e.is_archived)} orgUsers={orgUsers} organizationId={orgId} />
         )}
       </div>
+      {folders.dialog}
       {editing && (
         <ElementFormModal
           initial={editing === "new" ? undefined : editing}

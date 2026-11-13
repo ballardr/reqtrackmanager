@@ -1077,6 +1077,19 @@ Any record can sit in the project's component/category tree; the UI is the same 
 
 Rules: the caption has a `(?)` help (`strings.help.recordComponents`), never permanent explanatory text; the picker lists every place as `Component` or `Component / Category` so a person sees the full path; a list never shows a component or category by raw id.
 
+## Pattern: folders (organising a list)
+
+A list whose records pile up may be organised into **folders**: a name in a tree, per kind of record, used only to find records. A folder has no code, is not linkable and never changes what a record is, how a diagram resolves or what a report says. The first use is System Architecture (elements, connections and diagrams each have their own tree; the organisation has element folders too).
+
+- **Optional.** Every record starts at the top level; someone who never makes a folder sees no change but one Folder field and one "Folders" control in the filter panel.
+- **The filter panel holds the tree** (`FolderPanel`): choose a folder to show its records, choose it again to clear it; "Include sub-folders" appears once the chosen folder has sub-folders and is on by default; "New folder", "Edit folder" (rename and move, one dialog) and "Delete folder" (a confirmation that says its records and sub-folders move up) sit beneath. The choice is in the page address (`folder`, `nosub`), so a list keeps its place and the export (`folder`, `subfolders`) matches the page.
+- **A Folder column** (sortable) and a **Folder field** in the create and edit forms (`FolderField`, a one-choice tree) through the one shared field group.
+- **Moving several records** uses `DirectoryTable`'s `selection` (a leading column of tick boxes, a header box that ticks every selectable row) and a "Move to folder" action in the bar above the list; a row the person may not change (another owner's) has no box.
+- **Another owner's folders are never shown in full.** Where a person picks among records of several owners (the diagram's Add menu), records are grouped by owner and then by that owner's folders, drawing only the folders on the way to a record the person may read.
+- A folder name never contains `/`, which separates a path in the CSV (`Software/Modules`) and in a bundle.
+
+Reason: a flat list of hundreds of records has no way to be grouped, and a second grouping built per page repeats the mistake the shared tree removes.
+
 ## Pattern: create and edit share one field group
 
 A create form accepts every field the edit form edits, and both render the **same field-group component**, so a field added later appears in both. Reason: a create form that is narrower than its edit form leaves records that look complete but are not (a Pain Point created unscored, a requirement with no reviewer), and two hand-built copies drift.

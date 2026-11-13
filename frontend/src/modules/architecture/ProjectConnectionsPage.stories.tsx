@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildConnection, buildElement, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
+import { buildConnection, buildElement, buildFolder, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ProjectConnectionsPage } from "./ProjectConnectionsPage";
 
 const CONNECTIONS = [
@@ -70,5 +70,26 @@ export const NameHeaderSortsTheList: Story = {
     await waitFor(() => expect(codes()).toEqual(["CON-001", "CON-002"]));
     await userEvent.click(within(table).getByRole("button", { name: "Name" }));
     await waitFor(() => expect(codes()).toEqual(["CON-002", "CON-001"]));
+  },
+};
+
+/** The Folder column shows each connection's path, and choosing a folder in the filter panel narrows the list to it. */
+export const FolderColumnAndFilterNarrowTheList: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      connections: [
+        buildConnection({ folder_id: "cf-1", folder_path: "Buses" }),
+        buildConnection({ id: "con-2", unique_code: "CON-002", name: "Loose", folder_id: null, folder_path: null }),
+      ],
+      folders: [buildFolder({ id: "cf-1", kind: "connection", name: "Buses", path: "Buses", record_count: 1 })],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Connections" });
+    await expect(within(within(table).getByRole("link", { name: "CON-001" }).closest("tr")!).getByText("Buses")).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Folder Buses" }));
+    await waitFor(() => expect(within(table).queryByRole("link", { name: "CON-002" })).not.toBeInTheDocument());
+    await expect(within(table).getByRole("link", { name: "CON-001" })).toBeInTheDocument();
   },
 };

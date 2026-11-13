@@ -64,11 +64,14 @@ from app.modules.architecture.models import (
     ArchitectureElement,
 )
 from app.modules.architecture.records import (
+    ElementOwner,
     RuleError,
     _check_version,
     _detail,
     _forget,
     _touch,
+    _usable_folder,
+    folder_paths,
 )
 from app.modules.architecture.schemas import (
     AnchorIn,
@@ -176,11 +179,13 @@ def create_diagram(db: Session, project: Any, actor: User, payload: DiagramCreat
     viewer = Viewer.of_user(actor, project)
     if payload.scope_element_id is not None:
         _check_new_element(db, viewer, [payload.scope_element_id])
+    if payload.folder_id is not None:
+        _usable_folder(db, ElementOwner.of_project(project), "diagram", payload.folder_id)
     diagram = ArchitectureDiagram(
         project_id=project.id,
         unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
         name=payload.name.strip(), purpose=payload.purpose, scope_element_id=payload.scope_element_id,
-        connection_detail=payload.connection_detail,
+        connection_detail=payload.connection_detail, folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value, version=1, creator_id=actor.id,
         is_archived=False,
     )
@@ -232,6 +237,10 @@ def update_diagram(
         if payload.scope_element_id is not None:
             _check_new_element(db, Viewer.of_user(actor, project), [payload.scope_element_id])
         changes["scope_element_id"] = payload.scope_element_id
+    if "folder_id" in given and payload.folder_id != diagram.folder_id:
+        if payload.folder_id is not None:
+            _usable_folder(db, ElementOwner.of_project(project), "diagram", payload.folder_id)
+        changes["folder_id"] = payload.folder_id
     if not changes:
         return diagram
     _touch(diagram, **changes)
@@ -679,6 +688,7 @@ def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: V
     placements = counts(ArchitectureDiagramPlacement)
     notes = counts(ArchitectureDiagramNote)
     toggles = counts(ArchitectureDiagramToggle)
+    paths = folder_paths(db, (d.folder_id for d in diagrams))
     scope_ids = {d.scope_element_id for d in diagrams if d.scope_element_id is not None}
     readable = visible_element_ids(db, viewer, scope_ids)
     scopes = {
@@ -692,7 +702,8 @@ def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: V
             scope_element_name=scopes[d.scope_element_id].name if d.scope_element_id in readable else (
                 "" if d.scope_element_id in scopes else None
             ),
-            connection_detail=d.connection_detail, status=d.status, allowed_status_moves=allowed_moves(d.status),
+            connection_detail=d.connection_detail, folder_id=d.folder_id,
+            folder_path=paths.get(d.folder_id) if d.folder_id else None, status=d.status, allowed_status_moves=allowed_moves(d.status),
             version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             placement_count=placements.get(d.id, 0), note_count=notes.get(d.id, 0), toggle_count=toggles.get(d.id, 0),

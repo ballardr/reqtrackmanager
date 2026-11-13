@@ -19,6 +19,8 @@ Design decisions:
   neighbouring boxes carry anchors. Toggle rules name a domain, never a record. The first diagram and a few others are
   scoped to an element that has outer connections and carry boundary boxes for them, with a realising inner connection
   for some (the cap keeps the connection scan bounded at any size).
+- Each kind has its own folder tree (about one folder per twenty records, up to four deep) and about two thirds of its
+  records sit in a folder, so the folder paths a list reads are part of what is measured.
 - Only project-owned records are generated. Organisation-owned elements, collections and grants are not (a
   profile's unit is the project); the visibility resolver's cost is covered by the scaling-shape guard instead.
 
@@ -28,6 +30,7 @@ Dependencies: `perf_dataset.records`, this module's models and service constants
 from __future__ import annotations
 
 import math
+import random
 import uuid
 
 from sqlalchemy import select
@@ -47,6 +50,7 @@ from app.modules.architecture.models import (
     ArchitectureDiagramToggleMember,
     ArchitectureElement,
     ArchitectureElementType,
+    ArchitectureFolder,
     ArchitecturePort,
 )
 from app.modules.architecture.service import (
@@ -58,7 +62,7 @@ from app.modules.architecture.service import (
     ELEMENT_CODE_PREFIX,
 )
 from app.services.perf_dataset import textgen
-from app.services.perf_dataset.context import PerfProjectContext
+from app.services.perf_dataset.context import ANCHOR, PerfProjectContext, insert_rows, uuid_from
 from app.services.perf_dataset.records import RecordBatch, add_tags, created_at, link_to_earlier, pick_weighted
 
 #: Deepest generated tree level (a root is 1); the application allows more.
@@ -72,6 +76,9 @@ _PORT_NAMES = ("Main", "Control", "Data", "Power", "Debug", "Status")
 _LARGE_DIAGRAM = 200
 _SMALL_DIAGRAM = (3, 12)
 _ATTACH_POINTS = [point.value for point in AttachPoint]
+#: The most folders a kind gets and how deep they go.
+_MAX_FOLDERS = 60
+_FOLDER_DEPTH = 4
 #: How many diagrams besides the first are given boundary boxes, and the most boxes one diagram gets.
 _SCOPED_DIAGRAMS = 5
 _MAX_BOUNDARIES = 20
@@ -82,6 +89,41 @@ def _type_ids(
 ) -> list[uuid.UUID]:
     """The ids of the organisation's default rows of a vocabulary (every generated project offers them)."""
     return list(ctx.db.scalars(select(model.id).where(model.organization_id == ctx.organization_uuid)))
+
+
+def _write_folders(ctx: PerfProjectContext, kind: str, records: int) -> list[uuid.UUID]:
+    """Writes a folder tree for one kind of record (about one folder per twenty records, at most `_FOLDER_DEPTH` deep)
+    and returns the folder ids, so the records can be spread over them (some stay at the top level).
+
+    Args:
+        ctx: The project's context.
+        kind: The `FolderKind` value.
+        records: How many records of the kind are generated.
+    """
+    rng = ctx.rng
+    wanted = min(_MAX_FOLDERS, max(3, records // 20))
+    rows: list[dict] = []
+    depths: dict[uuid.UUID, int] = {}
+    for index in range(wanted):
+        folder_id = uuid_from(rng)
+        parent = None
+        if rows and rng.random() < 0.6:
+            candidate = rng.choice(list(depths))
+            if depths[candidate] < _FOLDER_DEPTH:
+                parent = candidate
+        depths[folder_id] = depths[parent] + 1 if parent else 1
+        rows.append({
+            "id": folder_id, "project_id": ctx.project_uuid, "organization_id": None, "kind": kind, "name": f"Folder {index + 1}",
+            "parent_id": parent, "sort_order": index, "creator_id": rng.choice(ctx.user_ids), "created_at": ANCHOR, "updated_at": ANCHOR,
+        })
+    # A folder's parent is always an earlier row, so the rows insert in order.
+    ctx.add_count(ArchitectureFolder.__tablename__, insert_rows(ctx.db, ArchitectureFolder, rows))
+    return list(depths)
+
+
+def _pick_folder(rng: random.Random, folder_ids: list[uuid.UUID]) -> uuid.UUID | None:
+    """A folder for a record, or `None` (the top level) for about a third of them."""
+    return rng.choice(folder_ids) if folder_ids and rng.random() < 0.7 else None
 
 
 def generate_elements(ctx: PerfProjectContext) -> dict[str, int]:
@@ -100,6 +142,7 @@ def generate_elements(ctx: PerfProjectContext) -> dict[str, int]:
     if count == 0 or not types:
         return {}
     start = dict(ctx.counts)
+    folder_ids = _write_folders(ctx, "element", count)
     batch = RecordBatch.start(ctx, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX, ArchitectureElement)
     depths: dict[uuid.UUID, int] = {}
     for _ in range(count):
@@ -118,7 +161,7 @@ def generate_elements(ctx: PerfProjectContext) -> dict[str, int]:
         batch.add(
             {
                 "id": record_id, "name": name, "description": textgen.paragraphs(rng, empty_chance=0.2, short_max=3),
-                "element_type_id": rng.choice(types), "parent_id": parent,
+                "element_type_id": rng.choice(types), "parent_id": parent, "folder_id": _pick_folder(rng, folder_ids),
                 "owner_type": "user" if owner else None, "owner_id": owner, "status": status.value, "version": 1,
                 "is_archived": archived, "archived_at": created if archived else None,
                 "archived_by": creator if archived else None,
@@ -159,6 +202,7 @@ def generate_connections(ctx: PerfProjectContext) -> dict[str, int]:
         select(ArchitecturePort.id, ArchitecturePort.element_id).where(ArchitecturePort.element_id.in_(elements))
     ):
         ports.setdefault(element_id, []).append(port_id)
+    folder_ids = _write_folders(ctx, "connection", count)
     batch = RecordBatch.start(ctx, CONNECTION_ARTEFACT_TYPE, CONNECTION_CODE_PREFIX, ArchitectureConnection)
     for _ in range(count):
         creator, created = rng.choice(ctx.user_ids), created_at(rng)
@@ -170,7 +214,7 @@ def generate_connections(ctx: PerfProjectContext) -> dict[str, int]:
                 "name": textgen.title(rng) if rng.random() < 0.7 else "", "connection_type_id": rng.choice(types),
                 "source_element_id": source, "source_port_id": rng.choice(ports[source]) if ports.get(source) else None,
                 "target_element_id": target, "target_port_id": rng.choice(ports[target]) if ports.get(target) else None,
-                "protocol": rng.choice(("v1", "v2", "9600 baud", "TLS 1.3", "")),
+                "protocol": rng.choice(("v1", "v2", "9600 baud", "TLS 1.3", "")), "folder_id": _pick_folder(rng, folder_ids),
                 "description": textgen.paragraphs(rng, empty_chance=0.3, short_max=2), "status": status.value,
                 "version": 1, "is_archived": archived, "archived_at": created if archived else None,
                 "archived_by": creator if archived else None,
@@ -243,6 +287,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
     if count == 0 or not elements:
         return {}
     start = dict(ctx.counts)
+    folder_ids = _write_folders(ctx, "diagram", count)
     batch = RecordBatch.start(ctx, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX, ArchitectureDiagram)
     scoped_left = _SCOPED_DIAGRAMS + 1
     used_scopes: set[uuid.UUID] = set()
@@ -260,7 +305,8 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
             {
                 "name": name, "purpose": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
                 "scope_element_id": scoped[0] if scoped else (rng.choice(elements) if rng.random() < 0.3 else None),
-                "connection_detail": rng.random() < 0.5, "status": status.value, "version": 1, "is_archived": archived,
+                "connection_detail": rng.random() < 0.5, "folder_id": _pick_folder(rng, folder_ids), "status": status.value,
+                "version": 1, "is_archived": archived,
                 "archived_at": created if archived else None, "archived_by": creator if archived else None,
             },
             creator=creator, at=created, title=name, detail={"status": status.value},

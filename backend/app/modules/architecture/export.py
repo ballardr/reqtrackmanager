@@ -39,6 +39,10 @@ Design decisions:
   diagram its boundary boxes (the outer connection's code and the box); both name connections of the same bundle only.
   An import re-applies each realisation through the same rule as the editor and drops, with a warning, one that no
   longer holds, and drops a box whose connection is not an outer connection of the imported diagram's scope.
+- Folders: a project's folders travel as `{kind, path, sort_order}` (parents before children) and the organisation's element
+  folders in its bundle; a record names its folder by path (`folder`), never by id. An import reuses a folder that already
+  has the path and creates the rest (also for a record whose path the folder list lacks), so a record is never dropped
+  for its folder. The folder list is template configuration; a record's path is part of the record.
 - Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
   an import can never publish anything to a project or a group by itself. An organisation bundle carries the
   organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
@@ -62,6 +66,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
+from app.modules.architecture import folders as folder_rules
 from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureCollection,
@@ -80,6 +85,7 @@ from app.modules.architecture.models import (
     ArchitectureSymbol,
 )
 from app.modules.architecture.realisations import project_realisations, reaches, realises_rule_holds
+from app.modules.architecture.records import ElementOwner
 from app.modules.architecture.schemas import BoundaryIn
 from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
@@ -123,6 +129,8 @@ CONNECTIONS_KEY = "architecture_connections"
 DIAGRAMS_KEY = "architecture_diagrams"
 LINKS_KEY = "architecture_links"
 COLLECTIONS_KEY = "architecture_collections"
+FOLDERS_KEY = "architecture_folders"
+ORG_FOLDERS_KEY = "architecture_org_folders"
 ORG_ELEMENTS_KEY = "architecture_org_elements"
 ORG_COLLECTIONS_KEY = "architecture_org_collections"
 ORG_SYMBOLS_KEY = "architecture_org_symbols"
@@ -132,7 +140,7 @@ HIDDEN_SYMBOLS_KEY = "architecture_hidden_symbols"
 #: Project bundle keys of the vocabularies and the symbol library, for the template classification (configuration).
 PROJECT_KEYS = frozenset(
     key for _v, _o, project_key, hidden_key in _VOCABULARIES for key in (project_key, hidden_key)
-) | {PROJECT_SYMBOLS_KEY, HIDDEN_SYMBOLS_KEY}
+) | {PROJECT_SYMBOLS_KEY, HIDDEN_SYMBOLS_KEY, FOLDERS_KEY}
 #: Project bundle keys of the records, for the template classification (records).
 RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY, LINKS_KEY, COLLECTIONS_KEY})
 
@@ -320,11 +328,12 @@ def _org_element_json(db: Session, org: Organization) -> list[dict[str, Any]]:
             ports.setdefault(port.element_id, []).append(port)
     emails = _emails(db, {*(e.creator_id for e in elements), *(e.archived_by for e in elements)})
     symbol_refs = _symbol_refs(db, (e.symbol_id for e in elements))
+    folder_paths = folder_rules.paths_for(db, (e.folder_id for e in elements))
     return [
         {
             "unique_code": e.unique_code, "name": e.name, "description": e.description,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
-            "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None,
+            "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None, "folder": folder_paths.get(e.folder_id) if e.folder_id else None,
             "owner": principal_to_bundle(db, e.owner_type, e.owner_id), "status": e.status,
             "ports": [
                 {
@@ -368,6 +377,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         org_key: [_row_json(vocabulary, row, symbol_refs, parent_names, suggested_names) for row in org_types[vocabulary]]
         for vocabulary, org_key, _project_key, _hidden_key in _VOCABULARIES
     }
+    data[ORG_FOLDERS_KEY] = folder_rules.export_entries(db, ElementOwner.of_organization(org))
     data[ORG_ELEMENTS_KEY] = _org_element_json(db, org)
     codes = dict(db.execute(
         select(ArchitectureElement.id, ArchitectureElement.unique_code).where(ArchitectureElement.organization_id == org.id)
@@ -424,6 +434,11 @@ def import_org_data(
         return found
 
     element_symbol_for = _symbol_lookup(db, org.id, None, warnings, "Element")
+    folder_importer = folder_rules.FolderImporter(
+        db, ElementOwner.of_organization(org), users.resolve(None, required=True, context="Folder creator"), warnings,
+    )
+    for folder in data.get(ORG_FOLDERS_KEY, []):
+        folder_importer.ensure(folder.get("kind", "element"), folder.get("path"), folder.get("sort_order"))
     created: dict[str, ArchitectureElement] = {}
     for entry in data.get(ORG_ELEMENTS_KEY, []):
         code = entry.get("unique_code", "")
@@ -437,7 +452,7 @@ def import_org_data(
             organization_id=org.id,
             unique_code=generate_unique_code(db, org, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
             name=entry["name"], description=entry.get("description", ""), element_type_id=element_type.id, parent_id=None,
-            symbol_id=element_symbol_for(entry.get("symbol")),
+            symbol_id=element_symbol_for(entry.get("symbol")), folder_id=folder_importer.ensure("element", entry.get("folder")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Element {code} archiver") or creator)
@@ -620,6 +635,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         ):
             ports.setdefault(port.element_id, []).append(port)
             port_names[port.id] = port.name
+    data[FOLDERS_KEY] = folder_rules.export_entries(db, ElementOwner.of_project(project))
+    folder_paths = folder_rules.paths_for(db, [*(e.folder_id for e in elements), *(c.folder_id for c in connections)])
     prime_record_tag_names(db, ELEMENT_ARTEFACT_TYPE, element_ids)
     prime_record_tag_names(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
     prime_record_placements(db, ELEMENT_ARTEFACT_TYPE, element_ids)
@@ -637,6 +654,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "unique_code": e.unique_code, "name": e.name, "description": e.description,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
             "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None,
+            "folder": folder_paths.get(e.folder_id) if e.folder_id else None,
             "owner": principal_to_bundle(db, e.owner_type, e.owner_id), "status": e.status,
             "ports": [
                 {
@@ -668,6 +686,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "target_code": codes.get(c.target_element_id), "target_port": port_names.get(c.target_port_id) if c.target_port_id else None,
             "target_ref": foreign.get(c.target_element_id),
             "protocol": c.protocol, "description": c.description, "status": c.status,
+            "folder": folder_paths.get(c.folder_id) if c.folder_id else None,
             "realises": realises.get(c.id, []),
             "created_by_email": _email(emails, c.creator_id), "created_at": _stamp(c.created_at),
             "is_archived": c.is_archived, "archived_at": _stamp(c.archived_at), "archived_by_email": _email(emails, c.archived_by),
@@ -707,6 +726,7 @@ def _diagrams_json(
     if not rows:
         return [], rows
     ids = [d.id for d in rows]
+    folder_paths = folder_rules.paths_for(db, (d.folder_id for d in rows))
     boxes = list(db.scalars(
         select(ArchitectureDiagramPlacement).where(ArchitectureDiagramPlacement.diagram_id.in_(ids))
         .order_by(ArchitectureDiagramPlacement.created_at, ArchitectureDiagramPlacement.id)
@@ -778,6 +798,7 @@ def _diagrams_json(
             "unique_code": d.unique_code, "name": d.name, "purpose": d.purpose,
             "scope": _element_ref(codes, foreign, d.scope_element_id) if d.scope_element_id else None,
             "connection_detail": d.connection_detail, "status": d.status,
+            "folder": folder_paths.get(d.folder_id) if d.folder_id else None,
             "boxes": [
                 {**_element_ref(codes, foreign, b.element_id), "x": b.x, "y": b.y, "width": b.width, "height": b.height,
                  "collapsed": b.collapsed}
@@ -962,7 +983,7 @@ def _import_realisations(
 
 def _import_diagrams(
     db: Session, project: Project, entries: list[dict[str, Any]], elements: dict[str, UUID], connections: dict[str, UUID],
-    current_user: User, users: UserResolver, warnings: BundleImportWarnings,
+    current_user: User, users: UserResolver, warnings: BundleImportWarnings, folder_importer: folder_rules.FolderImporter,
 ) -> dict[str, UUID]:
     """Recreates the bundle's diagrams, numbered afresh, with their boxes, notes and toggles. A box, scope or member
     that cannot be resolved is dropped with a warning. Returns `{bundle code: new id}`."""
@@ -978,7 +999,8 @@ def _import_diagrams(
         diagram = ArchitectureDiagram(
             project_id=project.id, unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
             name=entry["name"], purpose=entry.get("purpose", ""), scope_element_id=scope_id,
-            connection_detail=bool(entry.get("connection_detail")), status=entry.get("status", "draft"), version=1,
+            connection_detail=bool(entry.get("connection_detail")), folder_id=folder_importer.ensure("diagram", entry.get("folder")),
+            status=entry.get("status", "draft"), version=1,
             creator_id=creator, is_archived=archived, archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Diagram {code} archiver") or creator)
             if archived else None,
@@ -1079,6 +1101,9 @@ def import_project_data(
     ):
         warnings.add(problem)
 
+    folder_importer = folder_rules.FolderImporter(db, ElementOwner.of_project(project), current_user.id, warnings)
+    for folder in data.get(FOLDERS_KEY, []):
+        folder_importer.ensure(folder.get("kind", ""), folder.get("path"), folder.get("sort_order"))
     created: dict[str, ArchitectureElement] = {}
     elements: dict[str, UUID] = {}
     connections: dict[str, UUID] = {}
@@ -1096,7 +1121,7 @@ def import_project_data(
         element = ArchitectureElement(
             project_id=project.id, unique_code=generate_unique_code(db, project, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
             name=entry["name"], description=entry.get("description", ""), element_type_id=element_type.id, parent_id=None,
-            symbol_id=element_symbol_for(entry.get("symbol")),
+            symbol_id=element_symbol_for(entry.get("symbol")), folder_id=folder_importer.ensure("element", entry.get("folder")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Element {code} archiver") or creator)
@@ -1160,6 +1185,7 @@ def import_project_data(
             source_port_id=ports.get((entry.get("source_code") or "", entry.get("source_port") or "")),
             target_element_id=target, target_port_id=ports.get((entry.get("target_code") or "", entry.get("target_port") or "")),
             protocol=entry.get("protocol", ""), description=entry.get("description", ""),
+            folder_id=folder_importer.ensure("connection", entry.get("folder")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"Connection {code} archiver") or creator)
@@ -1180,7 +1206,9 @@ def import_project_data(
             artefact_id=connection.id, entries=entry.get("placements"),
         )
     _import_realisations(db, data.get(CONNECTIONS_KEY, []), connections, warnings)
-    diagram_ids = _import_diagrams(db, project, data.get(DIAGRAMS_KEY, []), elements, connections, current_user, users, warnings)
+    diagram_ids = _import_diagrams(
+        db, project, data.get(DIAGRAMS_KEY, []), elements, connections, current_user, users, warnings, folder_importer,
+    )
     _import_collections(
         db, data.get(COLLECTIONS_KEY, []), owner={"project_id": project.id},
         owner_filter=ArchitectureCollection.project_id == project.id, elements=elements, creator_id=current_user.id,
