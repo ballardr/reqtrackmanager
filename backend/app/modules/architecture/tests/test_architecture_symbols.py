@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models.file import FileAsset
 from app.modules.architecture.models import ArchitectureSymbol
-from app.modules.architecture.service import DEFAULT_SYMBOLS, DEFAULT_TYPE_SYMBOLS
+from app.modules.architecture.service import DEFAULT_SYMBOLS
 from app.modules.architecture.symbols import BUILTIN_SVG, MAX_SYMBOL_BYTES, default_name
 from app.modules.architecture.tests._helpers import (
     add_member,
@@ -83,19 +83,16 @@ def test_every_builtin_key_has_its_own_drawing_that_passes_the_sanitiser():
     for key, drawing in BUILTIN_SVG.items():
         clean = sanitize_svg(drawing)
         assert "<svg" in clean and "currentColor" in clean, key
-    assert set(DEFAULT_TYPE_SYMBOLS.values()) <= set(BUILTIN_SVG)
 
 
-def test_a_new_organisation_has_the_builtins_in_order_and_its_seeded_types_use_them(client, admin_token):
+def test_a_new_organisation_has_the_builtins_in_order_and_its_seeded_types_are_neutral(client, admin_token):
     org, _project, token = setup(client, admin_token, "Arch symbol seed")
     symbols = client.get(f"{org_base(org['id'])}/symbols", headers=auth_headers(token)).json()
     assert [s["name"] for s in symbols] == [name for _key, name in DEFAULT_SYMBOLS]
     assert all(s["is_builtin"] and s["organization_id"] == org["id"] and s["project_id"] is None for s in symbols)
-    by_key = {s["builtin_key"]: s["id"] for s in symbols}
     types = {t["name"]: t for t in client.get(f"{org_base(org['id'])}/element-types", headers=auth_headers(token)).json()}
-    for type_name, key in DEFAULT_TYPE_SYMBOLS.items():
-        assert types[type_name]["symbol_id"] == by_key[key]
-    assert types["System"]["symbol_id"] is None and types["Component"]["symbol_id"] is None
+    # The seeded types are neutral: drawn by their shape until an organisation assigns a symbol.
+    assert types["System"]["symbol_id"] is None and types["Subsystem"]["symbol_id"] is None and types["Component"]["symbol_id"] is None
 
 
 def test_a_builtin_is_served_as_its_drawing_without_a_stored_file(client, admin_token):

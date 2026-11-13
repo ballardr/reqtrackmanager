@@ -21,10 +21,50 @@ def enable_module(client, token, org_id) -> None:
     assert resp.status_code == 200, resp.text
 
 
-def setup(client, admin_token, org_name: str):
-    """An organisation with a real admin, a project, and the module enabled: `(org, project, admin token)`."""
+#: `(name, shape, domain, suggested connection type names, built-in symbol name)`: the software and hardware types many
+#: tests build on. A new organisation is seeded with neutral types only, so `add_domain_types` gives a test organisation
+#: these.
+DOMAIN_ELEMENT_TYPES: tuple[tuple[str, str, str, tuple[str, ...], str | None], ...] = (
+    ("Service", "hexagon", "software", ("REST API", "gRPC", "Message queue"), "Server"),
+    ("Container", "rectangle", "software", (), None),
+    ("Package", "folder", "software", (), None),
+    ("Datastore", "cylinder", "software", (), "Database"),
+    ("Queue", "parallelogram", "software", (), "Queue"),
+    ("Board", "chip", "hardware", (), "Board"),
+    ("Sensor", "ellipse", "hardware", ("I2C", "SPI", "UART", "Analogue signal"), "Sensor"),
+    ("Connector", "hexagon", "hardware", (), "Connector"),
+    ("Enclosure", "rectangle", "hardware", (), "Device"),
+)
+
+
+def add_domain_types(client, token, org_id) -> None:
+    """Adds `DOMAIN_ELEMENT_TYPES` to the organisation (the organisation tier, so every project lists them)."""
+    connections = {
+        r["name"]: r["id"]
+        for r in client.get(f"{org_base(org_id)}/connection-types", headers=auth_headers(token)).json()
+    }
+    symbols = {
+        r["name"]: r["id"] for r in client.get(f"{org_base(org_id)}/symbols", headers=auth_headers(token)).json()
+    }
+    for name, shape, domain, suggested, symbol in DOMAIN_ELEMENT_TYPES:
+        resp = client.post(
+            f"{org_base(org_id)}/element-types",
+            json={
+                "name": name, "shape": shape, "domain": domain, "suggested_connection_type_ids": [connections[n] for n in suggested],
+                "symbol_id": symbols[symbol] if symbol else None,
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201, resp.text
+
+
+def setup(client, admin_token, org_name: str, *, domain_types: bool = True):
+    """An organisation with a real admin, a project, and the module enabled: `(org, project, admin token)`. The
+    organisation also has the software and hardware types of `DOMAIN_ELEMENT_TYPES` unless `domain_types` is False."""
     org, token = create_org_admin_in(client, admin_token, org_name)
     enable_module(client, token, org["id"])
+    if domain_types:
+        add_domain_types(client, token, org["id"])
     return org, create_project(client, token, org["id"], f"{org_name} Project"), token
 
 

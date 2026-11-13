@@ -489,3 +489,30 @@ export const DraggingALineEndReportsTheNewAttachPoint: Story = {
     expect(args.onEdgeAnchorChange).toHaveBeenCalledTimes(1);
   },
 };
+
+const SMALL_NODES: GraphCanvasNode[] = [
+  { id: "a", label: "Gateway", x: 0, y: 0 },
+  { id: "b", label: "Orders", x: 220, y: 0 },
+];
+
+/** The scale the canvas's viewport was fitted to. */
+const viewportScale = (root: HTMLElement) =>
+  Number(/scale\(([\d.]+)\)/.exec((root.querySelector(".react-flow__viewport") as HTMLElement).style.transform)?.[1]);
+
+/** A small graph is enlarged to fill the canvas unless the opening fit is capped at 100%. */
+export const OpeningZoomIsCappedForASmallGraph: Story = {
+  render: () => (
+    <div className="stack">
+      <div data-testid="capped"><GraphCanvas nodes={SMALL_NODES} edges={[]} ariaLabel="Capped" fitMaxZoom={1} showViewToggle={false} /></div>
+      <div data-testid="uncapped"><GraphCanvas nodes={SMALL_NODES} edges={[]} ariaLabel="Uncapped" showViewToggle={false} /></div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const capped = within(within(canvasElement).getByTestId("capped"));
+    const uncapped = within(within(canvasElement).getByTestId("uncapped"));
+    await capped.findByLabelText("Gateway, node");
+    await uncapped.findByLabelText("Gateway, node");
+    await waitFor(() => expect(viewportScale(within(canvasElement).getByTestId("capped"))).toBe(1));
+    await waitFor(() => expect(viewportScale(within(canvasElement).getByTestId("uncapped"))).toBeGreaterThan(1));
+  },
+};

@@ -83,8 +83,8 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("create an element from the Add menu and place it", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Service", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "New Service" });
+      await page.getByRole("menuitem", { name: "Component", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "New Component" });
       await dialog.getByLabel("Name", { exact: true }).fill(queue);
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toBeVisible();
@@ -92,19 +92,21 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
     });
 
-    await test.step("the Configuration tab keeps unsaved edits, and its setting is stored at once", async () => {
+    await test.step("the Configuration tab and the settings gear keep unsaved edits; the gear's setting is stored at once", async () => {
       await selectNode(page, queue);
       await page.keyboard.press("ArrowRight");
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
       await page.getByRole("tab", { name: "Configuration" }).click();
       await expect(page).toHaveURL(/tab=configuration/);
       await expect(page.getByRole("toolbar", { name: "Diagram editing" })).toHaveCount(0);
+      await page.getByRole("tab", { name: "Drawing" }).click();
+      await expect(page).not.toHaveURL(/tab=/);
+      await page.getByRole("button", { name: /^Diagram settings/ }).click();
       const detail = page.getByRole("switch", { name: "Connection detail" });
       await detail.click();
       await expect(detail).toBeChecked();
-      await page.getByRole("tab", { name: "Drawing" }).click();
-      await expect(page).not.toHaveURL(/tab=/);
-      // The move made before the tab change is still pending.
+      await page.keyboard.press("Escape");
+      // The move made before the tab change and the setting is still pending.
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Undo" }).click();
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
@@ -178,7 +180,8 @@ test.describe("System Architecture: diagram editor", () => {
     await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
     await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
 
-    await test.step("the outline lists the same elements and selecting there selects the box", async () => {
+    await test.step("the Outline tab lists the same elements and selecting there fills the Selection card", async () => {
+      await page.getByRole("tab", { name: "Outline" }).click();
       const outline = page.getByRole("region", { name: "Outline" });
       await expect(outline.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${orders}`) })).toBeVisible();
       await outline.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${orders}`) }).click();
@@ -186,6 +189,7 @@ test.describe("System Architecture: diagram editor", () => {
     });
 
     await test.step("Connect to starts a connection without dragging", async () => {
+      await page.getByRole("tab", { name: "Drawing" }).click();
       await selectNode(page, gateway);
       const choose = page.getByRole("region", { name: "Selection" }).getByRole("combobox", { name: /Connect to/ });
       await choose.selectOption(await choose.locator("option", { hasText: orders }).getAttribute("value") ?? "");
@@ -306,6 +310,48 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
       const view = await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
       expect(view.anchors).toEqual([]);
+    });
+  });
+  test("an architect edits a box and adds a port from the diagram, and the Add menu leads to the type settings", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchEdit", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const gateway = `Gateway ${suffix}`;
+    await createElement(page.request, adminHeaders, project.id, gateway);
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Edit ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+
+    await test.step("Edit element opens the element form over the diagram and the box is renamed", async () => {
+      await selectNode(page, gateway);
+      await page.getByRole("button", { name: "Edit element" }).click();
+      const dialog = page.getByRole("dialog", { name: `Edit ${gateway}` });
+      const renamed = `Edge ${suffix}`;
+      await dialog.getByLabel("Name", { exact: true }).fill(renamed);
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Element updated.")).toBeVisible();
+      await expect(page.getByLabel(`${renamed}, node`, { exact: true })).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/diagrams/${diagram.id}`));
+    });
+
+    await test.step("a port is added from the Selection card and stored at once", async () => {
+      await selectNode(page, `Edge ${suffix}`);
+      const card = page.getByRole("region", { name: "Selection" });
+      const stored = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/ports") && r.ok());
+      await card.getByPlaceholder("Port name").fill("Telemetry");
+      await card.getByRole("button", { name: "Add port" }).click();
+      await stored;
+      await page.reload();
+      await selectNode(page, `Edge ${suffix}`);
+      await expect(page.getByRole("region", { name: "Selection" }).locator('input[value="Telemetry"]')).toBeVisible();
+    });
+
+    await test.step("the Add menu ends with the setup entry, which opens the Element Types settings", async () => {
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: "Set up element types" }).click();
+      await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/admin/architecture/architecture-element-types`));
     });
   });
 });

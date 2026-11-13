@@ -13,7 +13,6 @@ from sqlalchemy import event, select
 
 from app.database import SessionLocal, engine
 from app.modules.architecture.models import ArchitectureElementType
-from app.modules.architecture.service import DEFAULT_ELEMENT_TYPE_SUGGESTIONS
 from app.modules.architecture.tests._helpers import (
     connection_types,
     enable_module,
@@ -52,14 +51,20 @@ def _names(connection_rows: dict[str, dict], ids: list[str]) -> list[str]:
 # --- The seeded suggestions -----------------------------------------------------
 
 
-def test_a_new_organisation_suggests_connection_types_for_sensors_and_services(client, admin_token):
-    org, project, token = setup(client, admin_token, "Arch guidance seed")
+def test_a_new_organisation_seeds_neutral_element_types_that_suggest_nothing(client, admin_token):
+    org, token = create_org_admin_in(client, admin_token, "Arch guidance seed")
+    enable_module(client, token, org["id"])
+    elements = _rows(client, token, f"{org_base(org['id'])}/element-types")
+    assert list(elements) == ["System", "Subsystem", "Component"]
+    assert all(row["suggested_connection_type_ids"] == [] for row in elements.values())
+    assert all(row["domain"] == "any" for row in elements.values())
+
+
+def test_suggestions_given_to_an_element_type_are_listed_by_the_project(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch guidance listed")
     connections = _rows(client, token, f"{org_base(org['id'])}/connection-types")
     elements = _rows(client, token, f"{org_base(org['id'])}/element-types")
-    for name, row in elements.items():
-        assert _names(connections, row["suggested_connection_type_ids"]) == sorted(DEFAULT_ELEMENT_TYPE_SUGGESTIONS.get(name, ()))
     assert _names(connections, elements["Sensor"]["suggested_connection_type_ids"]) == ["Analogue signal", "I2C", "SPI", "UART"]
-    # The project lists the same rows, so its picker can use them.
     project_elements = _rows(client, token, f"{project_base(project['id'])}/element-types")
     assert project_elements["Service"]["suggested_connection_type_ids"] == elements["Service"]["suggested_connection_type_ids"]
 

@@ -89,20 +89,12 @@ DOMAIN_COLORS: dict[str, tuple[str, str]] = {
     Domain.ANY.value: ("#475569", "#94A3B8"),
 }
 
-#: `(name, shape, domain)` for each element type a new organisation is given.
+#: `(name, shape, domain)` for each element type a new organisation is given. They are neutral (no software or hardware
+#: technology is named, no symbol or suggested connection type is attached): an organisation adds the types it wants.
 DEFAULT_ELEMENT_TYPES: tuple[tuple[str, str, str], ...] = (
     ("System", ElementShape.ROUNDED.value, Domain.ANY.value),
     ("Subsystem", ElementShape.ROUNDED.value, Domain.ANY.value),
     ("Component", ElementShape.RECTANGLE.value, Domain.ANY.value),
-    ("Service", ElementShape.HEXAGON.value, Domain.SOFTWARE.value),
-    ("Container", ElementShape.RECTANGLE.value, Domain.SOFTWARE.value),
-    ("Package", ElementShape.FOLDER.value, Domain.SOFTWARE.value),
-    ("Datastore", ElementShape.CYLINDER.value, Domain.SOFTWARE.value),
-    ("Queue", ElementShape.PARALLELOGRAM.value, Domain.SOFTWARE.value),
-    ("Board", ElementShape.CHIP.value, Domain.HARDWARE.value),
-    ("Sensor", ElementShape.ELLIPSE.value, Domain.HARDWARE.value),
-    ("Connector", ElementShape.HEXAGON.value, Domain.HARDWARE.value),
-    ("Enclosure", ElementShape.RECTANGLE.value, Domain.HARDWARE.value),
 )
 
 #: `(name, domain, directional)` for each connection type a new organisation is given, in seed order: the groups first
@@ -140,26 +132,11 @@ DEFAULT_CONNECTION_TYPE_PARENTS: dict[str, tuple[str, ...]] = {
     "Message queue": ("Data exchange",), "Event stream": ("Data exchange",), "File exchange": ("Data exchange",),
 }
 
-
-#: `{element type name: names of the connection types suggested for it}` for the seeded element types; a name not listed
-#: has no suggestion.
-DEFAULT_ELEMENT_TYPE_SUGGESTIONS: dict[str, tuple[str, ...]] = {
-    "Sensor": ("I2C", "SPI", "UART", "Analogue signal"),
-    "Service": ("REST API", "gRPC", "Message queue"),
-}
-
-
 #: `(builtin key, name)` for each built-in symbol a new organisation is given; `symbols.BUILTIN_SVG` draws each key.
 DEFAULT_SYMBOLS: tuple[tuple[str, str], ...] = (
     ("device", "Device"), ("server", "Server"), ("database", "Database"), ("queue", "Queue"), ("firewall", "Firewall"),
     ("cloud", "Cloud"), ("sensor", "Sensor"), ("board", "Board"), ("connector", "Connector"), ("user", "User"),
 )
-
-#: The built-in symbol a seeded element type is given in a new organisation (a type not listed is drawn by its shape).
-DEFAULT_TYPE_SYMBOLS: dict[str, str] = {
-    "Service": "server", "Datastore": "database", "Queue": "queue", "Board": "board", "Sensor": "sensor",
-    "Connector": "connector", "Enclosure": "device",
-}
 
 
 @dataclass(frozen=True)
@@ -438,29 +415,14 @@ class ArchitectureVocabulary(ABC):
 class ElementTypeVocabulary(ArchitectureVocabulary):
     """The element type vocabulary. A type's `symbol_id` is validated against the symbols its owner may use."""
 
-    def seed_defaults(
-        self, db: Session, organization_id: uuid.UUID, symbol_ids: Mapping[str, uuid.UUID] | None = None,
-        connection_type_ids: Mapping[str, uuid.UUID] | None = None,
-    ) -> None:
-        """Adds the default element types to a new organisation. The caller owns the transaction.
-
-        `symbol_ids` maps a built-in symbol key to the id of the row just added for the organisation
-        (`SymbolLibrary.add_builtins`), so a type that has one in `DEFAULT_TYPE_SYMBOLS` is drawn with it.
-        `connection_type_ids` maps a connection type name to its new row id (`ConnectionTypeVocabulary.seed_defaults`),
-        so a type listed in `DEFAULT_ELEMENT_TYPE_SUGGESTIONS` gets its suggested connection types.
-        """
-        symbols = symbol_ids or {}
-        connections = connection_type_ids or {}
+    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
+        """Adds the default (neutral) element types to a new organisation. The caller owns the transaction."""
         for i, (name, shape, domain) in enumerate(DEFAULT_ELEMENT_TYPES):
             light, dark = DOMAIN_COLORS[domain]
-            row = ArchitectureElementType(
+            db.add(ArchitectureElementType(
                 id=uuid.uuid4(), organization_id=organization_id, name=name, shape=shape, domain=domain,
-                color_light=light, color_dark=dark, sort_order=i, symbol_id=symbols.get(DEFAULT_TYPE_SYMBOLS.get(name, "")),
-            )
-            db.add(row)
-            for suggested in DEFAULT_ELEMENT_TYPE_SUGGESTIONS.get(name, ()):
-                if suggested in connections:
-                    db.add(ArchitectureElementTypeSuggestion(element_type_id=row.id, connection_type_id=connections[suggested]))
+                color_light=light, color_dark=dark, sort_order=i,
+            ))
 
     def _check_suggestions(
         self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, row: ArchitectureElementType | None,
@@ -831,6 +793,6 @@ SYMBOLS = SymbolLibrary(kind=SYMBOL_KIND, label="Symbol", model=ArchitectureSymb
 def seed_org_defaults(db: Session, organization_id: uuid.UUID) -> None:
     """`ModuleDefinition.on_org_created`: gives a new organisation the built-in symbols and the default element and
     connection types."""
-    symbol_ids = SYMBOLS.add_builtins(db, organization_id)
-    connection_type_ids = CONNECTION_TYPES.seed_defaults(db, organization_id)
-    ELEMENT_TYPES.seed_defaults(db, organization_id, symbol_ids, connection_type_ids)
+    SYMBOLS.add_builtins(db, organization_id)
+    CONNECTION_TYPES.seed_defaults(db, organization_id)
+    ELEMENT_TYPES.seed_defaults(db, organization_id)

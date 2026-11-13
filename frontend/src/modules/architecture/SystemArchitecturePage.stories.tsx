@@ -21,7 +21,7 @@ const meta: Meta<typeof SystemArchitecturePage> = {
     withAuth(buildUser({ id: "user-1" })),
     withToast(),
   ],
-  beforeEach: () => { sessionStorage.clear(); },
+  beforeEach: () => { sessionStorage.clear(); localStorage.clear(); },
   render: () => (
     <>
       <Address />
@@ -37,14 +37,44 @@ export default meta;
 
 type Story = StoryObj<typeof SystemArchitecturePage>;
 
-export const OpensOnElementsAndNamesTheTabInTheAddress: Story = {
+export const OpensOnDiagramsAndNamesTheTabInTheAddress: Story = {
   decorators: [withRouter(`/projects/${PROJECT_ID}/modules/architecture`, "*")],
   beforeEach: () => { mockArchitectureReads(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { level: 1, name: "System Architecture" })).toBeInTheDocument();
-    await expect(canvas.getByRole("tab", { name: "Elements", selected: true })).toBeInTheDocument();
-    await waitFor(() => expect(canvas.getByTestId("address")).toHaveTextContent(`${PATH.replace(":projectId", PROJECT_ID)}?tab=elements`));
+    await expect(canvas.getByRole("tab", { name: "Diagrams", selected: true })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByTestId("address")).toHaveTextContent(`${PATH.replace(":projectId", PROJECT_ID)}?tab=diagrams`));
+  },
+};
+
+export const OpensOnTheTabLastChosenOnTheStrip: Story = {
+  decorators: [withRouter(`/projects/${PROJECT_ID}/modules/architecture?tab=diagrams`, "*")],
+  beforeEach: () => { mockArchitectureReads(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: "Connections" }));
+    await expect(localStorage.getItem("architecture-last-tab")).toBe("connections");
+  },
+};
+
+export const ARememberedTabOpensWithoutATabInTheAddress: Story = {
+  decorators: [withRouter(`/projects/${PROJECT_ID}/modules/architecture`, "*")],
+  beforeEach: () => { localStorage.setItem("architecture-last-tab", "connections"); mockArchitectureReads(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("tab", { name: "Connections", selected: true })).toBeInTheDocument();
+    await expect(canvas.getByTestId("address")).toHaveTextContent("tab=connections");
+  },
+};
+
+export const ALinkNamingATabDoesNotChangeTheRememberedTab: Story = {
+  decorators: [withRouter(`/projects/${PROJECT_ID}/modules/architecture?tab=elements`, "*")],
+  beforeEach: () => { localStorage.setItem("architecture-last-tab", "connections"); mockArchitectureReads(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("tab", { name: "Elements", selected: true })).toBeInTheDocument();
+    await expect(localStorage.getItem("architecture-last-tab")).toBe("connections");
   },
 };
 

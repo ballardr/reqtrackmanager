@@ -179,6 +179,8 @@ export interface ArchitectureReads {
   diagramModel?: DiagramModel;
   /** Sub-components switched off for the project (the page hides their tabs). */
   disabledSubComponents?: string[];
+  /** Whether the viewer may manage the project's types (shows the Add menu's setup entry). */
+  canManageTypes?: boolean;
 }
 
 /**
@@ -192,6 +194,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
   spyOn(api, "getForBlob").mockResolvedValue(SYMBOL_SVG);
   return spyOn(api, "get").mockImplementation(async (path: string) => {
     const base = path.split("?")[0];
+    if (base.endsWith("/modules/architecture/capabilities")) return { manage_types: reads.canManageTypes ?? false };
     if (base.endsWith("/enabled-modules")) {
       return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];
     }

@@ -64,12 +64,15 @@ export const WithDisabledNode: Story = {
   },
 };
 
-/** A one-choice picker: a radio per node, choosing closes the list, and the clear entry empties the choice. */
+/** A one-choice picker: a selectable row per node (read as a radio, not drawn as a radio button), choosing closes the list, and the clear row empties the choice. */
 export const SingleChoiceClosesAndCanBeCleared: Story = {
   args: { mode: "single" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Type" }));
+    // Rows, not radio inputs; the tree keeps its levels (a branch can be collapsed).
+    await expect(within(document.body).queryByRole("radio", { name: "Beta Ltd" })?.tagName).toBe("BUTTON");
+    await expect(within(document.body).getAllByRole("button", { name: /^Collapse / }).length).toBeGreaterThan(0);
     await userEvent.click(within(document.body).getByRole("radio", { name: "Beta Ltd" }));
     await expect(canvas.getByRole("button", { name: "Type" })).toHaveTextContent("Beta Ltd");
     await expect(within(document.body).queryByRole("radio", { name: "Beta Ltd" })).not.toBeInTheDocument();
@@ -77,6 +80,7 @@ export const SingleChoiceClosesAndCanBeCleared: Story = {
     await userEvent.click(within(document.body).getByRole("radio", { name: "Acme" }));
     await expect(canvas.getByRole("button", { name: "Type" })).toHaveTextContent("Acme");
     await userEvent.click(canvas.getByRole("button", { name: "Type" }));
+    await expect(within(document.body).getByRole("radio", { name: "Acme" })).toHaveAttribute("aria-checked", "true");
     await userEvent.click(within(document.body).getByRole("radio", { name: "All types" }));
     await expect(canvas.getByRole("button", { name: "Type" })).toHaveTextContent("All types");
   },

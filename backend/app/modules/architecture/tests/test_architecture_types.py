@@ -37,7 +37,7 @@ def _names(rows) -> list[str]:
 
 @pytest.mark.parametrize(("path", "defaults", "extra"), VOCABULARIES)
 def test_new_organisation_is_seeded_with_the_defaults_in_order(client, admin_token, path, defaults, extra):
-    org, _project, token = setup(client, admin_token, f"Arch seed {path}")
+    org, _project, token = setup(client, admin_token, f"Arch seed {path}", domain_types=False)
     rows = client.get(f"{org_base(org['id'])}/{path}", headers=auth_headers(token)).json()
     assert _names(rows) == [d[0] for d in defaults]
     assert all(r["organization_id"] == org["id"] and r["project_id"] is None for r in rows)
@@ -53,7 +53,7 @@ def test_a_disabled_module_is_not_found(client, admin_token):
 
 @pytest.mark.parametrize(("path", "defaults", "extra"), VOCABULARIES)
 def test_organisation_admin_manages_defaults(client, admin_token, path, defaults, extra):
-    org, _project, token = setup(client, admin_token, f"Arch org crud {path}")
+    org, _project, token = setup(client, admin_token, f"Arch org crud {path}", domain_types=False)
     base, h = f"{org_base(org['id'])}/{path}", auth_headers(token)
 
     created = client.post(base, json={"name": "Radar", "domain": "hardware", "color_light": "#112233", **extra}, headers=h)
@@ -107,7 +107,7 @@ def test_the_org_admin_role_grants_the_organisation_defaults(client, admin_token
 
 @pytest.mark.parametrize(("path", "defaults", "extra"), VOCABULARIES)
 def test_a_project_lists_the_defaults_then_its_own_rows(client, admin_token, path, defaults, extra):
-    org, project, token = setup(client, admin_token, f"Arch project list {path}")
+    org, project, token = setup(client, admin_token, f"Arch project list {path}", domain_types=False)
     base, h = f"{project_base(project['id'])}/{path}", auth_headers(token)
     assert _names(client.get(base, headers=h).json()) == [d[0] for d in defaults]
 
@@ -123,7 +123,7 @@ def test_a_project_lists_the_defaults_then_its_own_rows(client, admin_token, pat
 
 @pytest.mark.parametrize(("path", "defaults", "extra"), VOCABULARIES)
 def test_a_project_hides_and_restores_an_organisation_default(client, admin_token, path, defaults, extra):
-    org, project, token = setup(client, admin_token, f"Arch hide {path}")
+    org, project, token = setup(client, admin_token, f"Arch hide {path}", domain_types=False)
     base, h = f"{project_base(project['id'])}/{path}", auth_headers(token)
     first = client.get(base, headers=h).json()[0]
 
@@ -140,7 +140,7 @@ def test_a_project_hides_and_restores_an_organisation_default(client, admin_toke
 
 
 def test_a_hidden_name_can_be_reused_by_a_project_row(client, admin_token):
-    _org, project, token = setup(client, admin_token, "Arch reuse")
+    _org, project, token = setup(client, admin_token, "Arch reuse", domain_types=False)
     base, h = f"{project_base(project['id'])}/element-types", auth_headers(token)
     first = client.get(base, headers=h).json()[0]
     client.delete(f"{base}/{first['id']}", headers=h)
@@ -149,7 +149,7 @@ def test_a_hidden_name_can_be_reused_by_a_project_row(client, admin_token):
 
 
 def test_a_project_row_is_edited_moved_and_deleted_by_its_project_only(client, admin_token):
-    org, project, token = setup(client, admin_token, "Arch own rows")
+    org, project, token = setup(client, admin_token, "Arch own rows", domain_types=False)
     other = create_project(client, token, org["id"], "Arch own rows other")
     base, h = f"{project_base(project['id'])}/element-types", auth_headers(token)
     a = client.post(base, json={"name": "A"}, headers=h).json()
@@ -179,6 +179,18 @@ def test_a_project_member_reads_and_the_admin_role_changes(client, admin_token):
 
     grant_project_role(client, token, project["id"], user_id, "architecture_admin")
     assert client.post(base, json={"name": "Yes"}, headers=auth_headers(member)).status_code == 201
+
+
+def test_capabilities_say_whether_the_caller_may_manage_types(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch capabilities")
+    user_id, member = add_member(client, token, org["id"], project["id"], "arch-capable@example.com")
+    url = f"{project_base(project['id'])}/capabilities"
+    assert client.get(url, headers=auth_headers(member)).json() == {"manage_types": False}
+    grant_project_role(client, token, project["id"], user_id, "architect")
+    assert client.get(url, headers=auth_headers(member)).json() == {"manage_types": False}
+    grant_project_role(client, token, project["id"], user_id, "architecture_admin")
+    assert client.get(url, headers=auth_headers(member)).json() == {"manage_types": True}
+    assert client.get(url, headers=auth_headers(token)).json() == {"manage_types": True}
 
 
 def test_another_organisations_rows_are_not_found(client, admin_token):

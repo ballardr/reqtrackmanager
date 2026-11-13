@@ -58,7 +58,7 @@ test.describe("System Architecture: soft guidance for connection types", () => {
       await expect(picker).toContainText("UART");
       await expect(dialog.getByText(/\d+ hidden/)).toBeVisible();
       await picker.click();
-      const list = page.getByRole("group", { name: "Connection type" });
+      const list = page.getByRole("radiogroup", { name: "Connection type" });
       await expect(list.getByRole("radio", { name: "Suggested", exact: true })).toBeVisible();
       await expect(list.getByRole("radio", { name: "REST API", exact: true })).toHaveCount(0);
       await page.keyboard.press("Escape");

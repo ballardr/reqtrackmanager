@@ -29,6 +29,16 @@ from app.schemas.project_scope import ProjectScopedRow
 _HEX_COLOR = r"^#[0-9A-Fa-f]{6}$"
 
 
+class CapabilitiesOut(BaseModel):
+    """What the caller may do in a project beyond reading, so a screen offers only the actions that will be accepted.
+
+    Attributes:
+        manage_types: May change the project's element and connection types and symbols (`architecture_admin`).
+    """
+
+    manage_types: bool
+
+
 class _VocabularyCreate(BaseModel):
     """Fields every vocabulary row is created with."""
 

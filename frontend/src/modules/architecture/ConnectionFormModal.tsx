@@ -4,7 +4,7 @@
  * Create and edit dialog for a connection between two elements, shared by the Connections list (create), the
  * detail page (edit), an element's page (create from that element) and told apart by whether `initial` is passed. The
  * two ends may be this project's elements or ones another owner shares with it (the caller passes both in `elements`);
- * a port is offered once its element is chosen and is cleared when the element changes. A new connection also takes quick
+ * a port is offered only when the chosen element has ports, and is cleared when the element changes. A new connection also takes quick
  * links, tags and "Save and activate" (a connection has no approval step).
  *
  * The type picker is guided, never restrictive (`connectionGuidance`): it lists the types whose domain fits both ends,
@@ -133,21 +133,23 @@ export function ConnectionFormModal({
             placeholder="Choose an element" options={elementOptions}
             onChange={(next) => setValues((prev) => ({ ...prev, source_element_id: next, source_port_id: null }))}
           />
-          <LabeledSelect
-            help={ARCHITECTURE_HELP.connectionPort} label="Source port" value={values.source_port_id ?? ""} placeholder="No port"
-            options={portOptions(values.source_element_id)} onChange={(next) => set("source_port_id", next || null)}
-            disabled={values.source_element_id === ""}
-          />
+          {portOptions(values.source_element_id).length > 0 && (
+            <LabeledSelect
+              help={ARCHITECTURE_HELP.connectionPort} label="Source port" value={values.source_port_id ?? ""} placeholder="No port"
+              options={portOptions(values.source_element_id)} onChange={(next) => set("source_port_id", next || null)}
+            />
+          )}
           <LabeledSelect
             help={ARCHITECTURE_HELP.connectionTarget} required label="Target element" value={values.target_element_id}
             placeholder="Choose an element" options={elementOptions}
             onChange={(next) => setValues((prev) => ({ ...prev, target_element_id: next, target_port_id: null }))}
           />
-          <LabeledSelect
-            help={ARCHITECTURE_HELP.connectionPort} label="Target port" value={values.target_port_id ?? ""} placeholder="No port"
-            options={portOptions(values.target_element_id)} onChange={(next) => set("target_port_id", next || null)}
-            disabled={values.target_element_id === ""}
-          />
+          {portOptions(values.target_element_id).length > 0 && (
+            <LabeledSelect
+              help={ARCHITECTURE_HELP.connectionPort} label="Target port" value={values.target_port_id ?? ""} placeholder="No port"
+              options={portOptions(values.target_element_id)} onChange={(next) => set("target_port_id", next || null)}
+            />
+          )}
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => set("description", value)} />
           </FormGridFull>

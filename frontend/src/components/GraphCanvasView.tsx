@@ -125,6 +125,7 @@ export function GraphCanvasView({
   onConnect,
   onEdgeAnchorChange,
   resizable = false,
+  fitMaxZoom = 2,
   onNodesResize,
   onDelete,
   onDropItem,
@@ -375,6 +376,7 @@ export function GraphCanvasView({
         deleteKeyCode={null}
         connectionMode={ConnectionMode.Loose}
         fitView
+        fitViewOptions={{ maxZoom: fitMaxZoom }}
         minZoom={0.1}
         maxZoom={2}
       >

@@ -14,13 +14,13 @@
  * the tree that cannot be chosen, e.g. an organisation group inside a project
  * picker.
  *
- * `single` turns it into a one-choice picker (a radio per node; choosing closes the list, and `clearLabel` adds an
- * entry that clears the choice), and `searchable` adds a search box that keeps the nodes whose label matches and the
+ * `single` turns it into a one-choice picker (each node is a selectable row, the chosen one marked with a tick and read
+ * as a radio by assistive technology; choosing closes the list, and `clearLabel` adds a row that clears the choice), and `searchable` adds a search box that keeps the nodes whose label matches and the
  * ancestors leading to them, with every branch open while a search is active. A node may appear under several
  * parents (the same id twice): each place shows the same state.
  */
-import { ChevronDown } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { Check, ChevronDown } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Popover } from "./Popover";
 import { Tooltip } from "./Tooltip";
@@ -40,16 +40,35 @@ function flatten(nodes: TreeSelectNode[]): TreeSelectNode[] {
   return nodes.flatMap((n) => [n, ...flatten(n.children)]);
 }
 
-/** One checkbox (or, in a one-choice picker, radio) row of the opened tree; a disabled node explains why in a tooltip. */
+/** The row of a one-choice picker: a full-width selectable row with a tick on the chosen one, announced as a radio. */
+function SingleChoiceRow({
+  label, checked, disabled, onChoose,
+}: { label: string; checked: boolean; disabled?: boolean; onChoose: () => void }) {
+  return (
+    <button
+      type="button" role="radio" aria-checked={checked} aria-label={label} disabled={disabled} onClick={onChoose}
+      className="row"
+      style={{
+        flex: 1, minWidth: 0, flexWrap: "nowrap", justifyContent: "space-between", gap: "var(--space-2)", fontSize: "0.85rem",
+        padding: "var(--space-1) var(--space-3)", border: "none", borderRadius: "var(--radius-sm, 4px)", textAlign: "left", cursor: disabled ? "not-allowed" : "pointer",
+        background: checked ? "var(--color-surface-alt)" : "transparent", color: "inherit", fontWeight: checked ? 600 : undefined,
+      }}
+    >
+      <span>{label}</span>
+      {checked && <Check size={14} aria-hidden="true" style={{ flexShrink: 0 }} />}
+    </button>
+  );
+}
+
+/** One checkbox (or, in a one-choice picker, selectable row) of the opened tree; a disabled node explains why in a tooltip. */
 function TreeSelectOption({
-  n, checked, onToggle, radioName,
-}: { n: TreeSelectNode; checked: boolean; onToggle: () => void; radioName?: string }) {
-  const row = (
+  n, checked, onToggle, single,
+}: { n: TreeSelectNode; checked: boolean; onToggle: () => void; single: boolean }) {
+  const row = single ? (
+    <SingleChoiceRow label={n.label} checked={checked} disabled={n.disabled} onChoose={onToggle} />
+  ) : (
     <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem" }}>
-      <input
-        type={radioName ? "radio" : "checkbox"} name={radioName} checked={checked} disabled={n.disabled}
-        aria-label={n.label} onChange={onToggle}
-      />
+      <input type="checkbox" checked={checked} disabled={n.disabled} aria-label={n.label} onChange={onToggle} />
       {n.label}
     </label>
   );
@@ -74,7 +93,7 @@ export function TreeSelect({
   onChange: (next: string[]) => void;
   /** Shown on the trigger when nothing is checked. */
   emptyLabel?: string;
-  /** One choice: a radio per node, and choosing closes the list. `onChange` then gets a list of at most one id. */
+  /** One choice: a selectable row per node, and choosing closes the list. `onChange` then gets a list of at most one id. */
   single?: boolean;
   /** Adds a search box above the tree. */
   searchable?: boolean;
@@ -85,7 +104,6 @@ export function TreeSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const radioName = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = new Set(selectedIds);
   const summary =
@@ -121,7 +139,7 @@ export function TreeSelect({
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>
-          <div role="group" aria-label={triggerLabel} style={{ minWidth: "14rem", maxHeight: "20rem", overflowY: "auto" }}>
+          <div role={single ? "radiogroup" : "group"} aria-label={triggerLabel} style={{ minWidth: "14rem", maxHeight: "20rem", overflowY: "auto" }}>
             {searchable && (
               <input
                 className="input" type="search" value={query} aria-label={`Search ${triggerLabel}`} placeholder="Search"
@@ -129,13 +147,9 @@ export function TreeSelect({
               />
             )}
             {single && clearLabel && (
-              <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem", minHeight: "2rem" }}>
-                <input
-                  type="radio" name={radioName} checked={selectedIds.length === 0} aria-label={clearLabel}
-                  onChange={() => { onChange([]); setOpen(false); }}
-                />
-                {clearLabel}
-              </label>
+              <div className="row" style={{ minHeight: "2rem" }}>
+                <SingleChoiceRow label={clearLabel} checked={selectedIds.length === 0} onChoose={() => { onChange([]); setOpen(false); }} />
+              </div>
             )}
             <TreeView
               nodes={shown}
@@ -144,9 +158,7 @@ export function TreeSelect({
               expanded={searching ? new Set(flatten(shown).map((n) => n.id)) : undefined}
               onToggle={() => undefined}
               renderNode={(n) => (
-                <TreeSelectOption
-                  n={n} checked={selected.has(n.id)} onToggle={() => toggle(n.id)} radioName={single ? radioName : undefined}
-                />
+                <TreeSelectOption n={n} checked={selected.has(n.id)} onToggle={() => toggle(n.id)} single={single} />
               )}
             />
           </div>

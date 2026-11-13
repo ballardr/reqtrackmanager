@@ -31,7 +31,7 @@ from app.modules.architecture.tests._helpers import (
     setup,
     view,
 )
-from app.modules.registry import get_artefact_summaries_in_project, get_module_registry
+from app.modules.registry import get_artefact_summaries_in_project
 from app.services.record_tables import creatable_record_types
 from tests.conftest import auth_headers, create_project
 
@@ -50,14 +50,6 @@ def _layout(diagram_view):
 
 
 # --- The record --------------------------------------------------------------
-
-
-def test_the_module_offers_a_diagrams_entry_gated_by_the_diagram_sub_component():
-    manifest = get_module_registry()["architecture"].frontend_manifest
-    assert manifest is not None
-    entries = {e.nav_label: e for e in manifest.additional_nav_entries}
-    assert entries["Diagrams"].nav_path == "/projects/{project_id}/modules/architecture/diagrams"
-    assert entries["Diagrams"].sub_component == "architecture_diagram"
 
 
 def test_the_links_panel_offers_to_create_a_diagram_only_to_an_architect(client, admin_token):

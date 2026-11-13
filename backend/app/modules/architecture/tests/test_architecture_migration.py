@@ -18,6 +18,13 @@ from tests.conftest import build_alembic_config, create_org_admin_in
 #: organisation is seeded with (`DEFAULT_CONNECTION_TYPES`) are not added to an existing one.
 _BACKFILLED_CONNECTION_TYPES = 14
 
+#: The element types the same migration backfills (its own list as of that release); a new organisation is seeded with
+#: the neutral `DEFAULT_ELEMENT_TYPES` only.
+_BACKFILLED_ELEMENT_TYPES = [
+    "System", "Subsystem", "Component", "Service", "Container", "Package", "Datastore", "Queue", "Board", "Sensor",
+    "Connector", "Enclosure",
+]
+
 
 def _count(table: str, org_id: str) -> int:
     with engine.connect() as conn:
@@ -40,14 +47,14 @@ def test_downgrade_drops_the_tables_and_upgrade_backfills_existing_organisations
     finally:
         command.upgrade(build_alembic_config(), "head")
 
-    assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)
+    assert _count("architecture_element_types", org["id"]) == len(_BACKFILLED_ELEMENT_TYPES)
     assert _count("architecture_connection_types", org["id"]) == _BACKFILLED_CONNECTION_TYPES
     with engine.connect() as conn:
         names = [r[0] for r in conn.execute(
             text("SELECT name FROM architecture_element_types WHERE organization_id = :o ORDER BY sort_order"),
             {"o": uuid.UUID(org["id"])},
         )]
-    assert names == [d[0] for d in DEFAULT_ELEMENT_TYPES]
+    assert names == _BACKFILLED_ELEMENT_TYPES
 
 
 def test_upgrading_twice_does_not_double_the_backfill(client, admin_token):
@@ -56,7 +63,7 @@ def test_upgrading_twice_does_not_double_the_backfill(client, admin_token):
     command.upgrade(build_alembic_config(), "head")
     command.downgrade(build_alembic_config(), "0171")
     command.upgrade(build_alembic_config(), "head")
-    assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)
+    assert _count("architecture_element_types", org["id"]) == len(_BACKFILLED_ELEMENT_TYPES)
 
 
 def test_the_records_migration_drops_and_recreates_the_record_tables_leaving_the_vocabularies(client, admin_token):

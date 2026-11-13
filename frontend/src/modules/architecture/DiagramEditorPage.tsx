@@ -42,8 +42,8 @@ import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useUrlChoice, useUrlList } from "../../hooks/useUrlFilter";
 import { architectureTabPath } from "./architectureTabs";
-import { projectConnectionApi, projectDiagramApi, projectElementApi } from "./api";
-import { diffDiagramFields, valuesFromDiagram } from "./architectureFields";
+import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
+import { diffDiagramFields, diffElementFields, valuesFromDiagram, valuesFromElement } from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
@@ -54,9 +54,10 @@ import {
 import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { DiagramAddMenu } from "./DiagramAddMenu";
-import { DiagramConnectionDetailPanel } from "./DiagramConnectionDetailPanel";
 import { DiagramOutline } from "./DiagramOutline";
+import { ElementFormModal } from "./ElementFormModal";
 import { DiagramSelectionPanel } from "./DiagramSelectionPanel";
+import { DiagramSettingsButton } from "./DiagramSettingsButton";
 import { DiagramTogglesPanel } from "./DiagramTogglesPanel";
 import { resolveDiagram, type ResolvedDiagram } from "./diagramLines";
 import { PALETTE_TYPE_PREFIX, toggleValues } from "./diagramToggles";
@@ -68,13 +69,17 @@ import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues,
+  type ArchitectureRecordStatus, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues,
 } from "./types";
 
 const CANVAS_HEIGHT = 560;
 
+/** The project's Element Types settings. */
+const SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architecture/architecture-element-types`;
+
 const EDITOR_TABS = [
   { key: "drawing", label: "Drawing" },
+  { key: "outline", label: "Outline" },
   { key: "configuration", label: "Configuration" },
 ] as const;
 type EditorTab = (typeof EDITOR_TABS)[number]["key"];
@@ -94,7 +99,7 @@ export function DiagramEditorPage() {
   const [toggleOff, setToggleOff] = useUrlList("toggle_off");
   // The Drawing tab is the default and so leaves the address unmarked; the pending layout, selection and undo history live
   // in this page, so they survive a change of tab.
-  const [tabChoice, setTabChoice] = useUrlChoice("tab", ["configuration"] as const);
+  const [tabChoice, setTabChoice] = useUrlChoice("tab", ["outline", "configuration"] as const);
   const tab: EditorTab = tabChoice || "drawing";
   const editor = useDiagramEditor(projectId, diagramId);
   const { diagram, view, model, layout, dirty } = editor;
@@ -111,6 +116,10 @@ export function DiagramEditorPage() {
   const [toggleForm, setToggleForm] = useState<{ initial?: DiagramToggleValues } | null>(null);
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [canManageTypes, setCanManageTypes] = useState(false);
+  const [leaveForSetup, setLeaveForSetup] = useState(false);
+  const [editingElement, setEditingElement] = useState<ArchitectureElement | null>(null);
+  const [elementFormError, setElementFormError] = useState<string | null>(null);
 
   const reloadModelLists = useCallback(() => {
     if (!projectId) return;
@@ -121,6 +130,12 @@ export function DiagramEditorPage() {
     projectConnectionApi(projectId).list({ open_only: true }).then(setConnections).catch(() => setConnections([]));
   }, [projectId]);
   useEffect(() => { reloadModelLists(); }, [reloadModelLists]);
+  useEffect(() => {
+    if (!projectId) return;
+    let live = true;
+    capabilitiesApi.get(projectId).then((c) => { if (live) setCanManageTypes(c.manage_types); }).catch(() => { if (live) setCanManageTypes(false); });
+    return () => { live = false; };
+  }, [projectId]);
 
   // Unsaved layout edits are lost on leaving the page, so the browser is asked before it closes or reloads.
   useEffect(() => {
@@ -129,6 +144,38 @@ export function DiagramEditorPage() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  /** Stores the edited element, then redraws from the new data; the pending layout is kept (a merge, not a replace). */
+  async function saveElementEdit(values: ElementFieldValues) {
+    const element = editingElement;
+    if (!element) return;
+    setElementFormError(null);
+    const changed = diffElementFields(valuesFromElement(element), values);
+    if (Object.keys(changed).length === 0) {
+      showToast("Nothing changed.");
+      setEditingElement(null);
+      return;
+    }
+    try {
+      await projectElementApi(projectId).update(element.id, element.version, changed);
+      showToast("Element updated.");
+      setEditingElement(null);
+      reloadModelLists();
+      void editor.reload(false);
+    } catch (err) {
+      setElementFormError(toErrorMessage(err, "Could not update this element."));
+    }
+  }
+
+  /** The port calls of the Selection card: each is stored at once and the element list is read again. */
+  const portsApi = useMemo(() => {
+    const api = projectElementApi(projectId);
+    return {
+      add: async (elementId: string, values: PortValues) => { await api.addPort(elementId, values); reloadModelLists(); },
+      change: async (elementId: string, portId: string, change: Partial<PortValues>) => { await api.updatePort(elementId, portId, change); reloadModelLists(); },
+      remove: async (elementId: string, portId: string) => { await api.removePort(elementId, portId); reloadModelLists(); },
+    };
+  }, [projectId, reloadModelLists]);
 
   const createConnection = useCreateConnection(projectId, () => {
     setConnecting(null);
@@ -376,6 +423,56 @@ export function DiagramEditorPage() {
     ? `Inside ${[diagram.scope_element_code, diagram.scope_element_name].filter(Boolean).join(" ") || "an element you cannot read"}`
     : "System context";
 
+  const toolbar = (
+    <div className="row" role="toolbar" aria-label="Diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
+      <button type="button" className="btn btn-sm" disabled={!editable || !editor.canUndo} onClick={editor.undo}>Undo</button>
+      <button type="button" className="btn btn-sm" disabled={!editable || !editor.canRedo} onClick={editor.redo}>Redo</button>
+      <button
+        type="button" className="btn btn-primary btn-sm" disabled={!editable || !dirty || editor.saving || editor.conflict}
+        onClick={() => void saveLayout()}
+      >
+        Save
+      </button>
+      <DiagramAddMenu
+        elementTypes={elementTypes} disabled={!editable}
+        onAddType={(typeId) => setNewElement({ typeId, at: nextFreePosition(layout) })}
+        onAddExisting={() => setAdding(true)} onAddNote={addNewNote}
+        onSetup={canManageTypes ? () => (dirty ? setLeaveForSetup(true) : navigate(SETUP_PATH(projectId))) : undefined}
+      />
+      <MenuButton
+        label="Export" menuLabel="Export diagram" disabled={exporting}
+        items={[
+          { label: "PNG image", group: "Image", onSelect: () => void exportDiagram("png") },
+          { label: "SVG image", group: "Image", onSelect: () => void exportDiagram("svg") },
+          { label: "Download Mermaid text", key: "mermaid", group: "Text", onSelect: () => void exportDiagram("mermaid") },
+          { label: "Copy Mermaid text", key: "copy-mermaid", group: "Text", onSelect: () => void exportDiagram("copy-mermaid") },
+        ]}
+      />
+      <DiagramSettingsButton
+        connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
+        onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
+      />
+      {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
+    </div>
+  );
+  const selectionColumn = (
+    <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
+      <DiagramSelectionPanel
+        projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} hidden={resolved.hidden} editable={editable}
+        elements={elements} connectionTypes={reference.connectionTypes}
+        onEditElement={(box) => { setElementFormError(null); setEditingElement(elements.find((e) => e.id === box.elementId) ?? null); }}
+        onAddPort={portsApi.add} onChangePort={portsApi.change} onRemovePort={portsApi.remove}
+        onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
+        onConnect={(box, targetId) => void startConnection(box.elementId, targetId)}
+        onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
+        onDeleteElement={(box) => void deleteElement(box.elementId)}
+        onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
+        onEditNote={(key, text) => editor.edit((l) => editNote(l, key, text))}
+        onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); }}
+      />
+    </div>
+  );
+
   return (
     <DetailLayout
       activity={<RecordActivity projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} refreshToken={recordActivityKey(diagram)} />}
@@ -415,80 +512,47 @@ export function DiagramEditorPage() {
       )}
       {editor.saveError && !editingDiagram && <p role="alert" style={{ color: "var(--color-danger)" }}>{editor.saveError}</p>}
 
-      <Tabs idPrefix="diagram-editor" tabs={[...EDITOR_TABS]} active={tab} onChange={(next) => setTabChoice(next === "configuration" ? next : "")} />
+      <Tabs idPrefix="diagram-editor" tabs={[...EDITOR_TABS]} active={tab} onChange={(next) => setTabChoice(next === "drawing" ? "" : next)} />
+
+      {tab !== "configuration" && toolbar}
 
       {tab === "drawing" && (
-        <div className="stack" {...tabPanelProps("diagram-editor", "drawing")}>
-          <div className="row" role="toolbar" aria-label="Diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
-            <button type="button" className="btn btn-sm" disabled={!editable || !editor.canUndo} onClick={editor.undo}>Undo</button>
-            <button type="button" className="btn btn-sm" disabled={!editable || !editor.canRedo} onClick={editor.redo}>Redo</button>
-            <button
-              type="button" className="btn btn-primary btn-sm" disabled={!editable || !dirty || editor.saving || editor.conflict}
-              onClick={() => void saveLayout()}
-            >
-              Save
-            </button>
-            <DiagramAddMenu
-              elementTypes={elementTypes} disabled={!editable}
-              onAddType={(typeId) => setNewElement({ typeId, at: nextFreePosition(layout) })}
-              onAddExisting={() => setAdding(true)} onAddNote={addNewNote}
+        <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }} {...tabPanelProps("diagram-editor", "drawing")}>
+          <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
+            <GraphCanvas
+              nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={CANVAS_HEIGHT}
+              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
+              onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
+              onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
+              onEdgeAnchorChange={(edgeId, change) => {
+                const line = resolved.edges.find((e) => e.id === edgeId);
+                if (line) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
+              }}
+              onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected}
+              onDropItem={(payload, at) => {
+                if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
+              }}
             />
-            <MenuButton
-              label="Export" menuLabel="Export diagram" disabled={exporting}
-              items={[
-                { label: "PNG image", group: "Image", onSelect: () => void exportDiagram("png") },
-                { label: "SVG image", group: "Image", onSelect: () => void exportDiagram("svg") },
-                { label: "Download Mermaid text", key: "mermaid", group: "Text", onSelect: () => void exportDiagram("mermaid") },
-                { label: "Copy Mermaid text", key: "copy-mermaid", group: "Text", onSelect: () => void exportDiagram("copy-mermaid") },
-              ]}
-            />
-            {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
           </div>
+          {selectionColumn}
+        </div>
+      )}
 
-          <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }}>
-            <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
-              <GraphCanvas
-                nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={CANVAS_HEIGHT}
-                readOnly={!editable} resizable selected={selection} onSelect={setSelection}
-                onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
-                onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
-                onEdgeAnchorChange={(edgeId, change) => {
-                  const line = resolved.edges.find((e) => e.id === edgeId);
-                  if (line) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
-                }}
-                onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected}
-                onDropItem={(payload, at) => {
-                  if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
-                }}
-              />
-              <DiagramOutline
-                boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} parents={model.parents} hidden={resolved.hidden}
-                selection={selection} onSelect={setSelection}
-              />
-            </div>
-            <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
-              <DiagramSelectionPanel
-                projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} hidden={resolved.hidden} editable={editable}
-                onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
-                onConnect={(box, targetId) => void startConnection(box.elementId, targetId)}
-                onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
-                onDeleteElement={(box) => void deleteElement(box.elementId)}
-                onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
-                onEditNote={(key, text) => editor.edit((l) => editNote(l, key, text))}
-                onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); }}
-              />
-            </div>
+      {tab === "outline" && (
+        <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }} {...tabPanelProps("diagram-editor", "outline")}>
+          <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
+            <DiagramOutline
+              boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} parents={model.parents} hidden={resolved.hidden}
+              selection={selection} onSelect={setSelection}
+            />
           </div>
+          {selectionColumn}
         </div>
       )}
 
       {tab === "configuration" && (
         <div className="stack" {...tabPanelProps("diagram-editor", "configuration")}>
           {dirty && <p className="text-muted" role="status">The drawing has unsaved changes; they are kept and are saved from the Drawing tab.</p>}
-          <DiagramConnectionDetailPanel
-            checked={diagram.connection_detail} disabled={!editable || editor.saving}
-            onChange={(next) => void editor.updateFields({ connection_detail: next })}
-          />
           <DiagramTogglesPanel
             toggles={toggles} editable={editable} onFlip={flipToggle}
             onAdd={() => setToggleForm({})} onEdit={(t) => setToggleForm({ initial: toggleValues(t) })} onRemove={(t) => void removeToggle(t)}
@@ -500,6 +564,14 @@ export function DiagramEditorPage() {
         <DiagramFormModal
           initial={diagram} elements={elements} projectId={projectId} error={formError}
           onCancel={() => { setEditingDiagram(false); setFormError(null); }} onSave={saveDiagramFields}
+        />
+      )}
+      {editingElement && reference.project && (
+        <ElementFormModal
+          initial={editingElement} elementTypes={elementTypes} connectionTypes={reference.connectionTypes}
+          candidates={elements.filter((e) => !e.shared)} symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)}
+          orgUsers={reference.orgUsers} organizationId={reference.project.organization_id} projectId={projectId} error={elementFormError}
+          onCancel={() => { setEditingElement(null); setElementFormError(null); }} onSave={saveElementEdit}
         />
       )}
       {adding && <AddElementsDialog candidates={candidates} elementTypes={elementTypes} onCancel={() => setAdding(false)} onAdd={addExisting} />}
@@ -514,6 +586,12 @@ export function DiagramEditorPage() {
           connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
           projectId={projectId} defaultSourceId={connecting.source} defaultTargetId={connecting.target} error={createConnection.error}
           onCancel={() => { setConnecting(null); createConnection.clearError(); }} onSave={createConnection.create}
+        />
+      )}
+      {leaveForSetup && (
+        <ConfirmDialog
+          title="Leave this diagram?" message="Your unsaved changes to this diagram will be lost." confirmLabel="Leave"
+          onConfirm={() => { setLeaveForSetup(false); navigate(SETUP_PATH(projectId)); }} onCancel={() => setLeaveForSetup(false)}
         />
       )}
       {leaveFor && (

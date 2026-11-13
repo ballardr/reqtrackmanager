@@ -43,7 +43,7 @@ export const CreateNeedsTypeAndTwoDifferentElements: Story = {
   },
 };
 
-/** Retired elements are not offered, shared ones are marked, and changing an end clears its port. */
+/** Retired elements are not offered, shared ones are marked, and changing an end clears its port (and hides the choice when the new end has none). */
 export const PickerHidesRetiredMarksSharedAndClearsThePort: Story = {
   play: async () => {
     const d = dialog();
@@ -53,7 +53,20 @@ export const PickerHidesRetiredMarksSharedAndClearsThePort: Story = {
     await userEvent.selectOptions(source, "el-1");
     await userEvent.selectOptions(d.getByLabelText("Source port"), "port-1");
     await userEvent.selectOptions(source, "el-2");
-    await expect(d.getByLabelText("Source port")).toHaveValue("");
+    await expect(d.queryByLabelText("Source port")).not.toBeInTheDocument();
+  },
+};
+
+/** A port choice is offered only for an end that has ports. */
+export const PortChoicesAppearOnlyForElementsWithPorts: Story = {
+  play: async () => {
+    const d = dialog();
+    await expect(d.queryByLabelText("Source port")).not.toBeInTheDocument();
+    await expect(d.queryByLabelText("Target port")).not.toBeInTheDocument();
+    await userEvent.selectOptions(d.getByLabelText("Source element"), "el-1");
+    await userEvent.selectOptions(d.getByLabelText("Target element"), "el-2");
+    await expect(d.getByLabelText("Source port")).toBeInTheDocument();
+    await expect(d.queryByLabelText("Target port")).not.toBeInTheDocument();
   },
 };
 

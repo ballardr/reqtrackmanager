@@ -114,6 +114,12 @@ export interface GraphCanvasProps {
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */
   height?: number | string;
+  /**
+   * The largest zoom the opening fit may use. With 1, a small graph opens at 100% (its text at the size of the page's
+   * text) instead of being enlarged to fill the canvas; a graph too large for 100% still fits. Defaults to 2, the
+   * canvas's own maximum zoom.
+   */
+  fitMaxZoom?: number;
 }
 
 const GraphCanvasView = lazy(() => import("./GraphCanvasView").then((m) => ({ default: m.GraphCanvasView })));

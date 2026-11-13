@@ -2471,12 +2471,27 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
 def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
     """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
     a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
-    REST API, Power; one left on the "Serial bus" group to show a connection refined later), an organisation-owned identity service shared with the project through a collection, and a diagram
-    of the airframe with a toggle that hides its sensors.
-    The Board, Sensor and Service types are drawn with the built-in symbols a new organisation is given, and the
+    REST API, Power; one left on the "Serial bus" group to show a connection refined later), an organisation-owned
+    identity service shared with the project through a collection, and a diagram of the airframe with a toggle that hides its sensors.
+    The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
     drone with a symbol uploaded to the project's own library. Returns the number of elements, connections and diagrams created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
+
+    # A new organisation is given neutral element types only (System, Subsystem, Component), so the hardware and software
+    # types this drone needs are added to the organisation first, each drawn with a built-in symbol.
+    org_arch = f"{BASE}/orgs/{org_id}/modules/architecture"
+    org_symbols = {row["name"]: row["id"] for row in httpx.get(f"{org_arch}/symbols", headers=headers, timeout=30).json()}
+    have = {row["name"] for row in httpx.get(f"{org_arch}/element-types", headers=headers, timeout=30).json()}
+    for name, shape, domain, symbol_name in (
+        ("Board", "chip", "hardware", "Board"), ("Sensor", "ellipse", "hardware", "Sensor"), ("Service", "hexagon", "software", "Server"),
+    ):
+        if name not in have:
+            created = httpx.post(
+                f"{org_arch}/element-types", headers=headers, timeout=30,
+                json={"name": name, "shape": shape, "domain": domain, "symbol_id": org_symbols.get(symbol_name)},
+            )
+            created.raise_for_status()
 
     def effective(path: str) -> dict[str, str]:
         r = httpx.get(f"{base}/{path}", headers=headers, timeout=30)

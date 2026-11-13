@@ -43,8 +43,14 @@ async function select(canvas: ReturnType<typeof within>, name: string) {
 }
 
 /** Chooses an editor tab (the Drawing tab is the default). */
-async function openTab(canvas: ReturnType<typeof within>, name: "Drawing" | "Configuration") {
+async function openTab(canvas: ReturnType<typeof within>, name: "Drawing" | "Outline" | "Configuration") {
   await userEvent.click(await canvas.findByRole("tab", { name }));
+}
+
+/** Opens the diagram settings (the gear beside Export) and returns the switch for connection detail. */
+async function openSettings(canvas: ReturnType<typeof within>) {
+  await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+  return within(document.body).findByRole("switch", { name: "Connection detail" });
 }
 
 /** Opens the "Add to diagram" menu and chooses an entry (the menu is a popover outside the story's canvas). */
@@ -116,10 +122,8 @@ export const ASaveStaysSavedWhenALaterReadSupersedesItsReadBack: Story = {
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
-    await openTab(canvas, "Configuration");
-    await userEvent.click(await canvas.findByRole("switch", { name: "Connection detail" }));
+    await userEvent.click(await openSettings(canvas));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
-    await openTab(canvas, "Drawing");
     // What was saved is the baseline, so nothing is left to save and undoing the move is still possible.
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
   },
@@ -437,8 +441,7 @@ export const ADetailedLineShowsItsTypeAndCount: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByLabelText("REST API ×2, connection from Gateway to Orders")).toBeInTheDocument();
-    await openTab(canvas, "Configuration");
-    await expect(await canvas.findByRole("switch", { name: "Connection detail" })).toBeChecked();
+    await expect(await openSettings(canvas)).toBeChecked();
   },
 };
 
@@ -482,19 +485,21 @@ async function exportAs(canvas: ReturnType<typeof within>, item: string) {
 export const TheOutlineFollowsTheViewSwitches: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
     await expect(await within(await canvas.findByRole("region", { name: "Outline" })).findByRole("button", { name: /^ELM-003 Firewall/ })).toBeInTheDocument();
     await openTab(canvas, "Configuration");
     await userEvent.click(await canvas.findByRole("switch", { name: "Security devices" }));
-    await openTab(canvas, "Drawing");
+    await openTab(canvas, "Outline");
     const outline = within(await canvas.findByRole("region", { name: "Outline" }));
     await waitFor(() => expect(outline.queryByRole("button", { name: /^ELM-003 Firewall/ })).not.toBeInTheDocument());
     await expect(outline.getByText(/1 hidden by view switches\./)).toBeInTheDocument();
   },
 };
 
-export const ChoosingInTheOutlineSelectsOnTheCanvasAndInTheSelectionCard: Story = {
+export const ChoosingInTheOutlineSelectsInTheSelectionCardAndOnTheCanvas: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
     const outline = within(await canvas.findByRole("region", { name: "Outline" }));
     await userEvent.click(await outline.findByRole("button", { name: /^ELM-002 Orders/ }));
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
@@ -508,6 +513,7 @@ export const ChoosingInTheOutlineSelectsOnTheCanvasAndInTheSelectionCard: Story 
 export const ABoxAddedBeforeSavingIsInTheOutlineAtOnce: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
     const outline = within(await canvas.findByRole("region", { name: "Outline" }));
     await addFromMenu(canvas, "Add existing elements");
     const dialog = within(within(document.body).getByRole("dialog"));
@@ -648,7 +654,7 @@ export const TheAddMenuGroupsTheTypesByDomain: Story = {
     const menu = within(await within(document.body).findByRole("menu", { name: "Add to diagram" }));
     const labels = menu.getAllByRole("menuitem").map((item) => item.textContent?.trim());
     await expect(labels).toEqual(["Service", "Board", "Custom block", "Add existing elements", "Add note"]);
-    for (const heading of ["New software element", "New hardware element", "New software and hardware element", "Other"]) {
+    for (const heading of ["New software element", "New hardware element", "New element", "Other"]) {
       await expect(menu.getByText(heading)).toBeInTheDocument();
     }
     // A type can be dragged onto the canvas as well as chosen.
@@ -673,10 +679,35 @@ export const TheConfigurationTabHoldsTheSettingsInsteadOfTheDrawing: Story = {
     await expect(canvas.queryByRole("region", { name: "View switches" })).not.toBeInTheDocument();
     await openTab(canvas, "Configuration");
     await expect(await canvas.findByRole("tab", { name: "Configuration" })).toHaveAttribute("aria-selected", "true");
-    await expect(await canvas.findByRole("region", { name: "Connections" })).toBeInTheDocument();
     await expect(await canvas.findByRole("region", { name: "View switches" })).toBeInTheDocument();
     await expect(canvas.queryByRole("toolbar", { name: "Diagram editing" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("region", { name: "Outline" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("switch", { name: "Connection detail" })).not.toBeInTheDocument();
+  },
+};
+
+export const TheOutlineHasItsOwnTabAndKeepsTheSelectionCard: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("region", { name: "Outline" })).not.toBeInTheDocument();
+    await openTab(canvas, "Outline");
+    await expect(await canvas.findByRole("tab", { name: "Outline" })).toHaveAttribute("aria-selected", "true");
+    await expect(await canvas.findByRole("region", { name: "Outline" })).toBeInTheDocument();
+    await expect(canvas.getByRole("region", { name: "Selection" })).toBeInTheDocument();
+    await expect(canvas.getByRole("toolbar", { name: "Diagram editing" })).toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Gateway, node")).not.toBeInTheDocument();
+  },
+};
+
+export const ConnectionDetailIsStoredFromTheGearBesideExport: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, connection_detail: true }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("switch", { name: "Connection detail" })).not.toBeInTheDocument();
+    await userEvent.click(await openSettings(canvas));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, connection_detail: true }),
+    ));
   },
 };
 
@@ -693,16 +724,6 @@ export const UnsavedEditsAndTheSelectionSurviveAChangeOfTab: Story = {
     await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
     await expect(canvas.getByRole("status")).toHaveTextContent("Unsaved changes.");
     await expect(await canvas.findByRole("region", { name: "Selection" })).toHaveTextContent(/Gateway/);
-  },
-};
-
-export const TheConnectionDetailSettingIsStoredFromTheConfigurationTab: Story = {
-  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, connection_detail: true }) as never); },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await openTab(canvas, "Configuration");
-    await userEvent.click(await canvas.findByRole("switch", { name: "Connection detail" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, connection_detail: true })));
   },
 };
 
@@ -731,5 +752,62 @@ export const AnEditMadeWhileASaveIsReadBackIsKept: Story = {
     // Only the second move is unsaved: undoing it returns to what was stored.
     await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+  },
+};
+
+export const EditingABoxOpensTheElementFormAndKeepsPendingLayoutEdits: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildElement({ version: 2, name: "Edge gateway" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await userEvent.click(await canvas.findByRole("button", { name: "Edit element" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    const name = await dialog.findByLabelText(/^Name/);
+    await userEvent.clear(name);
+    await userEvent.type(name, "Edge gateway");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/elements/el-1`, expect.objectContaining({ name: "Edge gateway", version: 1 }),
+    ));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    // The move made before the edit is still waiting to be saved.
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+  },
+};
+
+export const ASelectedBoxListsItsPortsAndAddsOneAtOnce: Story = {
+  beforeEach: () => { spyOn(api, "post").mockResolvedValue({ id: "port-9", name: "Events", direction: "both", connection_type_id: null } as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(await panel.findByLabelText("Direction of HTTPS API")).toBeInTheDocument();
+    await userEvent.type(panel.getByLabelText("Port name", { selector: "input[placeholder='Port name']" }), "Events");
+    await userEvent.click(panel.getByRole("button", { name: "Add port" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `${BASE}/elements/el-1/ports`, { name: "Events", direction: "both", connection_type_id: null },
+    ));
+  },
+};
+
+export const TheAddMenuOffersTypeSetupOnlyToSomeoneWhoMayManageTypes: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS, canManageTypes: false }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
+    await expect(await within(document.body).findByRole("menuitem", { name: "Add note" })).toBeInTheDocument();
+    await expect(within(document.body).queryByRole("menuitem", { name: "Set up element types" })).not.toBeInTheDocument();
+  },
+};
+
+export const TheAddMenuEndsWithASetupEntryForAnArchitectureAdmin: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS, canManageTypes: true }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
+    const items = await within(document.body).findAllByRole("menuitem");
+    await expect(items[items.length - 1]).toHaveAccessibleName("Set up element types");
   },
 };

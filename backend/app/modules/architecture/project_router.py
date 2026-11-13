@@ -14,13 +14,20 @@ vocabulary change needs `_shared.require_architecture_admin` and a record change
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.user import User
+from app.modules.architecture import _shared as sh
 from app.modules.architecture import symbol_routes, vocabulary_routes
 from app.modules.architecture.collection_routes import add_project_collection_routes
 from app.modules.architecture.diagram_routes import add_diagram_routes
 from app.modules.architecture.record_routes import add_record_routes
 from app.modules.architecture.schemas import (
+    CapabilitiesOut,
     ConnectionTypeCreate,
     ConnectionTypeOut,
     ConnectionTypeUpdate,
@@ -60,6 +67,20 @@ vocabulary_routes.add_project_routes(
     entity_type="architecture_symbol", require_view=_require_view, create_route=False,
 )
 symbol_routes.add_project_symbol_routes(router, require_view=_require_view)
+
+
+
+@router.get("/capabilities", response_model=CapabilitiesOut)
+def get_capabilities(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """What the caller may change in this project (today whether they may manage its types), for screens that show an
+    action only to someone it will work for. Open to any project member; the actions themselves still enforce the role."""
+    project = sh.get_project(db, project_id)
+    try:
+        sh.require_architecture_admin(db, current_user, project)
+    except HTTPException:
+        return CapabilitiesOut(manage_types=False)
+    return CapabilitiesOut(manage_types=True)
+
 
 add_record_routes(router)
 add_diagram_routes(router)

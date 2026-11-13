@@ -5,8 +5,10 @@
  * navigation entry). A shared `Tabs` strip switches between the Elements, Connections and Diagrams lists; the
  * chosen tab is the `tab` query parameter and each list keeps its own filters in the same address.
  *
- * - A tab whose sub-component is off for the project is not offered; an address naming one opens the first
- *   enabled tab.
+ * - A tab whose sub-component is off for the project is not offered; an address naming one opens the default tab.
+ * - An address with no tab (the navigation entry) opens the tab the person last chose on the strip, else Diagrams.
+ *   The choice is kept per person across projects in this browser (`localStorage`, guarded); a link that names a tab
+ *   opens it without changing the remembered one.
  * - Leaving a tab remembers its filters for the browser session (`sessionStorage`, guarded), and returning to it
  *   restores them, so moving between tabs does not reset a search or a status filter.
  * - `ArchitectureListRedirect` carries the earlier list addresses (`/elements`, `/connections`, `/diagrams`) here.
@@ -26,6 +28,27 @@ import { ProjectElementsPage } from "./ProjectElementsPage";
 const MODULE_KEY = "architecture";
 const ID_PREFIX = "architecture-page";
 const SAVED_FILTERS_PREFIX = "architecture-tab-filters:";
+const LAST_TAB_KEY = "architecture-last-tab";
+/** The tab opened when nothing is remembered. */
+const DEFAULT_TAB: ArchitectureTab = "diagrams";
+
+/** The tab last chosen on the strip, or null; blocked storage or an unknown value reads as none. */
+function readLastTab(): ArchitectureTab | null {
+  try {
+    const value = localStorage.getItem(LAST_TAB_KEY);
+    return ARCHITECTURE_TABS.find((t) => t.key === value)?.key ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastTab(tab: ArchitectureTab): void {
+  try {
+    localStorage.setItem(LAST_TAB_KEY, tab);
+  } catch {
+    // Storage blocked or full: the page opens on the default tab next time.
+  }
+}
 
 function savedFiltersKey(projectId: string, tab: ArchitectureTab): string {
   return `${SAVED_FILTERS_PREFIX}${projectId}:${tab}`;
@@ -76,7 +99,8 @@ export function SystemArchitecturePage() {
   const tabs = useMemo(() => ARCHITECTURE_TABS.filter((t) => !disabled.includes(t.subComponent)), [disabled]);
 
   const requested = new URLSearchParams(location.search).get("tab");
-  const active = tabs.find((t) => t.key === requested)?.key ?? tabs[0]?.key ?? "elements";
+  const offered = (key: string | null) => tabs.find((t) => t.key === key)?.key;
+  const active = offered(requested) ?? offered(readLastTab()) ?? offered(DEFAULT_TAB) ?? tabs[0]?.key ?? "elements";
 
   // Keep the shown tab's filters current so leaving the tab by any route (a record link, another tab) saves them.
   const filters = filtersOf(location.search);
@@ -93,6 +117,7 @@ export function SystemArchitecturePage() {
   }
 
   function switchTab(next: ArchitectureTab) {
+    writeLastTab(next);
     const saved = readSavedFilters(projectId, next);
     navigate(saved ? `${architectureTabPath(projectId, next)}&${saved}` : architectureTabPath(projectId, next));
   }
