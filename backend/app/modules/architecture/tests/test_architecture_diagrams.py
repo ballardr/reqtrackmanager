@@ -307,7 +307,7 @@ def test_a_retired_or_archived_connection_is_left_out_unless_asked_for(client, a
     _org, project, token = setup(client, admin_token, "Arch diagram retired")
     a = make_element(client, token, project["id"], "A")
     b = make_element(client, token, project["id"], "B")
-    link = make_connection(client, token, project["id"], a["id"], b["id"])
+    link = make_connection(client, token, project["id"], a["id"], b["id"], activate=True)
     client.post(
         f"{project_base(project['id'])}/connections/{link['id']}/status", json={"version": 1, "status": "retired"},
         headers=auth_headers(token),
@@ -578,7 +578,7 @@ def test_the_diagram_list_filters_and_exports(client, admin_token):
     h = auth_headers(token)
     base = project_base(project["id"])
     make_diagram(client, token, project["id"], "Context", activate=True)
-    retired = make_diagram(client, token, project["id"], "Legacy")
+    retired = make_diagram(client, token, project["id"], "Legacy", activate=True)
     client.post(f"{base}/diagrams/{retired['id']}/status", json={"version": 1, "status": "retired"}, headers=h)
     assert [d["name"] for d in client.get(f"{base}/diagrams", params={"open_only": "true"}, headers=h).json()] == ["Context"]
     assert [d["name"] for d in client.get(f"{base}/diagrams", params={"status": "retired"}, headers=h).json()] == ["Legacy"]

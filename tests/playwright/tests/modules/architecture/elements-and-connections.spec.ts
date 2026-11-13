@@ -18,7 +18,7 @@ const gridRow = (page: Page, value: string) =>
  * Disposable org, admin and project via `setUpOrg` with System Architecture switched on; everything else through the UI.
  */
 test.describe("System Architecture: elements, connections and sharing", () => {
-  test("an architect builds a small system, connects it, retires it in order and hides a default type", async ({ page }) => {
+  test("an architect builds a small system, connects it and hides a default type", async ({ page }) => {
     const { suffix, project } = await setUpOrg(page, "Architecture", false, "System Architecture");
     const gateway = `Gateway ${suffix}`;
     const orders = `Orders ${suffix}`;
@@ -84,27 +84,6 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await expect(row.getByText(new RegExp(orders))).toBeVisible();
     });
 
-    await test.step("a parent cannot retire while a child is in use; retire the child first", async () => {
-      await page.goto(`/projects/${project.id}/modules/architecture/elements`);
-      await page.getByRole("link", { name: /ELM-002/ }).click();
-      await page.getByRole("button", { name: "Activate" }).click();
-      await expect(page.getByText("Element moved to Active.")).toBeVisible();
-
-      await page.goBack();
-      await page.getByRole("link", { name: /ELM-001/ }).click();
-      await page.getByRole("button", { name: "Retire" }).click();
-      await expect(page.getByText(/still has 1 child element\(s\) in use/)).toBeVisible();
-
-      await page.goBack();
-      await page.getByRole("link", { name: /ELM-002/ }).click();
-      await page.getByRole("button", { name: "Retire" }).click();
-      await expect(page.getByText("Element moved to Retired.")).toBeVisible();
-      await page.goBack();
-      await page.getByRole("link", { name: /ELM-001/ }).click();
-      await page.getByRole("button", { name: "Retire" }).click();
-      await expect(page.getByText("Element moved to Retired.")).toBeVisible();
-    });
-
     await test.step("hide an organisation default element type in the project, then add it back", async () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Element Types", "System Architecture");
@@ -127,6 +106,52 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
       await page.getByRole("dialog", { name: "Add organisation defaults" }).getByRole("button", { name: "Add 1 default" }).click();
       await expect(page.locator('input[value="Subsystem"]')).toBeVisible();
+    });
+  });
+
+  test("Change state offers the server's moves, and a parent retires only after its child", async ({ page }) => {
+    const { suffix, project } = await setUpOrg(page, "ArchitectureStates", false, "System Architecture");
+    const parent = `Gateway ${suffix}`;
+    const child = `Orders ${suffix}`;
+
+    await test.step("create an active parent and a draft child under it", async () => {
+      await page.goto(`/projects/${project.id}/modules/architecture?tab=elements`);
+      await page.getByRole("button", { name: "New element" }).click();
+      let dialog = page.getByRole("dialog", { name: "New element" });
+      await dialog.getByLabel("Name", { exact: true }).fill(parent);
+      await dialog.getByRole("button", { name: "Save and activate" }).click();
+      await expect(page.getByText("Element created.")).toBeVisible();
+      await page.getByRole("button", { name: "New element" }).click();
+      dialog = page.getByRole("dialog", { name: "New element" });
+      await dialog.getByLabel("Name", { exact: true }).fill(child);
+      await selectOptionContaining(dialog.getByLabel("Parent element"), parent);
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.locator("tr", { hasText: child }).getByText("Draft", { exact: true })).toBeVisible();
+    });
+
+    await test.step("a parent cannot retire while a child is in use; retire the child first", async () => {
+      const moveTo = async (item: string, toast: string) => {
+        await page.getByRole("button", { name: "Change state", exact: true }).click();
+        await page.getByRole("menuitem", { name: item }).click();
+        await expect(page.getByText(toast)).toBeVisible();
+      };
+      await page.getByRole("link", { name: /ELM-002/ }).click();
+      await moveTo("Move from Draft to Planned", "Element moved to Planned.");
+      await expect(page.getByText("Planned", { exact: true })).toBeVisible();
+      await moveTo("Move from Planned to Active", "Element moved to Active.");
+
+      await page.goBack();
+      await page.getByRole("link", { name: /ELM-001/ }).click();
+      await page.getByRole("button", { name: "Change state", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Move from Active to Retired" }).click();
+      await expect(page.getByText(/still has 1 child element\(s\) in use/)).toBeVisible();
+
+      await page.goBack();
+      await page.getByRole("link", { name: /ELM-002/ }).click();
+      await moveTo("Move from Active to Retired", "Element moved to Retired.");
+      await page.goBack();
+      await page.getByRole("link", { name: /ELM-001/ }).click();
+      await moveTo("Move from Active to Retired", "Element moved to Retired.");
     });
   });
 

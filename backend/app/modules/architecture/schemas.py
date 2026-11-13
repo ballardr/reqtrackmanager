@@ -238,6 +238,7 @@ class ElementOut(ProjectScopedRow):
     parent_id: UUID | None
     owner: PrincipalOut | None
     status: str
+    allowed_status_moves: list[str]
     version: int
     creator_id: UUID
     is_archived: bool
@@ -323,6 +324,7 @@ class ConnectionOut(ProjectScopedRow):
     protocol: str
     description: str
     status: str
+    allowed_status_moves: list[str]
     version: int
     creator_id: UUID
     is_archived: bool
@@ -449,6 +451,7 @@ class DiagramOut(ProjectScopedRow):
     scope_element_name: str | None = None
     connection_detail: bool
     status: str
+    allowed_status_moves: list[str]
     version: int
     creator_id: UUID
     is_archived: bool

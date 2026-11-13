@@ -135,3 +135,15 @@ export const TagsInlineWithNoBadgesOrVersion: Story = {
     await expect(within(canvasElement).getByText("Safety").closest(".row")).not.toBeNull();
   },
 };
+
+/** A `stateMenu` sits beside Edit in the title row, before it, and counts as a control by itself. */
+export const StateMenuBesideEdit: Story = {
+  args: { stateMenu: <button className="btn">Change state</button> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const state = canvas.getByRole("button", { name: "Change state" });
+    const edit = canvas.getByRole("button", { name: "Edit" });
+    await expect(state.parentElement).toBe(edit.parentElement);
+    await expect(state.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};

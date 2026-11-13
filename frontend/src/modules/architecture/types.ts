@@ -10,10 +10,11 @@ import type { BadgeTone, Principal, PrincipalRef } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
 import type { AttachPoint } from "../../components/graphAttachPoints";
 
-export type ArchitectureRecordStatus = "draft" | "active" | "retired";
+export type ArchitectureRecordStatus = "draft" | "planned" | "active" | "retired";
 
 export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string> = {
   draft: "Draft",
+  planned: "Planned",
   active: "Active",
   retired: "Retired",
 };
@@ -28,6 +29,7 @@ export const PORT_DIRECTION_LABEL: Record<PortDirection, string> = {
 
 export const ARCHITECTURE_STATUS_TONE: Record<ArchitectureRecordStatus, BadgeTone> = {
   draft: "muted",
+  planned: "info",
   active: "accent",
   retired: "muted",
 };
@@ -159,6 +161,8 @@ export interface ArchitectureElement extends ProjectScopedRow {
   parent_id: string | null;
   owner: Principal | null;
   status: ArchitectureRecordStatus;
+  /** The states the server lets this record move to, in menu order (one map on the server). */
+  allowed_status_moves: ArchitectureRecordStatus[];
   version: number;
   creator_id: string;
   is_archived: boolean;
@@ -219,6 +223,8 @@ export interface ArchitectureConnection extends ProjectScopedRow {
   protocol: string;
   description: string;
   status: ArchitectureRecordStatus;
+  /** The states the server lets this record move to, in menu order (one map on the server). */
+  allowed_status_moves: ArchitectureRecordStatus[];
   version: number;
   creator_id: string;
   is_archived: boolean;
@@ -297,6 +303,8 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
   scope_element_name: string | null;
   connection_detail: boolean;
   status: ArchitectureRecordStatus;
+  /** The states the server lets this record move to, in menu order (one map on the server). */
+  allowed_status_moves: ArchitectureRecordStatus[];
   version: number;
   creator_id: string;
   is_archived: boolean;

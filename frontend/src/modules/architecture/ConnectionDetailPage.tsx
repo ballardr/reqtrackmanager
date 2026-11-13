@@ -164,7 +164,7 @@ export function ConnectionDetailPage() {
         subtitle={<>{connection.connection_type_name}{connection.protocol ? ` · ${connection.protocol}` : ""}</>}
         onEdit={connection.is_archived ? undefined : () => setEditing(true)}
         actions={[archive.item, remove.item]}
-        transitions={<ArchitectureStatusControls status={connection.status} onMove={moveTo} />}
+        stateMenu={<ArchitectureStatusControls status={connection.status} moves={connection.allowed_status_moves} onMove={moveTo} />}
       />
       {archive.dialog}
       {remove.dialog}

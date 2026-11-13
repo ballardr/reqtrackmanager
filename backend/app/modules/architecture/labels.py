@@ -10,6 +10,7 @@ from __future__ import annotations
 
 RECORD_STATUS_LABEL: dict[str, str] = {
     "draft": "Draft",
+    "planned": "Planned",
     "active": "Active",
     "retired": "Retired",
 }

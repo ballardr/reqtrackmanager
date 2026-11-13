@@ -121,6 +121,7 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
         <span className="row" style={{ gap: "var(--space-2)" }}>
           <ArchitectureStatusControls
             status={e.status}
+            moves={e.allowed_status_moves}
             onMove={(next: ArchitectureRecordStatus) => act(() => calls.setStatus(e.id, e.version, next), `Element moved to ${ARCHITECTURE_STATUS_LABEL[next]}.`)}
           />
           <button className="btn" aria-label={`Edit ${e.name}`} onClick={() => { setFormError(null); setEditing(e); }}>Edit</button>

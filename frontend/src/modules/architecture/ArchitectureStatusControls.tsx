@@ -1,31 +1,42 @@
 /**
  * Module: modules/architecture/ArchitectureStatusControls
  *
- * The status buttons of an element or a connection, shown beside its status in the record header: Activate a draft,
- * Retire an active record, Reactivate a retired one. There is no approval step, so any person who may manage the record
- * may move it; the server answers a refusal (for example retiring an element that still has active children), which the
- * page shows. Status is shown through `ARCHITECTURE_STATUS_LABEL`.
+ * The "Change state" menu of an element, a connection or a diagram, drawn beside Edit in the record header. Each item
+ * names the move from the current state ("Move from Draft to Planned"); the moves are the `allowed_status_moves` the
+ * server returns with the record, so the menu offers exactly what the server accepts and a later state needs only a
+ * label here. A (?) help beside the button describes every state. There is no approval step, so any person who may
+ * manage the record may use it; the server answers a refusal (for example retiring an element that still has children
+ * in use), which the page shows. A record with no moves draws nothing.
  */
-import type { ArchitectureRecordStatus } from "./types";
-
-/** The one move each status offers, and the button text. */
-const NEXT: Record<ArchitectureRecordStatus, { status: ArchitectureRecordStatus; label: string; primary: boolean }> = {
-  draft: { status: "active", label: "Activate", primary: true },
-  active: { status: "retired", label: "Retire", primary: false },
-  retired: { status: "active", label: "Reactivate", primary: false },
-};
+import { FieldHelp } from "../../components/FieldHelp";
+import { MenuButton } from "../../components/MenuButton";
+import { ARCHITECTURE_HELP } from "./help";
+import { ARCHITECTURE_STATUS_LABEL, type ArchitectureRecordStatus } from "./types";
 
 /**
  * @param status The record's current status.
+ * @param moves The states the record may move to (`allowed_status_moves`), in menu order.
  * @param onMove Called with the status to move to; the page saves it and reports a refusal.
  */
 export function ArchitectureStatusControls({
-  status, onMove,
-}: { status: ArchitectureRecordStatus; onMove: (next: ArchitectureRecordStatus) => void | Promise<void> }) {
-  const next = NEXT[status];
+  status, moves, onMove,
+}: {
+  status: ArchitectureRecordStatus;
+  moves: ArchitectureRecordStatus[];
+  onMove: (next: ArchitectureRecordStatus) => void | Promise<void>;
+}) {
+  if (moves.length === 0) return null;
   return (
-    <button className={next.primary ? "btn btn-primary" : "btn"} onClick={() => void onMove(next.status)}>
-      {next.label}
-    </button>
+    <span className="row" style={{ gap: "var(--space-1)", flexWrap: "nowrap" }}>
+      <MenuButton
+        label="Change state"
+        menuLabel="Change state"
+        items={moves.map((next) => ({
+          label: `Move from ${ARCHITECTURE_STATUS_LABEL[status]} to ${ARCHITECTURE_STATUS_LABEL[next]}`,
+          onSelect: () => void onMove(next),
+        }))}
+      />
+      <FieldHelp label="Change state" help={ARCHITECTURE_HELP.stateMenu} />
+    </span>
   );
 }

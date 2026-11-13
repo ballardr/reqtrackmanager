@@ -45,10 +45,11 @@ class LineStyle(str, enum.Enum):
 
 
 class RecordStatus(str, enum.Enum):
-    """The lifecycle of an element or a connection. There is no approval gate: a person who may manage the
-    record may move it between any two states (a retired record can be reactivated)."""
+    """The lifecycle of an element, a connection or a diagram. There is no approval gate: a person who may manage the
+    record may make any move `transitions.STATUS_MOVES` lists (a retired record can be reactivated)."""
 
     DRAFT = "draft"
+    PLANNED = "planned"
     ACTIVE = "active"
     RETIRED = "retired"
 

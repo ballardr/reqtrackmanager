@@ -63,7 +63,9 @@ from app.services.perf_dataset.records import RecordBatch, add_tags, created_at,
 
 #: Deepest generated tree level (a root is 1); the application allows more.
 _GENERATED_DEPTH = 4
-_STATUS_MIX = ((RecordStatus.ACTIVE, 0.6), (RecordStatus.DRAFT, 0.3), (RecordStatus.RETIRED, 0.1))
+_STATUS_MIX = (
+    (RecordStatus.ACTIVE, 0.5), (RecordStatus.DRAFT, 0.2), (RecordStatus.PLANNED, 0.2), (RecordStatus.RETIRED, 0.1),
+)
 _PORT_NAMES = ("Main", "Control", "Data", "Power", "Debug", "Status")
 #: Most elements the first (large) diagram of a project places, and the range for the others.
 _LARGE_DIAGRAM = 200

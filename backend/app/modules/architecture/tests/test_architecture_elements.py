@@ -247,7 +247,7 @@ def test_list_filters_narrow_the_elements(client, admin_token):
     types = element_types(client, token, project["id"])
     board = make_element(client, token, project["id"], "Main board", type_name="Board", activate=True, description="Holds the MCU.")
     sensor = make_element(client, token, project["id"], "Temperature sensor", type_name="Sensor", parent_id=board["id"])
-    retired = make_element(client, token, project["id"], "Old radio", type_name="Board")
+    retired = make_element(client, token, project["id"], "Old radio", type_name="Board", activate=True)
     client.post(f"{base}/elements/{retired['id']}/status", json={"version": 1, "status": "retired"}, headers=h)
 
     def ids(**params) -> set[str]:

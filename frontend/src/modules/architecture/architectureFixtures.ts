@@ -13,7 +13,7 @@ import type { OrgUser } from "../../api/types";
 import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
-  ArchitectureCollection, ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
+  ArchitectureCollection, ArchitectureConnection, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramModel, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
   ModelElement, Port,
 } from "./types";
@@ -28,6 +28,16 @@ export const ORG_USERS: OrgUser[] = [
   },
 ];
 
+/** The moves the server's status map allows from each state (a copy for stories; the server holds the real map). */
+const STATUS_MOVES: Record<ArchitectureRecordStatus, ArchitectureRecordStatus[]> = {
+  draft: ["planned", "active"], planned: ["active", "draft"], active: ["retired"], retired: ["active"],
+};
+
+/** `allowed_status_moves` for a built record: those of `status` (Active when not given). */
+function movesFrom(status: ArchitectureRecordStatus = "active"): ArchitectureRecordStatus[] {
+  return STATUS_MOVES[status];
+}
+
 export function buildPort(overrides: Partial<Port> = {}): Port {
   return {
     id: "port-1", element_id: "el-1", name: "HTTPS API", direction: "in", connection_type_id: "ct-1",
@@ -39,7 +49,7 @@ export function buildElement(overrides: Partial<ArchitectureElement> = {}): Arch
   return {
     id: "el-1", project_id: PROJECT_ID, organization_id: null, shared: false, unique_code: "ELM-001", name: "Gateway",
     description: "Terminates client traffic.", element_type_id: "et-1", element_type_name: "Service", symbol_id: null,
-    effective_symbol_id: null, parent_id: null, owner: null, status: "active", version: 1, creator_id: "user-1",
+    effective_symbol_id: null, parent_id: null, owner: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 1, creator_id: "user-1",
     is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z",
     child_count: 0, connection_count: 1, ports: [buildPort()], ...overrides,
   };
@@ -52,7 +62,8 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
     source_element_name: "Gateway", source_port_id: "port-1", source_port_name: "HTTPS API", source_locked: false,
     source_shared: false, target_element_id: "el-2", target_element_code: "ELM-002", target_element_name: "Orders",
     target_port_id: null, target_port_name: null, target_locked: false, target_shared: false, protocol: "HTTPS/1.1",
-    description: "", status: "active", version: 1, creator_id: "user-1", is_archived: false, archived_at: null,
+    description: "", status: "active", allowed_status_moves: movesFrom(overrides.status), version: 1, creator_id: "user-1",
+    is_archived: false, archived_at: null,
     created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", realises: [], realised_by: [], ...overrides,
   };
 }
@@ -61,7 +72,7 @@ export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): Arch
   return {
     id: "dgm-1", project_id: PROJECT_ID, unique_code: "DGM-001", name: "Platform overview", purpose: "How traffic reaches the services.",
     scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, status: "active",
-    version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
+    allowed_status_moves: movesFrom(overrides.status), version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", placement_count: 3, note_count: 0, toggle_count: 1, ...overrides,
   };
 }

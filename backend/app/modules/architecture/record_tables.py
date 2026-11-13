@@ -19,8 +19,9 @@ Design decisions:
 - The symbol is written by its name (the owner's effective library) and left blank for the type's own; a name is shown
   only for a symbol the reader may read (`symbols.visible_symbol_ids`), so an element another owner shares never
   discloses a symbol the person cannot see.
-- `status` is importable because the module has no approval gate (an element or a connection may move
-  between any two states); a new record can be created `Draft` or `Active`, not `Retired`.
+- `status` is importable because the module has no approval gate (a record may make any move
+  `transitions.STATUS_MOVES` lists, and a row asking for another is a row error); a new record can be created
+  `Draft`, `Planned` or `Active`, not `Retired`.
 - `ports` is one list cell, `name:direction` per port (`Main:both;Debug:in`), the way the export writes it. An
   import *adds* the ports a cell names that the element lacks and never removes or edits one, so a round trip
   changes nothing and removing a port stays a deliberate act on the element.
@@ -393,7 +394,10 @@ def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> Arch
         "element_type_id": values.get("type"), "symbol_id": values.get("symbol"), "parent_id": values.get("parent"),
         "owner": values.get("owner"), "activate": status is RecordStatus.ACTIVE, "ports": _ports_from_cell(values.get("ports", [])),
     })
-    return _rule(lambda: records.create_element(ctx.db, _owner_of(ctx), ctx.user, payload))
+    element = _rule(lambda: records.create_element(ctx.db, _owner_of(ctx), ctx.user, payload))
+    if status is RecordStatus.PLANNED:
+        _rule(lambda: records.change_element_status(ctx.db, _owner_of(ctx), ctx.user, element.id, element.version, status))
+    return element
 
 
 def _update_element(ctx: RecordImportContext, element: ArchitectureElement, values: Mapping[str, Any]) -> None:
@@ -541,7 +545,10 @@ def _create_connection(ctx: RecordImportContext, values: Mapping[str, Any]) -> A
         "protocol": values.get("protocol", ""), "description": values.get("description", ""),
         "activate": status is RecordStatus.ACTIVE,
     })
-    return _rule(lambda: records.create_connection(ctx.db, ctx.project, ctx.user, payload))
+    connection = _rule(lambda: records.create_connection(ctx.db, ctx.project, ctx.user, payload))
+    if status is RecordStatus.PLANNED:
+        _rule(lambda: records.change_connection_status(ctx.db, ctx.project, ctx.user, connection.id, connection.version, status))
+    return connection
 
 
 def _update_connection(ctx: RecordImportContext, connection: ArchitectureConnection, values: Mapping[str, Any]) -> None:

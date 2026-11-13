@@ -22,8 +22,8 @@ Design decisions:
   first; deleting needs no children and no connection ending at it. These are
   integrity rules (a hidden child would be orphaned from its parent's view, and a
   connection would lose an end).
-- A status may move between any two states: there is no approval gate on this
-  module's records.
+- A status moves only along `transitions.STATUS_MOVES` (one map, also returned with each record): there is no
+  approval gate on this module's records.
 - Port changes advance the element's `version`, so an editor holding a stale copy
   is told before overwriting.
 
@@ -89,6 +89,7 @@ from app.modules.architecture.service import (
     ELEMENT_TYPES,
     SYMBOLS,
 )
+from app.modules.architecture.transitions import allowed_moves, move_refusal
 from app.modules.architecture.visibility import (
     Viewer,
     granted_element_ids,
@@ -106,8 +107,6 @@ from app.services.sequences import generate_unique_code
 
 #: The deepest an element tree may be (a root is depth 1).
 MAX_DEPTH = 12
-
-_NO_STATUS_CHANGE_NEEDED = "The record already has this status."
 
 
 class RuleError(Exception):
@@ -562,8 +561,9 @@ def change_element_status(
     """
     element = get_element(db, owner, element_id, lock=True)
     _check_version(element, version)
-    if element.status == status.value:
-        raise RuleError(_NO_STATUS_CHANGE_NEEDED, 409)
+    refusal = move_refusal(element.status, status)
+    if refusal:
+        raise RuleError(refusal, 409)
     if status is RecordStatus.RETIRED:
         _require_children_finished(db, element, "retire")
     previous = element.status
@@ -848,8 +848,9 @@ def change_connection_status(
     """
     connection = get_connection(db, project.id, connection_id, lock=True)
     _check_version(connection, version)
-    if connection.status == status.value:
-        raise RuleError(_NO_STATUS_CHANGE_NEEDED, 409)
+    refusal = move_refusal(connection.status, status)
+    if refusal:
+        raise RuleError(refusal, 409)
     previous = connection.status
     _touch(connection, status=status.value)
     db.flush()
@@ -975,8 +976,9 @@ def element_outs(
             element_type_name=element_types[e.element_type_id].name if e.element_type_id in element_types else "",
             symbol_id=e.symbol_id,
             effective_symbol_id=e.symbol_id or (element_types[e.element_type_id].symbol_id if e.element_type_id in element_types else None),
-            parent_id=e.parent_id, owner=label_of(labels, e.owner_type, e.owner_id), status=e.status, version=e.version,
-            creator_id=e.creator_id, is_archived=e.is_archived, archived_at=e.archived_at, created_at=e.created_at,
+            parent_id=e.parent_id, owner=label_of(labels, e.owner_type, e.owner_id), status=e.status,
+            allowed_status_moves=allowed_moves(e.status), version=e.version, creator_id=e.creator_id,
+            is_archived=e.is_archived, archived_at=e.archived_at, created_at=e.created_at,
             updated_at=e.updated_at, child_count=child_counts.get(e.id, 0), connection_count=connection_counts.get(e.id, 0),
             ports=[port_out(p, connection_types) for p in ports.get(e.id, ())],
         )
@@ -1038,7 +1040,8 @@ def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], 
             id=c.id, project_id=c.project_id, unique_code=c.unique_code, name=c.name,
             connection_type_id=c.connection_type_id, connection_type_name=types[c.connection_type_id].name,
             directional=types[c.connection_type_id].directional, **end(c, "source"), **end(c, "target"),
-            protocol=c.protocol, description=c.description, status=c.status, version=c.version,
+            protocol=c.protocol, description=c.description, status=c.status,
+            allowed_status_moves=allowed_moves(c.status), version=c.version,
             creator_id=c.creator_id, is_archived=c.is_archived, archived_at=c.archived_at, created_at=c.created_at,
             updated_at=c.updated_at, realises=realises.get(c.id, []), realised_by=realised_by.get(c.id, []),
         )

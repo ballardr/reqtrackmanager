@@ -40,11 +40,11 @@ export const ShowsPortsChildrenConnectionsAndSharing: Story = {
     await expect(await canvas.findByRole("link", { name: /ELM-002 Rate limiter/ })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /CON-001 Client traffic/ })).toBeInTheDocument();
     await expect(await canvas.findByText("Shared infrastructure · 1 grant")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Change state" })).toBeInTheDocument();
   },
 };
 
-/** An element another owner shares is read-only: no Edit, no status buttons, no port controls, no Add child. */
+/** An element another owner shares is read-only: no Edit, no state menu, no port controls, no Add child. */
 export const SharedElementIsReadOnly: Story = {
   parameters: { elementId: "el-9" },
   beforeEach: () => {
@@ -56,15 +56,46 @@ export const SharedElementIsReadOnly: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: /Identity provider/ })).toBeInTheDocument();
     await expect(canvas.getByText("Shared")).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Change state" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add child" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add port" })).not.toBeInTheDocument();
     await expect(canvas.getByText(/only its owner changes it/)).toBeInTheDocument();
   },
 };
 
-/** Retiring sends the version the page was based on; a refusal from the server is shown. */
-export const RetireSendsTheVersionAndShowsARefusal: Story = {
+/** The menu offers the moves the server returned for the record's state, named from the current state. */
+export const ChangeStateOffersTheServersMoves: Story = {
+  beforeEach: () => {
+    const draft = buildElement({ status: "draft", version: 3 });
+    const get = mockArchitectureReads({ elements: [PARENT, draft], element: draft, connections: [] });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Change state" }));
+    const menu = within(document.body).getByRole("menu", { name: "Change state" });
+    await expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
+      "Move from Draft to Planned", "Move from Draft to Active",
+    ]);
+  },
+};
+
+/** The (?) beside the menu describes every state, not only the current one. */
+export const ChangeStateHelpDescribesEveryState: Story = {
+  beforeEach: () => {
+    const get = mockArchitectureReads({ elements: [PARENT, ELEMENT], element: ELEMENT, connections: [] });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Help: Change state" }));
+    const tip = await within(document.body).findByRole("tooltip");
+    for (const state of ["Draft:", "Planned:", "Active:", "Retired:"]) await expect(tip).toHaveTextContent(state);
+  },
+};
+
+/** Moving sends the version the page was based on; a refusal from the server is shown. */
+export const MoveSendsTheVersionAndShowsARefusal: Story = {
   beforeEach: () => {
     const get = mockArchitectureReads({ elements: [PARENT, ELEMENT], element: ELEMENT, connections: [] });
     const post = spyOn(api, "post").mockRejectedValue(new Error("Retire or move the active child elements first."));
@@ -72,7 +103,8 @@ export const RetireSendsTheVersionAndShowsARefusal: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Retire" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Change state" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Move from Active to Retired" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/architecture/elements/el-1/status`, { version: 3, status: "retired" },
     ));

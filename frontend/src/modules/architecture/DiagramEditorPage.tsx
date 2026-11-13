@@ -591,7 +591,7 @@ export function DiagramEditorPage() {
         subtitle={<>{scopeLabel}{diagram.purpose ? ` · ${diagram.purpose}` : ""}</>}
         onEdit={editable ? () => setEditingDiagram(true) : undefined}
         actions={[archive.item, remove.item]}
-        transitions={<ArchitectureStatusControls status={diagram.status} onMove={moveTo} />}
+        stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}
       />
       {archive.dialog}
       {remove.dialog}

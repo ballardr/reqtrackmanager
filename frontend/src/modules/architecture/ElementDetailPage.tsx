@@ -182,7 +182,7 @@ export function ElementDetailPage() {
         }
         onEdit={readOnly || element.is_archived ? undefined : () => setEditing(true)}
         actions={[archive.item, remove.item]}
-        transitions={readOnly ? undefined : <ArchitectureStatusControls status={element.status} onMove={moveTo} />}
+        stateMenu={readOnly ? undefined : <ArchitectureStatusControls status={element.status} moves={element.allowed_status_moves} onMove={moveTo} />}
       />
       {archive.dialog}
       {remove.dialog}

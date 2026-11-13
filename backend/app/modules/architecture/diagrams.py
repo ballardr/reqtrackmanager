@@ -63,7 +63,6 @@ from app.modules.architecture.models import (
     ArchitectureElement,
 )
 from app.modules.architecture.records import (
-    _NO_STATUS_CHANGE_NEEDED,
     RuleError,
     _check_version,
     _detail,
@@ -88,6 +87,7 @@ from app.modules.architecture.service import (
     DIAGRAM_CODE_PREFIX,
     ELEMENT_TYPES,
 )
+from app.modules.architecture.transitions import allowed_moves, move_refusal
 from app.modules.architecture.visibility import Viewer, visible_element_ids
 from app.services.audit import log_event
 from app.services.sequences import generate_unique_code
@@ -253,8 +253,9 @@ def change_diagram_status(
     """
     diagram = get_diagram(db, project_id, diagram_id, lock=True)
     _check_version(diagram, version)
-    if diagram.status == status.value:
-        raise RuleError(_NO_STATUS_CHANGE_NEEDED, 409)
+    refusal = move_refusal(diagram.status, status)
+    if refusal:
+        raise RuleError(refusal, 409)
     previous = diagram.status
     _touch(diagram, status=status.value)
     db.flush()
@@ -690,7 +691,8 @@ def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: V
             scope_element_name=scopes[d.scope_element_id].name if d.scope_element_id in readable else (
                 "" if d.scope_element_id in scopes else None
             ),
-            connection_detail=d.connection_detail, status=d.status, version=d.version, creator_id=d.creator_id,
+            connection_detail=d.connection_detail, status=d.status, allowed_status_moves=allowed_moves(d.status),
+            version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             placement_count=placements.get(d.id, 0), note_count=notes.get(d.id, 0), toggle_count=toggles.get(d.id, 0),
         )
