@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
+import { FieldHelp } from "../../components/FieldHelp";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
@@ -32,6 +33,7 @@ import { addSharedListFilters } from "../../utils/listFilterParams";
 import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { projectDiagramApi, projectElementApi } from "./api";
 import { DiagramFormModal } from "./DiagramFormModal";
+import { ARCHITECTURE_HELP } from "./help";
 import { useCreateDiagram } from "./useCreateDiagram";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureDiagram, type ArchitectureElement,
@@ -105,7 +107,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
   const columns: DirectoryColumn<ArchitectureDiagram>[] = [
     { key: "code", label: "Code", render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
     { key: "name", label: "Name", render: (d) => <>{d.name}<ProjectScopeLabel row={d} /></> },
-    { key: "scope", label: "Scope", render: (d) => (d.scope_element_id ? `${d.scope_element_code ?? ""} ${d.scope_element_name ?? ""}`.trim() || "—" : "System context") },
+    { key: "scope", label: "Scope", render: (d) => (d.scope_element_id ? `${d.scope_element_code ?? ""} ${d.scope_element_name ?? ""}`.trim() || "—" : <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>) },
     { key: "boxes", label: "Elements", render: (d) => d.placement_count },
     { key: "toggles", label: "Switches", render: (d) => d.toggle_count },
     {

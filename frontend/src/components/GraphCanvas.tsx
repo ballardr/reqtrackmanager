@@ -110,6 +110,11 @@ export interface GraphCanvasProps {
    * edge's `sourcePoint`/`targetPoint`. Dragging an end to a different box is ignored.
    */
   onEdgeAnchorChange?: (edgeId: string, change: { sourcePoint?: AttachPoint; targetPoint?: AttachPoint }) => void;
+  /**
+   * Called when a node is opened by a double-click. The canvas opens nothing itself; what "open" means (a detail page, an
+   * inner diagram) belongs to the consumer, who must also offer a keyboard route (Enter is left to selecting).
+   */
+  onNodeOpen?: (nodeId: string) => void;
   /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */

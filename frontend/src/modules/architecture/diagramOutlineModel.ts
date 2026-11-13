@@ -103,6 +103,38 @@ export function outlineSize(tree: readonly OutlineNode[]): number {
   return tree.reduce((total, n) => total + 1 + outlineSize(n.children), 0);
 }
 
+/** One row of the element table: the element and the placed element it nests under. */
+export interface ElementRow {
+  /** The element's id, which is also its canvas selection id. */
+  id: string;
+  box: EditorBox;
+  /** The nearest placed ancestor's name for a list, or null for a top-level element. */
+  parent: string | null;
+}
+
+/**
+ * The elements as table rows.
+ *
+ * @param tree An outline from {@link outlineTree}.
+ * @returns One row per element in tree order (a parent before the elements nested under it), so the table and the tree read alike.
+ */
+export function elementRows(tree: readonly OutlineNode[]): ElementRow[] {
+  const rows: ElementRow[] = [];
+  const walk = (nodes: readonly OutlineNode[], parent: string | null) => {
+    for (const node of nodes) {
+      rows.push({ id: node.id, box: node.box, parent });
+      walk(node.children, boxName(node.box));
+    }
+  };
+  walk(tree, null);
+  return rows;
+}
+
+/** @param tree An outline. @returns The ids of the elements that have elements nested under them. */
+export function outlineBranchIds(tree: readonly OutlineNode[]): string[] {
+  return tree.flatMap((n) => (n.children.length > 0 ? [n.id, ...outlineBranchIds(n.children)] : []));
+}
+
 /**
  * The rows of the connection table.
  *

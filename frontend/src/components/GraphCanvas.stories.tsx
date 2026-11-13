@@ -345,6 +345,21 @@ export const ReportsADeleteKeyOnTheSelection: Story = {
   },
 };
 
+/** A double-click asks the consumer to open the node; Enter stays selection only, and the canvas opens nothing itself. */
+export const OpensANodeOnDoubleClick: Story = {
+  args: { onNodeOpen: fn() },
+  render: (args) => <Host onNodeOpen={args.onNodeOpen} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}{Enter}");
+    await expect(args.onNodeOpen).not.toHaveBeenCalled();
+    await userEvent.dblClick(node);
+    await expect(args.onNodeOpen).toHaveBeenCalledWith("sensor");
+  },
+};
+
 /** A read-only canvas does not report a delete, and does not advertise one. */
 export const ReadOnlyIgnoresTheDeleteKey: Story = {
   args: { onDelete: fn() },

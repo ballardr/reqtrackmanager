@@ -32,6 +32,7 @@ export const ListShowsScopeAndHidesRetiredByDefault: Story = {
     const table = await canvas.findByRole("table", { name: "Diagrams" });
     const system = within(within(table).getByRole("link", { name: "DGM-001" }).closest("tr")!);
     await expect(system.getByText("System context")).toBeInTheDocument();
+    await expect(system.getByRole("button", { name: "Help: System context" })).toBeInTheDocument();
     const inside = within(within(table).getByRole("link", { name: "DGM-002" }).closest("tr")!);
     await expect(inside.getByText("ELM-001 Gateway")).toBeInTheDocument();
     await expect(within(table).queryByRole("link", { name: "DGM-003" })).not.toBeInTheDocument();

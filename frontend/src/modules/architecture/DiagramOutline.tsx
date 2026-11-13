@@ -15,14 +15,22 @@
  * Design decisions:
  * - Elements a switch hides are not listed; only how many are hidden is stated, since that is what the person needs to see
  *   every time to read the diagram correctly.
+ * - The elements can be read as a tree or as a table like the lines (the shared `ViewToggle`, remembered per person); the
+ *   tree has Expand all and Collapse all, and each section collapses (the shared `CollapsibleSection`, remembered too).
  * - Built on the shared `TreeView` shell and the shared table styles; every row is a real button, so the whole outline is
  *   operable from the keyboard.
  */
+import { useState } from "react";
+
+import { CollapsibleSection } from "../../components/CollapsibleSection";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
+import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import { NOTE_NODE_PREFIX, type EditorBox, type EditorNote } from "./diagramEditorModel";
-import { boxName, connectionRows, outlineSize, outlineTree, type ConnectionRow } from "./diagramOutlineModel";
+import {
+  boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
+} from "./diagramOutlineModel";
 import type { DiagramViewEdge } from "./types";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
@@ -56,6 +64,11 @@ export function DiagramOutline({
 }) {
   const tree = outlineTree(boxes, parents, hidden);
   const rows = connectionRows(edges, boxes);
+  const [elementView, setElementView] = useViewMode("architecture_outline_elements", "tree");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const branchIds = outlineBranchIds(tree);
+  const expanded = new Set(branchIds.filter((id) => !collapsed.has(id)));
+  const elements = elementRows(tree);
   const hiddenCount = boxes.filter((b) => hidden.has(b.elementId)).length;
   const isSelected = (kind: GraphCanvasSelection["kind"], id: string) => selection?.kind === kind && selection.id === id;
 
@@ -67,27 +80,75 @@ export function DiagramOutline({
         {hiddenCount > 0 ? ` ${hiddenCount} hidden by view switches.` : ""}
       </p>
 
-      <section className="stack" aria-label="Elements">
-        <h3 className="detail-card__title">Elements</h3>
-        <TreeView
-          nodes={tree}
-          nodeLabel={(node) => boxName(node.box)}
-          emptyText="No elements are shown on this diagram."
-          renderNode={(node) => (
-            <button
-              type="button" className={isSelected("node", node.id) ? "btn btn-sm btn-primary" : "btn btn-sm"}
-              aria-current={isSelected("node", node.id) ? "true" : undefined} onClick={() => onSelect({ kind: "node", id: node.id })}
-            >
-              {boxName(node.box)}
-              {!node.box.locked && <span className="text-muted"> · {node.box.element_type_name}</span>}
-            </button>
+      <CollapsibleSection sectionKey="architecture_outline_elements" title="Elements" variant="plain" summary={String(elements.length)}>
+        <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+          <ViewToggle mode={elementView === "list" ? "list" : "tree"} onChange={setElementView} showTilesOption={false} showTreeOption />
+          {elementView !== "list" && branchIds.length > 0 && (
+            <>
+              <button type="button" className="btn btn-sm" onClick={() => setCollapsed(new Set())}>Expand all</button>
+              <button type="button" className="btn btn-sm" onClick={() => setCollapsed(new Set(branchIds))}>Collapse all</button>
+            </>
           )}
-        />
-      </section>
+        </div>
+        {elementView === "list" ? (
+          elements.length === 0 ? (
+            <p className="text-muted">No elements are shown on this diagram.</p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="table" aria-label="Elements">
+                <thead>
+                  <tr>
+                    <th scope="col">Element</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Parent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {elements.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <button
+                          type="button" className={isSelected("node", row.id) ? "btn btn-sm btn-primary" : "btn btn-sm"}
+                          aria-current={isSelected("node", row.id) ? "true" : undefined} onClick={() => onSelect({ kind: "node", id: row.id })}
+                        >
+                          {boxName(row.box)}
+                        </button>
+                      </td>
+                      <td>{row.box.locked ? "—" : row.box.element_type_name}</td>
+                      <td>{row.parent ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          <TreeView
+            nodes={tree}
+            nodeLabel={(node) => boxName(node.box)}
+            emptyText="No elements are shown on this diagram."
+            expanded={expanded}
+            onToggle={(id, open) => setCollapsed((current) => {
+              const next = new Set(current);
+              if (open) next.delete(id);
+              else next.add(id);
+              return next;
+            })}
+            renderNode={(node) => (
+              <button
+                type="button" className={isSelected("node", node.id) ? "btn btn-sm btn-primary" : "btn btn-sm"}
+                aria-current={isSelected("node", node.id) ? "true" : undefined} onClick={() => onSelect({ kind: "node", id: node.id })}
+              >
+                {boxName(node.box)}
+                {!node.box.locked && <span className="text-muted"> · {node.box.element_type_name}</span>}
+              </button>
+            )}
+          />
+        )}
+      </CollapsibleSection>
 
       {notes.length > 0 && (
-        <section className="stack" aria-label="Notes">
-          <h3 className="detail-card__title">Notes</h3>
+        <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" variant="plain" summary={String(notes.length)}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {notes.map((n) => (
               <li key={n.key}>
@@ -101,11 +162,10 @@ export function DiagramOutline({
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       )}
 
-      <section className="stack" aria-label="Lines">
-        <h3 className="detail-card__title">Lines</h3>
+      <CollapsibleSection sectionKey="architecture_outline_lines" title="Lines" variant="plain" summary={String(rows.length)}>
         {rows.length === 0 ? (
           <p className="text-muted">No lines are shown on this diagram.</p>
         ) : (
@@ -147,7 +207,7 @@ export function DiagramOutline({
             </table>
           </div>
         )}
-      </section>
+      </CollapsibleSection>
     </DetailCard>
   );
 }

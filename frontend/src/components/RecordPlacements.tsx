@@ -22,6 +22,7 @@ import {
 } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { FieldHelp } from "./FieldHelp";
 import { PlacementPicker } from "./PlacementPicker";
 import { RemovableChip } from "./RemovableChip";
 
@@ -100,8 +101,9 @@ export function RecordPlacements({
   }
 
   return (
-    <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }} role="group" aria-label={strings.placements.label}>
+    <div className="stack" style={{ gap: "var(--space-1)", maxWidth: "22rem" }}>
+      <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }} role="group" aria-label={strings.placements.label}>
+        <FieldHelp label={strings.placements.label} help={strings.placements.help} />
         {places.length === 0 && <span className="text-muted">{strings.placements.none}</span>}
         {places.map((place) => (
           <RemovableChip

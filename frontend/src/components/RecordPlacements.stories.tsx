@@ -74,3 +74,14 @@ export const NothingWhenNotPlacedAndNotAllowedToPlace: Story = {
     await expect(within(canvasElement).queryByRole("group")).not.toBeInTheDocument();
   },
 };
+
+export const ExplainsComponentsInAHelpTooltipAndStaysNarrow: Story = {
+  args: { api: buildPlacementsApi(buildRecordPlacements({ placements: [] })) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Not placed in a component")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Help: Components" })).toBeInTheDocument();
+    const group = canvas.getByRole("group", { name: "Components" });
+    await expect(group.parentElement!.getBoundingClientRect().width).toBeLessThanOrEqual(22 * 16 + 1);
+  },
+};

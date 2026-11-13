@@ -119,7 +119,12 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
       });
   }, [api, diagramId]);
 
-  useEffect(() => { void read(false); }, [read]);
+  // A different diagram (opening an element's inside from a diagram reuses this page) starts from its own stored layout,
+  // never merged into the previous diagram's boxes.
+  useEffect(() => {
+    loaded.current = false;
+    void read(false);
+  }, [read]);
 
   const reloadModel = useCallback(
     () => api.model(diagramId).then(setModel).catch((err) => setSaveError(toErrorMessage(err, "Could not read the diagram's connections."))),

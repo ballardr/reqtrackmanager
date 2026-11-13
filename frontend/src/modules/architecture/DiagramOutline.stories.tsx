@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
-import { withRouter } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth } from "../../testing/storybook-helpers";
 import { buildConnection, buildViewEdge, buildViewNode } from "./architectureFixtures";
 import { boxFromNode } from "./diagramEditorModel";
 import { DiagramOutline } from "./DiagramOutline";
@@ -18,7 +18,7 @@ const PARENTS = { "el-1": null, "el-2": null, "el-3": null, "el-5": "el-2", "el-
 const meta: Meta<typeof DiagramOutline> = {
   title: "Modules/Architecture/DiagramOutline",
   component: DiagramOutline,
-  decorators: [withRouter("/")],
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} })), withRouter("/")],
   args: {
     boxes: [GATEWAY, ORDERS, API, FIREWALL], notes: [], edges: [buildViewEdge({ target_element_id: "el-5" })], parents: PARENTS,
     hidden: new Set<string>(), selection: null, onSelect: fn(),
@@ -38,6 +38,43 @@ export const ListsTheElementsAsATreeAndTheLinesAsATable: Story = {
     const row = outline.getByRole("button", { name: "Line from ELM-001 Gateway to ELM-005 Orders API" }).closest("tr")!;
     await expect(within(row).getByText("One-way")).toBeInTheDocument();
     await expect(within(row).getByText("Direct")).toBeInTheDocument();
+  },
+};
+
+export const TheElementsCanBeReadAsATableAndSelectedFromIt: Story = {
+  play: async ({ canvasElement, args }) => {
+    const outline = within(canvasElement);
+    await userEvent.click(outline.getByRole("button", { name: "List view" }));
+    const table = await outline.findByRole("table", { name: "Elements" });
+    const row = within(within(table).getByRole("button", { name: /^ELM-005 Orders API/ }).closest("tr")!);
+    await expect(row.getByText("ELM-002 Orders")).toBeInTheDocument(); // its parent among the placed elements
+    await userEvent.click(within(table).getByRole("button", { name: /^ELM-003 Firewall/ }));
+    await expect(args.onSelect).toHaveBeenCalledWith({ kind: "node", id: "el-3" });
+  },
+};
+
+export const TheTreeCollapsesAndExpandsAsAWhole: Story = {
+  play: async ({ canvasElement }) => {
+    const outline = within(canvasElement);
+    await expect(outline.getByRole("button", { name: /^ELM-005 Orders API/ })).toBeInTheDocument();
+    await userEvent.click(outline.getByRole("button", { name: "Collapse all" }));
+    await expect(outline.queryByRole("button", { name: /^ELM-005 Orders API/ })).not.toBeInTheDocument();
+    await userEvent.click(outline.getByRole("button", { name: "Expand all" }));
+    await expect(outline.getByRole("button", { name: /^ELM-005 Orders API/ })).toBeInTheDocument();
+    await userEvent.click(outline.getByRole("button", { name: "Collapse ELM-002 Orders" }));
+    await expect(outline.queryByRole("button", { name: /^ELM-005 Orders API/ })).not.toBeInTheDocument();
+  },
+};
+
+export const EachSectionCollapsesToItsTitle: Story = {
+  args: { notes: [{ key: "n1", id: "n1", text: "Check with ops", x: 0, y: 0, width: 160, height: 60 }] },
+  play: async ({ canvasElement }) => {
+    const outline = within(canvasElement);
+    await userEvent.click(outline.getByRole("button", { name: "Lines section" }));
+    await expect(outline.queryByRole("button", { name: /^Line from/ })).not.toBeInTheDocument();
+    await userEvent.click(outline.getByRole("button", { name: "Notes section" }));
+    await expect(outline.queryByRole("button", { name: "Check with ops" })).not.toBeInTheDocument();
+    await expect(outline.getByRole("button", { name: /^ELM-003 Firewall/ })).toBeInTheDocument();
   },
 };
 

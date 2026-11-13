@@ -23,6 +23,7 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TextAreaField } from "../../components/FormFields";
 import { FieldCaption } from "../../components/FieldHelp";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { Tooltip } from "../../components/Tooltip";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, lineAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
 import { NOTE_NODE_PREFIX, anchorOf, type EditorBox, type EditorNote } from "./diagramEditorModel";
@@ -101,7 +102,11 @@ export function DiagramSelectionPanel({
         </p>
         <div className="row" style={{ gap: "var(--space-2)" }}>
           {!box.locked && <Link className="btn btn-sm" to={`${base}/elements/${box.elementId}`}>Open element</Link>}
-          {!box.locked && <button type="button" className="btn btn-sm" onClick={() => onOpenInside(box)}>Open inside as diagram</button>}
+          {!box.locked && (
+            <Tooltip label={ARCHITECTURE_HELP.openInside} wrap>
+              <button type="button" className="btn btn-sm" onClick={() => onOpenInside(box)}>Open inside as diagram</button>
+            </Tooltip>
+          )}
           {editable && !box.locked && !box.shared && <button type="button" className="btn btn-sm" onClick={() => onEditElement(box)}>Edit element</button>}
           {editable && <button type="button" className="btn btn-sm" onClick={() => onRemoveBox(box)}>Remove from diagram</button>}
           {editable && !box.locked && !box.shared && (

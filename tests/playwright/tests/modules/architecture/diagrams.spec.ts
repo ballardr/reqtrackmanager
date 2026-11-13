@@ -188,6 +188,18 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.getByRole("region", { name: "Selection" }).getByText(new RegExp(orders))).toBeVisible();
     });
 
+    await test.step("the elements read as a table, and the sections collapse", async () => {
+      const outline = page.getByRole("region", { name: "Outline" });
+      await outline.getByRole("button", { name: "List view" }).click();
+      const table = outline.getByRole("table", { name: "Elements" });
+      await expect(table.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${gateway}`) })).toBeVisible();
+      await outline.getByRole("button", { name: "Elements section" }).click();
+      await expect(table).toHaveCount(0);
+      await outline.getByRole("button", { name: "Elements section" }).click();
+      await outline.getByRole("button", { name: "Tree view" }).click();
+      await expect(outline.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${gateway}`) })).toBeVisible();
+    });
+
     await test.step("Connect to starts a connection without dragging", async () => {
       await page.getByRole("tab", { name: "Drawing" }).click();
       await selectNode(page, gateway);
@@ -352,6 +364,45 @@ test.describe("System Architecture: diagram editor", () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
       await page.getByRole("menuitem", { name: "Set up element types" }).click();
       await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/admin/architecture/architecture-element-types`));
+    });
+  });
+
+  test("an architect double-clicks a box to work inside it and adds a sub-component there", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchInside", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const head = `Sensor head ${suffix}`;
+    const filter = `High pass filter ${suffix}`;
+    await createElement(page.request, adminHeaders, project.id, head);
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Overview ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+
+    await test.step("the system context explains itself", async () => {
+      await expect(page.getByRole("button", { name: "Help: System context" })).toBeVisible();
+    });
+
+    await test.step("a double-click opens the inside of the box as a diagram of its own", async () => {
+      await page.getByLabel(`${head}, node`, { exact: true }).dblclick();
+      await expect(page.getByText(`Inside ELM-`)).toBeVisible();
+      await expect(page.getByText(/Nothing is inside this element yet/)).toBeVisible();
+    });
+
+    await test.step("a new element created there is a child of the box", async () => {
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: "Component", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "New Component" });
+      await dialog.getByLabel("Name", { exact: true }).fill(filter);
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByLabel(`${filter}, node`, { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Diagram saved.").last()).toBeVisible();
+      const elements = await (await page.request.get(`${base}/elements`, { headers: adminHeaders })).json();
+      const child = elements.find((e: { name: string }) => e.name === filter);
+      const parent = elements.find((e: { name: string }) => e.name === head);
+      expect(child.parent_id).toBe(parent.id);
     });
   });
 });

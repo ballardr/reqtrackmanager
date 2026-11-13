@@ -129,6 +129,7 @@ export function GraphCanvasView({
   onNodesResize,
   onDelete,
   onDropItem,
+  onNodeOpen,
   height = 480,
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
@@ -366,6 +367,7 @@ export function GraphCanvasView({
         onConnect={handleConnect}
         onReconnect={handleReconnect}
         edgesReconnectable={!readOnly && onEdgeAnchorChange !== undefined}
+        onNodeDoubleClick={(_event, node) => onNodeOpen?.(node.id)}
         onInit={(instance) => { flow.current = instance; }}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}

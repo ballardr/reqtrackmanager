@@ -34,6 +34,7 @@ import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCa
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordHeader } from "../../components/RecordHeader";
+import { FieldHelp } from "../../components/FieldHelp";
 import { RecordTags } from "../../components/RecordTags";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
@@ -42,6 +43,7 @@ import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useUrlChoice, useUrlList } from "../../hooks/useUrlFilter";
 import { architectureTabPath } from "./architectureTabs";
+import { ARCHITECTURE_HELP } from "./help";
 import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
 import { diffDiagramFields, diffElementFields, valuesFromDiagram, valuesFromElement } from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
@@ -419,9 +421,17 @@ export function DiagramEditorPage() {
 
   const placed = new Set(layout.boxes.map((b) => b.elementId));
   const candidates = elements.filter((e) => !placed.has(e.id) && !e.is_archived && e.status !== "retired");
-  const scopeLabel = diagram.scope_element_id
-    ? `Inside ${[diagram.scope_element_code, diagram.scope_element_name].filter(Boolean).join(" ") || "an element you cannot read"}`
-    : "System context";
+  const scopeLabel = diagram.scope_element_id ? (
+    `Inside ${[diagram.scope_element_code, diagram.scope_element_name].filter(Boolean).join(" ") || "an element you cannot read"}`
+  ) : (
+    <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>
+  );
+  const openBoxInside = (nodeId: string) => {
+    const box = layout.boxes.find((b) => b.elementId === nodeId);
+    if (!box || box.locked) return;
+    if (dirty) setLeaveFor(box.elementId);
+    else void openInside(box.elementId);
+  };
 
   const toolbar = (
     <div className="row" role="toolbar" aria-label="Diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
@@ -519,6 +529,11 @@ export function DiagramEditorPage() {
       {tab === "drawing" && (
         <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }} {...tabPanelProps("diagram-editor", "drawing")}>
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
+            {diagram.scope_element_id && layout.boxes.length === 0 && (
+              <p className="text-muted" role="status">
+                Nothing is inside this element yet. Use Add to diagram, then a type, to create its sub-elements here; each becomes a child of {diagram.scope_element_name || "it"}.
+              </p>
+            )}
             <GraphCanvas
               nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={CANVAS_HEIGHT}
               readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
@@ -528,7 +543,7 @@ export function DiagramEditorPage() {
                 const line = resolved.edges.find((e) => e.id === edgeId);
                 if (line) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
               }}
-              onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected}
+              onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected} onNodeOpen={openBoxInside}
               onDropItem={(payload, at) => {
                 if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
               }}
