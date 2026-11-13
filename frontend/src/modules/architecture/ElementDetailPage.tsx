@@ -29,6 +29,7 @@ import { Spinner } from "../../components/Spinner";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
+import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi, projectSymbolUrl } from "./api";
 import { diffElementFields, elementCodeRecord, valuesFromElement } from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
@@ -105,7 +106,7 @@ export function ElementDetailPage() {
       try {
         await elementApi.remove(element.id);
         showToast("Element deleted.");
-        navigate(`/projects/${projectId}/modules/architecture/elements`);
+        navigate(architectureTabPath(projectId, "elements"));
       } catch (err) {
         showToast(toErrorMessage(err, "Could not delete this element."), "error");
       }
@@ -167,7 +168,7 @@ export function ElementDetailPage() {
         code={element.unique_code}
         codeOwner={ownerCode}
         tags={<RecordTags projectId={projectId} artefactType="architecture_element" artefactId={element.id} />}
-        back={{ to: `/projects/${projectId}/modules/architecture/elements`, label: "Elements" }}
+        back={{ to: architectureTabPath(projectId, "elements"), label: "Elements" }}
         badges={
           <>
             {element.shared && <Badge tone="info">Shared</Badge>}

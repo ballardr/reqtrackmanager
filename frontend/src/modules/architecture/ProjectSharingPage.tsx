@@ -10,6 +10,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage } from "../../context/ToastContext";
+import { architectureTabPath } from "./architectureTabs";
 import { projectElementApi } from "./api";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { useArchitectureReference } from "./useArchitectureReference";
@@ -37,7 +38,7 @@ export function ProjectSharingPage() {
     <div className="container stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
         <h1>Sharing</h1>
-        <Link to={`/projects/${projectId}/modules/architecture/elements`}>Elements</Link>
+        <Link to={architectureTabPath(projectId, "elements")}>Elements</Link>
       </div>
       <CollectionsPanel scope={scope} elements={elements} orgUsers={reference.orgUsers} organizationId={reference.project.organization_id} />
     </div>

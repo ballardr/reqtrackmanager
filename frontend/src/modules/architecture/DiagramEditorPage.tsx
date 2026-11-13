@@ -41,6 +41,7 @@ import { useArchiveAction, useConfirmedAction } from "../../components/useConfir
 import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useUrlChoice, useUrlList } from "../../hooks/useUrlFilter";
+import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectDiagramApi, projectElementApi } from "./api";
 import { diffDiagramFields, valuesFromDiagram } from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
@@ -187,7 +188,7 @@ export function DiagramEditorPage() {
       try {
         await diagramApi.remove(diagram.id);
         showToast("Diagram deleted.");
-        navigate(`${base}/diagrams`);
+        navigate(architectureTabPath(projectId, "diagrams"));
       } catch (err) {
         showToast(toErrorMessage(err, "Could not delete this diagram."), "error");
       }
@@ -385,7 +386,7 @@ export function DiagramEditorPage() {
         title={diagram.name}
         code={diagram.unique_code}
         tags={<RecordTags projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} />}
-        back={{ to: `${base}/diagrams`, label: "Diagrams" }}
+        back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
         badges={
           <>
             {diagram.is_archived && <Badge tone="muted">Archived</Badge>}

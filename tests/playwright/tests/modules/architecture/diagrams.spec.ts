@@ -51,7 +51,8 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("create an active diagram from the Diagrams list and land in the editor", async () => {
       await page.goto(`/projects/${project.id}`);
-      await page.getByRole("link", { name: "Diagrams", exact: true }).click();
+      await page.getByRole("link", { name: "System Architecture", exact: true }).click();
+      await page.getByRole("tab", { name: "Diagrams" }).click();
       await expect(page.getByText("No diagrams drawn for this project yet.")).toBeVisible();
       await page.getByRole("button", { name: "New diagram" }).click();
       const dialog = page.getByRole("dialog", { name: "New diagram" });

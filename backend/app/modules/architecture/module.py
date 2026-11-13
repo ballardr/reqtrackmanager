@@ -27,7 +27,8 @@ Registered contributions:
   backfills existing organisations so a module switched on later has them.
 - `org_bundle_hooks` / `project_bundle_hooks` (`export.py`); the vocabularies are
   template configuration and the records are template records.
-- `frontend_manifest`: three navigation entries, "Architecture" (the elements), "Connections" and "Diagrams"; the pages, the
+- `frontend_manifest`: one navigation entry, "System Architecture", opening a page with the tabs Elements, Connections and
+  Diagrams (shown while any of the three sub-components is on); the pages, the
   "Create new" element dialog and the settings panels are served by `frontend/src/modules/architecture/module.ts`.
 
 `default_enabled=False`: an organisation opts in explicitly, as for the other
@@ -85,7 +86,6 @@ from app.modules.registry import (
     LinkTypeSeed,
     ModuleDefinition,
     ModuleFrontendManifest,
-    ModuleNavEntry,
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
@@ -200,24 +200,11 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
-        nav_label="Architecture",
-        nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}/elements",
+        nav_label="System Architecture",
+        nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}",
         nav_icon="network",
-        nav_sub_component=ELEMENT_SUBCOMPONENT_KEY,
-        additional_nav_entries=(
-            ModuleNavEntry(
-                nav_label="Connections",
-                nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}/connections",
-                nav_icon="network",
-                sub_component=CONNECTION_SUBCOMPONENT_KEY,
-            ),
-            ModuleNavEntry(
-                nav_label="Diagrams",
-                nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}/diagrams",
-                nav_icon="network",
-                sub_component=DIAGRAM_SUBCOMPONENT_KEY,
-            ),
-        ),
+        # One page with the tabs Elements, Connections and Diagrams: it is offered while any of the three is on.
+        nav_sub_components_any=(ELEMENT_SUBCOMPONENT_KEY, CONNECTION_SUBCOMPONENT_KEY, DIAGRAM_SUBCOMPONENT_KEY),
     ),
     not_creatable_from_links={
         CONNECTION_ARTEFACT_TYPE: "A connection needs two elements, so it is created from the Architecture screens.",

@@ -22,6 +22,7 @@ import { RecordTags } from "../../components/RecordTags";
 import { Spinner } from "../../components/Spinner";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi } from "./api";
 import { diffConnectionFields, valuesFromConnection } from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
@@ -84,7 +85,7 @@ export function ConnectionDetailPage() {
       try {
         await connectionApi.remove(connection.id);
         showToast("Connection deleted.");
-        navigate(`/projects/${projectId}/modules/architecture/connections`);
+        navigate(architectureTabPath(projectId, "connections"));
       } catch (err) {
         showToast(toErrorMessage(err, "Could not delete this connection."), "error");
       }
@@ -138,7 +139,7 @@ export function ConnectionDetailPage() {
         title={connection.name || `${connection.source_element_name} → ${connection.target_element_name}`}
         code={connection.unique_code}
         tags={<RecordTags projectId={projectId} artefactType="architecture_connection" artefactId={connection.id} />}
-        back={{ to: `/projects/${projectId}/modules/architecture/connections`, label: "Connections" }}
+        back={{ to: architectureTabPath(projectId, "connections"), label: "Connections" }}
         badges={
           <>
             {connection.is_archived && <Badge tone="muted">Archived</Badge>}

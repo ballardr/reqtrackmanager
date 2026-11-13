@@ -177,6 +177,8 @@ export interface ArchitectureReads {
   diagrams?: ArchitectureDiagram[];
   diagramView?: DiagramView;
   diagramModel?: DiagramModel;
+  /** Sub-components switched off for the project (the page hides their tabs). */
+  disabledSubComponents?: string[];
 }
 
 /**
@@ -190,6 +192,9 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
   spyOn(api, "getForBlob").mockResolvedValue(SYMBOL_SVG);
   return spyOn(api, "get").mockImplementation(async (path: string) => {
     const base = path.split("?")[0];
+    if (base.endsWith("/enabled-modules")) {
+      return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];
+    }
     if (path.endsWith("/records/architecture_element/columns")) return buildRecordColumns({ label: "Elements" });
     if (path.endsWith("/records/architecture_connection/columns")) return buildRecordColumns({ label: "Connections" });
     if (base.endsWith("/modules/architecture/element-types")) return ELEMENT_TYPES;

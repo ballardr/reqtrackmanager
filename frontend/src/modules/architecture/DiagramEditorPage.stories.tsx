@@ -98,6 +98,33 @@ export const UndoReturnsToTheSavedLayout: Story = {
   },
 };
 
+export const ASaveStaysSavedWhenALaterReadSupersedesItsReadBack: Story = {
+  beforeEach: () => {
+    spyOn(api, "put").mockImplementation((async (path: string) => buildDiagram({ version: path.endsWith("/layout") ? 4 : 5 })) as never);
+    const reads = (api.get as unknown as { getMockImplementation: () => typeof api.get }).getMockImplementation();
+    let views = 0;
+    // The read-back that follows the save (the second view read) never answers, as when a slow response is overtaken.
+    spyOn(api, "get").mockImplementation((async (path: string, ...rest: unknown[]) => {
+      if (path.split("?")[0].endsWith("/view") && ++views === 2) return new Promise(() => undefined);
+      return (reads as unknown as (...args: unknown[]) => unknown)(path, ...rest);
+    }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    await openTab(canvas, "Configuration");
+    await userEvent.click(await canvas.findByRole("switch", { name: "Connection detail" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+    await openTab(canvas, "Drawing");
+    // What was saved is the baseline, so nothing is left to save and undoing the move is still possible.
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+  },
+};
+
 export const RemovingABoxLeavesTheElementInTheModel: Story = {
   beforeEach: () => {
     spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);

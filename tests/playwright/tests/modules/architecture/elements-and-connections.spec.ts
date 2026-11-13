@@ -25,8 +25,8 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
     await test.step("create a top-level element and activate it in one step", async () => {
       await page.goto(`/projects/${project.id}`);
-      await page.getByRole("link", { name: "Architecture", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/architecture/elements(\\?.*)?$`)); // the list adds its own filters (open=1) to the address
+      await page.getByRole("link", { name: "System Architecture", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/architecture\\?tab=elements`)); // the list adds its own filters (open=1) to the address
       await page.getByRole("button", { name: "New element" }).click();
       const dialog = page.getByRole("dialog", { name: "New element" });
       await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
@@ -56,13 +56,18 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await ports.getByPlaceholder("Port name").fill("HTTPS API");
       await ports.getByRole("button", { name: "Add port" }).click();
       await expect(ports.locator('input[value="HTTPS API"]')).toBeVisible();
+      // Reloading before the save lands aborts it, so wait for the server to answer.
+      const saved = page.waitForResponse((r) => r.request().method() !== "GET" && r.url().includes("/ports") && r.ok());
       await ports.getByLabel("Direction of HTTPS API").selectOption("in");
+      await saved;
       await page.reload();
       await expect(page.getByRole("region", { name: "Ports" }).getByLabel("Direction of HTTPS API")).toHaveValue("in");
     });
 
     await test.step("connect the two elements through the Connections list", async () => {
-      await page.getByRole("link", { name: "Connections", exact: true }).first().click();
+      await page.getByRole("link", { name: "System Architecture", exact: true }).click();
+      await page.getByRole("tab", { name: "Connections" }).click();
+      await expect(page).toHaveURL(/tab=connections/);
       await expect(page.getByText("No connections recorded for this project yet.")).toBeVisible();
       await page.getByRole("button", { name: "New connection" }).click();
       const dialog = page.getByRole("dialog", { name: "New connection" });
@@ -102,7 +107,10 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await page.goto(`/projects/${project.id}/admin`);
       await selectProjectAdminGroup(page, "Element Types", "System Architecture");
       await gridRow(page, "Service").getByRole("button", { name: "Hide element type in this project" }).click();
+      // Wait for the server to record the hide: navigating away first can abort the request and leave the default shown.
+      const hidden = page.waitForResponse((r) => r.request().method() !== "GET" && r.url().includes("/modules/architecture/element-types") && r.ok());
       await page.getByRole("dialog", { name: 'Hide "Service" in this project?' }).getByRole("button", { name: "Hide" }).click();
+      await hidden;
       await expect(page.locator('input[value="Service"]')).toHaveCount(0);
 
       await page.goto(`/projects/${project.id}/modules/architecture/elements`);
@@ -117,6 +125,40 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
       await page.getByRole("dialog", { name: "Add organisation defaults" }).getByRole("button", { name: "Add 1 default" }).click();
       await expect(page.locator('input[value="Service"]')).toBeVisible();
+    });
+  });
+
+  test("one System Architecture page switches between the lists, keeps each tab's filters and redirects the earlier addresses", async ({ page }) => {
+    const { project } = await setUpOrg(page, "ArchTabs", false, "System Architecture");
+    const base = `/projects/${project.id}/modules/architecture`;
+
+    await test.step("the navigation has one entry, and it opens the Elements tab", async () => {
+      await page.goto(`/projects/${project.id}`);
+      await expect(page.getByRole("link", { name: "System Architecture", exact: true })).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "Diagrams", exact: true })).toHaveCount(0);
+      await page.getByRole("link", { name: "System Architecture", exact: true }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "System Architecture" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Elements", selected: true })).toBeVisible();
+    });
+
+    await test.step("a filter set on one tab is still there after visiting the others", async () => {
+      await page.getByLabel("Search elements").fill("gateway");
+      await expect(page).toHaveURL(/tab=elements.*q=gateway|q=gateway.*tab=elements/);
+      await page.getByRole("tab", { name: "Diagrams" }).click();
+      await expect(page).toHaveURL(/tab=diagrams/);
+      await expect(page).not.toHaveURL(/q=gateway/);
+      await page.getByRole("tab", { name: "Elements" }).click();
+      await expect(page).toHaveURL(/q=gateway/);
+      await expect(page.getByLabel("Search elements")).toHaveValue("gateway");
+    });
+
+    await test.step("the earlier list addresses open their tab", async () => {
+      await page.goto(`${base}/connections`);
+      await expect(page).toHaveURL(/tab=connections/);
+      await expect(page.getByRole("tab", { name: "Connections", selected: true })).toBeVisible();
+      await page.goto(`${base}/diagrams`);
+      await expect(page).toHaveURL(/tab=diagrams/);
+      await expect(page.getByRole("tab", { name: "Diagrams", selected: true })).toBeVisible();
     });
   });
 

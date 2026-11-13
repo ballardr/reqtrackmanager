@@ -8,11 +8,10 @@ import { CreateElementDialog } from "./CreateElementDialog";
 import { DiagramEditorPage } from "./DiagramEditorPage";
 import { ElementDetailPage } from "./ElementDetailPage";
 import { OrgElementsPanel } from "./OrgElementsPanel";
-import { ProjectConnectionsPage } from "./ProjectConnectionsPage";
-import { ProjectDiagramsPage } from "./ProjectDiagramsPage";
-import { ProjectElementsPage } from "./ProjectElementsPage";
 import { ProjectSharingPage } from "./ProjectSharingPage";
 import { SymbolLibraryPanel } from "./SymbolLibraryPanel";
+import { ArchitectureListRedirect, SystemArchitecturePage } from "./SystemArchitecturePage";
+import { architectureTabPath } from "./architectureTabs";
 import { ARCHITECTURE_STATUS_LABEL } from "./types";
 
 /**
@@ -25,8 +24,8 @@ import { ARCHITECTURE_STATUS_LABEL } from "./types";
  * notifications and search hits resolve without core naming this module.
  * `artefactStatusLabels` / `artefactInactiveStatuses`: a retired record is greyed out in shared lists.
  *
- * `routes`: the Elements, Connections and Diagrams lists, their detail pages (the diagram's is the editor), and the
- * Sharing page (collections).
+ * `routes`: the System Architecture page (tabs Elements, Connections, Diagrams), the earlier list paths redirecting to its
+ * tabs, the detail pages (the diagram's is the editor), and the Sharing page (collections).
  * `linkedRecordCreators`: "Create new" element or diagram in another record's Links panel. A connection needs two elements, so it
  * is created from the Connections list or an element's page.
  * `projectAdminSections` / `orgAdminSections`: the two type vocabularies and the symbol library at each level, and the
@@ -48,9 +47,9 @@ export const moduleDefinition: TierAModuleDefinition = {
     architecture_diagram: (projectId, id) => `/projects/${projectId}/modules/architecture/diagrams/${id}`,
   },
   artefactListPaths: {
-    architecture_element: (projectId) => `/projects/${projectId}/modules/architecture/elements`,
-    architecture_connection: (projectId) => `/projects/${projectId}/modules/architecture/connections`,
-    architecture_diagram: (projectId) => `/projects/${projectId}/modules/architecture/diagrams`,
+    architecture_element: (projectId) => architectureTabPath(projectId, "elements"),
+    architecture_connection: (projectId) => architectureTabPath(projectId, "connections"),
+    architecture_diagram: (projectId) => architectureTabPath(projectId, "diagrams"),
   },
   artefactStatusLabels: {
     architecture_element: ARCHITECTURE_STATUS_LABEL,
@@ -63,11 +62,12 @@ export const moduleDefinition: TierAModuleDefinition = {
     architecture_diagram: ["retired"],
   },
   routes: [
-    { path: "/projects/:projectId/modules/architecture/elements", element: createElement(ProjectElementsPage) },
+    { path: "/projects/:projectId/modules/architecture", element: createElement(SystemArchitecturePage) },
+    { path: "/projects/:projectId/modules/architecture/elements", element: createElement(ArchitectureListRedirect, { tab: "elements" }) },
     { path: "/projects/:projectId/modules/architecture/elements/:elementId", element: createElement(ElementDetailPage) },
-    { path: "/projects/:projectId/modules/architecture/connections", element: createElement(ProjectConnectionsPage) },
+    { path: "/projects/:projectId/modules/architecture/connections", element: createElement(ArchitectureListRedirect, { tab: "connections" }) },
     { path: "/projects/:projectId/modules/architecture/connections/:connectionId", element: createElement(ConnectionDetailPage) },
-    { path: "/projects/:projectId/modules/architecture/diagrams", element: createElement(ProjectDiagramsPage) },
+    { path: "/projects/:projectId/modules/architecture/diagrams", element: createElement(ArchitectureListRedirect, { tab: "diagrams" }) },
     { path: "/projects/:projectId/modules/architecture/diagrams/:diagramId", element: createElement(DiagramEditorPage) },
     { path: "/projects/:projectId/modules/architecture/sharing", element: createElement(ProjectSharingPage) },
   ],

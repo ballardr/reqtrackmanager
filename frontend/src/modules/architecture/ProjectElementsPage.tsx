@@ -1,8 +1,8 @@
 /**
  * Module: modules/architecture/ProjectElementsPage
  *
- * The project's elements, mounted at `/projects/:projectId/modules/architecture/elements` (`module.ts`, reached from the
- * "Architecture" nav-rail entry). Two views over the same filtered set, switched with `Tabs`:
+ * The project's elements, the Elements tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=elements`;
+ * `chrome` is the page's tab strip). Two views over the same filtered set, switched with `Tabs`:
  * - *List*: a `DirectoryTable` (code opens the detail page) with type, owner, parent, connection count and status, plus a
  *   `FilterPanel` (search, status, type, "Open only", scope, tags, archived).
  * - *Tree*: the elements arranged by parent, each a link to its page. An element whose parent is filtered out is shown at
@@ -40,6 +40,7 @@ import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { projectElementApi, projectSymbolUrl } from "./api";
+import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { buildElementTree, elementCodeRecord } from "./architectureFields";
 import { ElementFormModal } from "./ElementFormModal";
 import { useCreateElement } from "./useCreateElement";
@@ -52,7 +53,7 @@ type View = "list" | "tree";
 const VIEW_PARAMS: readonly View[] = ["tree"];
 const STATUSES = Object.keys(ARCHITECTURE_STATUS_LABEL) as ArchitectureRecordStatus[];
 
-export function ProjectElementsPage() {
+export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrome }) {
   const strings = useStrings();
   const { projectId = "" } = useParams<{ projectId: string }>();
   const initial = useInitialSearchParams();
@@ -156,7 +157,7 @@ export function ProjectElementsPage() {
   return (
     <div className="container stack">
       <ListPageLayout
-        title="Elements"
+        title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_element", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
         actions={
           <>

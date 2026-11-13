@@ -1,7 +1,7 @@
 /**
  * Module: modules/architecture/ProjectConnectionsPage
  *
- * The project's connections, mounted at `/projects/:projectId/modules/architecture/connections`: a `DirectoryTable` (code
+ * The project's connections, the Connections tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=connections`; `chrome` is the page's tab strip): a `DirectoryTable` (code
  * opens the detail page) with the type, both ends, protocol and status, and a `FilterPanel` (search, status, connection
  * type, element at either end, "Open only", scope, tags, archived). An end the viewer cannot read shows only its code. The list
  * opens on open connections (`useOpenOnly`) and keeps its filters in the URL. Create uses `ConnectionFormModal`, the form the
@@ -31,6 +31,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi } from "./api";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ConnectionEnd } from "./connectionEnds";
@@ -45,7 +46,7 @@ import {
 
 const STATUSES = Object.keys(ARCHITECTURE_STATUS_LABEL) as ArchitectureRecordStatus[];
 
-export function ProjectConnectionsPage() {
+export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListChrome }) {
   const strings = useStrings();
   const formatCode = useRecordCode();
   const { projectId = "" } = useParams<{ projectId: string }>();
@@ -145,7 +146,7 @@ export function ProjectConnectionsPage() {
   return (
     <div className="container stack">
       <ListPageLayout
-        title="Connections"
+        title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_connection", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New connection</button>}
         filter={

@@ -24,6 +24,6 @@ export const ShowsTheCollectionsAndLinksBackToTheElements: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("region", { name: "Shared infrastructure" })).toBeInTheDocument();
     await expect(canvas.getByRole("heading", { name: "Sharing", level: 1 })).toBeInTheDocument();
-    await expect(canvas.getByRole("link", { name: "Elements" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/elements`);
+    await expect(canvas.getByRole("link", { name: "Elements" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture?tab=elements`);
   },
 };

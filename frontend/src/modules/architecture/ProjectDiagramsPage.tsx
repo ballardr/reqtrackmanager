@@ -1,7 +1,7 @@
 /**
  * Module: modules/architecture/ProjectDiagramsPage
  *
- * The project's diagrams, mounted at `/projects/:projectId/modules/architecture/diagrams`: a `DirectoryTable` (code opens the
+ * The project's diagrams, the Diagrams tab of `SystemArchitecturePage` (`/projects/:projectId/modules/architecture?tab=diagrams`; `chrome` is the page's tab strip): a `DirectoryTable` (code opens the
  * editor) with the scope element, status and counts, and a `FilterPanel` (search, status, "Open only", scope, tags,
  * archived). The list opens on open diagrams (`useOpenOnly`) and keeps its filters in the URL. Create uses
  * `DiagramFormModal`, the form the editor edits with, and opens the new diagram in the editor.
@@ -29,6 +29,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { projectDiagramApi, projectElementApi } from "./api";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { useCreateDiagram } from "./useCreateDiagram";
@@ -39,7 +40,7 @@ import {
 
 const STATUSES = Object.keys(ARCHITECTURE_STATUS_LABEL) as ArchitectureRecordStatus[];
 
-export function ProjectDiagramsPage() {
+export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrome }) {
   const strings = useStrings();
   const navigate = useNavigate();
   const { projectId = "" } = useParams<{ projectId: string }>();
@@ -125,7 +126,7 @@ export function ProjectDiagramsPage() {
   return (
     <div className="container stack">
       <ListPageLayout
-        title="Diagrams"
+        title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_diagram", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New diagram</button>}
         filter={
