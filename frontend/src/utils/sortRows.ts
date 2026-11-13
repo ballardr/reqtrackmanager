@@ -5,7 +5,7 @@
  * their whole list in the browser (a short administrative list); a paged table sorts on the server instead.
  *
  * Responsibilities: order rows by one column's value, ascending or descending; leave the order untouched when there is
- * no sort. Text compares case-insensitively and by locale, numbers numerically, and an empty value sorts last in
+ * no sort. Text compares case-insensitively and by locale (digit runs by value, so `ELM-9` precedes `ELM-10`), numbers numerically, and an empty value sorts last in
  * ascending order.
  */
 import type { SortState } from "../components/sortState";
@@ -28,6 +28,6 @@ export function sortRows<Row>(rows: Row[], sort: SortState | null, values: Recor
     const right = valueOf(b);
     if (left === null || right === null) return left === right ? 0 : left === null ? direction : -direction;
     if (typeof left === "number" && typeof right === "number") return (left - right) * direction;
-    return String(left).localeCompare(String(right), undefined, { sensitivity: "base" }) * direction;
+    return String(left).localeCompare(String(right), undefined, { sensitivity: "base", numeric: true }) * direction;
   });
 }

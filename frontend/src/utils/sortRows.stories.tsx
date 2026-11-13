@@ -36,3 +36,12 @@ export const NoSort: Story = {
     await expect(sortRows(ROWS, { key: "other", direction: "asc" }, VALUES)).toBe(ROWS);
   },
 };
+
+/** Digit runs compare by value, so a code with more digits does not sort before a shorter one. */
+export const CodesSortByNumber: Story = {
+  render: () => <div />,
+  play: async () => {
+    const codes = [{ name: "ELM-10", size: 1 }, { name: "ELM-9", size: 2 }];
+    await expect(sortRows(codes, { key: "name", direction: "asc" }, VALUES).map((r) => r.name)).toEqual(["ELM-9", "ELM-10"]);
+  },
+};

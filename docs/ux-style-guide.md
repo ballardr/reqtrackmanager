@@ -806,6 +806,8 @@ flowchart TD
 
 **Rule (2026-11-13, Decided by: User).** Every `DirectoryTable` list makes its naturally ordered columns sortable and keeps the sort in the URL (`useUrlSort`); a list that pages sorts on the server. A list without it is a defect, not a style choice; an exemption needs a reason in `docs/decisions.md`.
 
+**Checked** by `scripts/check_sortable_columns.py` (pinned by `backend/tests/test_sortable_columns.py`): a file that renders a `DirectoryTable` with no `sortable` column fails unless it is listed in `scripts/sortable_columns_baseline.json`. The baseline only shrinks: fixing a file makes the script ask for it to be removed (`--update`), and a new list can never be added. A client-side sort uses `utils/sortRows` (text by locale and digit value, numbers numerically, an empty value last when ascending).
+
 Sortable columns are the obvious ones only — a name/title, a status, an ID/code, a created/modified date, a priority where one exists — never a column with no natural order (an actions column, a badge-only column). This used to note that Org Admin's Groups section and Project Admin's Groups tab were accordion-of-cards, not `<th>`-based columns, so this pattern simply didn't apply to them — both are real `DirectoryTable`s now (Phase B, 2026-08-31 follow-up UX batch), each with a sortable Name column and a Members count column that deliberately stays unsorted (no natural order for a bare count). Both list endpoints (`GET /orgs/{id}/groups`, `GET /projects/{id}/groups`) already page via `limit`/`offset`, so Name sort took the "backend `order` param, header click refetches" branch below rather than a client-side sort of only the loaded page — the same choice Org Admin's Users table made.
 
 ## Pattern: detail page with a links aside

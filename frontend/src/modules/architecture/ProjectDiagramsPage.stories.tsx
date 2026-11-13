@@ -57,3 +57,17 @@ export const NewDiagramPostsTheForm: Story = {
     ));
   },
 };
+
+/** The Elements header orders the diagrams by their count of boxes, a number, not text. */
+export const BoxCountHeaderSortsTheList: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ diagrams: [buildDiagram({ placement_count: 10 }), buildDiagram({ id: "dgm-2", unique_code: "DGM-002", name: "Small", placement_count: 9 })] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Diagrams" });
+    await userEvent.click(within(table).getByRole("button", { name: "Elements" }));
+    await waitFor(() => expect(within(table).getAllByRole("link").map((link) => link.textContent)).toEqual(["DGM-002", "DGM-001"]));
+    await expect(within(table).getByRole("columnheader", { name: "Elements" })).toHaveAttribute("aria-sort", "ascending");
+  },
+};

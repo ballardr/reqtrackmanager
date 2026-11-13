@@ -104,3 +104,37 @@ export const NewElementPostsTheForm: Story = {
     ));
   },
 };
+
+/** The Name header sorts the open elements ascending, then descending, then back to the default order. */
+export const NameHeaderSortsTheList: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    const codes = () => within(table).getAllByRole("link").map((link) => link.textContent);
+    await expect(codes()).toEqual(["ELM-001", "ELM-002"]);
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["ELM-001", "ELM-002"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["ELM-002", "ELM-001"]));
+    await expect(within(table).getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["ELM-001", "ELM-002"]));
+  },
+};
+
+/** Connections sort by number, not text: a column of counts is ordered by value. */
+export const ConnectionCountSortsNumerically: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: [
+      buildElement({ connection_count: 10 }),
+      buildElement({ id: "el-2", unique_code: "ELM-002", name: "Orders", connection_count: 9, ports: [] }),
+    ] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    await userEvent.click(within(table).getByRole("button", { name: "Connections" }));
+    await waitFor(() => expect(within(table).getAllByRole("link").map((link) => link.textContent)).toEqual(["ELM-002", "ELM-001"]));
+  },
+};

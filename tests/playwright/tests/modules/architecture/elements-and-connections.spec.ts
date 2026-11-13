@@ -197,6 +197,42 @@ test.describe("System Architecture: elements, connections and sharing", () => {
     });
   });
 
+  test("a column header sorts the elements list and the order survives a reload", async ({ page }) => {
+    const { suffix, project } = await setUpOrg(page, "ArchSort", false, "System Architecture");
+    const first = `Beta ${suffix}`;
+    const second = `Alpha ${suffix}`;
+
+    await test.step("create two elements, the later one sorting first by name", async () => {
+      await page.goto(`/projects/${project.id}/modules/architecture?tab=elements`);
+      for (const name of [first, second]) {
+        await page.getByRole("button", { name: "New element" }).click();
+        const dialog = page.getByRole("dialog", { name: "New element" });
+        await dialog.getByLabel("Name", { exact: true }).fill(name);
+        await dialog.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(page.locator("tr", { hasText: name })).toBeVisible();
+      }
+      const names = page.getByRole("table", { name: "Elements" }).locator("tbody tr");
+      await expect(names.first()).toContainText(first); // the default order is by creation
+    });
+
+    await test.step("the Name header orders ascending, then descending, and the URL keeps it", async () => {
+      const table = page.getByRole("table", { name: "Elements" });
+      await table.getByRole("button", { name: "Name" }).click();
+      await expect(page).toHaveURL(/sort=name.*order=asc|order=asc.*sort=name/);
+      await expect(table.locator("tbody tr").first()).toContainText(second);
+      await table.getByRole("button", { name: "Name" }).click();
+      await expect(page).toHaveURL(/order=desc/);
+      await expect(table.locator("tbody tr").first()).toContainText(first);
+    });
+
+    await test.step("a reload keeps the order", async () => {
+      await page.reload();
+      const table = page.getByRole("table", { name: "Elements" });
+      await expect(table.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
+      await expect(table.locator("tbody tr").first()).toContainText(first);
+    });
+  });
+
   test("a collection groups elements for sharing and the element's page lists the collection", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchShare", true, "System Architecture");
     const apiBase = "http://localhost:8000";

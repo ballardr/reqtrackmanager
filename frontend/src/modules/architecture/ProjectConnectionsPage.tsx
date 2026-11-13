@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
+import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
@@ -28,9 +29,11 @@ import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { sortRows } from "../../utils/sortRows";
+import { CONNECTION_SORT_KEYS, CONNECTION_SORT_VALUES } from "./architectureSort";
 import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi } from "./api";
 import { ConnectionFormModal } from "./ConnectionFormModal";
@@ -57,6 +60,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
   const [statusFilter, setStatusFilter] = useUrlChoice("status", STATUSES);
   const [typeFilter, setTypeFilter] = useUrlText("type");
   const [elementFilter, setElementFilter] = useUrlText("element");
+  const [sort, setSort] = useUrlSort<string>(CONNECTION_SORT_KEYS);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
@@ -104,6 +108,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
     };
   }, [search, statusFilter, typeIds, elementFilter]);
   const filtered = useMemo(() => (connections ?? []).filter((c) => matches(c, openOnly)), [connections, matches, openOnly]);
+  const sorted = useMemo(() => sortRows(filtered, sort, CONNECTION_SORT_VALUES), [filtered, sort]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -122,14 +127,14 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
   }
 
   const columns: DirectoryColumn<ArchitectureConnection>[] = [
-    { key: "code", label: "Code", render: (c) => <RecordCode code={c.unique_code} ownerProjectCode={c.from_project_code} /> },
-    { key: "name", label: "Name", render: (c) => <>{c.name || "—"}<ProjectScopeLabel row={c} /></> },
-    { key: "type", label: "Type", render: (c) => c.connection_type_name },
-    { key: "source", label: "Source", render: (c) => <ConnectionEnd connection={c} end="source" /> },
-    { key: "target", label: "Target", render: (c) => <ConnectionEnd connection={c} end="target" /> },
-    { key: "protocol", label: "Protocol", render: (c) => c.protocol || "—" },
+    { key: "code", label: "Code", sortable: true, render: (c) => <RecordCode code={c.unique_code} ownerProjectCode={c.from_project_code} /> },
+    { key: "name", label: "Name", sortable: true, render: (c) => <>{c.name || "—"}<ProjectScopeLabel row={c} /></> },
+    { key: "type", label: "Type", sortable: true, render: (c) => c.connection_type_name },
+    { key: "source", label: "Source", sortable: true, render: (c) => <ConnectionEnd connection={c} end="source" /> },
+    { key: "target", label: "Target", sortable: true, render: (c) => <ConnectionEnd connection={c} end="target" /> },
+    { key: "protocol", label: "Protocol", sortable: true, render: (c) => c.protocol || "—" },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (c) => (
         <FilterBadge
           tone={ARCHITECTURE_STATUS_TONE[c.status]} active={statusFilter === c.status}
@@ -174,7 +179,8 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
         }
       >
         <DirectoryTable
-          ariaLabel="Connections" columns={columns} rows={filtered} rowKey={(c) => c.id}
+          ariaLabel="Connections" columns={columns} rows={sorted} rowKey={(c) => c.id}
+          sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
           placements={{ projectId, artefactType: "architecture_connection", rowId: (c) => c.id }}
           rowHref={(c) => `/projects/${rowProjectId(c, projectId)}/modules/architecture/connections/${c.id}`}
           emptyState={

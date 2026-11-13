@@ -58,3 +58,17 @@ export const NewConnectionPostsTheForm: Story = {
     ));
   },
 };
+
+/** The Name header orders the connections, an unnamed one last when ascending, and the order follows the second click. */
+export const NameHeaderSortsTheList: Story = {
+  beforeEach: () => { mockArchitectureReads({ connections: CONNECTIONS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Connections" });
+    const codes = () => within(table).getAllByRole("link", { name: /^CON-/ }).map((link) => link.textContent);
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["CON-001", "CON-002"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["CON-002", "CON-001"]));
+  },
+};

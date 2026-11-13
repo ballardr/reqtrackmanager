@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
+import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FieldHelp } from "../../components/FieldHelp";
 import { FilterBadge } from "../../components/FilterBadge";
@@ -27,9 +28,11 @@ import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
 import { labelOptions } from "../../utils/labelOptions";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { sortRows } from "../../utils/sortRows";
+import { DIAGRAM_SORT_KEYS, DIAGRAM_SORT_VALUES } from "./architectureSort";
 import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { projectDiagramApi, projectElementApi } from "./api";
 import { DiagramFormModal } from "./DiagramFormModal";
@@ -52,6 +55,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
   const [statusFilter, setStatusFilter] = useUrlChoice("status", STATUSES);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [sort, setSort] = useUrlSort<string>(DIAGRAM_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -89,6 +93,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
     };
   }, [search, statusFilter]);
   const filtered = useMemo(() => (diagrams ?? []).filter((d) => matches(d, openOnly)), [diagrams, matches, openOnly]);
+  const sorted = useMemo(() => sortRows(filtered, sort, DIAGRAM_SORT_VALUES), [filtered, sort]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -105,13 +110,13 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
   }
 
   const columns: DirectoryColumn<ArchitectureDiagram>[] = [
-    { key: "code", label: "Code", render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
-    { key: "name", label: "Name", render: (d) => <>{d.name}<ProjectScopeLabel row={d} /></> },
-    { key: "scope", label: "Scope", render: (d) => (d.scope_element_id ? `${d.scope_element_code ?? ""} ${d.scope_element_name ?? ""}`.trim() || "—" : <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>) },
-    { key: "boxes", label: "Elements", render: (d) => d.placement_count },
-    { key: "toggles", label: "Switches", render: (d) => d.toggle_count },
+    { key: "code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
+    { key: "name", label: "Name", sortable: true, render: (d) => <>{d.name}<ProjectScopeLabel row={d} /></> },
+    { key: "scope", label: "Scope", sortable: true, render: (d) => (d.scope_element_id ? `${d.scope_element_code ?? ""} ${d.scope_element_name ?? ""}`.trim() || "—" : <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>) },
+    { key: "boxes", label: "Elements", sortable: true, render: (d) => d.placement_count },
+    { key: "toggles", label: "Switches", sortable: true, render: (d) => d.toggle_count },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (d) => (
         <FilterBadge
           tone={ARCHITECTURE_STATUS_TONE[d.status]} active={statusFilter === d.status}
@@ -148,7 +153,8 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
         }
       >
         <DirectoryTable
-          ariaLabel="Diagrams" columns={columns} rows={filtered} rowKey={(d) => d.id}
+          ariaLabel="Diagrams" columns={columns} rows={sorted} rowKey={(d) => d.id}
+          sort={sort} onSort={(key) => setSort((current) => cycleSort(current, key))}
           placements={{ projectId, artefactType: "architecture_diagram", rowId: (d) => d.id }}
           rowHref={(d) => `/projects/${rowProjectId(d, projectId)}/modules/architecture/diagrams/${d.id}`}
           emptyState={
