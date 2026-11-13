@@ -24,6 +24,7 @@ import { FieldCaption } from "../../components/FieldHelp";
 import type {
   ArchitectureElement, ArchitectureSymbol, ConnectionType, ElementFieldValues, ElementType, PortValues,
 } from "./types";
+import { isOutOfUse } from "./types";
 
 /** What a new element takes beyond the shared fields. */
 export interface ElementCreateExtras {
@@ -74,7 +75,7 @@ export function ElementFormModal({
     setValues((prev) => ({ ...prev, [key]: value }));
 
   const excluded = initial ? subtreeIds(initial.id, candidates) : new Set<string>();
-  const parents = candidates.filter((e) => !excluded.has(e.id) && e.status !== "retired");
+  const parents = candidates.filter((e) => !excluded.has(e.id) && !isOutOfUse(e.status));
   const valid = values.name.trim() !== "" && values.element_type_id !== "";
 
   function save(activate: boolean) {

@@ -26,6 +26,7 @@ import type {
   ArchitectureConnection, ArchitectureElement, BoundaryShape, BoundaryValues, DiagramAnchor, DiagramNote, DiagramView,
   DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues, PlacementValues,
 } from "./types";
+import { isOutOfUse } from "./types";
 
 export type EditorTheme = "light" | "dark";
 
@@ -468,7 +469,7 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
     x: b.x, y: b.y, width: b.width, height: b.height,
     symbolSvg: b.symbol_id && !b.locked ? ctx.symbolSvg(b.symbol_id) : undefined,
     accent: pick(b.color_light, b.color_dark, ctx.theme),
-    dashed: b.locked || b.status === "retired",
+    dashed: b.locked || isOutOfUse(b.status),
   }));
   const notes = layout.notes.map<GraphCanvasNode>((n) => ({
     id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: ctx.noteCaption,

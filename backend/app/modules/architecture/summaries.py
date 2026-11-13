@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.project import Project
-from app.modules.architecture.labels import RECORD_STATUS_LABEL
+from app.modules.architecture.labels import INACTIVE_STATUSES, RECORD_STATUS_LABEL
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureDiagram, ArchitectureElement
 from app.modules.architecture.visibility import Viewer, granted_element_ids, visible_element_ids
 from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider, BrowseLevel
@@ -79,7 +79,7 @@ def _list_elements(db: Session, project_id: UUID) -> list[ArtefactSummary]:
     rows = db.scalars(_element_query(
         ArchitectureElement.is_archived.is_(False),
         (ArchitectureElement.project_id == project_id)
-        | (ArchitectureElement.id.in_(shared) & (ArchitectureElement.status != "retired")),
+        | (ArchitectureElement.id.in_(shared) & ArchitectureElement.status.not_in(INACTIVE_STATUSES)),
     )).all()
     return sorted(_element_summaries(rows), key=lambda s: s.label)
 

@@ -3,7 +3,7 @@ Module: test_architecture_status_moves
 
 Pins the one status transition map (`transitions.STATUS_MOVES`): the moves the server accepts and refuses for an
 element, a connection and a diagram, the `allowed_status_moves` returned with each record (so the "Change state" menu
-offers exactly what the server accepts), the `planned` label, and the retire rule for children that are only planned.
+offers exactly what the server accepts), the `proposed` and `rejected` labels, and how a rejected record is treated as out of use.
 """
 
 from __future__ import annotations
@@ -28,10 +28,11 @@ def _ids(pairs):
 
 def test_the_map_is_the_agreed_one_and_every_state_has_a_label():
     assert {a.value: [b.value for b in moves] for a, moves in STATUS_MOVES.items()} == {
-        "draft": ["planned", "active"], "planned": ["active", "draft"], "active": ["retired"], "retired": ["active"],
+        "draft": ["proposed", "active", "rejected"], "proposed": ["active", "draft", "rejected"], "active": ["retired"],
+        "retired": ["active"], "rejected": ["draft"],
     }
     assert set(RECORD_STATUS_LABEL) == {s.value for s in RecordStatus}
-    assert RECORD_STATUS_LABEL["planned"] == "Planned"
+    assert RECORD_STATUS_LABEL["proposed"] == "Proposed"
     assert allowed_moves("nonsense") == []
     assert move_refusal("draft", RecordStatus.DRAFT) == "The record already has this status."
 
@@ -47,8 +48,8 @@ def _get_to(client, token, project_id, kind, status):
     else:
         a, b = make_element(client, token, project_id, f"A{n}"), make_element(client, token, project_id, f"B{n}")
         record = make_connection(client, token, project_id, a["id"], b["id"])
-    path = {RecordStatus.DRAFT: [], RecordStatus.PLANNED: ["planned"], RecordStatus.ACTIVE: ["active"],
-            RecordStatus.RETIRED: ["active", "retired"]}[status]
+    path = {RecordStatus.DRAFT: [], RecordStatus.PROPOSED: ["proposed"], RecordStatus.ACTIVE: ["active"],
+            RecordStatus.RETIRED: ["active", "retired"], RecordStatus.REJECTED: ["rejected"]}[status]
     for step in path:
         resp = client.post(f"{base}/{kind}/{record['id']}/status", json={"version": record["version"], "status": step},
                            headers=auth_headers(token))
@@ -93,25 +94,68 @@ def test_a_move_outside_the_map_is_refused_and_leaves_the_record_alone(client, a
     assert (after["status"], after["version"]) == (current.value, record["version"])
 
 
-def test_a_planned_child_still_blocks_retiring_its_parent(client, admin_token):
-    _org, project, token = setup(client, admin_token, "Arch planned child")
+def test_a_proposed_child_still_blocks_retiring_its_parent(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch proposed child")
     h, base = auth_headers(token), project_base(project["id"])
     parent = make_element(client, token, project["id"], "Parent", activate=True)
     child = make_element(client, token, project["id"], "Child", parent_id=parent["id"])
-    client.post(f"{base}/elements/{child['id']}/status", json={"version": child["version"], "status": "planned"}, headers=h)
+    client.post(f"{base}/elements/{child['id']}/status", json={"version": child["version"], "status": "proposed"}, headers=h)
     blocked = client.post(f"{base}/elements/{parent['id']}/status", json={"version": parent["version"], "status": "retired"}, headers=h)
     assert blocked.status_code == 409
 
 
-def test_a_planned_row_in_an_import_is_created_planned(client, admin_token):
-    _org, project, token = setup(client, admin_token, "Arch planned import")
+def test_a_proposed_row_in_an_import_is_created_proposed(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch proposed import")
     h = auth_headers(token)
     type_name = client.get(f"{project_base(project['id'])}/element-types", headers=h).json()[0]["name"]
-    csv_text = f"code,name,type,status\n,Planned part,{type_name},Planned\n"
+    csv_text = f"code,name,type,status\n,Proposed part,{type_name},Proposed\n"
     resp = client.post(
         f"/api/v1/projects/{project['id']}/records/architecture_element/import", params={"dry_run": "false"},
         files={"file": ("elements.csv", csv_text.encode("utf-8"), "text/csv")}, headers=h,
     )
     assert resp.status_code == 200, resp.text
     listed = client.get(f"{project_base(project['id'])}/elements", headers=h).json()
-    assert [(e["name"], e["status"]) for e in listed] == [("Planned part", "planned")]
+    assert [(e["name"], e["status"]) for e in listed] == [("Proposed part", "proposed")]
+
+
+def test_a_rejected_element_is_out_of_use_like_a_retired_one(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch rejected element")
+    h, base = auth_headers(token), project_base(project["id"])
+    parent = make_element(client, token, project["id"], "Parent", activate=True)
+    child = make_element(client, token, project["id"], "Child", parent_id=parent["id"])
+    make_element(client, token, project["id"], "Other", activate=True)
+
+    rejected = client.post(f"{base}/elements/{child['id']}/status", json={"version": child["version"], "status": "rejected"}, headers=h)
+    assert rejected.status_code == 200 and rejected.json()["allowed_status_moves"] == ["draft"]
+    names = lambda **p: {e["name"] for e in client.get(f"{base}/elements", params=p, headers=h).json()}  # noqa: E731
+    assert names(open_only="true") == {"Parent", "Other"} and names(status="rejected") == {"Child"}
+    # A rejected child no longer blocks retiring its parent.
+    retire = {"version": parent["version"], "status": "retired"}
+    assert client.post(f"{base}/elements/{parent['id']}/status", json=retire, headers=h).status_code == 200
+    reopened = client.post(f"{base}/elements/{child['id']}/status", json={"version": rejected.json()["version"], "status": "draft"}, headers=h)
+    assert reopened.status_code == 200 and reopened.json()["status"] == "draft"
+
+
+def test_a_rejected_connection_and_diagram_are_left_out_of_open_lists(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch rejected others")
+    h, base = auth_headers(token), project_base(project["id"])
+    a, b = make_element(client, token, project["id"], "A"), make_element(client, token, project["id"], "B")
+    link = make_connection(client, token, project["id"], a["id"], b["id"])
+    diagram = make_diagram(client, token, project["id"], "Idea")
+    for kind, record in (("connections", link), ("diagrams", diagram)):
+        assert client.post(f"{base}/{kind}/{record['id']}/status", json={"version": 1, "status": "rejected"}, headers=h).status_code == 200
+        assert client.get(f"{base}/{kind}", params={"open_only": "true"}, headers=h).json() == []
+        assert len(client.get(f"{base}/{kind}", params={"status": "rejected"}, headers=h).json()) == 1
+
+
+def test_a_new_record_cannot_be_imported_as_rejected(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch rejected import")
+    h = auth_headers(token)
+    type_name = client.get(f"{project_base(project['id'])}/element-types", headers=h).json()[0]["name"]
+    csv_text = f"code,name,type,status\n,Idea,{type_name},Rejected\n"
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/records/architecture_element/import", params={"dry_run": "false"},
+        files={"file": ("elements.csv", csv_text.encode("utf-8"), "text/csv")}, headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    assert client.get(f"{project_base(project['id'])}/elements", headers=h).json() == []

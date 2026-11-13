@@ -77,7 +77,7 @@ import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues,
+  type ArchitectureRecordStatus, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
 } from "./types";
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
@@ -501,7 +501,7 @@ export function DiagramEditorPage() {
   }
 
   const placed = new Set(layout.boxes.map((b) => b.elementId));
-  const candidates = elements.filter((e) => !placed.has(e.id) && !e.is_archived && e.status !== "retired");
+  const candidates = elements.filter((e) => !placed.has(e.id) && !e.is_archived && !isOutOfUse(e.status));
   const scopeLabel = diagram.scope_element_id ? (
     `Inside ${[diagram.scope_element_code, diagram.scope_element_name].filter(Boolean).join(" ") || "an element you cannot read"}`
   ) : (

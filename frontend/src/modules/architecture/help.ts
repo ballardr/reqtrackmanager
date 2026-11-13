@@ -12,7 +12,7 @@ export const ARCHITECTURE_HELP = {
   elementParent: "The element this one is a part of. Parents form a tree up to 12 levels deep; a diagram can open a parent to show its children.",
   elementOwner: "The person or group accountable for this part of the product.",
   elementSymbol: "A drawing shown instead of the type's. Leave it empty to use the type's own symbol or shape.",
-  stateMenu: "Moves the record to another state. The menu offers only the moves the server allows from the current state.\nDraft: being written, not yet part of the plan.\nPlanned: agreed but not built or in force yet.\nActive: in force.\nRetired: no longer in force; it can be reactivated.",
+  stateMenu: "Moves the record to another state. The menu offers only the moves the server allows from the current state.\nDraft: being written, not yet part of the plan.\nProposed: put forward for consideration, not yet agreed.\nActive: in force.\nRetired: no longer in force; it can be reactivated.\nRejected: considered and not adopted; it can be reopened as a draft.",
   elementActivate: "Creates the element as Active instead of Draft. An element has no approval step, so this needs no more than permission to create.",
   elementPorts: "Named attachment points where connections meet the element, one per interface (for example an API or a bus). Each can carry a connection type.",
   portDirection: "Which way traffic crosses the port, seen from this element: In, Out or Both.",

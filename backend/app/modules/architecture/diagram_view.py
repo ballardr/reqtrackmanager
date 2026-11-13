@@ -42,6 +42,7 @@ from app.modules.architecture import diagrams, records
 from app.modules.architecture.connection_tree import descendant_map
 from app.modules.architecture.diagram_resolver import Boundary, ModelConnection, Resolution, outer_side, resolve
 from app.modules.architecture.enums import AttachPoint, ElementShape
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
@@ -158,7 +159,7 @@ def build_view(
 
     connections = [
         c for c in records.list_connections(db, project_id)
-        if include_retired or c.status != "retired"
+        if include_retired or c.status not in INACTIVE_STATUSES
     ]
     placed_ids = [p.element_id for p in placements]
     involved = set(placed_ids) | {c.source_element_id for c in connections} | {c.target_element_id for c in connections}

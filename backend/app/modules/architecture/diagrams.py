@@ -52,6 +52,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture.enums import RecordStatus
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureDiagram,
@@ -153,7 +154,7 @@ def _check_new_element(db: Session, viewer: Viewer, element_ids: Iterable[uuid.U
         element = rows.get(element_id)
         if element is None or element.is_archived:
             raise RuleError("An element is not available for this project.", 400)
-        if element.project_id != viewer.project_id and element.status == RecordStatus.RETIRED.value:
+        if element.project_id != viewer.project_id and element.status in INACTIVE_STATUSES:
             raise RuleError("A retired element of another owner cannot be newly added.", 400)
 
 

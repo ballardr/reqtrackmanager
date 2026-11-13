@@ -32,6 +32,7 @@ from app.modules.architecture.diagram_model import build_model
 from app.modules.architecture.diagram_svg import render_diagram
 from app.modules.architecture.diagram_view import ToggleState, build_view
 from app.modules.architecture.enums import RecordStatus
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureDiagram
 from app.modules.architecture.record_routes import _matches, as_http
 from app.modules.architecture.schemas import (
@@ -67,7 +68,7 @@ def filter_diagrams(
     return [
         d for d in rows
         if (status_ is None or d.status == status_)
-        and (not open_only or d.status != RecordStatus.RETIRED.value)
+        and (not open_only or d.status not in INACTIVE_STATUSES)
         and _matches(search, d.unique_code, d.name, d.purpose)
     ]
 

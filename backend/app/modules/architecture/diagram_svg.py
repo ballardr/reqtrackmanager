@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.architecture.diagram_points import line_points, point_xy
 from app.modules.architecture.enums import AttachPoint
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
 from app.modules.architecture.schemas import AnchorOut, DiagramView, ViewBoundary, ViewEdge, ViewNode
 from app.modules.architecture.symbols import symbol_svg
@@ -149,7 +150,7 @@ def _node(node: ViewNode, symbols: dict[uuid.UUID, str]) -> str:
             f'fill="#64748B">{_text(node.unique_code)}</text></g>'
         )
     color = _color(node.color_light)
-    faded = ' opacity="0.55"' if node.status == "retired" else ""
+    faded = ' opacity="0.55"' if node.status in INACTIVE_STATUSES else ""
     parts = [f'<g data-element="{node.element_id}"{faded}>']
     drawing = symbols.get(node.symbol_id) if node.symbol_id else None
     group = None

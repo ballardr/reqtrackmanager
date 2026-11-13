@@ -10,13 +10,14 @@ import type { BadgeTone, Principal, PrincipalRef } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
 import type { AttachPoint } from "../../components/graphAttachPoints";
 
-export type ArchitectureRecordStatus = "draft" | "planned" | "active" | "retired";
+export type ArchitectureRecordStatus = "draft" | "proposed" | "active" | "retired" | "rejected";
 
 export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string> = {
   draft: "Draft",
-  planned: "Planned",
+  proposed: "Proposed",
   active: "Active",
   retired: "Retired",
+  rejected: "Rejected",
 };
 
 export type PortDirection = "in" | "out" | "both";
@@ -27,11 +28,20 @@ export const PORT_DIRECTION_LABEL: Record<PortDirection, string> = {
   both: "Both",
 };
 
+/** The states that mean a record is out of use: hidden by "Open only", not offered as a new end, parent, scope or box, drawn faded. */
+export const ARCHITECTURE_INACTIVE_STATUSES: ArchitectureRecordStatus[] = ["retired", "rejected"];
+
+/** Whether a record in `status` is out of use (retired or rejected). */
+export function isOutOfUse(status: ArchitectureRecordStatus): boolean {
+  return ARCHITECTURE_INACTIVE_STATUSES.includes(status);
+}
+
 export const ARCHITECTURE_STATUS_TONE: Record<ArchitectureRecordStatus, BadgeTone> = {
   draft: "muted",
-  planned: "info",
+  proposed: "info",
   active: "accent",
   retired: "muted",
+  rejected: "danger",
 };
 
 export type Domain = "software" | "hardware" | "any";

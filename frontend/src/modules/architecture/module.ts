@@ -12,7 +12,7 @@ import { ProjectSharingPage } from "./ProjectSharingPage";
 import { SymbolLibraryPanel } from "./SymbolLibraryPanel";
 import { ArchitectureListRedirect, SystemArchitecturePage } from "./SystemArchitecturePage";
 import { architectureTabPath } from "./architectureTabs";
-import { ARCHITECTURE_STATUS_LABEL } from "./types";
+import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./types";
 
 /**
  * Module: modules/architecture/module
@@ -57,9 +57,9 @@ export const moduleDefinition: TierAModuleDefinition = {
     architecture_diagram: ARCHITECTURE_STATUS_LABEL,
   },
   artefactInactiveStatuses: {
-    architecture_element: ["retired"],
-    architecture_connection: ["retired"],
-    architecture_diagram: ["retired"],
+    architecture_element: ARCHITECTURE_INACTIVE_STATUSES,
+    architecture_connection: ARCHITECTURE_INACTIVE_STATUSES,
+    architecture_diagram: ARCHITECTURE_INACTIVE_STATUSES,
   },
   routes: [
     { path: "/projects/:projectId/modules/architecture", element: createElement(SystemArchitecturePage) },

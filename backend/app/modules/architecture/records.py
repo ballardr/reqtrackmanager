@@ -18,7 +18,7 @@ Design decisions:
   row is locked while it is checked, so two saves cannot both win.
 - Tree rules: a parent belongs to the same project, a move may not create a cycle,
   and the tree is at most `MAX_DEPTH` levels deep (a move counts the subtree it carries).
-- Retiring or archiving an element needs every child to be retired or archived
+- Retiring, rejecting or archiving an element needs every child to be retired, rejected or archived
   first; deleting needs no children and no connection ending at it. These are
   integrity rules (a hidden child would be orphaned from its parent's view, and a
   connection would lose an end).
@@ -59,6 +59,7 @@ from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.user import User
 from app.modules.architecture.enums import RecordStatus
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
@@ -554,7 +555,7 @@ def _ref(owner: PrincipalRef | None):
 def change_element_status(
     db: Session, owner: ElementOwner, actor: User, element_id: uuid.UUID, version: int, status: RecordStatus,
 ) -> ArchitectureElement:
-    """Moves an element to `status`. Retiring needs every child to be retired or archived. The caller commits.
+    """Moves an element to `status`. Retiring or rejecting needs every child to be retired, rejected or archived. The caller commits.
 
     Raises:
         RuleError: 404 if absent, 409 on a stale version, when the status is unchanged or a child is still in use.
@@ -564,8 +565,8 @@ def change_element_status(
     refusal = move_refusal(element.status, status)
     if refusal:
         raise RuleError(refusal, 409)
-    if status is RecordStatus.RETIRED:
-        _require_children_finished(db, element, "retire")
+    if status.value in INACTIVE_STATUSES:
+        _require_children_finished(db, element, "retire" if status is RecordStatus.RETIRED else "reject")
     previous = element.status
     _touch(element, status=status.value)
     db.flush()
@@ -574,15 +575,15 @@ def change_element_status(
 
 
 def _require_children_finished(db: Session, element: ArchitectureElement, verb: str) -> None:
-    """Raises 409 when a child of `element` is neither retired nor archived."""
+    """Raises 409 when a child of `element` is not out of use (retired or rejected) and not archived."""
     open_children = db.scalar(
         select(func.count()).select_from(ArchitectureElement).where(
             ArchitectureElement.parent_id == element.id, ArchitectureElement.is_archived.is_(False),
-            ArchitectureElement.status != RecordStatus.RETIRED.value,
+            ArchitectureElement.status.not_in(INACTIVE_STATUSES),
         )
     )
     if open_children:
-        raise RuleError(f"This element still has {open_children} child element(s) in use; retire them first to {verb} it.", 409)
+        raise RuleError(f"This element still has {open_children} child element(s) in use; retire or reject them first to {verb} it.", 409)
 
 
 def set_element_archived(
@@ -750,8 +751,8 @@ def _check_end(
     element = db.get(ArchitectureElement, element_id) if element_id in visible_element_ids(db, viewer, [element_id]) else None
     if element is None or element.is_archived:
         raise RuleError(f"The {side} element is not an available element for this project.", 400)
-    if element.project_id != viewer.project_id and element.status == RecordStatus.RETIRED.value:
-        raise RuleError(f"The {side} element is retired and cannot be connected to.", 400)
+    if element.project_id != viewer.project_id and element.status in INACTIVE_STATUSES:
+        raise RuleError(f"The {side} element is {element.status} and cannot be connected to.", 400)
     if port_id is not None and db.scalar(
         select(ArchitecturePort.id).where(ArchitecturePort.id == port_id, ArchitecturePort.element_id == element_id)
     ) is None:

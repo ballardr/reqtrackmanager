@@ -30,7 +30,8 @@ export const ORG_USERS: OrgUser[] = [
 
 /** The moves the server's status map allows from each state (a copy for stories; the server holds the real map). */
 const STATUS_MOVES: Record<ArchitectureRecordStatus, ArchitectureRecordStatus[]> = {
-  draft: ["planned", "active"], planned: ["active", "draft"], active: ["retired"], retired: ["active"],
+  draft: ["proposed", "active", "rejected"], proposed: ["active", "draft", "rejected"], active: ["retired"],
+  retired: ["active"], rejected: ["draft"],
 };
 
 /** `allowed_status_moves` for a built record: those of `status` (Active when not given). */

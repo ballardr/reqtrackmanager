@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.architecture import diagrams, records
 from app.modules.architecture.diagram_view import matched_by_rules, rule_type_closure, toggle_rule
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
@@ -74,7 +75,7 @@ def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: Arc
     placed = {p.element_id for p in diagrams.placements_of(db, diagram.id)}
     toggles = diagrams.toggles_of(db, diagram.id)
     members = diagrams.toggle_members(db, [t.id for t in toggles])
-    connections = [c for c in records.list_connections(db, project_id) if c.status != "retired"]
+    connections = [c for c in records.list_connections(db, project_id) if c.status not in INACTIVE_STATUSES]
     live_ids = {c.id for c in connections}
     ends = {c.source_element_id for c in connections} | {c.target_element_id for c in connections}
 

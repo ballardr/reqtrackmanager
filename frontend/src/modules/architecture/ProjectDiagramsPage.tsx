@@ -37,7 +37,7 @@ import { ARCHITECTURE_HELP } from "./help";
 import { useCreateDiagram } from "./useCreateDiagram";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureDiagram, type ArchitectureElement,
-  type ArchitectureRecordStatus,
+  type ArchitectureRecordStatus, isOutOfUse,
 } from "./types";
 
 const STATUSES = Object.keys(ARCHITECTURE_STATUS_LABEL) as ArchitectureRecordStatus[];
@@ -83,7 +83,7 @@ export function ProjectDiagramsPage({ chrome }: { chrome?: ArchitectureListChrom
   const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (d: ArchitectureDiagram, applyOpenOnly: boolean) => {
-      if (applyOpenOnly && d.status === "retired") return false;
+      if (applyOpenOnly && isOutOfUse(d.status)) return false;
       if (statusFilter && d.status !== statusFilter) return false;
       return !needle || `${d.unique_code} ${d.name} ${d.purpose} ${d.scope_element_name ?? ""}`.toLowerCase().includes(needle);
     };

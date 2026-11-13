@@ -353,7 +353,7 @@ Every record detail page (requirement, action, change request, decision, risk, e
 | Object actions | Title row, right edge | One `ActionMenu` named "{Record} actions". Drawn even for a single action (the Q5 exception to the two-or-more floor) so its position never depends on permissions; not drawn at all when the user has none. |
 | Status pills | Line under the title | Status, scope, archived, overdue. |
 | Transitions | Line under the pills | Visible buttons that depend on status. |
-| Change state | Title row, before Edit | `RecordHeader`'s `stateMenu`: a labelled "Change state" `MenuButton` with a (?) listing every state, for a record whose state moves along several paths. Items read "Move from Draft to Planned" and come from the server's allowed moves, never a hard-coded list. Omitted when the user cannot change the state. |
+| Change state | Title row, before Edit | `RecordHeader`'s `stateMenu`: a labelled "Change state" `MenuButton` with a (?) listing every state, for a record whose state moves along several paths. Items read "Move from Draft to Proposed" and come from the server's allowed moves, never a hard-coded list. Omitted when the user cannot change the state. |
 
 ```mermaid
 flowchart TD

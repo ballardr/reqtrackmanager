@@ -20,6 +20,7 @@ import { useRecordCode } from "../../hooks/useRecordCode";
 import { blankDiagramValues, valuesFromDiagram } from "./architectureFields";
 import { ARCHITECTURE_HELP } from "./help";
 import type { ArchitectureDiagram, ArchitectureElement, DiagramFieldValues } from "./types";
+import { isOutOfUse } from "./types";
 
 /** What a new diagram takes beyond the shared fields. */
 export interface DiagramCreateExtras {
@@ -57,7 +58,7 @@ export function DiagramFormModal({
     setValues((prev) => ({ ...prev, [key]: value }));
 
   const scopeOptions = elements
-    .filter((e) => !e.shared && (e.status !== "retired" || e.id === initial?.scope_element_id))
+    .filter((e) => !e.shared && (!isOutOfUse(e.status) || e.id === initial?.scope_element_id))
     .map((e) => ({ value: e.id, label: `${formatCode.code(e.unique_code, e.from_project_code)} ${e.name}` }));
   const valid = values.name.trim() !== "";
 

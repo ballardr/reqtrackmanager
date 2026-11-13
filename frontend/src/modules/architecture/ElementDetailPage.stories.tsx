@@ -75,7 +75,7 @@ export const ChangeStateOffersTheServersMoves: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Change state" }));
     const menu = within(document.body).getByRole("menu", { name: "Change state" });
     await expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
-      "Move from Draft to Planned", "Move from Draft to Active",
+      "Move from Draft to Proposed", "Move from Draft to Active", "Move from Draft to Rejected",
     ]);
   },
 };
@@ -90,7 +90,7 @@ export const ChangeStateHelpDescribesEveryState: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Help: Change state" }));
     const tip = await within(document.body).findByRole("tooltip");
-    for (const state of ["Draft:", "Planned:", "Active:", "Retired:"]) await expect(tip).toHaveTextContent(state);
+    for (const state of ["Draft:", "Proposed:", "Active:", "Retired:", "Rejected:"]) await expect(tip).toHaveTextContent(state);
   },
 };
 

@@ -46,7 +46,7 @@ import { ElementFormModal } from "./ElementFormModal";
 import { useCreateElement } from "./useCreateElement";
 import { useArchitectureReference } from "./useArchitectureReference";
 import {
-  ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureRecordStatus,
+  ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureRecordStatus, isOutOfUse,
 } from "./types";
 
 type View = "list" | "tree";
@@ -90,7 +90,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
   const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (e: ArchitectureElement, applyOpenOnly: boolean) => {
-      if (applyOpenOnly && e.status === "retired") return false;
+      if (applyOpenOnly && isOutOfUse(e.status)) return false;
       if (statusFilter && e.status !== statusFilter) return false;
       if (typeFilter && e.element_type_id !== typeFilter) return false;
       return !needle || `${e.unique_code} ${e.name} ${e.description}`.toLowerCase().includes(needle);

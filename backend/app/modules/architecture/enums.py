@@ -46,12 +46,13 @@ class LineStyle(str, enum.Enum):
 
 class RecordStatus(str, enum.Enum):
     """The lifecycle of an element, a connection or a diagram. There is no approval gate: a person who may manage the
-    record may make any move `transitions.STATUS_MOVES` lists (a retired record can be reactivated)."""
+    record may make any move `transitions.STATUS_MOVES` lists (a retired record can be reactivated, a rejected one reopened as a draft)."""
 
     DRAFT = "draft"
-    PLANNED = "planned"
+    PROPOSED = "proposed"
     ACTIVE = "active"
     RETIRED = "retired"
+    REJECTED = "rejected"
 
 
 class PortDirection(str, enum.Enum):

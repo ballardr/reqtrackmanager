@@ -20,20 +20,23 @@ async function itemsOf(canvasElement: HTMLElement): Promise<string[]> {
 }
 
 const CASES: Array<[ArchitectureRecordStatus, ArchitectureRecordStatus[], string[]]> = [
-  ["draft", ["planned", "active"], ["Move from Draft to Planned", "Move from Draft to Active"]],
-  ["planned", ["active", "draft"], ["Move from Planned to Active", "Move from Planned to Draft"]],
+  ["draft", ["proposed", "active", "rejected"],
+    ["Move from Draft to Proposed", "Move from Draft to Active", "Move from Draft to Rejected"]],
+  ["proposed", ["active", "draft", "rejected"],
+    ["Move from Proposed to Active", "Move from Proposed to Draft", "Move from Proposed to Rejected"]],
   ["active", ["retired"], ["Move from Active to Retired"]],
   ["retired", ["active"], ["Move from Retired to Active"]],
+  ["rejected", ["draft"], ["Move from Rejected to Draft"]],
 ];
 
-/** From Draft: Planned or Active. */
+/** From Draft: Proposed, Active or Rejected. */
 export const FromDraft: Story = {
   args: { status: CASES[0][0], moves: CASES[0][1] },
   play: async ({ canvasElement }) => { await expect(await itemsOf(canvasElement)).toEqual(CASES[0][2]); },
 };
 
-/** From Planned: Active, or back to Draft. */
-export const FromPlanned: Story = {
+/** From Proposed: Active, back to Draft, or Rejected. */
+export const FromProposed: Story = {
   args: { status: CASES[1][0], moves: CASES[1][1] },
   play: async ({ canvasElement }) => { await expect(await itemsOf(canvasElement)).toEqual(CASES[1][2]); },
 };
@@ -52,6 +55,12 @@ export const FromRetiredAndChoosing: Story = {
     await userEvent.click(within(document.body).getByRole("menuitem", { name: "Move from Retired to Active" }));
     await expect(args.onMove).toHaveBeenCalledWith("active");
   },
+};
+
+/** From Rejected: reopened as a Draft. */
+export const FromRejected: Story = {
+  args: { status: CASES[4][0], moves: CASES[4][1] },
+  play: async ({ canvasElement }) => { await expect(await itemsOf(canvasElement)).toEqual(CASES[4][2]); },
 };
 
 /** A record with no allowed moves draws no menu. */

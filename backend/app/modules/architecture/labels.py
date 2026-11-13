@@ -10,9 +10,10 @@ from __future__ import annotations
 
 RECORD_STATUS_LABEL: dict[str, str] = {
     "draft": "Draft",
-    "planned": "Planned",
+    "proposed": "Proposed",
     "active": "Active",
     "retired": "Retired",
+    "rejected": "Rejected",
 }
 
 PORT_DIRECTION_LABEL: dict[str, str] = {
@@ -22,7 +23,7 @@ PORT_DIRECTION_LABEL: dict[str, str] = {
 }
 
 #: Statuses that mean a record is no longer in force, for "Open only" filters and the inactive style.
-INACTIVE_STATUSES: tuple[str, ...] = ("retired",)
+INACTIVE_STATUSES: tuple[str, ...] = ("retired", "rejected")
 
 
 def record_status_label(value: str) -> str:

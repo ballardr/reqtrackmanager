@@ -16,10 +16,11 @@ from app.modules.architecture.enums import RecordStatus
 
 #: The moves each status offers, in menu order.
 STATUS_MOVES: dict[RecordStatus, tuple[RecordStatus, ...]] = {
-    RecordStatus.DRAFT: (RecordStatus.PLANNED, RecordStatus.ACTIVE),
-    RecordStatus.PLANNED: (RecordStatus.ACTIVE, RecordStatus.DRAFT),
+    RecordStatus.DRAFT: (RecordStatus.PROPOSED, RecordStatus.ACTIVE, RecordStatus.REJECTED),
+    RecordStatus.PROPOSED: (RecordStatus.ACTIVE, RecordStatus.DRAFT, RecordStatus.REJECTED),
     RecordStatus.ACTIVE: (RecordStatus.RETIRED,),
     RecordStatus.RETIRED: (RecordStatus.ACTIVE,),
+    RecordStatus.REJECTED: (RecordStatus.DRAFT,),
 }
 
 

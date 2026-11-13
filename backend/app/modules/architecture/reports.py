@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureConnectionType, ArchitectureElement
 from app.modules.architecture.realisations import realisations_of
 from app.modules.architecture.service import (
@@ -88,7 +89,7 @@ def collect_boundary_coverage(db: Session, req: ReportContext) -> ReportResult:
         connections = list(db.scalars(
             select(ArchitectureConnection).where(
                 ArchitectureConnection.project_id == project.id, ArchitectureConnection.is_archived.is_(False),
-                ArchitectureConnection.status != "retired",
+                ArchitectureConnection.status.not_in(INACTIVE_STATUSES),
             ).order_by(ArchitectureConnection.unique_code)
         ))
         for_end = {e for c in connections for e in (c.source_element_id, c.target_element_id)} - set(elements)

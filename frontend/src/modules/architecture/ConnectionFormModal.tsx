@@ -29,6 +29,7 @@ import { guideConnectionTypes, mismatchWarning, suggestedGroup } from "./connect
 import { connectionTypeNodes } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType } from "./types";
+import { isOutOfUse } from "./types";
 
 /** What a new connection takes beyond the shared fields. */
 export interface ConnectionCreateExtras {
@@ -76,7 +77,7 @@ export function ConnectionFormModal({
   const set = <K extends keyof ConnectionFieldValues>(key: K, value: ConnectionFieldValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
-  const options = elements.filter((e) => e.status !== "retired" || e.id === initial?.source_element_id || e.id === initial?.target_element_id);
+  const options = elements.filter((e) => !isOutOfUse(e.status) || e.id === initial?.source_element_id || e.id === initial?.target_element_id);
   const elementOptions = options.map((e) => ({
     value: e.id, label: `${formatCode.code(e.unique_code, e.from_project_code)} ${e.name}${e.shared ? " (shared)" : ""}`,
   }));

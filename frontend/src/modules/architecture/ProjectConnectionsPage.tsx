@@ -41,7 +41,7 @@ import { useArchitectureReference } from "./useArchitectureReference";
 import { useCreateConnection } from "./useCreateConnection";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus,
+  type ArchitectureRecordStatus, isOutOfUse,
 } from "./types";
 
 const STATUSES = Object.keys(ARCHITECTURE_STATUS_LABEL) as ArchitectureRecordStatus[];
@@ -96,7 +96,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
   const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (c: ArchitectureConnection, applyOpenOnly: boolean) => {
-      if (applyOpenOnly && c.status === "retired") return false;
+      if (applyOpenOnly && isOutOfUse(c.status)) return false;
       if (statusFilter && c.status !== statusFilter) return false;
       if (typeIds && !typeIds.has(c.connection_type_id)) return false;
       if (elementFilter && c.source_element_id !== elementFilter && c.target_element_id !== elementFilter) return false;

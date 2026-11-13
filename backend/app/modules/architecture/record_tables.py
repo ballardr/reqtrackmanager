@@ -21,7 +21,7 @@ Design decisions:
   discloses a symbol the person cannot see.
 - `status` is importable because the module has no approval gate (a record may make any move
   `transitions.STATUS_MOVES` lists, and a row asking for another is a row error); a new record can be created
-  `Draft`, `Planned` or `Active`, not `Retired`.
+  `Draft`, `Proposed` or `Active`, not `Retired` or `Rejected`.
 - `ports` is one list cell, `name:direction` per port (`Main:both;Debug:in`), the way the export writes it. An
   import *adds* the ports a cell names that the element lacks and never removes or edits one, so a round trip
   changes nothing and removing a port stays a deliberate act on the element.
@@ -387,15 +387,15 @@ def _ports_from_cell(entries: list[str]) -> list[PortCreate]:
 
 def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> ArchitectureElement:
     status = values.get("status")
-    if status is RecordStatus.RETIRED:
-        raise RecordCellError("A new element cannot be created Retired.")
+    if status in (RecordStatus.RETIRED, RecordStatus.REJECTED):
+        raise RecordCellError(f"A new element cannot be created {RECORD_STATUS_LABEL[status.value]}.")
     payload = _payload(ElementCreate, {
         "name": values.get("name", ""), "description": values.get("description", ""),
         "element_type_id": values.get("type"), "symbol_id": values.get("symbol"), "parent_id": values.get("parent"),
         "owner": values.get("owner"), "activate": status is RecordStatus.ACTIVE, "ports": _ports_from_cell(values.get("ports", [])),
     })
     element = _rule(lambda: records.create_element(ctx.db, _owner_of(ctx), ctx.user, payload))
-    if status is RecordStatus.PLANNED:
+    if status is RecordStatus.PROPOSED:
         _rule(lambda: records.change_element_status(ctx.db, _owner_of(ctx), ctx.user, element.id, element.version, status))
     return element
 
@@ -535,8 +535,8 @@ def _connection_columns(db: Session, project: Project) -> list[RecordColumn]:
 
 def _create_connection(ctx: RecordImportContext, values: Mapping[str, Any]) -> ArchitectureConnection:
     status = values.get("status")
-    if status is RecordStatus.RETIRED:
-        raise RecordCellError("A new connection cannot be created Retired.")
+    if status in (RecordStatus.RETIRED, RecordStatus.REJECTED):
+        raise RecordCellError(f"A new connection cannot be created {RECORD_STATUS_LABEL[status.value]}.")
     source, target = values.get("source"), values.get("target")
     payload = _payload(ConnectionCreate, {
         "name": values.get("name", ""), "connection_type_id": values.get("type"), "source_element_id": source,
@@ -546,7 +546,7 @@ def _create_connection(ctx: RecordImportContext, values: Mapping[str, Any]) -> A
         "activate": status is RecordStatus.ACTIVE,
     })
     connection = _rule(lambda: records.create_connection(ctx.db, ctx.project, ctx.user, payload))
-    if status is RecordStatus.PLANNED:
+    if status is RecordStatus.PROPOSED:
         _rule(lambda: records.change_connection_status(ctx.db, ctx.project, ctx.user, connection.id, connection.version, status))
     return connection
 

@@ -39,6 +39,7 @@ from app.modules.architecture._shared import (
 )
 from app.modules.architecture.connection_tree import closure_of
 from app.modules.architecture.enums import RecordStatus
+from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureElement
 from app.modules.architecture.records import ElementOwner
 from app.modules.architecture.schemas import (
@@ -98,7 +99,7 @@ def filter_elements(
         and (element_type_id is None or e.element_type_id == element_type_id)
         and (parent_id is None or e.parent_id == parent_id)
         and (not roots_only or e.parent_id is None)
-        and (not open_only or e.status != RecordStatus.RETIRED.value)
+        and (not open_only or e.status not in INACTIVE_STATUSES)
         and _matches(search, e.unique_code, e.name, e.description)
     ]
 
@@ -116,7 +117,7 @@ def filter_connections(
         if (status_ is None or c.status == status_)
         and (connection_type_ids is None or c.connection_type_id in connection_type_ids)
         and (element_id is None or element_id in (c.source_element_id, c.target_element_id))
-        and (not open_only or c.status != RecordStatus.RETIRED.value)
+        and (not open_only or c.status not in INACTIVE_STATUSES)
         and _matches(search, c.unique_code, c.name, c.protocol, c.description)
     ]
 

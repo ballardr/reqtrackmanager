@@ -136,9 +136,9 @@ test.describe("System Architecture: elements, connections and sharing", () => {
         await expect(page.getByText(toast)).toBeVisible();
       };
       await page.getByRole("link", { name: /ELM-002/ }).click();
-      await moveTo("Move from Draft to Planned", "Element moved to Planned.");
-      await expect(page.getByText("Planned", { exact: true })).toBeVisible();
-      await moveTo("Move from Planned to Active", "Element moved to Active.");
+      await moveTo("Move from Draft to Proposed", "Element moved to Proposed.");
+      await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
+      await moveTo("Move from Proposed to Active", "Element moved to Active.");
 
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
