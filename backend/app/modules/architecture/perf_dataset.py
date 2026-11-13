@@ -36,7 +36,7 @@ import uuid
 from sqlalchemy import select
 
 from app.modules.architecture.diagram_resolver import outer_side
-from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX, AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionRealisation,
@@ -161,6 +161,7 @@ def generate_elements(ctx: PerfProjectContext) -> dict[str, int]:
         batch.add(
             {
                 "id": record_id, "name": name, "description": textgen.paragraphs(rng, empty_chance=0.2, short_max=3),
+                "display_note": textgen.paragraphs(rng, empty_chance=0.6, short_max=1, long_chance=0)[:DISPLAY_NOTE_MAX],
                 "element_type_id": rng.choice(types), "parent_id": parent, "folder_id": _pick_folder(rng, folder_ids),
                 "owner_type": "user" if owner else None, "owner_id": owner, "status": status.value, "version": 1,
                 "is_archived": archived, "archived_at": created if archived else None,

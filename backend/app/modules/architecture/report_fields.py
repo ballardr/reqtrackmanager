@@ -26,7 +26,7 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     ELEMENT_ARTEFACT_TYPE: from_search(
         SEARCH_PROVIDERS[ELEMENT_ARTEFACT_TYPE],
         principal_field("owner", "Owner", ArchitectureElement.owner_type, ArchitectureElement.owner_id),
-        core_fields=("description", "owner"),
+        core_fields=("description", "display_note", "owner"),
     ),
     CONNECTION_ARTEFACT_TYPE: from_search(
         SEARCH_PROVIDERS[CONNECTION_ARTEFACT_TYPE], core_fields=("description", "protocol"),

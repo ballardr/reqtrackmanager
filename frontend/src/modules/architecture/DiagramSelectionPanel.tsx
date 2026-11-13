@@ -25,6 +25,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import { ActivityNote } from "../../components/ActivityNote";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
@@ -130,6 +131,18 @@ export function DiagramSelectionPanel({
           <strong>{box.locked ? box.unique_code : `${box.unique_code} ${box.name}`}</strong>
           {!box.locked && <span className="text-muted"> · {box.element_type_name}</span>}
         </p>
+        {!box.locked && box.display_note && (
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
+            <FieldCaption label="Display note" help={ARCHITECTURE_HELP.elementDisplayNote} />
+            <ActivityNote text={box.display_note} />
+          </div>
+        )}
+        {!box.locked && element?.description && (
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
+            <FieldCaption label="Description" help={ARCHITECTURE_HELP.elementDescription} />
+            <ActivityNote text={element.description} />
+          </div>
+        )}
         <div className="row" style={{ gap: "var(--space-2)" }}>
           {!box.locked && <Link className="btn btn-sm" to={`${base}/elements/${box.elementId}`}>Open element</Link>}
           {!box.locked && (

@@ -46,7 +46,7 @@ import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { useUrlChoice, useUrlList } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlList } from "../../hooks/useUrlFilter";
 import { architectureTabPath } from "./architectureTabs";
 import { ARCHITECTURE_HELP } from "./help";
 import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
@@ -107,6 +107,7 @@ export function DiagramEditorPage() {
   const diagramApi = useMemo(() => projectDiagramApi(projectId), [projectId]);
   const base = `/projects/${projectId}/modules/architecture`;
 
+  const [showNotes, setShowNotes] = useUrlFlag("notes", true);
   const [toggleOn, setToggleOn] = useUrlList("toggle_on");
   const [toggleOff, setToggleOff] = useUrlList("toggle_off");
   // The Drawing tab is the default and so leaves the address unmarked; the pending layout, selection and undo history live
@@ -268,14 +269,16 @@ export function DiagramEditorPage() {
     });
   }, [model, scopeId, layout.boundaries]);
 
+  const descriptions = useMemo(() => new Map(elements.filter((e) => e.description).map((e) => [e.id, e.description])), [elements]);
   const symbolSvg = useSymbolSvgs(projectId, layout.boxes.map((b) => b.symbol_id));
   const effectiveTheme = resolveEffectiveTheme(theme);
   const nodes = useMemo(
     () => canvasNodes(layout, {
       theme: effectiveTheme, symbolSvg, lockedLabel: (code) => `${code} (not visible)`, emptyNote: "Empty note", noteCaption: "Note",
       hidden: resolved.hidden, covered: new Set(realisedBy.keys()), coverageLabel: (isCovered) => (isCovered ? "Covered" : "Not covered"),
+      showNotes,
     }),
-    [layout, effectiveTheme, symbolSvg, resolved.hidden, realisedBy],
+    [layout, effectiveTheme, symbolSvg, resolved.hidden, realisedBy, showNotes],
   );
   const edges = useMemo(
     () => canvasEdges(resolved.edges, layout, resolved.hidden, effectiveTheme),
@@ -379,7 +382,7 @@ export function DiagramEditorPage() {
     setNewElementError(null);
     try {
       const created = await projectElementApi(projectId).create({
-        name, description: "", element_type_id: newElement.typeId, parent_id: diagram.scope_element_id, owner: null,
+        name, description: "", display_note: "", element_type_id: newElement.typeId, parent_id: diagram.scope_element_id, owner: null,
         symbol_id: null, folder_id: null, activate: false, ports: [],
       });
       const type = elementTypes.find((t) => t.id === created.element_type_id);
@@ -571,6 +574,7 @@ export function DiagramEditorPage() {
       <DiagramSettingsButton
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
+        showNotes={showNotes} onShowNotesChange={setShowNotes}
       />
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
@@ -675,7 +679,7 @@ export function DiagramEditorPage() {
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
             <DiagramOutline
               boxes={layout.boxes} notes={layout.notes} boundaries={layout.boundaries} covered={new Set(realisedBy.keys())}
-              edges={resolved.edges} parents={model.parents} hidden={resolved.hidden}
+              edges={resolved.edges} parents={model.parents} hidden={resolved.hidden} descriptions={descriptions}
               selection={selection} onSelect={setSelection}
             />
           </div>

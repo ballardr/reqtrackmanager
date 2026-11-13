@@ -69,6 +69,7 @@ const RESIZE_KEYS: Record<string, { width: number; height: number }> = {
 type NodeData = {
   label: string;
   caption?: string;
+  body?: string;
   symbol: string | null;
   accent?: string;
   dashed?: boolean;
@@ -112,6 +113,33 @@ function NodeOutline({ outline }: { outline: GraphNodeOutline }) {
   );
 }
 
+/**
+ * The body text of a node, clipped with an ellipsis to the whole lines its space allows (re-measured when the box is
+ * resized). Nothing is shown when not even one line fits.
+ */
+function NodeBody({ text }: { text: string }) {
+  const frame = useRef<HTMLSpanElement>(null);
+  const [lines, setLines] = useState(0);
+  useLayoutEffect(() => {
+    const el = frame.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+      setLines(lineHeight > 0 ? Math.floor(el.clientHeight / lineHeight) : 0);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <span className="graph-node-body" ref={frame}>
+      {lines > 0 && <span style={{ WebkitLineClamp: lines }}>{text}</span>}
+    </span>
+  );
+}
+
 /** One box on the canvas: accent edge, optional symbol and the text label; the eight handles are for drawing lines. */
 function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
   const shaped = data.outline !== "rectangle";
@@ -121,9 +149,10 @@ function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
       {shaped && <NodeOutline outline={data.outline} />}
       {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
-      <span className="graph-node-text">
+      <span className={data.body ? "graph-node-text graph-node-text-body" : "graph-node-text"}>
         <span className="graph-node-label">{data.label}</span>
         {data.caption && <span className="graph-node-caption">{data.caption}</span>}
+        {data.body && <NodeBody text={data.body} />}
       </span>
       {ATTACH_POINTS.map((point) => (
         <Handle key={point} id={point} type="source" position={HANDLE_POSITION[point]} style={HANDLE_STYLE[point]} />
@@ -198,7 +227,7 @@ export function GraphCanvasView({
           selected: selection?.kind === "node" && selection.id === n.id,
           ariaLabel: text.nodeAria(n.label),
           data: {
-            label: n.label, caption: n.caption, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
+            label: n.label, caption: n.caption, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
             accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", resizable: resizable && !readOnly,
           },
         };

@@ -41,6 +41,23 @@ export const CreateRequiresANameAndMarksTheRequiredFields: Story = {
   },
 };
 
+/** The display note (the line drawn in the box) is a field of its own beside the description, and travels with the save. */
+export const TheDisplayNoteIsSavedApartFromTheDescription: Story = {
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.type(d.getByLabelText("Name"), "Scheduler");
+    await userEvent.type(d.getByLabelText("Description"), "Runs the nightly jobs and reports failures.");
+    await userEvent.type(d.getByLabelText("Display note"), "Nightly jobs");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Scheduler", description: "Runs the nightly jobs and reports failures.", display_note: "Nightly jobs",
+      }),
+      expect.anything(),
+    );
+  },
+};
+
 /** Save and activate creates the element active; ports added in the form travel with it. */
 export const SaveAndActivateSendsThePortsAndTheFlag: Story = {
   play: async ({ args }) => {

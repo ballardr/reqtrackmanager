@@ -53,6 +53,8 @@ export interface EditorBox {
   elementId: string;
   unique_code: string;
   name: string;
+  /** The line drawn inside the box (empty for none and for a box the viewer cannot read). */
+  display_note: string;
   locked: boolean;
   shared: boolean;
   status: DiagramViewNode["status"];
@@ -152,7 +154,8 @@ export function boundaryFromConnection(
 /** @param node A placed element of a resolved view. @returns Its box. */
 export function boxFromNode(node: DiagramViewNode): EditorBox {
   return {
-    elementId: node.element_id, unique_code: node.unique_code, name: node.name, locked: node.locked, shared: node.shared,
+    elementId: node.element_id, unique_code: node.unique_code, name: node.name, display_note: node.display_note,
+    locked: node.locked, shared: node.shared,
     status: node.status, parent_id: node.parent_id, element_type_id: node.element_type_id,
     element_type_name: node.element_type_name, color_light: node.color_light, color_dark: node.color_dark,
     symbol_id: node.symbol_id, x: node.x, y: node.y, width: node.width, height: node.height, collapsed: node.collapsed,
@@ -206,7 +209,8 @@ export function mergeView(local: EditorLayout, view: DiagramView): EditorLayout 
  */
 export function boxFromElement(element: ArchitectureElement, type: ElementType | undefined, at: { x: number; y: number }): EditorBox {
   return {
-    elementId: element.id, unique_code: element.unique_code, name: element.name, locked: false, shared: element.shared,
+    elementId: element.id, unique_code: element.unique_code, name: element.name, display_note: element.display_note,
+    locked: false, shared: element.shared,
     status: element.status, parent_id: element.parent_id, element_type_id: element.element_type_id,
     element_type_name: element.element_type_name, color_light: type?.color_light ?? null, color_dark: type?.color_dark ?? null,
     symbol_id: element.effective_symbol_id, x: at.x, y: at.y, width: BOX_WIDTH, height: BOX_HEIGHT, collapsed: false,
@@ -447,6 +451,8 @@ export interface CanvasContext {
   emptyNote: string;
   /** The caption of a note. */
   noteCaption: string;
+  /** Whether a box draws its display note (a viewer's switch; the notes are always kept). */
+  showNotes: boolean;
   /** The elements a view switch hides: they stay in the layout but are not drawn. */
   hidden: ReadonlySet<string>;
   /** The outer connections at least one connection realises (a boundary box shows "Covered" for each). */
@@ -466,6 +472,7 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
     id: b.elementId,
     label: b.locked ? ctx.lockedLabel(b.unique_code) : b.name,
     caption: b.locked ? undefined : `${b.unique_code} · ${b.element_type_name}`,
+    body: ctx.showNotes && !b.locked && b.display_note ? b.display_note : undefined,
     x: b.x, y: b.y, width: b.width, height: b.height,
     symbolSvg: b.symbol_id && !b.locked ? ctx.symbolSvg(b.symbol_id) : undefined,
     accent: pick(b.color_light, b.color_dark, ctx.theme),

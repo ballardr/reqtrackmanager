@@ -164,6 +164,8 @@ export interface ArchitectureElement extends ProjectScopedRow {
   unique_code: string;
   name: string;
   description: string;
+  /** The short line drawn inside the element's box on a diagram (the description is never drawn). */
+  display_note: string;
   element_type_id: string;
   element_type_name: string;
   symbol_id: string | null;
@@ -192,6 +194,7 @@ export interface ArchitectureElement extends ProjectScopedRow {
 export interface ElementFieldValues {
   name: string;
   description: string;
+  display_note: string;
   element_type_id: string;
   parent_id: string | null;
   folder_id: string | null;
@@ -394,6 +397,7 @@ export interface DiagramViewNode {
   element_id: string;
   unique_code: string;
   name: string;
+  display_note: string;
   locked: boolean;
   shared: boolean;
   hidden: boolean;
@@ -504,6 +508,7 @@ export interface ModelElement {
   id: string;
   unique_code: string;
   name: string;
+  display_note: string;
   locked: boolean;
   shared: boolean;
   status: ArchitectureRecordStatus;

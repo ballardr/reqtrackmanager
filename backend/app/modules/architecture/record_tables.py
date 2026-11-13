@@ -376,6 +376,7 @@ def _element_columns(db: Session, project: Project | Organization) -> list[Recor
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False, required=True),
         RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("display_note", "Display note", lambda t, r: r.display_note, text_parser),
         RecordColumn(
             "type", "Type", lambda t, r: t.element_types.get(r.element_type_id, ""), _type_parser(ELEMENT_TYPES, "element"),
             kind="enum", required=True, choices=tuple(_type_names_ordered(ELEMENT_TYPES, db, project)),
@@ -420,7 +421,8 @@ def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> Arch
         raise RecordCellError(f"A new element cannot be created {RECORD_STATUS_LABEL[status.value]}.")
     payload = _payload(ElementCreate, {
         "name": values.get("name", ""), "description": values.get("description", ""),
-        "element_type_id": values.get("type"), "symbol_id": values.get("symbol"), "parent_id": values.get("parent"),
+        "display_note": values.get("display_note", ""), "element_type_id": values.get("type"),
+        "symbol_id": values.get("symbol"), "parent_id": values.get("parent"),
         "folder_id": values.get("folder"), "owner": values.get("owner"), "activate": status is RecordStatus.ACTIVE,
         "ports": _ports_from_cell(values.get("ports", [])),
     })
@@ -433,8 +435,8 @@ def _create_element(ctx: RecordImportContext, values: Mapping[str, Any]) -> Arch
 def _update_element(ctx: RecordImportContext, element: ArchitectureElement, values: Mapping[str, Any]) -> None:
     fields: dict[str, Any] = {}
     for key, field in (
-        ("name", "name"), ("description", "description"), ("type", "element_type_id"), ("symbol", "symbol_id"),
-        ("parent", "parent_id"), ("folder", "folder_id"), ("owner", "owner"),
+        ("name", "name"), ("description", "description"), ("display_note", "display_note"),
+        ("type", "element_type_id"), ("symbol", "symbol_id"), ("parent", "parent_id"), ("folder", "folder_id"), ("owner", "owner"),
     ):
         if key in values:
             fields[field] = values[key]

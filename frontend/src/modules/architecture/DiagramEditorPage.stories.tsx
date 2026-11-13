@@ -6,7 +6,7 @@ import { buildPlace, openPlacementPicker } from "../../testing/placementsFixture
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement,
-  mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
+  buildViewNode, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
 
@@ -768,6 +768,39 @@ export const ConnectionDetailIsStoredFromTheGearBesideExport: Story = {
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, connection_detail: true }),
     ));
+  },
+};
+
+export const ADisplayNoteIsDrawnInsideItsBoxAndTheGearHidesItWithoutSaving: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: [buildElement({ display_note: "Public entry point." }), ...ELEMENTS.slice(1)],
+      diagramView: buildDiagramView({
+        nodes: [
+          buildViewNode({ display_note: "Public entry point.", height: 160 }),
+          buildViewNode({ placement_id: "pl-2", element_id: "el-2", unique_code: "ELM-002", name: "Orders", x: 300, y: 0 }),
+        ],
+        edges: [],
+      }),
+    });
+    spyOn(api, "put");
+    spyOn(api, "post");
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Public entry point.")).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const notes = await within(document.body).findByRole("switch", { name: "Show notes" });
+    await expect(notes).toBeChecked();
+    await userEvent.click(notes);
+    await waitFor(() => expect(canvas.queryByText("Public entry point.")).not.toBeInTheDocument());
+    // A viewer's choice: nothing is stored and the layout is not made unsaved.
+    await expect(api.put).not.toHaveBeenCalled();
+    await expect(api.post).not.toHaveBeenCalled();
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    // The note is still read in full from the Selection card.
+    await select(canvas, "Gateway");
+    await expect(await canvas.findByText("Public entry point.")).toBeInTheDocument();
   },
 };
 

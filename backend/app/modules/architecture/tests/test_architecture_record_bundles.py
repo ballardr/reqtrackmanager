@@ -62,7 +62,7 @@ def test_elements_connections_tags_places_and_links_round_trip_and_are_numbered_
 
     root = make_element(client, token, project["id"], "Platform", type_name="System", activate=True, owner={"type": "user", "id": user_id})
     board = make_element(
-        client, token, project["id"], "Main board", type_name="Board", parent_id=root["id"],
+        client, token, project["id"], "Main board", type_name="Board", parent_id=root["id"], display_note="Drives the bus.",
         ports=[{"name": "Main", "direction": "in", "connection_type_id": spi}, {"name": "Debug"}],
     )
     local = client.post(f"{base}/elements", json={"name": "Local", "element_type_id": own_type["id"], "parent_id": board["id"]}, headers=h).json()
@@ -99,6 +99,7 @@ def test_elements_connections_tags_places_and_links_round_trip_and_are_numbered_
     assert set(elements) == {"Platform", "Main board", "Local", "Old unit"}
     assert elements["Platform"]["status"] == "active" and elements["Platform"]["owner"]["id"] == user_id
     assert elements["Main board"]["parent_id"] == elements["Platform"]["id"]
+    assert elements["Main board"]["display_note"] == "Drives the bus." and elements["Platform"]["display_note"] == ""
     assert elements["Local"]["parent_id"] == elements["Main board"]["id"] and elements["Local"]["element_type_name"] == "Local block"
     assert [(p["name"], p["direction"], p["connection_type_name"]) for p in elements["Main board"]["ports"]] == [
         ("Main", "in", "SPI"), ("Debug", "both", None),
@@ -199,3 +200,11 @@ def test_a_project_created_from_a_template_receives_elements_as_drafts(client, a
     assert set(elements) == {"Starter A", "Starter B"} and {e["status"] for e in elements.values()} == {"draft"}
     assert elements["Starter B"]["parent_id"] == elements["Starter A"]["id"] and elements["Starter A"]["ports"][0]["name"] == "Out"
     assert connections["Starter link"]["status"] == "draft"
+
+
+def test_a_bundle_note_is_cut_to_the_cap_and_a_bundle_without_the_field_gives_an_empty_note():
+    from app.modules.architecture.enums import DISPLAY_NOTE_MAX
+    from app.modules.architecture.export import _display_note
+
+    assert _display_note({"display_note": "x" * (DISPLAY_NOTE_MAX + 50)}) == "x" * DISPLAY_NOTE_MAX
+    assert _display_note({}) == "" and _display_note({"display_note": None}) == ""

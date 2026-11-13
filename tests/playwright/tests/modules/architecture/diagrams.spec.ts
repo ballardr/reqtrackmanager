@@ -477,6 +477,51 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
+  test("an architect sets a display note on a box, sees it inside the box and hides it for the viewer with Show notes", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchNote", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const gateway = `Gateway ${suffix}`;
+    await createElement(page.request, adminHeaders, project.id, gateway);
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Note ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    const note = `Entry point ${suffix}`;
+
+    await test.step("the note is typed in the element form, apart from the description, and drawn in the box", async () => {
+      await selectNode(page, gateway);
+      await page.getByRole("button", { name: "Edit element" }).click();
+      const dialog = page.getByRole("dialog", { name: `Edit ${gateway}` });
+      await dialog.getByLabel("Description", { exact: true }).fill("Long text that a diagram never draws.");
+      await dialog.getByLabel("Display note", { exact: true }).fill(note);
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Element updated.")).toBeVisible();
+      const box = page.getByLabel(`${gateway}, node`, { exact: true });
+      await expect(box.getByText(note)).toBeVisible();
+      await expect(box.getByText("Long text that a diagram never draws.")).toHaveCount(0);
+    });
+
+    await test.step("the Selection card shows the note and the description in full", async () => {
+      await selectNode(page, gateway);
+      const card = page.getByRole("region", { name: "Selection" });
+      await expect(card.getByText(note)).toBeVisible();
+      await expect(card.getByText("Long text that a diagram never draws.")).toBeVisible();
+    });
+
+    await test.step("Show notes in the gear hides the note on this screen only, and the choice is in the address", async () => {
+      await page.getByRole("button", { name: /^Diagram settings/ }).click();
+      await page.getByRole("switch", { name: "Show notes" }).click();
+      await expect(page).toHaveURL(/notes=0/);
+      await expect(page.getByLabel(`${gateway}, node`, { exact: true }).getByText(note)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await page.reload();
+      await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
+      await expect(page.getByLabel(`${gateway}, node`, { exact: true }).getByText(note)).toHaveCount(0);
+    });
+  });
+
   test("an architect edits a connection from the diagram and the line is redrawn", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchConEdit", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

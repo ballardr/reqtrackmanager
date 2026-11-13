@@ -257,3 +257,25 @@ def test_the_boundaries_migration_adds_both_tables_and_reverses_cleanly(client, 
         assert _table_exists(table)
         with engine.connect() as conn:
             assert conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+
+
+def test_the_display_note_migration_adds_the_column_with_an_empty_default_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0181 drops `display_note`; upgrading restores it empty for every existing element."""
+    from app.modules.architecture.tests._helpers import make_element, setup
+
+    _org, project, token = setup(client, admin_token, "Arch note migration")
+    element = make_element(client, token, project["id"], "Kept", display_note="Dropped with the column.")
+    command.downgrade(build_alembic_config(), "0181")
+    try:
+        with engine.connect() as conn:
+            columns = {r[0] for r in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_elements'"
+            ))}
+            assert "display_note" not in columns
+            assert conn.execute(text("SELECT count(*) FROM architecture_elements WHERE id = :i"), {"i": element["id"]}).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        assert conn.execute(
+            text("SELECT display_note FROM architecture_elements WHERE id = :i"), {"i": element["id"]},
+        ).scalar_one() == ""

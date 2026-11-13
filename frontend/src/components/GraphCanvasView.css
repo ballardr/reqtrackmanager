@@ -134,6 +134,31 @@
   color: var(--color-text-muted);
 }
 
+/* A node with body text lets its text block fill the box, so the body gets whatever height the label and caption leave. */
+.graph-node-text-body {
+  flex: 1 1 0;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.graph-node-body {
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  color: var(--color-text-muted);
+}
+
+.graph-node-body > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .graph-node-label {
   max-width: 100%;
   overflow: hidden;

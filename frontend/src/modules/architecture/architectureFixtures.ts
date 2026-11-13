@@ -49,7 +49,7 @@ export function buildPort(overrides: Partial<Port> = {}): Port {
 export function buildElement(overrides: Partial<ArchitectureElement> = {}): ArchitectureElement {
   return {
     id: "el-1", project_id: PROJECT_ID, organization_id: null, shared: false, unique_code: "ELM-001", name: "Gateway",
-    description: "Terminates client traffic.", element_type_id: "et-1", element_type_name: "Service", symbol_id: null,
+    description: "Terminates client traffic.", display_note: "", element_type_id: "et-1", element_type_name: "Service", symbol_id: null,
     effective_symbol_id: null, parent_id: null, folder_id: null, folder_path: null, owner: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 1, creator_id: "user-1",
     is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z",
     child_count: 0, connection_count: 1, ports: [buildPort()], ...overrides,
@@ -80,7 +80,7 @@ export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): Arch
 
 export function buildViewNode(overrides: Partial<DiagramViewNode> = {}): DiagramViewNode {
   return {
-    placement_id: "pl-1", element_id: "el-1", unique_code: "ELM-001", name: "Gateway", locked: false, shared: false, hidden: false,
+    placement_id: "pl-1", element_id: "el-1", unique_code: "ELM-001", name: "Gateway", display_note: "", locked: false, shared: false, hidden: false,
     status: "active", parent_id: null, element_type_id: "et-1", element_type_name: "Service", shape: "rounded",
     color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, ports: [], x: 0, y: 0, width: 160, height: 80,
     collapsed: false, internal_connection_ids: [], ...overrides,
@@ -121,7 +121,8 @@ export function buildDiagramView(overrides: Partial<DiagramView> = {}): DiagramV
 /** An element as the diagram model lists it. */
 export function buildModelElement(overrides: Partial<ModelElement> = {}): ModelElement {
   return {
-    id: "el-1", unique_code: "ELM-001", name: "Gateway", locked: false, shared: false, status: "active", element_type_id: "et-1",
+    id: "el-1", unique_code: "ELM-001", name: "Gateway", display_note: "", locked: false, shared: false, status: "active",
+    element_type_id: "et-1",
     element_type_name: "Service", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, ...overrides,
   };
 }

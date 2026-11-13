@@ -15,14 +15,16 @@ export function blankElementValues(
   elementTypeId = "", parentId: string | null = null, folderId: string | null = null,
 ): ElementFieldValues {
   return {
-    name: "", description: "", element_type_id: elementTypeId, parent_id: parentId, folder_id: folderId, owner: null, symbol_id: null,
+    name: "", description: "", display_note: "", element_type_id: elementTypeId, parent_id: parentId, folder_id: folderId,
+    owner: null, symbol_id: null,
   };
 }
 
 /** The editable fields of an element, as the form holds them. */
 export function valuesFromElement(element: ArchitectureElement): ElementFieldValues {
   return {
-    name: element.name, description: element.description, element_type_id: element.element_type_id,
+    name: element.name, description: element.description, display_note: element.display_note,
+    element_type_id: element.element_type_id,
     parent_id: element.parent_id, folder_id: element.folder_id, owner: principalRef(element.owner), symbol_id: element.symbol_id,
   };
 }

@@ -187,6 +187,38 @@ export const HostileContent: Story = {
   },
 };
 
+const BODY_TEXT = "Buffers readings from the field sensors.\nForwards them to the cloud every hour.\nRetries for a day when offline.";
+
+const BODY_NODES: GraphCanvasNode[] = [
+  { id: "tall", label: "Gateway", caption: "ELM-001 · Service", body: BODY_TEXT, x: 0, y: 0, width: 200, height: 160 },
+  { id: "short", label: "Cloud", body: BODY_TEXT, x: 300, y: 0, width: 160, height: 40 },
+  { id: "plain", label: "Sensor", x: 560, y: 0 },
+  { id: "hostile", label: "Board", body: '<img src=x onerror="window.__graphXss=1"><b>bold</b>', x: 0, y: 220, width: 200, height: 120 },
+];
+
+/** Body text sits under the caption, keeps its line breaks, is clipped with an ellipsis to the lines the box has room for
+ * (none in a box that is too short), and is text only. */
+export const BodyText: Story = {
+  render: () => <GraphCanvas nodes={BODY_NODES} edges={[]} ariaLabel="Notes" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tall = await canvas.findByLabelText("Gateway, node");
+    await waitFor(() => expect(tall.querySelector(".graph-node-body > span")).not.toBeNull());
+    const shown = tall.querySelector(".graph-node-body > span") as HTMLElement;
+    expect(shown.textContent).toBe(BODY_TEXT);
+    expect(shown.style.getPropertyValue("-webkit-line-clamp") || shown.style.webkitLineClamp).not.toBe("");
+    const short = await canvas.findByLabelText("Cloud, node");
+    expect(short.querySelector(".graph-node-body > span")).toBeNull();
+    const plain = await canvas.findByLabelText("Sensor, node");
+    expect(plain.querySelector(".graph-node-body")).toBeNull();
+    const hostile = await canvas.findByLabelText("Board, node");
+    await waitFor(() => expect(hostile.querySelector(".graph-node-body > span")).not.toBeNull());
+    expect(hostile.querySelectorAll("b, img.graph-node-body")).toHaveLength(0);
+    expect(hostile.querySelector(".graph-node-body")?.textContent).toContain("<b>bold</b>");
+    expect((window as unknown as { __graphXss?: number }).__graphXss).toBeUndefined();
+  },
+};
+
 /** The list view: the same nodes and connections as two tables, for anyone who cannot use a canvas. */
 export const ListView: Story = {
   render: () => <Host initialView="list" />,

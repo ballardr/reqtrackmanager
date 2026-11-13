@@ -2527,12 +2527,12 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
 
     def element(
         name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = (), symbol: str | None = None,
-        folder: str | None = None,
+        folder: str | None = None, note: str = "",
     ) -> dict:
         r = httpx.post(
             f"{base}/elements", headers=headers, timeout=30,
             json={
-                "name": name, "description": description, "element_type_id": element_types[type_name],
+                "name": name, "description": description, "display_note": note, "element_type_id": element_types[type_name],
                 "parent_id": parent, "folder_id": folder, "activate": True, "symbol_id": symbol,
                 "ports": [{"name": n, "direction": d, "connection_type_id": connection_types.get(t)} for n, d, t in ports],
             },
@@ -2566,16 +2566,20 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     fc = element(
         "Flight controller", "Board", "Runs the control loop and the failsafes.", parent=airframe["id"],
         ports=(("IMU bus", "both", "SPI"), ("GPS link", "in", "UART"), ("Telemetry link", "out", "UART")), folder=boards,
+        note="Control loop and failsafes",
     )
-    gps = element("GPS receiver", "Sensor", "Position and time.", parent=airframe["id"], ports=(("UART out", "out", "UART"),), folder=sensors)
-    imu = element("IMU", "Sensor", "Attitude and acceleration.", parent=airframe["id"], ports=(("SPI", "both", "SPI"),), folder=sensors)
+    gps = element("GPS receiver", "Sensor", "Position and time.", parent=airframe["id"], ports=(("UART out", "out", "UART"),), folder=sensors,
+                note="Position and time")
+    imu = element("IMU", "Sensor", "Attitude and acceleration.", parent=airframe["id"], ports=(("SPI", "both", "SPI"),), folder=sensors,
+                note="Attitude and acceleration")
     radio = element(
         "Telemetry radio", "Board", "Link to the ground station.", parent=airframe["id"],
         ports=(("UART in", "in", "UART"), ("Downlink", "out", "Ethernet")), folder=boards,
+        note="Link to the ground station",
     )
     ground = element("Ground station service", "Service", "Receives telemetry and sends missions.", parent=drone["id"],
                      ports=(("Telemetry API", "in", "REST API"),),
-                     folder=software)
+                     folder=software, note="Receives telemetry, sends missions")
     connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz", folder=buses)
     connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud", folder=buses)
     # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.

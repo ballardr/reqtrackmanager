@@ -302,6 +302,19 @@ def list_connections(
 # --- Shared checks ---------------------------------------------------------
 
 
+def _clean_note(value: str) -> str:
+    """A display note as stored: line endings normalised to a line feed and surrounding blank space removed. The text is
+    plain: it is drawn as text everywhere and never read as markup.
+
+    Args:
+        value: The note as given (already at most `DISPLAY_NOTE_MAX` characters by the schema).
+
+    Returns:
+        The note to store.
+    """
+    return value.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
 def _check_version(record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram, version: int) -> None:
     """Raises `VersionConflict` unless `version` is the record's current one."""
     if record.version != version:
@@ -502,7 +515,8 @@ def create_element(db: Session, owner: ElementOwner, actor: User, payload: Eleme
     element = ArchitectureElement(
         **owner.columns,
         unique_code=generate_unique_code(db, owner.code_owner, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
-        name=payload.name.strip(), description=payload.description, element_type_id=payload.element_type_id,
+        name=payload.name.strip(), description=payload.description, display_note=_clean_note(payload.display_note),
+        element_type_id=payload.element_type_id,
         parent_id=payload.parent_id, symbol_id=payload.symbol_id, folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value, version=1, creator_id=actor.id,
         is_archived=False, **principal_columns("owner", payload.owner),
@@ -538,6 +552,8 @@ def update_element(
         changes["name"] = payload.name.strip()
     if payload.description is not None and payload.description != element.description:
         changes["description"] = payload.description
+    if payload.display_note is not None and _clean_note(payload.display_note) != element.display_note:
+        changes["display_note"] = _clean_note(payload.display_note)
     if payload.element_type_id is not None and payload.element_type_id != element.element_type_id:
         _usable_element_type(db, owner, payload.element_type_id)
         changes["element_type_id"] = payload.element_type_id
@@ -999,7 +1015,7 @@ def element_outs(
         ElementOut(
             id=e.id, project_id=e.project_id, organization_id=e.organization_id,
             shared=viewer_project_id is not None and e.project_id != viewer_project_id,
-            unique_code=e.unique_code, name=e.name, description=e.description,
+            unique_code=e.unique_code, name=e.name, description=e.description, display_note=e.display_note,
             element_type_id=e.element_type_id,
             element_type_name=element_types[e.element_type_id].name if e.element_type_id in element_types else "",
             symbol_id=e.symbol_id,

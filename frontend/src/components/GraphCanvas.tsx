@@ -52,6 +52,11 @@ export interface GraphCanvasNode {
   dashed?: boolean;
   /** A short second line under the label (a type name, a code); text only. */
   caption?: string;
+  /**
+   * Longer plain text under the caption (a note about what the node is); line breaks are kept, it never takes markup, and
+   * it is clipped with an ellipsis to the lines the box has room for, so a resize shows more or less of it.
+   */
+  body?: string;
   /** The outline; defaults to `rectangle`. */
   outline?: GraphNodeOutline;
 }

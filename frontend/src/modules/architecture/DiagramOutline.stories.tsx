@@ -9,7 +9,9 @@ import { connectionRows, outlineSize, outlineTree } from "./diagramOutlineModel"
 import { exportFileName, toggleStates } from "./diagramExport";
 
 const GATEWAY = boxFromNode(buildViewNode());
-const API = boxFromNode(buildViewNode({ element_id: "el-5", unique_code: "ELM-005", name: "Orders API", parent_id: "el-2" }));
+const API = boxFromNode(buildViewNode({
+  element_id: "el-5", unique_code: "ELM-005", name: "Orders API", parent_id: "el-2", display_note: "Public order entry point.",
+}));
 const ORDERS = boxFromNode(buildViewNode({ element_id: "el-2", unique_code: "ELM-002", name: "Orders" }));
 const FIREWALL = boxFromNode(buildViewNode({ element_id: "el-3", unique_code: "ELM-003", name: "Firewall" }));
 const LOCKED = boxFromNode(buildViewNode({ element_id: "el-9", unique_code: "ELM-009", name: "", locked: true }));
@@ -22,7 +24,8 @@ const meta: Meta<typeof DiagramOutline> = {
   args: {
     boxes: [GATEWAY, ORDERS, API, FIREWALL], notes: [], boundaries: [], covered: new Set<string>(),
     edges: [buildViewEdge({ target_element_id: "el-5" })], parents: PARENTS,
-    hidden: new Set<string>(), selection: null, onSelect: fn(),
+    hidden: new Set<string>(), descriptions: new Map([["el-5", "Accepts orders over REST and queues them."]]),
+    selection: null, onSelect: fn(),
   },
 };
 export default meta;
@@ -49,6 +52,8 @@ export const TheElementsCanBeReadAsATableAndSelectedFromIt: Story = {
     const table = await outline.findByRole("table", { name: "Elements" });
     const row = within(within(table).getByRole("button", { name: /^ELM-005 Orders API/ }).closest("tr")!);
     await expect(row.getByText("ELM-002 Orders")).toBeInTheDocument(); // its parent among the placed elements
+    await expect(row.getByText("Public order entry point.")).toBeInTheDocument();
+    await expect(row.getByText("Accepts orders over REST and queues them.")).toBeInTheDocument();
     await userEvent.click(within(table).getByRole("button", { name: /^ELM-003 Firewall/ }));
     await expect(args.onSelect).toHaveBeenCalledWith({ kind: "node", id: "el-3" });
   },

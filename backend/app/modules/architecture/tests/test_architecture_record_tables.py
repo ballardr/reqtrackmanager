@@ -177,3 +177,25 @@ def test_the_symbol_column_exports_a_name_and_imports_a_name_or_clears_it(client
     listed = _element_list(client, token, project["id"])
     symbols = {s["name"]: s["id"] for s in client.get(f"{project_base(project['id'])}/symbols", headers=h).json()}
     assert listed["Plain"]["symbol_id"] == symbols["Cloud"] and listed["Station"]["symbol_id"] is None
+
+
+def test_the_display_note_is_a_column_that_exports_creates_and_updates_apart_from_the_description(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch tables note")
+    element = make_element(client, token, project["id"], "Gateway", description="Long text.", display_note="Short line.")
+    rows = _rows(client.get(f"{_tier(project, ELEMENT)}/export", headers=auth_headers(token)))
+    assert rows[0]["display_note"] == "Short line." and rows[0]["description"] == "Long text."
+    exported = client.get(f"{_tier(project, ELEMENT)}/export", headers=auth_headers(token)).content.decode("utf-8-sig")
+    result = _import(client, token, _tier(project, ELEMENT), exported)
+    assert (result["updated"], result["unchanged"], result["failed"]) == (0, 1, 0)
+
+    result = _import(client, token, _tier(project, ELEMENT), _csv(["code", "display_note"], [element["unique_code"], "Edited line."]))
+    assert (result["updated"], result["failed"]) == (1, 0), result
+    text = _csv(
+        ["code", "name", "type", "display_note"],
+        ["", "Created", "Component", "From a file."], ["", "Too long", "Component", "x" * 501],
+    )
+    result = _import(client, token, _tier(project, ELEMENT), text)
+    assert (result["created"], result["failed"]) == (1, 1), result
+    current = _element_list(client, token, project["id"])
+    assert current["Gateway"]["display_note"] == "Edited line." and current["Gateway"]["description"] == "Long text."
+    assert current["Created"]["display_note"] == "From a file."

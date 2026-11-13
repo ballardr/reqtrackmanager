@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import enum
 
+#: The longest display note an element may carry (characters): the line drawn inside its box on a diagram.
+DISPLAY_NOTE_MAX = 500
+
 
 class Domain(str, enum.Enum):
     """Which kind of architecture a type belongs to; `ANY` suits both."""

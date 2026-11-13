@@ -40,6 +40,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         ),
         fields=(
             SearchField("description", "Description", ArchitectureElement.description),
+            SearchField("display_note", "Display note", ArchitectureElement.display_note),
             SearchField("ports", "Port names", select(func.string_agg(ArchitecturePort.name, " ")).where(
                 ArchitecturePort.element_id == ArchitectureElement.id,
             ).scalar_subquery()),

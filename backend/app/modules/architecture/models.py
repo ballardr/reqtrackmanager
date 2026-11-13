@@ -53,6 +53,7 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX
 
 
 class OwnedNamedMixin(UUIDPKMixin, TimestampMixin):
@@ -298,6 +299,8 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
         organization_id: The owning organisation, or `None` for a project-owned element.
         unique_code: Identifier unique within its owner (`ELM-001`), from `services.sequences.generate_unique_code`.
         name / description: Display name and free text.
+        display_note: A short plain-text line drawn inside the element's box on every diagram that places it (at most
+            `DISPLAY_NOTE_MAX` characters); the `description` is never drawn.
         element_type_id: The element's type row, whichever tier owns it. No cascade (checked at the end of the
             statement, so a project's deletion can remove its types and elements together): the service never
             deletes a type that is in use.
@@ -332,6 +335,7 @@ class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
     unique_code: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
+    display_note: Mapped[str] = mapped_column(String(DISPLAY_NOTE_MAX), default="", server_default="")
     element_type_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_element_types.id"), index=True
     )

@@ -10,6 +10,9 @@
 export const ARCHITECTURE_HELP = {
   elementType: "What kind of part this is (a service, a board, a datastore). It sets how the element is drawn and which parts it is grouped with.",
   elementParent: "The element this one is a part of. Parents form a tree up to 12 levels deep; a diagram can open a parent to show its children.",
+  elementDescription: "What the element is and does, for readers of its record, reports and search. It is not drawn on a diagram; use the display note for the line a diagram shows.",
+  elementDisplayNote: "A short line drawn inside the element's box on every diagram that places it, under its name. Keep it brief (up to 500 characters): the box clips what does not fit, and a larger box shows more of it.",
+  diagramShowNotes: "Shows or hides the display note inside each box on this screen. The choice is not saved and does not change what is exported.",
   elementOwner: "The person or group accountable for this part of the product.",
   elementSymbol: "A drawing shown instead of the type's. Leave it empty to use the type's own symbol or shape.",
   stateMenu: "Moves the record to another state. The menu offers only the moves the server allows from the current state.\nDraft: being written, not yet part of the plan.\nProposed: put forward for consideration, not yet agreed.\nActive: in force.\nRetired: no longer in force; it can be reactivated.\nRejected: considered and not adopted; it can be reopened as a draft.",

@@ -190,6 +190,9 @@ export function ElementDetailPage() {
         <DetailCard>
           {element.description && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{element.description}</p>}
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
+            <RecordFieldGroup help={ARCHITECTURE_HELP.elementDisplayNote} label="Display note">
+              {element.display_note ? <span style={{ whiteSpace: "pre-wrap" }}>{element.display_note}</span> : <span className="text-muted">None</span>}
+            </RecordFieldGroup>
             <RecordFieldGroup help={ARCHITECTURE_HELP.elementParent} label="Parent">
               {parent ? <Link to={`/projects/${projectId}/modules/architecture/elements/${parent.id}`}>{parent.name}</Link> : <span className="text-muted">{element.parent_id ? "Not visible" : "Top level"}</span>}
             </RecordFieldGroup>

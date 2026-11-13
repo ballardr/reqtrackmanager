@@ -51,7 +51,7 @@ def _create_elements(api: Any, project_id: str, start: int, count: int) -> list[
     ids: list[str] = []
     for i in range(count):
         body: dict[str, Any] = {
-            "name": f"Probe element {start + i}", "description": "A part of the probe system.",
+            "name": f"Probe element {start + i}", "description": "A part of the probe system.", "display_note": "Probe note.",
             "element_type_id": element_type, "folder_id": folder_id,
             "ports": [{"name": "Main", "direction": "both", "connection_type_id": connection_type}],
         }

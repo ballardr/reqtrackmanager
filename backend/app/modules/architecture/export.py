@@ -67,7 +67,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
-from app.modules.architecture.enums import AttachPoint, PortDirection, RecordStatus
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX, AttachPoint, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureCollection,
     ArchitectureCollectionMember,
@@ -331,7 +331,7 @@ def _org_element_json(db: Session, org: Organization) -> list[dict[str, Any]]:
     folder_paths = folder_rules.paths_for(db, (e.folder_id for e in elements))
     return [
         {
-            "unique_code": e.unique_code, "name": e.name, "description": e.description,
+            "unique_code": e.unique_code, "name": e.name, "description": e.description, "display_note": e.display_note,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
             "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None, "folder": folder_paths.get(e.folder_id) if e.folder_id else None,
             "owner": principal_to_bundle(db, e.owner_type, e.owner_id), "status": e.status,
@@ -451,7 +451,8 @@ def import_org_data(
         element = ArchitectureElement(
             organization_id=org.id,
             unique_code=generate_unique_code(db, org, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
-            name=entry["name"], description=entry.get("description", ""), element_type_id=element_type.id, parent_id=None,
+            name=entry["name"], description=entry.get("description", ""), display_note=_display_note(entry),
+            element_type_id=element_type.id, parent_id=None,
             symbol_id=element_symbol_for(entry.get("symbol")), folder_id=folder_importer.ensure("element", entry.get("folder")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
@@ -523,6 +524,12 @@ def _import_collections(
 def _stamp(value: datetime | None) -> str | None:
     """An instant as ISO 8601 (it is already UTC), or `None`."""
     return value.isoformat() if value else None
+
+
+def _display_note(entry: dict[str, Any]) -> str:
+    """The display note a bundle element entry names, cut to the cap (a bundle is not trusted to respect it; a bundle
+    from before the field carries none)."""
+    return str(entry.get("display_note") or "")[:DISPLAY_NOTE_MAX]
 
 
 def _instant(value: str | None) -> datetime | None:
@@ -651,7 +658,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
 
     data[ELEMENTS_KEY] = [
         {
-            "unique_code": e.unique_code, "name": e.name, "description": e.description,
+            "unique_code": e.unique_code, "name": e.name, "description": e.description, "display_note": e.display_note,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
             "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None,
             "folder": folder_paths.get(e.folder_id) if e.folder_id else None,
@@ -1120,7 +1127,8 @@ def import_project_data(
         archived = bool(entry.get("is_archived"))
         element = ArchitectureElement(
             project_id=project.id, unique_code=generate_unique_code(db, project, ELEMENT_ARTEFACT_TYPE, ELEMENT_CODE_PREFIX),
-            name=entry["name"], description=entry.get("description", ""), element_type_id=element_type.id, parent_id=None,
+            name=entry["name"], description=entry.get("description", ""), display_note=_display_note(entry),
+            element_type_id=element_type.id, parent_id=None,
             symbol_id=element_symbol_for(entry.get("symbol")), folder_id=folder_importer.ensure("element", entry.get("folder")),
             status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),

@@ -160,7 +160,7 @@ def _model_element(
     kind = element_types.get(element.element_type_id)
     symbol_id = _drawn_symbol(element, element_types)
     return ModelElement(
-        id=element.id, unique_code=element.unique_code, name=element.name, locked=False,
+        id=element.id, unique_code=element.unique_code, name=element.name, display_note=element.display_note, locked=False,
         shared=element.project_id != viewer.project_id, status=element.status, element_type_id=element.element_type_id,
         element_type_name=kind.name if kind is not None else "",
         color_light=kind.color_light if kind is not None else None,

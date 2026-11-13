@@ -53,11 +53,12 @@ function noteSummary(text: string): string {
  * @param edges The lines resolved for the current view.
  * @param parents `{element id: parent id}` for the placed elements and their ancestors.
  * @param hidden The placed elements a view switch hides.
+ * @param descriptions `{element id: description}` for the elements that have one (the table's Description column).
  * @param selection What is selected on the canvas, or null.
  * @param onSelect Selects an element, note or line.
  */
 export function DiagramOutline({
-  boxes, notes, boundaries, covered, edges, parents, hidden, selection, onSelect,
+  boxes, notes, boundaries, covered, edges, parents, hidden, descriptions, selection, onSelect,
 }: {
   boxes: EditorBox[];
   notes: EditorNote[];
@@ -66,6 +67,7 @@ export function DiagramOutline({
   edges: DiagramViewEdge[];
   parents: Record<string, string | null>;
   hidden: ReadonlySet<string>;
+  descriptions: ReadonlyMap<string, string>;
   selection: GraphCanvasSelection | null;
   onSelect: (selection: GraphCanvasSelection) => void;
 }) {
@@ -109,6 +111,8 @@ export function DiagramOutline({
                     <th scope="col">Element</th>
                     <th scope="col">Type</th>
                     <th scope="col">Parent</th>
+                    <th scope="col">Display note</th>
+                    <th scope="col">Description</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -124,6 +128,8 @@ export function DiagramOutline({
                       </td>
                       <td>{row.box.locked ? "—" : row.box.element_type_name}</td>
                       <td>{row.parent ?? "—"}</td>
+                      <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : row.box.display_note || "—"}</td>
+                      <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : descriptions.get(row.id) || "—"}</td>
                     </tr>
                   ))}
                 </tbody>

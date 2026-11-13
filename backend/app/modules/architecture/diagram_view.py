@@ -336,7 +336,7 @@ def _nodes(
         kind = types.get(element.element_type_id)
         symbol_id = element.symbol_id or (kind.symbol_id if kind is not None else None)
         nodes.append(ViewNode(
-            placement_id=p.id, element_id=element.id, unique_code=element.unique_code, name=element.name, locked=False,
+            placement_id=p.id, element_id=element.id, unique_code=element.unique_code, name=element.name, display_note=element.display_note, locked=False,
             shared=element.project_id != viewer.project_id, hidden=element.id in resolution.hidden_placed,
             status=element.status, parent_id=element.parent_id, element_type_id=element.element_type_id,
             element_type_name=kind.name if kind is not None else "",

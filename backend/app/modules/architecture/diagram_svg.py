@@ -85,6 +85,19 @@ def _wrap(value: str, width: int, lines: int) -> list[str]:
     return out
 
 
+def _note_lines(note: str, width: int, lines: int) -> list[str]:
+    """A display note as at most `lines` lines of about `width` characters: each paragraph is word-wrapped, and when the
+    note does not fit the last line ends with an ellipsis."""
+    out: list[str] = []
+    for paragraph in note.splitlines():
+        out.extend(_wrap(paragraph, width, 1000))
+    if len(out) > lines:
+        out = out[: max(lines, 0)]
+        if out:
+            out[-1] = out[-1][: max(width - 1, 1)].rstrip() + "…"
+    return out
+
+
 def _symbol_group(markup: str, x: float, y: float, size: float) -> str | None:
     """The sanitised symbol fitted into a `size` square at `(x, y)`, or `None` if it has no usable root element."""
     match = _ROOT.search(markup)
@@ -164,14 +177,22 @@ def _node(node: ViewNode, symbols: dict[uuid.UUID, str]) -> str:
         text_y = y + 6 + size + 12
     else:
         parts.append(_shape(node.shape, x, y, w, h, color))
-        text_y = y + h / 2 - 4 if node.name else y + h / 2
+        text_y = y + 16 if node.display_note else (y + h / 2 - 4 if node.name else y + h / 2)
     parts.append(
         f'<text x="{x + w / 2:.1f}" y="{text_y:.1f}" text-anchor="middle" font-size="10" fill="#64748B">{_text(node.unique_code)}</text>'
     )
-    for i, line in enumerate(_wrap(node.name, max(int(w / 7), 6), 2)):
+    name_lines = _wrap(node.name, max(int(w / 7), 6), 2)
+    for i, line in enumerate(name_lines):
         parts.append(
             f'<text x="{x + w / 2:.1f}" y="{text_y + 13 + i * 13:.1f}" text-anchor="middle" font-size="12" font-weight="600" '
             f'fill="{_TEXT_COLOR}">{_text(line)}</text>'
+        )
+    note_top = text_y + 13 + len(name_lines) * 13 + 2
+    room = int((y + h - 10 - note_top) // 12) + 1
+    for i, line in enumerate(_note_lines(node.display_note, max(int(w / 6), 6), room)):
+        parts.append(
+            f'<text x="{x + w / 2:.1f}" y="{note_top + i * 12:.1f}" text-anchor="middle" font-size="10" '
+            f'fill="#475569">{_text(line)}</text>'
         )
     for i, port in enumerate(node.ports[:12]):
         px = x + (i + 1) * w / (min(len(node.ports), 12) + 1)

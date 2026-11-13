@@ -54,6 +54,8 @@ def _text(value: str) -> str:
 def _node(key: str, node: ViewNode) -> str:
     """One node line."""
     label = _text(node.unique_code) if node.locked else f"{_text(node.unique_code)}<br/>{_text(node.name)}"
+    if not node.locked and node.display_note:
+        label += "".join(f"<br/>{_text(line)}" for line in node.display_note.splitlines() if line.strip())
     opening, closing = _SHAPES.get(node.shape, ("[", "]"))
     return f'    {key}{opening}"{label}"{closing}'
 

@@ -7,7 +7,7 @@ import { buildConnection, buildElement, mockArchitectureReads, PROJECT_ID } from
 import { ElementDetailPage } from "./ElementDetailPage";
 
 const PARENT = buildElement({ id: "el-0", unique_code: "ELM-000", name: "Platform", ports: [] });
-const ELEMENT = buildElement({ parent_id: "el-0", version: 3 });
+const ELEMENT = buildElement({ parent_id: "el-0", version: 3, display_note: "Public entry point." });
 const CHILD = buildElement({ id: "el-2", unique_code: "ELM-002", name: "Rate limiter", parent_id: "el-1", ports: [] });
 
 const meta: Meta<typeof ElementDetailPage> = {
@@ -41,6 +41,9 @@ export const ShowsPortsChildrenConnectionsAndSharing: Story = {
     await expect(canvas.getByRole("link", { name: /CON-001 Client traffic/ })).toBeInTheDocument();
     await expect(await canvas.findByText("Shared infrastructure · 1 grant")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Change state" })).toBeInTheDocument();
+    // The display note (drawn in the box) is shown apart from the description.
+    await expect(canvas.getByText("Public entry point.")).toBeInTheDocument();
+    await expect(canvas.getByText("Terminates client traffic.")).toBeInTheDocument();
   },
 };
 

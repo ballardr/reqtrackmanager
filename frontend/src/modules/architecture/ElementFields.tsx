@@ -2,8 +2,8 @@
  * Module: modules/architecture/ElementFields
  *
  * The fields of an element that both the create and the edit form take (name, type, parent, folder, owner, symbol,
- * description), as one group so a field added later reaches both. The element type, parent and symbol choices belong
- * to the element's owner (a project or the organisation), so the caller supplies them.
+ * description, display note), as one group so a field added later reaches both. The element type, parent and symbol
+ * choices belong to the element's owner (a project or the organisation), so the caller supplies them.
  */
 import type { OrgUser } from "../../api/types";
 import { savedPrincipalDisplay } from "../../api/types";
@@ -72,7 +72,16 @@ export function ElementFields({
         onChange={(next) => onChange("symbol_id", next)} urlFor={symbolUrl} emptyLabel="Use the type's symbol"
       />
       <FormGridFull>
-        <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
+        <TextAreaField
+          help={ARCHITECTURE_HELP.elementDescription} label="Description" value={values.description}
+          onChange={(value) => onChange("description", value)}
+        />
+      </FormGridFull>
+      <FormGridFull>
+        <TextAreaField
+          help={ARCHITECTURE_HELP.elementDisplayNote} label="Display note" value={values.display_note}
+          onChange={(value) => onChange("display_note", value)} hint="Up to 500 characters" inputProps={{ maxLength: 500 }}
+        />
       </FormGridFull>
     </>
   );

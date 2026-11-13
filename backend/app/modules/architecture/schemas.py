@@ -22,6 +22,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.modules.architecture.enums import (
+    DISPLAY_NOTE_MAX,
     AttachPoint,
     Domain,
     ElementShape,
@@ -197,6 +198,7 @@ class ElementCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=20000)
+    display_note: str = Field(default="", max_length=DISPLAY_NOTE_MAX)
     element_type_id: UUID
     parent_id: UUID | None = None
     owner: PrincipalRef | None = None
@@ -213,6 +215,7 @@ class ElementUpdate(BaseModel):
     version: int
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=20000)
+    display_note: str | None = Field(default=None, max_length=DISPLAY_NOTE_MAX)
     element_type_id: UUID | None = None
     parent_id: UUID | None = None
     owner: PrincipalRef | None = None
@@ -241,6 +244,7 @@ class ElementOut(ProjectScopedRow):
     unique_code: str
     name: str
     description: str
+    display_note: str
     element_type_id: UUID
     element_type_name: str
     symbol_id: UUID | None
@@ -665,6 +669,7 @@ class ViewNode(BaseModel):
     element_id: UUID
     unique_code: str
     name: str
+    display_note: str = ""
     locked: bool
     shared: bool
     hidden: bool
@@ -767,6 +772,7 @@ class ModelElement(BaseModel):
     id: UUID
     unique_code: str
     name: str
+    display_note: str = ""
     locked: bool
     shared: bool
     status: str
