@@ -477,6 +477,53 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
+  test("an architect edits a connection from the diagram and the line is redrawn", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchConEdit", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const gateway = `Gateway ${suffix}`;
+    const orders = `Orders ${suffix}`;
+    const gatewayId = await createElement(page.request, adminHeaders, project.id, gateway);
+    const ordersId = await createElement(page.request, adminHeaders, project.id, orders);
+    const connectionTypes = await (await page.request.get(`${base}/connection-types`, { headers: adminHeaders })).json();
+    const made = await page.request.post(`${base}/connections`, {
+      headers: adminHeaders,
+      data: { connection_type_id: connectionTypes[0].id, source_element_id: gatewayId, target_element_id: ordersId, activate: true },
+    });
+    expect(made.ok(), await made.text()).toBeTruthy();
+    const connection = await made.json();
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Connections ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+
+    const line = page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true });
+    await expect(line).toBeAttached();
+    await line.focus();
+    await page.keyboard.press("Enter");
+    const card = page.getByRole("region", { name: "Selection" });
+
+    await test.step("Edit opens the connection form over the diagram and the protocol is stored", async () => {
+      await card.getByRole("button", { name: `Edit ${connection.unique_code}` }).click();
+      const dialog = page.getByRole("dialog", { name: /^Edit / });
+      await dialog.getByLabel("Protocol", { exact: true }).fill("MQTT");
+      const stored = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes(`/connections/${connection.id}`) && r.ok());
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await stored;
+      await expect(page.getByText("Connection updated.")).toBeVisible();
+      await expect(dialog).toBeHidden();
+      await expect(page).toHaveURL(new RegExp(`/diagrams/${diagram.id}`));
+    });
+
+    await test.step("the Selection card shows the new protocol", async () => {
+      await expect(line).toBeAttached();
+      await line.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("region", { name: "Selection" }).getByText(/MQTT/)).toBeVisible();
+    });
+  });
+
   test("an architect double-clicks a box to work inside it and adds a sub-component there", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchInside", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

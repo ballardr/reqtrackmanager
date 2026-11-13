@@ -837,6 +837,45 @@ export const EditingABoxOpensTheElementFormAndKeepsPendingLayoutEdits: Story = {
   },
 };
 
+export const EditingALineConnectionOpensTheConnectionFormAndKeepsPendingLayoutEdits: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildConnection({ version: 2, protocol: "HTTP/2" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    const panel = await selectLine(canvas);
+    await userEvent.click(panel.getByRole("button", { name: "Edit CON-001" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByRole("heading", { name: "Edit Client traffic" })).toBeInTheDocument();
+    const protocol = dialog.getByLabelText(/^Protocol/);
+    await userEvent.clear(protocol);
+    await userEvent.type(protocol, "HTTP/2");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/connections/con-1`, expect.objectContaining({ protocol: "HTTP/2", version: 1 }),
+    ));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    // The move made before the edit is still waiting to be saved.
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+  },
+};
+
+export const AConnectionSharedFromAnotherProjectHasNoEditButton: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramModel: buildDiagramModel({ connections: [buildConnection({ project_id: "proj-other" })] }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(panel.getByRole("link", { name: "CON-001" })).toBeInTheDocument();
+    await expect(panel.queryByRole("button", { name: "Edit CON-001" })).not.toBeInTheDocument();
+  },
+};
+
 export const ASelectedBoxListsItsPortsAndAddsOneAtOnce: Story = {
   beforeEach: () => { spyOn(api, "post").mockResolvedValue({ id: "port-9", name: "Events", direction: "both", connection_type_id: null } as never); },
   play: async ({ canvasElement }) => {

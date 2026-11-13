@@ -11,7 +11,8 @@
  * between two boxes, drag a line's end to another attach point or choose it in the Selection card) with undo and redo, and stored together by Save, which quotes the diagram's version; a 409 offers a reload
  * instead of overwriting a newer save. Creating a connection or deleting an element writes to the model at once, so a
  * pending layout is saved first. Taking a box off the diagram never deletes its element; deleting the element is a separate,
- * confirmed action. View switches are stored when changed, but flipping one on the page changes only the address.
+ * confirmed action. A line's Selection card edits a connection in the shared connection form (the pending layout is kept and the
+ * lines redraw). View switches are stored when changed, but flipping one on the page changes only the address.
  * An Outline card (elements as a tree, lines as a table) is the text alternative to the canvas and shares its selection; the
  * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram) and the selection card
  * can start a connection from a list. Export (PNG, SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks
@@ -49,7 +50,9 @@ import { useUrlChoice, useUrlList } from "../../hooks/useUrlFilter";
 import { architectureTabPath } from "./architectureTabs";
 import { ARCHITECTURE_HELP } from "./help";
 import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
-import { diffDiagramFields, diffElementFields, valuesFromDiagram, valuesFromElement } from "./architectureFields";
+import {
+  diffConnectionFields, diffDiagramFields, diffElementFields, valuesFromConnection, valuesFromDiagram, valuesFromElement,
+} from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
@@ -77,7 +80,7 @@ import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
+  type ArchitectureRecordStatus, type ConnectionFieldValues, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
 } from "./types";
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
@@ -131,6 +134,8 @@ export function DiagramEditorPage() {
   const [leaveForSetup, setLeaveForSetup] = useState(false);
   const [editingElement, setEditingElement] = useState<ArchitectureElement | null>(null);
   const [elementFormError, setElementFormError] = useState<string | null>(null);
+  const [editingConnection, setEditingConnection] = useState<ArchitectureConnection | null>(null);
+  const [connectionFormError, setConnectionFormError] = useState<string | null>(null);
 
   const reloadModelLists = useCallback(() => {
     if (!projectId) return;
@@ -175,6 +180,28 @@ export function DiagramEditorPage() {
       void editor.reload(false);
     } catch (err) {
       setElementFormError(toErrorMessage(err, "Could not update this element."));
+    }
+  }
+
+  /** Stores the edited connection, then redraws from the new data; the pending layout is kept (a merge, not a replace). */
+  async function saveConnectionEdit(values: ConnectionFieldValues) {
+    const connection = editingConnection;
+    if (!connection) return;
+    setConnectionFormError(null);
+    const changed = diffConnectionFields(valuesFromConnection(connection), values);
+    if (Object.keys(changed).length === 0) {
+      showToast("Nothing changed.");
+      setEditingConnection(null);
+      return;
+    }
+    try {
+      await projectConnectionApi(projectId).update(connection.id, connection.version, changed);
+      showToast("Connection updated.");
+      setEditingConnection(null);
+      reloadModelLists();
+      void editor.reload(false);
+    } catch (err) {
+      setConnectionFormError(toErrorMessage(err, "Could not update this connection."));
     }
   }
 
@@ -558,6 +585,7 @@ export function DiagramEditorPage() {
         onSetRealises={setRealises}
         elements={elements} connectionTypes={reference.connectionTypes}
         onEditElement={(box) => { setElementFormError(null); setEditingElement(elements.find((e) => e.id === box.elementId) ?? null); }}
+        onEditConnection={(connection) => { setConnectionFormError(null); setEditingConnection(connection); }}
         onAddPort={portsApi.add} onChangePort={portsApi.change} onRemovePort={portsApi.remove}
         onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
         onConnect={(box, targetId) => void startConnection(box.elementId, targetId)}
@@ -677,6 +705,13 @@ export function DiagramEditorPage() {
           candidates={elements.filter((e) => !e.shared)} symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)}
           orgUsers={reference.orgUsers} organizationId={reference.project.organization_id} projectId={projectId} error={elementFormError}
           onCancel={() => { setEditingElement(null); setElementFormError(null); }} onSave={saveElementEdit}
+        />
+      )}
+      {editingConnection && (
+        <ConnectionFormModal
+          initial={editingConnection} connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
+          projectId={projectId} error={connectionFormError}
+          onCancel={() => { setEditingConnection(null); setConnectionFormError(null); }} onSave={saveConnectionEdit}
         />
       )}
       {adding && <AddElementsDialog projectId={projectId} candidates={candidates} elementTypes={elementTypes} onCancel={() => setAdding(false)} onAdd={addExisting} />}

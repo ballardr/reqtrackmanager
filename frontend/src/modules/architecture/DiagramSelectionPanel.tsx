@@ -11,7 +11,8 @@
  * - A note: edit its text (applied when the field loses focus, as one undo step) or remove it.
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
- *   keyboard route to dragging a line's end.
+ *   keyboard route to dragging a line's end. Each connection of this project has an Edit button that opens the shared
+ *   connection form (`onEditConnection`); one shared from another project is listed without it.
  * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
  *   line between two boxes does.
  * - A boundary box (an outer connection of the diagram's element): the connection, the element outside, its direction and
@@ -59,6 +60,7 @@ import type { ArchitectureConnection, ArchitectureElement, ConnectionRef, Connec
  * @param elements The elements the editor knows (their ports are listed for a selected box).
  * @param connectionTypes The connection types a port may name.
  * @param onEditElement Opens the element's edit form.
+ * @param onEditConnection Opens a connection's edit form.
  * @param onAddPort Adds a port to an element.
  * @param onChangePort Changes one field of an element's port.
  * @param onRemovePort Removes an element's port.
@@ -75,7 +77,7 @@ import type { ArchitectureConnection, ArchitectureElement, ConnectionRef, Connec
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, onEditNote, onRemoveNote, elements, connectionTypes, onEditElement, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, onEditNote, onRemoveNote, elements, connectionTypes, onEditElement, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises,
 }: {
   projectId: string;
@@ -102,6 +104,7 @@ export function DiagramSelectionPanel({
   elements: ArchitectureElement[];
   connectionTypes: ConnectionType[];
   onEditElement: (box: EditorBox) => void;
+  onEditConnection: (connection: ArchitectureConnection) => void;
   onAddPort: (elementId: string, values: PortValues) => Promise<void>;
   onChangePort: (elementId: string, portId: string, change: Partial<PortValues>) => Promise<void>;
   onRemovePort: (elementId: string, portId: string) => Promise<void>;
@@ -219,7 +222,7 @@ export function DiagramSelectionPanel({
         )}
         <table className="table">
           <thead>
-            <tr><th scope="col">Code</th><th scope="col">Type</th><th scope="col">From</th><th scope="col">To</th></tr>
+            <tr><th scope="col">Code</th><th scope="col">Type</th><th scope="col">From</th><th scope="col">To</th>{editable && <th scope="col"><span className="sr-only">Actions</span></th>}</tr>
           </thead>
           <tbody>
             {edge.connections.map((c) => (
@@ -228,6 +231,13 @@ export function DiagramSelectionPanel({
                 <td>{c.connection_type_name}{c.protocol ? ` · ${c.protocol}` : ""}</td>
                 <td>{c.source_element_name || c.source_element_code}</td>
                 <td>{c.target_element_name || c.target_element_code}</td>
+                {editable && (
+                  <td>
+                    {c.project_id === projectId && (
+                      <button type="button" className="btn btn-sm" aria-label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}>Edit</button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
