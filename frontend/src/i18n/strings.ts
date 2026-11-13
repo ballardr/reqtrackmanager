@@ -3588,7 +3588,6 @@ const en = {
   /** Where a record sits in the project's component/category tree (`ComponentField`, `RecordPlacements`, `ComponentFilterField`). */
   placements: {
     label: "Components",
-    none: "Not placed in a component",
     help: "The project's component and category tree, shared by every kind of record, so records can be filtered and reported by the part of the product they belong to. It is separate from an element's parent and child elements.",
     choose: "Choose components…",
     filterLabel: "Component and category",

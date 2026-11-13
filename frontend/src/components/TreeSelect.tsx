@@ -34,6 +34,9 @@ export interface TreeSelectNode {
   disabled?: boolean;
   /** Tooltip while `disabled`, explaining why the node cannot be chosen. */
   title?: string;
+  /** The node's name where its place in the tree is not visible (the trigger's summary, the control's accessible name),
+   * for example `Hardware / Power` for a category; defaults to `label`. */
+  pathLabel?: string;
 }
 
 function flatten(nodes: TreeSelectNode[]): TreeSelectNode[] {
@@ -65,10 +68,10 @@ function TreeSelectOption({
   n, checked, onToggle, single,
 }: { n: TreeSelectNode; checked: boolean; onToggle: () => void; single: boolean }) {
   const row = single ? (
-    <SingleChoiceRow label={n.label} checked={checked} disabled={n.disabled} onChoose={onToggle} />
+    <SingleChoiceRow label={n.pathLabel ?? n.label} checked={checked} disabled={n.disabled} onChoose={onToggle} />
   ) : (
     <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem" }}>
-      <input type="checkbox" checked={checked} disabled={n.disabled} aria-label={n.label} onChange={onToggle} />
+      <input type="checkbox" checked={checked} disabled={n.disabled} aria-label={n.pathLabel ?? n.label} onChange={onToggle} />
       {n.label}
     </label>
   );
@@ -107,7 +110,7 @@ export function TreeSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = new Set(selectedIds);
   const summary =
-    flatten(nodes).filter((n) => selected.has(n.id)).map((n) => n.label).join(", ") || emptyLabel;
+    flatten(nodes).filter((n) => selected.has(n.id)).map((n) => n.pathLabel ?? n.label).join(", ") || emptyLabel;
   const shown = filterTreeNodes(nodes, query);
   const searching = query.trim() !== "";
 

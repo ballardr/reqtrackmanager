@@ -188,6 +188,62 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
+  test("an architect assigns a component to a box from the Selection card and narrows the Add menu by a component", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchComp", true, "System Architecture");
+    const projectBase = `${API}/api/v1/projects/${project.id}`;
+    const gateway = `Gateway ${suffix}`;
+    const relay = `Relay ${suffix}`;
+    const cache = `Cache ${suffix}`;
+    await createElement(page.request, adminHeaders, project.id, gateway);
+    const hardware = await (await page.request.post(`${projectBase}/components`, { headers: adminHeaders, data: { name: "Hardware", prefix: "HW" } })).json();
+    const category = await page.request.post(`${projectBase}/categories`, { headers: adminHeaders, data: { name: "Power", prefix: "PWR", component_id: hardware.id } });
+    expect(category.ok(), await category.text()).toBeTruthy();
+    const created = await page.request.post(`${projectBase}/modules/architecture/diagrams`, {
+      headers: adminHeaders, data: { name: `Comp ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    // Created after the diagram, so both are offered by "Add existing elements"; only Relay sits in a component.
+    const relayId = await createElement(page.request, adminHeaders, project.id, relay);
+    await createElement(page.request, adminHeaders, project.id, cache);
+    const placed = await page.request.put(`${projectBase}/artefacts/architecture_element/${relayId}/placements`, {
+      headers: adminHeaders, data: { placements: [{ component_id: hardware.id, category_id: null }] },
+    });
+    expect(placed.ok(), await placed.text()).toBeTruthy();
+
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
+
+    await test.step("the Components control of the Selection card stores the choice at once", async () => {
+      await selectNode(page, gateway);
+      const panel = page.getByRole("region", { name: "Selection" });
+      await panel.getByRole("button", { name: "Components and categories" }).click();
+      const saved = page.waitForResponse((r) => r.url().includes("/placements") && r.request().method() === "PUT");
+      await page.getByRole("checkbox", { name: "Hardware", exact: true }).click();
+      expect((await saved).ok()).toBeTruthy();
+      await page.keyboard.press("Escape");
+      await expect(panel.getByRole("button", { name: "Remove Hardware" })).toBeVisible();
+      await page.reload();
+      await selectNode(page, gateway);
+      await expect(page.getByRole("region", { name: "Selection" }).getByRole("button", { name: "Remove Hardware" })).toBeVisible();
+    });
+
+    await test.step("the component tree collapses, and the Add menu list narrows to the ticked component", async () => {
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: "Add existing elements" }).click();
+      const dialog = page.getByRole("dialog", { name: "Add existing elements" });
+      await expect(dialog.getByRole("checkbox", { name: `Add ${cache}` })).toBeVisible();
+      await dialog.getByRole("button", { name: "Component and category", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "Hardware / Power" })).toBeVisible();
+      await page.getByRole("button", { name: "Collapse Hardware" }).click();
+      await expect(page.getByRole("checkbox", { name: "Hardware / Power" })).toHaveCount(0);
+      await page.getByRole("checkbox", { name: "Hardware", exact: true }).click();
+      await page.keyboard.press("Escape");
+      await expect(dialog.getByRole("checkbox", { name: `Add ${relay}` })).toBeVisible();
+      await expect(dialog.getByRole("checkbox", { name: `Add ${cache}` })).toHaveCount(0);
+    });
+  });
+
   test("a save from a stale copy is refused and the architect is offered a reload", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchConflict", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

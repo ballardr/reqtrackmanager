@@ -8,7 +8,9 @@
 import { spyOn } from "storybook/test";
 
 import { api } from "../../api/client";
+import type { Placement } from "../../api/placements";
 import type { OrgUser } from "../../api/types";
+import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
@@ -248,6 +250,8 @@ export interface ArchitectureReads {
   disabledSubComponents?: string[];
   /** Whether the viewer may manage the project's types (shows the Add menu's setup entry). */
   canManageTypes?: boolean;
+  /** `{element id: places}`; when given, the project has the shared component tree and the elements' places are readable and editable. */
+  placements?: Record<string, Placement[]>;
 }
 
 /**
@@ -283,6 +287,14 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (path.endsWith("/records/architecture_diagram/columns")) return buildRecordColumns({ label: "Diagrams" });
     if (base.endsWith("/modules/architecture/collections")) return reads.collections ?? [buildCollection()];
     if (base.includes("/collections/") && base.endsWith("/members")) return [{ element_id: "el-1", unique_code: "ELM-001", name: "Gateway" }];
+    if (reads.placements) {
+      const tree = buildTree();
+      if (base.endsWith("/components")) return tree.components;
+      if (base.endsWith("/categories")) return tree.categories;
+      if (base.endsWith("/placements/architecture_element")) return { placements: reads.placements };
+      const own = /\/artefacts\/architecture_element\/([^/]+)\/placements$/.exec(base);
+      if (own) return { placements: reads.placements[own[1]] ?? [], can_edit: true, managed_on_record: false };
+    }
     if (base.endsWith("/users")) return ORG_USERS;
     if (base.endsWith("/groups")) return [];
     if (base.endsWith(`/projects/${PROJECT_ID}`)) return { id: PROJECT_ID, organization_id: ORG_ID, name: "Platform", code: "PLAT" };

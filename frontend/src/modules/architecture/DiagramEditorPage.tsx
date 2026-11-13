@@ -679,7 +679,7 @@ export function DiagramEditorPage() {
           onCancel={() => { setEditingElement(null); setElementFormError(null); }} onSave={saveElementEdit}
         />
       )}
-      {adding && <AddElementsDialog candidates={candidates} elementTypes={elementTypes} onCancel={() => setAdding(false)} onAdd={addExisting} />}
+      {adding && <AddElementsDialog projectId={projectId} candidates={candidates} elementTypes={elementTypes} onCancel={() => setAdding(false)} onAdd={addExisting} />}
       {newElement && (
         <NewElementDialog
           typeName={elementTypes.find((t) => t.id === newElement.typeId)?.name ?? "element"} error={newElementError}

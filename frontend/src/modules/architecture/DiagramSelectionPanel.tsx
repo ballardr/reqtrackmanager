@@ -5,7 +5,9 @@
  * - A box: open the element, edit it in the shared element form (`onEditElement`), open its inside as a diagram of its
  *   own, take it off this diagram (the element is not changed), or delete the element from the model (a separate,
  *   confirmed action that needs the code typed). Its ports are listed with the shared `PortList`; each change is stored at
- *   once, as on the element's page.
+ *   once, as on the element's page. Its project components (the shared `RecordPlacements`, also saved at once) are set
+ *   here too; a box shared from another owner shows none, since a component belongs to one project and its own
+ *   project's tree is not disclosed to another.
  * - A note: edit its text (applied when the field loses focus, as one undo step) or remove it.
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
@@ -28,6 +30,7 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TextAreaField } from "../../components/FormFields";
 import { FieldCaption } from "../../components/FieldHelp";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { RecordPlacements } from "../../components/RecordPlacements";
 import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
@@ -146,6 +149,12 @@ export function DiagramSelectionPanel({
               onRemove={(id) => onRemovePort(element.id, id)}
             />
           </div>
+        )}
+        {!box.locked && !box.shared && (
+          <RecordPlacements
+            key={box.elementId} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId}
+            captioned
+          />
         )}
         {editable && !box.locked && (
           <LabeledSelect

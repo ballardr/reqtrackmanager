@@ -22,7 +22,7 @@ import {
 } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { FieldHelp } from "./FieldHelp";
+import { FieldCaption, FieldHelp } from "./FieldHelp";
 import { PlacementPicker } from "./PlacementPicker";
 import { RemovableChip } from "./RemovableChip";
 
@@ -31,15 +31,18 @@ import { RemovableChip } from "./RemovableChip";
  * @param artefactType The record's registered artefact type.
  * @param artefactId The record's id.
  * @param onChanged Called after a change was saved.
+ * @param captioned Shows a visible "Components" caption with its help above the places (a card in a side panel), instead of
+ *   the bare help button that suits the record header's row.
  * @param api The calls (the live ones by default).
  */
 export function RecordPlacements({
-  projectId, artefactType, artefactId, onChanged, api = recordPlacementsApi,
+  projectId, artefactType, artefactId, onChanged, captioned = false, api = recordPlacementsApi,
 }: {
   projectId: string;
   artefactType: string;
   artefactId: string;
   onChanged?: () => void;
+  captioned?: boolean;
   api?: RecordPlacementsApi;
 }) {
   const strings = useStrings();
@@ -69,8 +72,11 @@ export function RecordPlacements({
   if (!data.can_edit || !tree) {
     if (places.length === 0) return null;
     return (
-      <div className="row" style={{ gap: "var(--space-2)" }} role="group" aria-label={strings.placements.label}>
-        {places.map((place) => <span key={`${place.component_id}:${place.category_id}`} className="chip">{placementLabel(place)}</span>)}
+      <div className="stack" style={{ gap: "var(--space-1)" }}>
+        {captioned && <FieldCaption label={strings.placements.label} help={strings.placements.help} />}
+        <div className="row" style={{ gap: "var(--space-2)" }} role="group" aria-label={strings.placements.label}>
+          {places.map((place) => <span key={`${place.component_id}:${place.category_id}`} className="chip">{placementLabel(place)}</span>)}
+        </div>
       </div>
     );
   }
@@ -102,9 +108,9 @@ export function RecordPlacements({
 
   return (
     <div className="stack" style={{ gap: "var(--space-1)", maxWidth: "22rem" }}>
+      {captioned && <FieldCaption label={strings.placements.label} help={strings.placements.help} />}
       <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }} role="group" aria-label={strings.placements.label}>
-        <FieldHelp label={strings.placements.label} help={strings.placements.help} />
-        {places.length === 0 && <span className="text-muted">{strings.placements.none}</span>}
+        {!captioned && <FieldHelp label={strings.placements.label} help={strings.placements.help} />}
         {places.map((place) => (
           <RemovableChip
             key={`${place.component_id}:${place.category_id}`}

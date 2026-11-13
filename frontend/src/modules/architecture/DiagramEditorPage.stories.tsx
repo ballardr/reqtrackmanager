@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
+import { buildPlace, openPlacementPicker } from "../../testing/placementsFixtures";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement,
@@ -403,6 +404,65 @@ export const ASharedElementCannotBeDeletedFromHere: Story = {
     await select(canvas, "Orders");
     await expect(await canvas.findByRole("button", { name: "Remove from diagram" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Delete element…" })).not.toBeInTheDocument();
+  },
+};
+
+/** A box's project components are set in the Selection card and stored at once, like its ports. */
+export const AComponentIsAssignedToABoxFromTheSelectionCard: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: ELEMENTS, placements: { "el-1": [buildPlace("c-hw", "k-cool")] } });
+    spyOn(api, "put").mockResolvedValue({ placements: [buildPlace("c-hw", "k-cool"), buildPlace("c-sw")], can_edit: true, managed_on_record: false } as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect((await panel.findAllByText("Hardware / Cooling")).length).toBeGreaterThan(0);
+    await openPlacementPicker(panel);
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Software" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/artefacts/architecture_element/el-1/placements`,
+      { placements: [{ component_id: "c-hw", category_id: "k-cool" }, { component_id: "c-sw", category_id: null }] },
+    ));
+  },
+};
+
+/** A box shared from another owner has no Components control: a component belongs to one project's tree. */
+export const ASharedBoxHasNoComponentsControl: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      placements: { "el-2": [buildPlace("c-sw")] },
+      diagramView: buildDiagramView({ nodes: buildDiagramView().nodes.map((n) => (n.element_id === "el-2" ? { ...n, shared: true } : n)) }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(await panel.findByRole("link", { name: "Open element" })).toBeInTheDocument();
+    await expect(panel.queryByRole("group", { name: "Components" })).not.toBeInTheDocument();
+  },
+};
+
+/** The Add menu's component filter narrows the elements offered to those placed in a ticked component. */
+export const TheAddMenuListIsFilteredByComponent: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: [...ELEMENTS, buildElement({ id: "el-5", unique_code: "ELM-005", name: "Relay", ports: [] })],
+      placements: { "el-4": [buildPlace("c-sw")], "el-5": [buildPlace("c-hw", "k-power")] },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await addFromMenu(canvas, "Add existing elements");
+    const dialog = within(within(document.body).getByRole("dialog"));
+    await expect(await dialog.findByRole("checkbox", { name: "Add Cache" })).toBeInTheDocument();
+    await expect(dialog.getByRole("checkbox", { name: "Add Relay" })).toBeInTheDocument();
+    await userEvent.click(await dialog.findByRole("button", { name: "Component and category" }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Software" }));
+    await waitFor(() => expect(dialog.queryByRole("checkbox", { name: "Add Relay" })).not.toBeInTheDocument());
+    await expect(dialog.getByRole("checkbox", { name: "Add Cache" })).toBeInTheDocument();
   },
 };
 
