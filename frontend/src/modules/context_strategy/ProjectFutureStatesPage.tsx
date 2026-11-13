@@ -25,9 +25,11 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { FUTURE_STATE_SORT_KEYS, FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
 import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
@@ -36,7 +38,8 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -63,6 +66,7 @@ export function ProjectFutureStatesPage() {
   const [search, setSearch] = useUrlText("q");
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [sort, setSort] = useUrlSort<string>(FUTURE_STATE_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [roadmapOnly, setRoadmapOnly] = useUrlFlag("roadmap");
@@ -117,14 +121,14 @@ export function ProjectFutureStatesPage() {
   });
 
   const columns: DirectoryColumn<FutureState>[] = [
-    { key: "title", label: "Title", render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
-    { key: "code", label: "Code", render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
+    { key: "title", label: "Title", sortable: true, render: (fs) => <>{fs.title}<ProjectScopeLabel row={fs} /></> },
+    { key: "code", label: "Code", sortable: true, render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
     },
-    { key: "target_date", label: "Target date", render: (fs) => fs.target_date ?? "—" },
-    { key: "version", label: "Version", render: (fs) => `v${fs.version_number}` },
+    { key: "target_date", label: "Target date", sortable: true, render: (fs) => fs.target_date ?? "—" },
+    { key: "version", label: "Version", sortable: true, render: (fs) => `v${fs.version_number}` },
   ];
 
   return (
@@ -161,7 +165,9 @@ export function ProjectFutureStatesPage() {
         <DirectoryTable
           ariaLabel="Future States"
           columns={columns}
-          rows={filtered}
+          rows={sortRows(filtered, sort, FUTURE_STATE_SORT_VALUES)}
+          sort={sort}
+          onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(fs) => fs.id}
           placements={{ projectId, artefactType: "future_state", rowId: (fs) => fs.id }}
           onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}

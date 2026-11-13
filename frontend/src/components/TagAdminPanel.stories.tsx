@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { expectHeaderSorts } from "../testing/sortHelpers";
 import { withToast } from "../testing/storybook-helpers";
 import { buildAdminApi, buildTag, buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { TagAdminPanel } from "./TagAdminPanel";
@@ -269,5 +270,14 @@ export const ARefusedChangeIsToastedAndLeavesTheScreenAlone: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add tag" }));
     await expect(await body().findByText("The tag 'Safety' already exists.")).toBeInTheDocument();
     await expect(canvas.getByRole("textbox", { name: "New tag" })).toHaveValue("safety");
+  },
+};
+
+/** The Used on header orders the vocabulary by how many records carry each tag. */
+export const UsedOnHeaderSortsTheVocabulary: Story = {
+  args: { api: buildAdminApi() },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Tags" });
+    await expectHeaderSorts(table, "Used on", ["1 record", "3 records"]);
   },
 };

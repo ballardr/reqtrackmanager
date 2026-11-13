@@ -18,10 +18,21 @@ import type { ImportedPeopleList, ImportedPersonRow } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
+import { useTableSort } from "../hooks/useTableSort";
+import type { SortValue } from "../utils/sortRows";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { TextField } from "./FormFields";
+
+const EMPTY_PEOPLE: ImportedPersonRow[] = [];
+
+/** Sortable value of each sortable column; status orders due for removal, then in use, then unused. */
+const PERSON_SORT_VALUES: Record<string, (person: ImportedPersonRow) => SortValue> = {
+  name: (p) => p.display_name,
+  added: (p) => p.created_at,
+  status: (p) => (p.due_for_removal ? 0 : p.in_use ? 1 : 2),
+};
 
 /**
  * @param orgId The organisation whose imported people are listed.
@@ -71,11 +82,12 @@ export function ImportedPeoplePanel({ orgId }: { orgId: string }) {
     if (done) void load();
   }
 
+  const table = useTableSort(list?.people ?? EMPTY_PEOPLE, PERSON_SORT_VALUES);
   const columns: DirectoryColumn<ImportedPersonRow>[] = [
-    { key: "name", label: text.columnName, render: (p) => p.display_name },
-    { key: "added", label: text.columnAdded, render: (p) => new Date(p.created_at).toLocaleDateString() },
+    { key: "name", label: text.columnName, sortable: true, render: (p) => p.display_name },
+    { key: "added", label: text.columnAdded, sortable: true, render: (p) => new Date(p.created_at).toLocaleDateString() },
     {
-      key: "status", label: text.columnStatus,
+      key: "status", label: text.columnStatus, sortable: true,
       render: (p) => p.due_for_removal
         ? <Badge tone="warning">{text.statusDue}</Badge>
         : <Badge tone={p.in_use ? undefined : "muted"}>{p.in_use ? text.statusInUse : text.statusUnused}</Badge>,
@@ -104,7 +116,8 @@ export function ImportedPeoplePanel({ orgId }: { orgId: string }) {
         <button className="btn btn-primary" onClick={() => void saveRetention()}>{text.retentionSave}</button>
       </div>
       <DirectoryTable
-        ariaLabel={text.tableLabel} columns={columns} rows={list?.people ?? []} rowKey={(p) => p.id}
+        ariaLabel={text.tableLabel} columns={columns} rows={table.rows} rowKey={(p) => p.id}
+        sort={table.sort} onSort={table.onSort}
         emptyState={list === null ? "" : text.panelEmpty}
       />
       {confirm && (

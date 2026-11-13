@@ -1,3 +1,11 @@
+const NO_TEMPLATES: DecisionTemplate[] = [];
+
+/** Sortable value of each sortable column of the template table. */
+const TEMPLATE_SORT_VALUES: Record<string, (template: DecisionTemplate) => SortValue> = {
+  name: (t) => t.name,
+  description: (t) => t.description || null,
+};
+
 /**
  * Module: modules/decisions/DecisionTemplatesPanel
  *
@@ -37,6 +45,8 @@ import * as decisionsApi from "./api";
 import { DecisionTemplateFormModal } from "./DecisionTemplateFormModal";
 import type { DecisionTemplate } from "./types";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTableSort } from "../../hooks/useTableSort";
+import type { SortValue } from "../../utils/sortRows";
 
 export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -58,12 +68,13 @@ export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reload, [orgId]);
 
+  const table = useTableSort(templates ?? NO_TEMPLATES, TEMPLATE_SORT_VALUES);
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (templates === null) return <Spinner />;
 
   const columns: DirectoryColumn<DecisionTemplate>[] = [
-    { key: "name", label: "Name", render: (t) => t.name },
-    { key: "description", label: "Description", render: (t) => t.description || "—" },
+    { key: "name", label: "Name", sortable: true, render: (t) => t.name },
+    { key: "description", label: "Description", sortable: true, render: (t) => t.description || "—" },
     {
       key: "actions", label: "",
       render: (t) => (
@@ -90,7 +101,9 @@ export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
       <DirectoryTable
         ariaLabel="Decision templates"
         columns={columns}
-        rows={templates}
+        rows={table.rows}
+        sort={table.sort}
+        onSort={table.onSort}
         rowKey={(t) => t.id}
         onRowClick={setEditing}
         emptyState={<p className="text-muted">No Decision Templates yet.</p>}

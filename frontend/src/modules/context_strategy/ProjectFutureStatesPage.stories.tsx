@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import type { FutureState } from "./types";
@@ -105,5 +106,14 @@ export const ExportCarriesThePageFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/future_state/export?roadmap_only=true&target_passed_only=true"));
+  },
+};
+
+/** The Title header orders the future states, ascending then descending. */
+export const TitleHeaderSortsTheFutureStates: Story = {
+  beforeEach: () => mockPageApis(STATES),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Title");
   },
 };

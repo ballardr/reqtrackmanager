@@ -1,3 +1,5 @@
+const NONE: FutureState[] = [];
+
 /**
  * Module: modules/context_strategy/OrgFutureStatesPanel
  *
@@ -24,12 +26,14 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { FUTURE_STATE_SORT_VALUES } from "./contextStrategySort";
 import { orgFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTableSort } from "../../hooks/useTableSort";
 import { filterString } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
@@ -59,24 +63,25 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadFutureStates, [orgId, includeArchived]);
 
+  const table = useTableSort(futureStates ?? NONE, FUTURE_STATE_SORT_VALUES);
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null) return <Spinner />;
 
-  const filtered = futureStates.filter((fs) => {
+  const filtered = table.rows.filter((fs) => {
     if (statusFilter && fs.status !== statusFilter) return false;
     if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<FutureState>[] = [
-    { key: "title", label: "Title", render: (fs) => fs.title },
-    { key: "code", label: "Code", render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
+    { key: "title", label: "Title", sortable: true, render: (fs) => fs.title },
+    { key: "code", label: "Code", sortable: true, render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
     },
-    { key: "target_date", label: "Target date", render: (fs) => fs.target_date ?? "—" },
-    { key: "version", label: "Version", render: (fs) => `v${fs.version_number}` },
+    { key: "target_date", label: "Target date", sortable: true, render: (fs) => fs.target_date ?? "—" },
+    { key: "version", label: "Version", sortable: true, render: (fs) => `v${fs.version_number}` },
   ];
 
   return (
@@ -94,6 +99,8 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
           ariaLabel="Organisation Future State"
           columns={columns}
           rows={filtered}
+          sort={table.sort}
+          onSort={table.onSort}
           rowKey={(fs) => fs.id}
           onRowClick={(fs) => navigate(`/orgs/${orgId}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Future State recorded yet.</p>}

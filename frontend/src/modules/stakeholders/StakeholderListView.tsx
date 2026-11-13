@@ -45,6 +45,12 @@ import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup
 import { STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL } from "./types";
 import { levelName } from "./useStakeholderScheme";
 
+/** A level's name as a sort value; a stakeholder with no level sorts last. */
+function levelOrNull(scheme: Parameters<typeof levelName>[0], axisKey: string, levelId: string | null): string | null {
+  const name = levelName(scheme, axisKey, levelId);
+  return name === "—" ? null : name;
+}
+
 export function StakeholderListView({
   stakeholders,
   ariaLabel,
@@ -151,14 +157,14 @@ export function StakeholderListView({
         typeName={(s) => s.stakeholder_type_name}
         nameIcon={() => <PeopleKindIcon kind="stakeholder" />}
         searchText={(s) => `${s.unique_code} ${s.name} ${s.role} ${s.organisation_group}`}
-        columnsBeforeType={[{ key: "role", label: "Role", render: (s) => s.role || "—" }]}
+        columnsBeforeType={[{ key: "role", label: "Role", sortable: true, sortValue: (s) => s.role || null, render: (s) => s.role || "—" }]}
         columnsAfterScope={[
-          { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
+          { key: "cadence", label: "Cadence", sortable: true, sortValue: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : null), render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
           ...(showLastEngaged
-            ? [{ key: "last-engaged", label: "Last engaged", render: (s: Stakeholder) => s.last_engaged ?? "Never" }]
+            ? [{ key: "last-engaged", label: "Last engaged", sortable: true, sortValue: (s: Stakeholder) => s.last_engaged ?? null, render: (s: Stakeholder) => s.last_engaged ?? "Never" }]
             : []),
-          { key: "influence", label: "Influence", render: (s) => levelName(scheme, "influence", s.influence_level_id) },
-          { key: "interest", label: "Interest", render: (s) => levelName(scheme, "interest", s.interest_level_id) },
+          { key: "influence", label: "Influence", sortable: true, sortValue: (s) => levelOrNull(scheme, "influence", s.influence_level_id), render: (s) => levelName(scheme, "influence", s.influence_level_id) },
+          { key: "interest", label: "Interest", sortable: true, sortValue: (s) => levelOrNull(scheme, "interest", s.interest_level_id), render: (s) => levelName(scheme, "interest", s.interest_level_id) },
           ...(groups.length > 0
             ? [{
                 key: "groups", label: "Groups",

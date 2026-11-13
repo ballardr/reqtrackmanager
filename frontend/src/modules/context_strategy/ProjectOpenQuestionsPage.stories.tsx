@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectOpenQuestionsPage } from "./ProjectOpenQuestionsPage";
 import type { OpenQuestion } from "./types";
@@ -157,5 +158,14 @@ export const ExportCarriesThePageFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/open_question/export?open_only=true"));
+  },
+};
+
+/** The Question header orders the open questions, ascending then descending. */
+export const QuestionHeaderSortsTheOpenQuestions: Story = {
+  beforeEach: () => mockPageApis(QUESTIONS),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Question");
   },
 };

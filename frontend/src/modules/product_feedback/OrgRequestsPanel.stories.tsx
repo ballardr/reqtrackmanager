@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, within } from "storybook/test";
 import { ApiError, api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildRequest, buildRequestScheme, ORG_ID, ORG_USERS } from "./requestFixtures";
 import { OrgRequestsPanel } from "./OrgRequestsPanel";
 
@@ -76,5 +77,29 @@ export const TheInboxColumnsControlOffersOwnerButNotDemand: Story = {
     await expect(popover.queryByRole("checkbox", { name: "Demand" })).not.toBeInTheDocument();
     await userEvent.click(popover.getByRole("checkbox", { name: "Owner" }));
     await expect(within(table).getByRole("columnheader", { name: "Owner" })).toBeInTheDocument();
+  },
+};
+
+/** The Title header orders the inbox, ascending then descending. */
+export const TitleHeaderSortsTheInbox: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      const route = path.split("?")[0];
+      if (route.endsWith("/records/enhancement_request/columns")) return buildRecordColumns({ label: "Enhancement requests" });
+      if (route.includes("/scoring-schemes/enhancement_request")) return buildRequestScheme();
+      if (route.endsWith("/product_feedback/access")) return { can_submit: true, can_triage: false };
+      if (route.endsWith("/modules/product_feedback/requests")) {
+        return [
+          buildRequest({ scope: "organization", project_id: null, organization_id: ORG_ID }),
+          buildRequest({ id: "request-2", unique_code: "ENH-002", title: "Dark mode", scope: "organization", project_id: null, organization_id: ORG_ID }),
+        ];
+      }
+      if (route.includes("/users")) return ORG_USERS;
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Request inbox" });
+    await expectHeaderOrdersText(table, "Title");
   },
 };

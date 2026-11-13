@@ -54,9 +54,9 @@ export function requestColumns({
         : <Badge tone="warning" title="A solution with no stated problem. Link the Pain Point it addresses.">None</Badge>
   );
   return [
-    { key: "code", label: "Code", render: (r) => <span style={NO_WRAP}>{codeCell(r)}</span> },
+    { key: "code", label: "Code", sortable: true, render: (r) => <span style={NO_WRAP}>{codeCell(r)}</span> },
     {
-      key: "title", label: "Title",
+      key: "title", label: "Title", sortable: true,
       render: (r) => (
         <>
           {r.title}
@@ -71,7 +71,7 @@ export function requestColumns({
       ),
     },
     ...(shown.includes("status") ? [{
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (r: EnhancementRequest) => <span style={NO_WRAP}><Badge tone={REQUEST_STATUS_TONE[r.status]}>{REQUEST_STATUS_LABEL[r.status]}</Badge></span>,
     }] : []),
     ...(showLinkWarnings && shown.includes("demand") ? [{ key: "demand", label: "Demand", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{demandText(r)}</span> }] : []),
@@ -81,7 +81,7 @@ export function requestColumns({
       label: models.length > 1 ? <span title={modelLabel(key)}>Score ({shortLabel(key)})</span> : "Score",
       sortable: index === 0, render: (r: EnhancementRequest) => <span style={NO_WRAP}><RequestScoreBadge score={r.scores[key]} /></span>,
     })),
-    ...(shown.includes("owner") ? [{ key: "owner", label: "Owner", render: (r: EnhancementRequest) => (r.owner ? <PrincipalBadge principal={r.owner} /> : "–") }] : []),
+    ...(shown.includes("owner") ? [{ key: "owner", label: "Owner", sortable: true, render: (r: EnhancementRequest) => (r.owner ? <PrincipalBadge principal={r.owner} /> : "–") }] : []),
     ...(shown.includes("created") ? [{ key: "created", label: "Created", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.created_at)}</span> }] : []),
     ...(shown.includes("updated") ? [{ key: "updated", label: "Last updated", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.updated_at)}</span> }] : []),
   ];

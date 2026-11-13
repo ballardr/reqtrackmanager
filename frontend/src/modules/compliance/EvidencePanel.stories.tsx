@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
 import { EvidencePanel } from "./EvidencePanel";
@@ -192,3 +193,12 @@ export const ExportCarriesTheListsFilters: Story = {
 
 export const LightTheme: Story = { ...ListsEvidence };
 export const DarkTheme: Story = { ...ListsEvidence, globals: { theme: "dark" } };
+
+/** The Title header orders the evidence, ascending then descending. */
+export const TitleHeaderSortsTheEvidence: Story = {
+  beforeEach: () => mockApis([evidence(), evidence({ id: "ev-2", unique_code: "EVD-002", title: "Annual penetration test" })]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Compliance evidence" });
+    await expectHeaderOrdersText(table, "Title");
+  },
+};

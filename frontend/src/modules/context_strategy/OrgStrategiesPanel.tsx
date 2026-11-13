@@ -1,3 +1,5 @@
+const NONE: Strategy[] = [];
+
 /**
  * Module: modules/context_strategy/OrgStrategiesPanel
  *
@@ -40,12 +42,14 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { STRATEGY_SORT_VALUES } from "./contextStrategySort";
 import { orgStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTableSort } from "../../hooks/useTableSort";
 import { filterString } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
@@ -76,10 +80,11 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
 
   useLoadOnChange(reloadStrategies, [orgId, includeArchived]);
 
+  const table = useTableSort(strategies ?? NONE, STRATEGY_SORT_VALUES);
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null) return <Spinner />;
 
-  const filtered = strategies.filter((s) => {
+  const filtered = table.rows.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
     if (search && !`${s.unique_code} ${s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
@@ -87,14 +92,14 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   });
 
   const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", render: (s) => s.title },
-    { key: "code", label: "Code", render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
-    { key: "priority", label: "Priority", render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
+    { key: "title", label: "Title", sortable: true, render: (s) => s.title },
+    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
+    { key: "priority", label: "Priority", sortable: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
     },
-    { key: "version", label: "Version", render: (s) => `v${s.version_number}` },
+    { key: "version", label: "Version", sortable: true, render: (s) => `v${s.version_number}` },
   ];
 
   return (
@@ -112,6 +117,8 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           ariaLabel="Organisation Strategy"
           columns={columns}
           rows={filtered}
+          sort={table.sort}
+          onSort={table.onSort}
           rowKey={(s) => s.id}
           onRowClick={(s) => navigate(`/orgs/${orgId}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No organisation-scoped Strategy recorded yet.</p>}

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildElement, buildFolder, mockArchitectureReads, ORG_ID } from "./architectureFixtures";
 import { OrgElementsPanel } from "./OrgElementsPanel";
@@ -77,5 +78,19 @@ export const FolderColumnAndPanelNarrowTheTable: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Folder Platform" }));
     await waitFor(() => expect(within(table).queryByText("Message bus")).not.toBeInTheDocument());
     await expect(within(table).getByText("Identity service")).toBeInTheDocument();
+  },
+};
+
+/** The Name header orders the organisation's elements, ascending then descending. */
+export const NameHeaderSortsTheElements: Story = {
+  beforeEach: () => {
+    const get = mockArchitectureReads({
+      elements: [ORG_ELEMENT, buildElement({ ...ORG_ELEMENT, id: "oel-2", unique_code: "ELM-002", name: "Audit log" })],
+    });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Organisation elements" });
+    await expectHeaderOrdersText(table, "Name");
   },
 };

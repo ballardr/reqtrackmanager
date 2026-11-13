@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, within } from "storybook/test";
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
+import { expectHeaderSorts } from "../../testing/sortHelpers";
 import { buildRequest, buildRequestScheme, buildUnscoredRequest, ORG_USERS, PROJECT_ID } from "./requestFixtures";
 import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import type { EnhancementRequest, FeedbackAccess } from "./types";
@@ -266,5 +267,16 @@ export const NoPainPointColumnOrFilterWhenPainPointsAreOff: Story = {
     await expect(within(table).getByRole("link", { name: "ENH-001" })).toBeInTheDocument(); // not narrowed by the stale parameter
     await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
     await expect(within(await within(document.body).findByRole("dialog")).queryByRole("checkbox", { name: "Pain Points" })).not.toBeInTheDocument();
+  },
+};
+
+/** The Code header orders the requests by code, ascending then descending. */
+export const CodeHeaderSortsTheRequests: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Enhancement requests" });
+    const codes = within(table).getAllByRole("link", { name: /^ENH-/ }).map((link) => link.textContent ?? "");
+    const ascending = [...codes].sort();
+    await expectHeaderSorts(table, "Code", ascending);
   },
 };

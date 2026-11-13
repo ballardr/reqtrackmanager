@@ -63,8 +63,8 @@ export function PeopleListView({
       nameIcon={(r) => <PeopleKindIcon kind={r.kind} />}
       searchText={(r) => `${r.unique_code} ${r.name} ${r.summary} ${PEOPLE_KIND_LABEL[r.kind]}`}
       columnsBeforeType={[
-        { key: "kind", label: "Kind", render: (r) => <Badge>{PEOPLE_KIND_LABEL[r.kind]}</Badge> },
-        { key: "summary", label: "Details", render: (r) => r.summary || "—" },
+        { key: "kind", label: "Kind", sortable: true, sortValue: (r) => PEOPLE_KIND_LABEL[r.kind], render: (r) => <Badge>{PEOPLE_KIND_LABEL[r.kind]}</Badge> },
+        { key: "summary", label: "Details", sortable: true, sortValue: (r) => r.summary || null, render: (r) => r.summary || "—" },
       ]}
       columnsAfterScope={[]}
       includeArchived={includeArchived}

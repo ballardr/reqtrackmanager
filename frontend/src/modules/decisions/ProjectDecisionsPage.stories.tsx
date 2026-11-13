@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { Principal } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
@@ -173,3 +174,16 @@ export const ExportCarriesThePageFilters: Story = {
 
 export const LightTheme: Story = { ...ListsDecisions };
 export const DarkTheme: Story = { ...ListsDecisions, globals: { theme: "dark" } };
+
+/** The Title header orders the decisions, ascending then descending. */
+export const TitleHeaderSortsTheDecisions: Story = {
+  // Two drafts, so both are open and shown under the default "Open only".
+  beforeEach: () => mockPageApis([
+    decision({ status: "draft", is_locked: false }),
+    decision({ id: "decision-2", unique_code: "DEC-002", title: "Use Terraform for infra", status: "draft", is_locked: false }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Decisions" });
+    await expectHeaderOrdersText(table, "Title");
+  },
+};

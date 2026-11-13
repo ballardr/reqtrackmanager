@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser } from "../../api/types";
 import { api } from "../../api/client";
+import { expectHeaderSorts } from "../../testing/sortHelpers";
 import { buildProjectListItem } from "../../testing/storybook-helpers";
 import { withToast } from "../../testing/storybook-helpers";
 import { StandardApplicabilityPanel } from "./StandardApplicabilityPanel";
@@ -163,3 +164,14 @@ export const RemoveExclusion: Story = {
 };
 
 export const LightTheme: Story = { ...AppliesToAllWithExclusions };
+
+/** The Project header orders the excluded projects by name, ascending then descending. */
+export const ProjectHeaderSortsTheExclusions: Story = {
+  args: { standard: standard({ applicability_default: "applies_to_all_projects" }), onStandardChanged: () => {} },
+  beforeEach: () => mockApis({ exclusions: [exclusion(), exclusion({ id: "exc-2", project_id: "proj-1", reason: "Out of scope." })] }),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Projects excluded from this standard's default" });
+    await waitFor(() => expect(within(table).getByText("Legacy System")).toBeInTheDocument());
+    await expectHeaderSorts(table, "Project", ["Atlas Platform", "Legacy System"]);
+  },
+};

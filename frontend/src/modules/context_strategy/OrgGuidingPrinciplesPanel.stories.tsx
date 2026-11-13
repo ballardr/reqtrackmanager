@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import type { GuidingPrinciple } from "./types";
@@ -65,3 +66,12 @@ export const OpenCreateModal: Story = {
 
 export const LightTheme: Story = { ...ListsOrgGuidingPrinciples };
 export const DarkTheme: Story = { ...ListsOrgGuidingPrinciples, globals: { theme: "dark" } };
+
+/** The Name header orders the guiding principles, ascending then descending. */
+export const NameHeaderSortsTheGuidingPrinciples: Story = {
+  beforeEach: () => mockPanelApis([guidingPrinciple(), guidingPrinciple({ id: "gp-2", name: "Field data is captured once", status: "draft" })]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Name");
+  },
+};

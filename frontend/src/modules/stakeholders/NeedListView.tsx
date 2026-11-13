@@ -57,7 +57,7 @@ export function NeedListView({
       statusLabel={NEED_STATUS_LABEL}
       statusTone={NEED_STATUS_TONE}
       searchText={(n) => `${n.unique_code} ${n.name} ${n.description}`}
-      columnsBeforeType={[{ key: "need", label: "Need", render: (n) => n.description || "—" }]}
+      columnsBeforeType={[{ key: "need", label: "Need", sortable: true, sortValue: (n) => n.description || null, render: (n) => n.description || "—" }]}
       columnsAfterScope={[]}
       includeArchived={includeArchived}
       onIncludeArchivedChange={onIncludeArchivedChange}

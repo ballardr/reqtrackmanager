@@ -33,16 +33,24 @@ checker = _load_checker()
 pytestmark = pytest.mark.skipif(checker is None or not checker.SRC.is_dir(), reason="frontend sources not available")
 
 
-def test_no_list_joins_the_unsortable_baseline():
-    """A file with a table and no sortable column is in the baseline, and a baseline file that was fixed has left it."""
+def test_every_list_has_a_sortable_column():
+    """No file renders a table with no sortable column, and the baseline is empty (it only ever shrank to here)."""
     assert checker.find_problems() == []
+    assert checker.baseline() == []
+
+
+def test_a_list_with_no_natural_order_gives_its_reason():
+    """The only tables left unsortable are named with a reason, and each still renders a table."""
+    for rel, reason in checker.NO_NATURAL_ORDER.items():
+        assert reason.strip()
+        assert checker.TABLE.search((checker.SRC / rel).read_text(encoding="utf-8"))
 
 
 def test_the_system_architecture_lists_are_sortable():
-    """The three lists of the System Architecture page are not in the baseline: each has sortable columns."""
-    listed = set(checker.baseline())
-    for page in ("ProjectElementsPage", "ProjectConnectionsPage", "ProjectDiagramsPage"):
-        assert f"modules/architecture/{page}.tsx" not in listed
+    """The three lists of the System Architecture page and the organisation panel sort on a header click."""
+    for page in ("ProjectElementsPage", "ProjectConnectionsPage", "ProjectDiagramsPage", "OrgElementsPanel"):
+        text = (checker.SRC / "modules" / "architecture" / f"{page}.tsx").read_text(encoding="utf-8")
+        assert checker.SORTABLE.search(text)
 
 
 @pytest.mark.parametrize("text", ["<DirectoryTable", "<DirectoryTable\n  ariaLabel", "  <DirectoryTable ariaLabel"])
@@ -57,7 +65,7 @@ def test_other_mentions_are_not_a_table(text):
     assert not checker.TABLE.search(text)
 
 
-@pytest.mark.parametrize("text", ["{ key: 'name', sortable: true }", "sortable"])
+@pytest.mark.parametrize("text", ["{ key: 'name', sortable: true }", "sortable", "onSort={table.onSort}"])
 def test_a_sortable_column_is_found(text):
-    """A column marked sortable satisfies the check."""
+    """A column marked sortable, or a table wired to a sort whose columns are built elsewhere, satisfies the check."""
     assert checker.SORTABLE.search(text)

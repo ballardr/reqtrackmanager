@@ -44,12 +44,15 @@ import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListActions, ListActionsMenu } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import type { TagFilterState } from "../../hooks/useTagFilter";
-import { useUrlText } from "../../hooks/useUrlFilter";
+import { useSortState } from "../../hooks/useTableSort";
+import { useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows, type SortValue } from "../../utils/sortRows";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
@@ -104,6 +107,9 @@ export interface ListedRecord {
   from_project_name?: string | null;
   from_project_code?: string | null;
 }
+
+/** A caller's column, with the value its header sorts by (`sortable` without one leaves the column unordered). */
+export type RecordColumn<R> = DirectoryColumn<R> & { sortValue?: (record: R) => SortValue };
 
 export function RecordListView<R extends ListedRecord, V>({
   records,
@@ -165,8 +171,8 @@ export function RecordListView<R extends ListedRecord, V>({
   page?: RecordListPage;
   /** A kind icon shown before each name (`PeopleKindIcon`); omit for a list that has one kind. */
   nameIcon?: (record: R) => ReactNode;
-  columnsBeforeType: DirectoryColumn<R>[];
-  columnsAfterScope: DirectoryColumn<R>[];
+  columnsBeforeType: RecordColumn<R>[];
+  columnsAfterScope: RecordColumn<R>[];
   /** Extra controls beside the New button (e.g. "Add from org user"). */
   toolbar?: ReactNode;
   /** Extra `FilterField`s a kind adds to the filter panel (e.g. Stakeholders' group filter). */
@@ -200,6 +206,19 @@ export function RecordListView<R extends ListedRecord, V>({
   const [search, setSearch] = useUrlText("q", !!page);
   const [statusFilter, setStatusFilter] = useUrlText("status", !!page);
   const [typeFilter, setTypeFilter] = useUrlText("type", !!page);
+  // The sort follows the filters: in the URL on a list page, local when embedded.
+  const sortValues: Record<string, (record: R) => SortValue> = {
+    name: (r) => r.name,
+    code: (r) => r.unique_code,
+    type: (r) => typeName?.(r) ?? null,
+    scope: (r) => (r.scope && scopeLabels ? scopeLabels[r.scope] : null),
+    status: (r) => (r.status && statusLabel ? statusLabel[r.status] : null),
+  };
+  for (const column of [...columnsBeforeType, ...columnsAfterScope]) if (column.sortValue) sortValues[column.key] = column.sortValue;
+  const [urlSort, setUrlSort] = useUrlSort<string>(Object.keys(sortValues));
+  const localSort = useSortState();
+  const sort = page ? urlSort : localSort.sort;
+  const onSort = (key: string) => (page ? setUrlSort((current) => cycleSort(current, key)) : localSort.onSort(key));
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const canCreate = !!onCreate && !!renderCreateModal;
@@ -230,12 +249,12 @@ export function RecordListView<R extends ListedRecord, V>({
     : undefined;
 
   const columns: DirectoryColumn<R>[] = [
-    { key: "name", label: "Name", render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
-    { key: "code", label: "Code", render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
+    { key: "name", label: "Name", sortable: true, render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
+    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
     ...columnsBeforeType,
     ...(typeName
       ? [{
-          key: "type", label: typeLabel,
+          key: "type", label: typeLabel, sortable: true,
           render: (r: R) => {
             const name = typeName(r);
             return name ? (
@@ -247,7 +266,7 @@ export function RecordListView<R extends ListedRecord, V>({
         } as DirectoryColumn<R>]
       : []),
     ...(showScope && scopeLabels
-      ? [{ key: "scope", label: "Scope", render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
+      ? [{ key: "scope", label: "Scope", sortable: true, render: (r: R) => (r.scope ? scopeLabels[r.scope] : "—") } as DirectoryColumn<R>]
       : []),
     ...columnsAfterScope,
     ...(includeHidden && onShowHidden
@@ -266,7 +285,7 @@ export function RecordListView<R extends ListedRecord, V>({
       : []),
     ...(statusLabel && statusTone
       ? [{
-          key: "status", label: "Status",
+          key: "status", label: "Status", sortable: true,
           render: (r: R) =>
             r.status ? (
               <FilterBadge tone={statusTone[r.status]} active={statusFilter === r.status} onClick={() => setStatusFilter(statusFilter === r.status ? "" : (r.status ?? ""))}>
@@ -320,7 +339,9 @@ export function RecordListView<R extends ListedRecord, V>({
         <DirectoryTable
           ariaLabel={ariaLabel}
           columns={columns}
-          rows={filtered}
+          rows={sortRows(filtered, sort, sortValues)}
+          sort={sort}
+          onSort={onSort}
           rowKey={(r) => r.id}
           placements={tagFilter && placementType ? { projectId: tagFilter.projectId, artefactType: placementType, rowId: (r) => r.id } : undefined}
           onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}

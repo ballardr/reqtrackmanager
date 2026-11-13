@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { buildLayoutApi } from "../testing/reportLayoutFixtures";
+import { expectHeaderOrdersText } from "../testing/sortHelpers";
 import { buildSavedSnippets, buildSnippetStoreApi } from "../testing/reportSnippetStoreFixtures";
 import { buildUser, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportSnippetsPanel } from "./ReportSnippetsPanel";
@@ -225,5 +226,14 @@ export const ALoadFailureIsShown: Story = {
   args: { api: { ...buildSnippetStoreApi(), list: fn(async () => { throw new Error("nope"); }) } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("The saved snippets could not be loaded.");
+  },
+};
+
+/** The Name header orders the snippets, ascending then descending. */
+export const NameHeaderSortsTheSnippets: Story = {
+  args: { api: buildSnippetStoreApi() },
+  play: async ({ canvasElement }) => {
+    const t = await within(canvasElement).findByRole("table", { name: "Saved snippets" });
+    await expectHeaderOrdersText(t, "Name");
   },
 };

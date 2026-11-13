@@ -20,7 +20,9 @@ import { Badge } from "../../components/Badge";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useTableSort } from "../../hooks/useTableSort";
 import { connectionTypeApi, elementTypeApi, orgElementApi, orgSymbolUrl, symbolApi } from "./api";
+import { elementSortValues } from "./architectureSort";
 import { diffElementFields, elementCodeRecord, valuesFromElement } from "./architectureFields";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { CollectionsPanel } from "./CollectionsPanel";
@@ -32,6 +34,10 @@ import {
 } from "./types";
 
 type Tab = "elements" | "collections";
+
+const NO_ELEMENTS: ArchitectureElement[] = [];
+/** The organisation list has no Parent column, so only the columns it draws sort. */
+const ORG_ELEMENT_SORT_VALUES = elementSortValues(() => "");
 
 /** @param orgId The organisation whose own elements and collections are managed. */
 export function OrgElementsPanel({ orgId }: { orgId: string }) {
@@ -72,10 +78,11 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
     return () => { live = false; };
   }, [calls, orgId, showArchived, refresh]);
 
+  const table = useTableSort(elements ?? NO_ELEMENTS, ORG_ELEMENT_SORT_VALUES);
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (elements === null) return <Spinner />;
 
-  const shown = elements.filter((e) => folders.matches(e.folder_path));
+  const shown = table.rows.filter((e) => folders.matches(e.folder_path));
 
   async function save(values: ElementFieldValues, extras: ElementCreateExtras) {
     setFormError(null);
@@ -106,13 +113,13 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
   }
 
   const columns: DirectoryColumn<ArchitectureElement>[] = [
-    { key: "code", label: "Code", render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
-    { key: "name", label: "Name", render: (e) => e.name },
-    { key: "type", label: "Type", render: (e) => e.element_type_name },
-    { key: "folder", label: "Folder", render: (e) => e.folder_path ?? "—" },
-    { key: "owner", label: "Owner", render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
+    { key: "code", label: "Code", sortable: true, render: (e) => <ScopedRecordCode record={elementCodeRecord(e)} /> },
+    { key: "name", label: "Name", sortable: true, render: (e) => e.name },
+    { key: "type", label: "Type", sortable: true, render: (e) => e.element_type_name },
+    { key: "folder", label: "Folder", sortable: true, render: (e) => e.folder_path ?? "—" },
+    { key: "owner", label: "Owner", sortable: true, render: (e) => <PrincipalBadge principal={e.owner} placeholder="—" /> },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (e) => (
         <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
           <Badge tone={ARCHITECTURE_STATUS_TONE[e.status]}>{ARCHITECTURE_STATUS_LABEL[e.status]}</Badge>
@@ -161,6 +168,7 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
                 {folders.bar}
                 <DirectoryTable
                   ariaLabel="Organisation elements" columns={columns} rows={shown} rowKey={(e) => e.id}
+                  sort={table.sort} onSort={table.onSort}
                   selection={{ selected: folders.selected, onChange: folders.setSelected, label: (e) => `Select ${e.unique_code}`, allLabel: "Select all elements" }}
                       emptyState={<p className="text-muted">{elements.length === 0 ? "The organisation has no elements of its own yet." : "No elements match the chosen folder."}</p>}
                 />

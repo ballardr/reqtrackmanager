@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgGroup, OrgUser } from "../../api/types";
 import { api } from "../../api/client";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { withToast } from "../../testing/storybook-helpers";
 import { StandardMembersSection } from "./StandardMembersSection";
 import type { ComplianceStandard, ComplianceStandardMembers } from "./types";
@@ -277,3 +278,20 @@ export const NoGroupsAvailable: Story = {
 
 export const LightTheme: Story = { ...ListsExistingMembers };
 export const DarkTheme: Story = { ...ListsExistingMembers, globals: { theme: "dark" } };
+
+/** The Name header orders users and groups together, ascending then descending. */
+export const NameHeaderSortsMembersAndGroups: Story = {
+  beforeEach: () =>
+    mockMembersApi({
+      members: [
+        { user_id: "user-2", display_name: "Sam Contributor", email: "sam@example.com", role_keys: ["standards_contributor"] },
+        { user_id: "user-1", display_name: "Alex Manager", email: "alex@example.com", role_keys: ["standards_manager"] },
+      ],
+      group_members: [{ org_group_id: "group-1", group_name: "Security Reviewers", role_keys: ["standards_contributor"], member_count: 3 }],
+      manager_floor_covered_by_fallback: false,
+    }),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Name");
+  },
+};

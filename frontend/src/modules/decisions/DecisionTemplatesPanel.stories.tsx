@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { withToast } from "../../testing/storybook-helpers";
 import { DecisionTemplatesPanel } from "./DecisionTemplatesPanel";
 import type { DecisionTemplate } from "./types";
@@ -123,3 +124,12 @@ export const EditTemplateViaActionMenu: Story = {
 
 export const LightTheme: Story = { ...ListsExistingTemplates };
 export const DarkTheme: Story = { ...ListsExistingTemplates, globals: { theme: "dark" } };
+
+/** The Name header orders the templates, ascending then descending. */
+export const NameHeaderSortsTheTemplates: Story = {
+  beforeEach: () => mockTemplateApis([template(), template({ id: "template-2", name: "MADR" })]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Name");
+  },
+};

@@ -34,6 +34,7 @@ import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -51,7 +52,8 @@ import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows, type SortValue } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -99,6 +101,20 @@ function inCell(risk: Risk, cell: CellFilter): boolean {
   return likelihood === cell.likelihoodLevelId && consequence === cell.consequenceLevelId;
 }
 
+const RISK_SORT_KEYS = ["code", "title", "type", "inherent", "residual", "status", "owner", "review"] as const;
+
+/** Sortable value of each sortable column; a rating sorts by its normalised score, so the order follows severity. */
+const RISK_SORT_VALUES: Record<string, (risk: Risk) => SortValue> = {
+  code: (r) => r.unique_code,
+  title: (r) => r.title,
+  type: (r) => r.risk_type_name,
+  inherent: (r) => r.inherent_rating?.normalised ?? null,
+  residual: (r) => r.residual_rating?.normalised ?? null,
+  status: (r) => RISK_STATUS_LABEL[r.status],
+  owner: (r) => r.owner?.label ?? null,
+  review: (r) => r.review_date,
+};
+
 export function ProjectRisksPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
@@ -132,6 +148,7 @@ export function ProjectRisksPage() {
   const [overdueOnly, setOverdueOnly] = useUrlFlag("overdue");
   const [untreatedOnly, setUntreatedOnly] = useUrlFlag("untreated");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [sort, setSort] = useUrlSort<string>(RISK_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -205,13 +222,13 @@ export function ProjectRisksPage() {
 
 
   const columns: DirectoryColumn<Risk>[] = [
-    { key: "code", label: "Code", render: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /> },
-    { key: "title", label: "Title", render: (r) => <>{r.title}<ProjectScopeLabel row={r} /></> },
-    { key: "type", label: "Type", render: (r) => r.risk_type_name ?? "—" },
-    { key: "inherent", label: "Inherent", render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
-    { key: "residual", label: "Residual", render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
+    { key: "code", label: "Code", sortable: true, render: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /> },
+    { key: "title", label: "Title", sortable: true, render: (r) => <>{r.title}<ProjectScopeLabel row={r} /></> },
+    { key: "type", label: "Type", sortable: true, render: (r) => r.risk_type_name ?? "—" },
+    { key: "inherent", label: "Inherent", sortable: true, render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
+    { key: "residual", label: "Residual", sortable: true, render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (r) => (
         <FilterBadge
           tone={RISK_STATUS_TONE[r.status]} active={statusFilter === r.status}
@@ -221,9 +238,9 @@ export function ProjectRisksPage() {
         </FilterBadge>
       ),
     },
-    { key: "owner", label: "Owner", render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
+    { key: "owner", label: "Owner", sortable: true, render: (r) => <PrincipalBadge principal={r.owner} placeholder="—" /> },
     {
-      key: "review", label: "Next review",
+      key: "review", label: "Next review", sortable: true,
       render: (r) => r.review_date
         ? <span>{r.review_date}{r.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}</span>
         : "—",
@@ -293,7 +310,9 @@ export function ProjectRisksPage() {
               <DirectoryTable
                 ariaLabel="Risks"
                 columns={columns}
-                rows={filtered}
+                rows={sortRows(filtered, sort, RISK_SORT_VALUES)}
+                sort={sort}
+                onSort={(key) => setSort((current) => cycleSort(current, key))}
                 rowKey={(r) => r.id}
                 placements={{ projectId, artefactType: "risk", rowId: (r) => r.id }}
                 rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}

@@ -6,8 +6,9 @@ Fails when a frontend file renders a `DirectoryTable` without making any column 
 can be ordered with a header click (docs/ux-style-guide.md, "Pattern: sortable column header").
 
 Checks `frontend/src/**/*.tsx` (stories and tests excluded, `DirectoryTable.tsx` itself exempt): a file containing
-`<DirectoryTable` must also contain `sortable` (a column marked `sortable: true`). A column with no natural order (an
-actions or badge-only column) stays unsortable; a whole list that cannot be ordered needs a reason in
+`<DirectoryTable` must also contain `sortable` (a column marked `sortable: true`) or pass `onSort=` (its columns are
+built in another file, which marks them). A column with no natural order (an actions or badge-only column) stays
+unsortable; a whole list that cannot be ordered is named in `NO_NATURAL_ORDER` below with its reason, recorded in
 `docs/decisions.md`.
 
 Design notes:
@@ -27,8 +28,12 @@ SRC = ROOT / "frontend" / "src"
 BASELINE = Path(__file__).resolve().parent / "sortable_columns_baseline.json"
 
 EXEMPT = {"components/DirectoryTable.tsx"}
+# Tables whose rows have no natural order, each with the reason (also in docs/decisions.md).
+NO_NATURAL_ORDER = {
+    "components/OrgUsageTable.tsx": "a fixed key-value table of six usage figures, read top to bottom in a set order",
+}
 TABLE = re.compile(r"<DirectoryTable(?![\w-])")
-SORTABLE = re.compile(r"\bsortable\b")
+SORTABLE = re.compile(r"\bsortable\b|\bonSort=")
 
 
 def unsortable_files() -> list[str]:
@@ -36,7 +41,7 @@ def unsortable_files() -> list[str]:
     found = []
     for path in sorted(SRC.rglob("*.tsx")):
         rel = path.relative_to(SRC).as_posix()
-        if rel.endswith((".stories.tsx", ".test.tsx")) or rel in EXEMPT:
+        if rel.endswith((".stories.tsx", ".test.tsx")) or rel in EXEMPT or rel in NO_NATURAL_ORDER:
             continue
         text = path.read_text(encoding="utf-8")
         if TABLE.search(text) and not SORTABLE.search(text):

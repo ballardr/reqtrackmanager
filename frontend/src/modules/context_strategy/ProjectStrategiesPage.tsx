@@ -23,9 +23,11 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { STRATEGY_SORT_KEYS, STRATEGY_SORT_VALUES } from "./contextStrategySort";
 import { projectStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
@@ -34,7 +36,8 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -61,6 +64,7 @@ export function ProjectStrategiesPage() {
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(STRATEGY_STATUS_LABEL) as StrategyStatus[]);
   const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(STRATEGY_PRIORITY_LABEL) as StrategyPriority[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [sort, setSort] = useUrlSort<string>(STRATEGY_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -107,14 +111,14 @@ export function ProjectStrategiesPage() {
   });
 
   const columns: DirectoryColumn<Strategy>[] = [
-    { key: "title", label: "Title", render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
-    { key: "code", label: "Code", render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
-    { key: "priority", label: "Priority", render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
+    { key: "title", label: "Title", sortable: true, render: (s) => <>{s.title}<ProjectScopeLabel row={s} /></> },
+    { key: "code", label: "Code", sortable: true, render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
+    { key: "priority", label: "Priority", sortable: true, render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
     },
-    { key: "version", label: "Version", render: (s) => `v${s.version_number}` },
+    { key: "version", label: "Version", sortable: true, render: (s) => `v${s.version_number}` },
   ];
 
   return (
@@ -155,7 +159,9 @@ export function ProjectStrategiesPage() {
         <DirectoryTable
           ariaLabel="Strategies"
           columns={columns}
-          rows={filtered}
+          rows={sortRows(filtered, sort, STRATEGY_SORT_VALUES)}
+          sort={sort}
+          onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(s) => s.id}
           placements={{ projectId, artefactType: "strategy", rowId: (s) => s.id }}
           onRowClick={(s) => navigate(`/projects/${rowProjectId(s, projectId)}/modules/context_strategy/strategies/${s.id}`)}

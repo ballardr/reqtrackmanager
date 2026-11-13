@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import type { Strategy } from "./types";
@@ -89,3 +90,12 @@ export const OpenCreateModal: Story = {
 
 export const LightTheme: Story = { ...ListsOrgStrategies };
 export const DarkTheme: Story = { ...ListsOrgStrategies, globals: { theme: "dark" } };
+
+/** The Title header orders the strategies, ascending then descending. */
+export const TitleHeaderSortsTheStrategies: Story = {
+  beforeEach: () => mockPanelApis([strategy(), strategy({ id: "strategy-2", title: "Diversify revenue streams", status: "draft" })]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Title");
+  },
+};

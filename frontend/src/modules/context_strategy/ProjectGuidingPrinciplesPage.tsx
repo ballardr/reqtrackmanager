@@ -19,9 +19,11 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { GUIDING_PRINCIPLE_SORT_KEYS, GUIDING_PRINCIPLE_SORT_VALUES } from "./contextStrategySort";
 import { projectGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
@@ -30,7 +32,8 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -57,6 +60,7 @@ export function ProjectGuidingPrinciplesPage() {
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(GUIDING_PRINCIPLE_STATUS_LABEL) as GuidingPrincipleStatus[]);
   const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(GUIDING_PRINCIPLE_PRIORITY_LABEL) as GuidingPrinciplePriority[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [sort, setSort] = useUrlSort<string>(GUIDING_PRINCIPLE_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -103,14 +107,14 @@ export function ProjectGuidingPrinciplesPage() {
   });
 
   const columns: DirectoryColumn<GuidingPrinciple>[] = [
-    { key: "name", label: "Name", render: (g) => <>{g.name}<ProjectScopeLabel row={g} /></> },
-    { key: "code", label: "Code", render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
-    { key: "priority", label: "Priority", render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
+    { key: "name", label: "Name", sortable: true, render: (g) => <>{g.name}<ProjectScopeLabel row={g} /></> },
+    { key: "code", label: "Code", sortable: true, render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
+    { key: "priority", label: "Priority", sortable: true, render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
     },
-    { key: "version", label: "Version", render: (g) => `v${g.version_number}` },
+    { key: "version", label: "Version", sortable: true, render: (g) => `v${g.version_number}` },
   ];
 
   return (
@@ -151,7 +155,9 @@ export function ProjectGuidingPrinciplesPage() {
         <DirectoryTable
           ariaLabel="Guiding Principles"
           columns={columns}
-          rows={filtered}
+          rows={sortRows(filtered, sort, GUIDING_PRINCIPLE_SORT_VALUES)}
+          sort={sort}
+          onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(g) => g.id}
           placements={{ projectId, artefactType: "guiding_principle", rowId: (g) => g.id }}
           onRowClick={(g) => navigate(`/projects/${rowProjectId(g, projectId)}/modules/context_strategy/guiding-principles/${g.id}`)}

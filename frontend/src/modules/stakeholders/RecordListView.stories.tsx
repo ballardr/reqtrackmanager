@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { ProjectContext } from "../../context/ProjectContextValue";
+import { expectHeaderOrdersText, expectHeaderSorts } from "../../testing/sortHelpers";
 import { RecordListView, type ListedRecord } from "./RecordListView";
 
 interface Widget extends ListedRecord {
@@ -158,3 +159,16 @@ export const ToolbarRendersBesideTheNewButton: Story = {
 };
 
 export const DarkTheme: Story = { ...RendersFixedAndKindColumnsThroughLabelMaps, globals: { theme: "dark" } };
+
+/** The fixed columns and a kind's own column (given a `sortValue`) sort on a header click; a record with no type sorts last. */
+export const HeadersSortTheRecords: Story = {
+  args: {
+    columnsAfterScope: [{ key: "size", label: "Size", sortable: true, sortValue: (w: Widget) => w.size, render: (w: Widget) => String(w.size) }],
+  },
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table", { name: "Widgets" });
+    await expectHeaderOrdersText(table, "Name");
+    await expectHeaderSorts(table, "Size", ["1", "3", "5"]);
+    await expectHeaderSorts(table, "Type", ["Round", "Square", "—"]);
+  },
+};
