@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
-  buildElement, buildState, buildStateMachine, buildStateMachineModel, buildTransition, mockArchitectureReads, PROJECT_ID,
+  buildElement, buildState, buildStateMachine, buildStateMachineModel, buildTransition, captureDownloads, mockArchitectureReads, PROJECT_ID,
 } from "./architectureFixtures";
 import { StateMachineEditorPage } from "./StateMachineEditorPage";
 
@@ -291,7 +291,7 @@ export const ARefusedActivationShowsTheErrorsAndOffersNoReload: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change state" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
     await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Move from Draft to Active" }));
     await expect(await canvas.findByText(/cannot be activated until its errors are resolved/)).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Reload state machine diagram" })).not.toBeInTheDocument();
@@ -379,5 +379,86 @@ export const ConfigurationShowsTheElementAndOffersTheEditForm: Story = {
     await userEvent.type(name, "Modes");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(MACHINE, { version: 5, name: "Modes" }));
+  },
+};
+
+const PNG_SOURCE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20" width="40" height="20"><rect width="40" height="20" fill="#0f766e"/></svg>';
+
+/** Answers the export reads with a small SVG and Mermaid text. */
+function mockExportReads() {
+  spyOn(api, "getForBlob").mockImplementation(async (path: string) => {
+    if (path.endsWith("/svg")) return new Blob([PNG_SOURCE], { type: "image/svg+xml" });
+    return new Blob(["stateDiagram-v2\n"], { type: "text/plain" });
+  });
+}
+
+/** Opens the Export menu and chooses an item (the menu is a popover outside the story's canvas). */
+async function exportAs(canvas: ReturnType<typeof within>, item: string) {
+  await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
+  await userEvent.click(await within(document.body).findByRole("menuitem", { name: item }));
+}
+
+export const ExportingSvgAndMermaidAsksTheServerForTheStoredDiagram: Story = {
+  beforeEach: () => { mockExportReads(); },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await exportAs(canvas, "SVG image");
+    await waitFor(() => expect(names).toEqual(["SMD-001-gateway-modes.svg"]));
+    expect(api.getForBlob).toHaveBeenCalledWith(`${MACHINE}/svg`);
+    await exportAs(canvas, "Download Mermaid text");
+    await waitFor(() => expect(names).toEqual(["SMD-001-gateway-modes.svg", "SMD-001-gateway-modes.mmd"]));
+    expect(api.getForBlob).toHaveBeenCalledWith(`${MACHINE}/mermaid`);
+  },
+};
+
+export const ExportingPngDrawsTheServersSvgAndCopyingPutsTheMermaidOnTheClipboard: Story = {
+  beforeEach: () => {
+    mockExportReads();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: fn().mockResolvedValue(undefined) }, configurable: true });
+  },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await exportAs(canvas, "PNG image");
+    await waitFor(() => expect(names).toEqual(["SMD-001-gateway-modes.png"]));
+    await exportAs(canvas, "Copy Mermaid text");
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("stateDiagram-v2\n"));
+  },
+};
+
+export const ExportingSavesAPendingDrawingFirst: Story = {
+  beforeEach: () => {
+    mockExportReads();
+    spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await exportAs(canvas, "SVG image");
+    await waitFor(() => expect(names).toHaveLength(1));
+    const put = (api.put as unknown as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder[0];
+    const read = (api.getForBlob as unknown as { mock: { calls: [string][]; invocationCallOrder: number[] } }).mock;
+    expect(put).toBeLessThan(read.invocationCallOrder[read.calls.findIndex(([path]) => path.endsWith("/svg"))]);
+  },
+};
+
+export const AFailedExportShowsAMessageAndDownloadsNothing: Story = {
+  beforeEach: () => {
+    spyOn(api, "getForBlob").mockImplementation(async () => { throw new ApiError(500, "Server error"); });
+  },
+  play: async ({ canvasElement }) => {
+    const names = captureDownloads();
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await exportAs(canvas, "SVG image");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`${MACHINE}/svg`));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeEnabled());
+    expect(names).toEqual([]);
   },
 };

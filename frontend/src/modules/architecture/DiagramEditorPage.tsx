@@ -27,12 +27,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { downloadBlob } from "../../utils/download";
-import { svgToPngBlob } from "../../utils/svgToPng";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Badge } from "../../components/Badge";
-import { MenuButton } from "../../components/MenuButton";
 import { DetailLayout } from "../../components/DetailLayout";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
 import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
@@ -65,7 +62,9 @@ import {
   setLineAnchor, setNoteLeader, updateNote, BOUNDARY_NODE_PREFIX, NOTE_NODE_PREFIX, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
-import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
+import { toggleStates } from "./diagramExport";
+import { DiagramExportMenu } from "./DiagramExportMenu";
+import { useDiagramExport } from "./useDiagramExport";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
 import { blockPinDescriber, pinAnchorOf, pinPlaceOf } from "./diagramComments";
 import { DiagramFormModal } from "./DiagramFormModal";
@@ -143,7 +142,6 @@ export function DiagramEditorPage() {
   const [connecting, setConnecting] = useState<{ source: string; target: string; realises?: string } | null>(null);
   const [toggleForm, setToggleForm] = useState<{ initial?: DiagramToggleValues } | null>(null);
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
   const [canManageTypes, setCanManageTypes] = useState(false);
   const [leaveForSetup, setLeaveForSetup] = useState(false);
   const [editingElement, setEditingElement] = useState<ArchitectureElement | null>(null);
@@ -251,6 +249,15 @@ export function DiagramEditorPage() {
   const toggles = useMemo(
     () => (view?.toggles ?? []).map((t) => ({ ...t, on: toggleOff.includes(t.id) ? false : toggleOn.includes(t.id) || t.default_on })),
     [view, toggleOn, toggleOff],
+  );
+  // Export is of the stored diagram, so a pending layout is saved first; the server draws it for the switch states on this page.
+  const { exporting, exportDiagram } = useDiagramExport(
+    diagram && {
+      code: diagram.unique_code, name: diagram.name,
+      ensureSaved: async () => !dirty || (await editor.save()),
+      loadSvg: () => diagramApi.svg(diagram.id, toggleStates(toggles)),
+      loadMermaid: () => diagramApi.mermaid(diagram.id, toggleStates(toggles)),
+    },
   );
   const connectionDetail = diagram?.connection_detail ?? false;
   const scopeId = diagram?.scope_element_id ?? null;
@@ -499,36 +506,6 @@ export function DiagramEditorPage() {
     setSelection(null);
   }
 
-  /**
-   * Exports the saved diagram as the server draws it for the switch states on this page. A pending layout is saved first,
-   * since the export is of the stored diagram.
-   */
-  async function exportDiagram(kind: DiagramExportKind) {
-    if (!diagram || exporting) return;
-    setExporting(true);
-    try {
-      if (!(await ensureSaved())) return;
-      const states = toggleStates(toggles);
-      const file = (extension: string) => exportFileName(diagram.unique_code, diagram.name, extension);
-      if (kind === "svg") {
-        downloadBlob(new Blob([await diagramApi.svg(diagram.id, states)], { type: "image/svg+xml" }), file("svg"));
-      } else if (kind === "png") {
-        downloadBlob(await svgToPngBlob(await diagramApi.svg(diagram.id, states)), file("png"));
-      } else if (kind === "mermaid") {
-        downloadBlob(new Blob([await diagramApi.mermaid(diagram.id, states)], { type: "text/plain" }), file("mmd"));
-      } else {
-        await navigator.clipboard.writeText(await diagramApi.mermaid(diagram.id, states));
-        showToast("Mermaid text copied.");
-        return;
-      }
-      showToast("Diagram exported.");
-    } catch (err) {
-      showToast(toErrorMessage(err, "Could not export the diagram."), "error");
-    } finally {
-      setExporting(false);
-    }
-  }
-
   function flipToggle(toggle: DiagramToggle, on: boolean) {
     // The saved default needs no override; a state that differs from it is kept in the address.
     const without = (list: string[]) => list.filter((id) => id !== toggle.id);
@@ -609,15 +586,7 @@ export function DiagramEditorPage() {
         onAddOuter={addOuter}
         onSetup={canManageTypes ? () => (dirty ? setLeaveForSetup(true) : navigate(SETUP_PATH(projectId))) : undefined}
       />
-      <MenuButton
-        label="Export" menuLabel="Export diagram" disabled={exporting}
-        items={[
-          { label: "PNG image", group: "Image", onSelect: () => void exportDiagram("png") },
-          { label: "SVG image", group: "Image", onSelect: () => void exportDiagram("svg") },
-          { label: "Download Mermaid text", key: "mermaid", group: "Text", onSelect: () => void exportDiagram("mermaid") },
-          { label: "Copy Mermaid text", key: "copy-mermaid", group: "Text", onSelect: () => void exportDiagram("copy-mermaid") },
-        ]}
-      />
+      <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
       {tab === "drawing" && (
         <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
           <button

@@ -11,7 +11,7 @@
  * shared `StateMachineFields`), and the type is fixed once the diagram exists, so editing shows no Type. The quick links and
  * tags belong to the chosen type's record. A new state machine diagram has no states, so it cannot pass the checks that guard
  * activation; Save and activate is offered for a block diagram only, and a state machine diagram is activated from its
- * Change state menu once it is sound.
+ * Change status menu once it is sound.
  */
 import { useState } from "react";
 

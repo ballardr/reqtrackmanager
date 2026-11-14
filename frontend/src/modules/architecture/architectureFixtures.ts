@@ -410,3 +410,10 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     throw new Error(`Unmocked GET: ${path}`);
   });
 }
+
+/** Records the file names of downloads (an anchor click with a `download` name) instead of saving files. */
+export function captureDownloads(): string[] {
+  const names: string[] = [];
+  spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { if (this.download) names.push(this.download); });
+  return names;
+}

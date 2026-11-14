@@ -2,7 +2,7 @@
 Module: modules.architecture.transitions
 
 The one map of which status moves an element, a connection or a diagram may make. Every change of status goes
-through `require_move`, and every record the API returns carries `allowed_moves(status)`, so the "Change state" menu
+through `require_move`, and every record the API returns carries `allowed_moves(status)`, so the "Change status" menu
 draws exactly what the server accepts.
 
 A later state is a new entry in `STATUS_MOVES` plus a label, not a change to the frontend menu. There is no approval

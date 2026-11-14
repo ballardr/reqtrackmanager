@@ -1,0 +1,99 @@
+{
+  "labels": [
+    {
+      "name": "nothing",
+      "event": "",
+      "guard": "",
+      "action": "",
+      "label": ""
+    },
+    {
+      "name": "an event only",
+      "event": "tick",
+      "guard": "",
+      "action": "",
+      "label": "tick"
+    },
+    {
+      "name": "a guard only",
+      "event": "",
+      "guard": "armed",
+      "action": "",
+      "label": "[armed]"
+    },
+    {
+      "name": "an event and a guard",
+      "event": "tick",
+      "guard": "armed",
+      "action": "",
+      "label": "tick [armed]"
+    },
+    {
+      "name": "an action only",
+      "event": "",
+      "guard": "",
+      "action": "log()",
+      "label": "/ log()"
+    },
+    {
+      "name": "a short one-line label",
+      "event": "tick",
+      "guard": "armed",
+      "action": "log()",
+      "label": "tick [armed] / log()"
+    },
+    {
+      "name": "a long label breaks before the action",
+      "event": "temperature_exceeded",
+      "guard": "sensor_ok",
+      "action": "raise_alarm_and_stop()",
+      "label": "temperature_exceeded [sensor_ok]\n/ raise_alarm_and_stop()"
+    },
+    {
+      "name": "a long action with no head stays on one line",
+      "event": "",
+      "guard": "",
+      "action": "a_very_long_action_name_that_has_no_head_to_keep()",
+      "label": "/ a_very_long_action_name_that_has_no_head_to_keep()"
+    }
+  ],
+  "actions": [
+    {
+      "name": "none",
+      "entry": "",
+      "exit": "",
+      "activity": "",
+      "lines": []
+    },
+    {
+      "name": "entry only",
+      "entry": "init()",
+      "exit": "",
+      "activity": "",
+      "lines": [
+        "entry / init()"
+      ]
+    },
+    {
+      "name": "all three",
+      "entry": "init()",
+      "exit": "release()",
+      "activity": "poll()",
+      "lines": [
+        "entry / init()",
+        "exit / release()",
+        "do / poll()"
+      ]
+    },
+    {
+      "name": "exit and do",
+      "entry": "",
+      "exit": "release()",
+      "activity": "poll()",
+      "lines": [
+        "exit / release()",
+        "do / poll()"
+      ]
+    }
+  ]
+}

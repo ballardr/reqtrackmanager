@@ -102,6 +102,7 @@ Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, Ri
 - [Stakeholders & Personas module](./stakeholders-personas-module/overview.md) — what it does and how to work with it.
 - [Risk Management module](./risk-management-module/overview.md) — what it does and how to work with it.
 - [Product Feedback module](./product-feedback-module/overview.md) — what it does and how to work with it.
+- [System Architecture module](./system-architecture-module/state-machine-diagrams.md) — state machine diagrams of an element.
 - [Building your own module](./building-your-own-module.md) — the contract for a module that ships inside this repository (Tier A).
 - [Third-party and federated modules](./third-party-and-federated-modules.md) — building and installing a module that was never compiled into this deployment's own images.
 - [Roadmap](./roadmap.md) — modules being explored beyond what's shipped today.

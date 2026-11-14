@@ -14,8 +14,8 @@ type Story = StoryObj<typeof ArchitectureStatusControls>;
 
 /** Opens the menu and returns the names of its items. */
 async function itemsOf(canvasElement: HTMLElement): Promise<string[]> {
-  await userEvent.click(within(canvasElement).getByRole("button", { name: "Change state" }));
-  const menu = within(document.body).getByRole("menu", { name: "Change state" });
+  await userEvent.click(within(canvasElement).getByRole("button", { name: "Change status" }));
+  const menu = within(document.body).getByRole("menu", { name: "Change status" });
   return within(menu).getAllByRole("menuitem").map((i) => (i.textContent ?? "").trim());
 }
 
@@ -67,6 +67,6 @@ export const FromRejected: Story = {
 export const NoMovesDrawsNothing: Story = {
   args: { status: "active", moves: [] },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).queryByRole("button", { name: "Change state" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: "Change status" })).not.toBeInTheDocument();
   },
 };

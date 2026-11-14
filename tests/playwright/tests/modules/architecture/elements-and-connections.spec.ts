@@ -109,7 +109,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
     });
   });
 
-  test("Change state offers the server's moves, and a parent retires only after its child", async ({ page }) => {
+  test("Change status offers the server's moves, and a parent retires only after its child", async ({ page }) => {
     const { suffix, project } = await setUpOrg(page, "ArchitectureStates", false, "System Architecture");
     const parent = `Gateway ${suffix}`;
     const child = `Orders ${suffix}`;
@@ -131,7 +131,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
     await test.step("a parent cannot retire while a child is in use; retire the child first", async () => {
       const moveTo = async (item: string, toast: string) => {
-        await page.getByRole("button", { name: "Change state", exact: true }).click();
+        await page.getByRole("button", { name: "Change status", exact: true }).click();
         await page.getByRole("menuitem", { name: item }).click();
         await expect(page.getByText(toast)).toBeVisible();
       };
@@ -142,7 +142,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
 
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
-      await page.getByRole("button", { name: "Change state", exact: true }).click();
+      await page.getByRole("button", { name: "Change status", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move from Active to Retired" }).click();
       await expect(page.getByText(/still has 1 child element\(s\) in use/)).toBeVisible();
 

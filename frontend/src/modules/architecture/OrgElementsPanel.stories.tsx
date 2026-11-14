@@ -28,7 +28,7 @@ export const ListsTheOrganisationsOwnElements: Story = {
     const canvas = within(canvasElement);
     const table = await canvas.findByRole("table", { name: "Organisation elements" });
     await expect(within(table).getByText("Identity service")).toBeInTheDocument();
-    await expect(within(table).getByRole("button", { name: "Change state" })).toBeInTheDocument();
+    await expect(within(table).getByRole("button", { name: "Change status" })).toBeInTheDocument();
   },
 };
 

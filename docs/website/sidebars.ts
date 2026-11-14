@@ -193,6 +193,13 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'System Architecture module',
+          items: [
+            'modules/system-architecture-module/state-machine-diagrams',
+          ],
+        },
+        {
+          type: 'category',
           label: 'Risk Management module',
           items: [
             'modules/risk-management-module/overview',

@@ -428,6 +428,7 @@ def test_another_project_s_ids_look_absent(client, admin_token):
     for path in (
         f"/state-machine-diagrams/{machine['id']}", f"/state-machine-diagrams/{machine['id']}/model",
         f"/state-machine-diagrams/{machine['id']}/comments", f"/states/{states['Start']['id']}",
+        f"/state-machine-diagrams/{machine['id']}/svg", f"/state-machine-diagrams/{machine['id']}/mermaid",
     ):
         assert client.get(f"{base}{path}", headers=auth_headers(token)).status_code == 404, path
     assert _machines(client, token, other["id"]) == [] and _states(client, token, other["id"]) == []
@@ -451,6 +452,7 @@ def test_a_diagram_of_a_hidden_shared_element_answers_404_on_every_read_path(cli
         f"/state-machine-diagrams/{machine['id']}", f"/state-machine-diagrams/{machine['id']}/model",
         f"/state-machine-diagrams/{machine['id']}/comments", f"/states/{states['Running']['id']}",
         f"/states/{states['Running']['id']}/impact",
+        f"/state-machine-diagrams/{machine['id']}/svg", f"/state-machine-diagrams/{machine['id']}/mermaid",
     ):
         assert client.get(f"{base}{path}", headers=auth_headers(architect)).status_code == 404, path
     version = 1

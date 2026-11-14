@@ -4,7 +4,7 @@
  * The header of every record detail page: back link, title (with the record's
  * code as a muted suffix), status pills, the Edit icon button and the object-action
  * menu, with the record's visible workflow buttons beneath. Tags go on their own line, or with `tagsInline` on the
- * badge line beside the version. A `stateMenu` (a record's "Change state" control) sits beside Edit.
+ * badge line beside the version. A `stateMenu` (a record's "Change status" control) sits beside Edit.
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
  * - Edit and the menu sit at the right edge of the title row, in an `ItemRow`, so they
@@ -44,7 +44,7 @@ const BACK_ARROW = "← ";
  * @param tagsInline Draw `tags` on the badge line after the version instead of on a line of its own. The page passes `<RecordTags inline />`, which draws nothing for a record with no tags or components, so the header carries no empty line.
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
- * @param stateMenu A "Change state" control drawn before Edit in the title row, for a record whose state moves along several paths; omit when the user cannot change it.
+ * @param stateMenu A "Change status" control drawn before Edit in the title row, for a record whose state moves along several paths; omit when the user cannot change it.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
  * @param transitions Visible workflow buttons (Submit, Approve, Retire...).
  * @param actions Object actions for the menu; falsy entries are dropped.

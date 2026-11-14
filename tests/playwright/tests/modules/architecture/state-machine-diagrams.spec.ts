@@ -123,7 +123,7 @@ test.describe("System Architecture: state machine diagrams", () => {
     await test.step("an empty diagram has an error, and activating it is refused with the reason", async () => {
       await expect(findingsCard(page).getByText("1 error")).toBeVisible();
       await expect(findingsCard(page).getByText(/no initial state at the top level/)).toBeVisible();
-      await page.getByRole("button", { name: "Change state", exact: true }).click();
+      await page.getByRole("button", { name: "Change status", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move from Draft to Active" }).click();
       await expect(page.getByRole("alert").filter({ hasText: /cannot be activated until its errors are resolved/ })).toBeVisible();
       await expect(page.getByRole("button", { name: "Reload state machine diagram" })).toHaveCount(0);
@@ -148,7 +148,7 @@ test.describe("System Architecture: state machine diagrams", () => {
     });
 
     await test.step("a sound diagram is activated", async () => {
-      await page.getByRole("button", { name: "Change state", exact: true }).click();
+      await page.getByRole("button", { name: "Change status", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move from Draft to Active" }).click();
       await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
       await expect(page.getByText(/moved to Active/).first()).toBeVisible();
@@ -202,6 +202,62 @@ test.describe("System Architecture: state machine diagrams", () => {
       await dialog.getByRole("button", { name: "Delete", exact: true }).click();
       await expect(page.getByRole("alert").filter({ hasText: /contains other states/ })).toBeVisible();
       await expect(page.getByLabel("Active, node", { exact: true })).toBeVisible();
+    });
+  });
+
+  test("an architect exports the stored diagram as SVG, PNG and Mermaid text, and a rename reaches the next export", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdExport", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Valve ${suffix}`);
+    const { diagram, ids } = await createMachine(page.request, base, adminHeaders, elementId, `Valve modes ${suffix}`, [
+      { name: "Start", kind: "initial", x: 40, y: 60 }, { name: "Closed", x: 140, y: 40 }, { name: "Open", x: 420, y: 40 },
+    ], [["Start", "Closed"], ["Closed", "Open", "open_cmd"]]);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    await expect(page.getByLabel("Closed, node", { exact: true })).toBeVisible();
+
+    /** Chooses an Export item and returns the downloaded file's name and text. */
+    async function download(item: string): Promise<{ name: string; text: string }> {
+      await page.getByRole("button", { name: "Export", exact: true }).click();
+      const saved = page.waitForEvent("download");
+      await page.getByRole("menuitem", { name: item, exact: true }).click();
+      const file = await saved;
+      const path = await file.path();
+      const { readFile } = await import("node:fs/promises");
+      return { name: file.suggestedFilename(), text: path ? await readFile(path, "utf8") : "" };
+    }
+
+    await test.step("the SVG is the server's drawing of the states and transitions", async () => {
+      const svg = await download("SVG image");
+      expect(svg.name).toMatch(/^SMD-\d+-valve-modes-.*\.svg$/);
+      expect(svg.text).toContain("<svg");
+      expect(svg.text).toContain(">Closed<");
+      expect(svg.text).toContain(">open_cmd<");
+    });
+
+    await test.step("the Mermaid text is a stateDiagram-v2 of the same model", async () => {
+      const mermaid = await download("Download Mermaid text");
+      expect(mermaid.name).toMatch(/\.mmd$/);
+      expect(mermaid.text).toContain("stateDiagram-v2");
+      expect(mermaid.text).toMatch(/state "STE-\d+ Closed" as s\d+/);
+      expect(mermaid.text).toContain("[*] --> ");
+      expect(mermaid.text).toMatch(/s\d+ --> s\d+ : open_cmd/);
+    });
+
+    await test.step("a PNG image is downloaded", async () => {
+      expect((await download("PNG image")).name).toMatch(/\.png$/);
+    });
+
+    await test.step("renaming a state reaches the next export", async () => {
+      const renamed = await page.request.put(`${base}/states/${ids.Closed}`, {
+        headers: adminHeaders,
+        data: { version: (await (await page.request.get(`${base}/state-machine-diagrams/${diagram.id}`, { headers: adminHeaders })).json()).version, name: "Shut" },
+      });
+      expect(renamed.ok(), await renamed.text()).toBeTruthy();
+      await page.reload();
+      await expect(page.getByLabel("Shut, node", { exact: true })).toBeVisible();
+      const svg = await download("SVG image");
+      expect(svg.text).toContain(">Shut<");
+      expect(svg.text).not.toContain(">Closed<");
     });
   });
 

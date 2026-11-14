@@ -1,10 +1,10 @@
 /**
  * Module: modules/architecture/ArchitectureStatusControls
  *
- * The "Change state" menu of an element, a connection or a diagram, drawn beside Edit in the record header. Each item
- * names the move from the current state ("Move from Draft to Proposed"); the moves are the `allowed_status_moves` the
- * server returns with the record, so the menu offers exactly what the server accepts and a later state needs only a
- * label here. A (?) help beside the button describes every state. There is no approval step, so any person who may
+ * The "Change status" menu of an element, a connection or a diagram, drawn beside Edit in the record header. Each item
+ * names the move from the current status ("Move from Draft to Proposed"); the moves are the `allowed_status_moves` the
+ * server returns with the record, so the menu offers exactly what the server accepts and a later status needs only a
+ * label here. A (?) help beside the button describes every status. There is no approval step, so any person who may
  * manage the record may use it; the server answers a refusal (for example retiring an element that still has children
  * in use), which the page shows. A record with no moves draws nothing.
  */
@@ -29,14 +29,14 @@ export function ArchitectureStatusControls({
   return (
     <span className="row" style={{ gap: "var(--space-1)", flexWrap: "nowrap" }}>
       <MenuButton
-        label="Change state"
-        menuLabel="Change state"
+        label="Change status"
+        menuLabel="Change status"
         items={moves.map((next) => ({
           label: `Move from ${ARCHITECTURE_STATUS_LABEL[status]} to ${ARCHITECTURE_STATUS_LABEL[next]}`,
           onSelect: () => void onMove(next),
         }))}
       />
-      <FieldHelp label="Change state" help={ARCHITECTURE_HELP.stateMenu} />
+      <FieldHelp label="Change status" help={ARCHITECTURE_HELP.statusMenu} />
     </span>
   );
 }

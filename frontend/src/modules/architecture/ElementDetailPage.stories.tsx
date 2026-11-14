@@ -41,14 +41,14 @@ export const ShowsPortsChildrenConnectionsAndSharing: Story = {
     await expect(await canvas.findByRole("link", { name: /ELM-002 Rate limiter/ })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /CON-001 Client traffic/ })).toBeInTheDocument();
     await expect(await canvas.findByText("Shared infrastructure · 1 grant")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Change state" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Change status" })).toBeInTheDocument();
     // The display note (drawn in the box) is shown apart from the description.
     await expect(canvas.getByText("Public entry point.")).toBeInTheDocument();
     await expect(canvas.getByText("Terminates client traffic.")).toBeInTheDocument();
   },
 };
 
-/** An element another owner shares is read-only: no Edit, no state menu, no port controls, no Add child. */
+/** An element another owner shares is read-only: no Edit, no status menu, no port controls, no Add child. */
 export const SharedElementIsReadOnly: Story = {
   parameters: { elementId: "el-9" },
   beforeEach: () => {
@@ -60,14 +60,14 @@ export const SharedElementIsReadOnly: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: /Identity provider/ })).toBeInTheDocument();
     await expect(canvas.getByText("Shared")).toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Change state" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Change status" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add child" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add port" })).not.toBeInTheDocument();
     await expect(canvas.getByText(/only its owner changes it/)).toBeInTheDocument();
   },
 };
 
-/** The menu offers the moves the server returned for the record's state, named from the current state. */
+/** The menu offers the moves the server returned for the record's status, named from the current status. */
 export const ChangeStateOffersTheServersMoves: Story = {
   beforeEach: () => {
     const draft = buildElement({ status: "draft", version: 3 });
@@ -76,15 +76,15 @@ export const ChangeStateOffersTheServersMoves: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change state" }));
-    const menu = within(document.body).getByRole("menu", { name: "Change state" });
+    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
+    const menu = within(document.body).getByRole("menu", { name: "Change status" });
     await expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
       "Move from Draft to Proposed", "Move from Draft to Active", "Move from Draft to Rejected",
     ]);
   },
 };
 
-/** The (?) beside the menu describes every state, not only the current one. */
+/** The (?) beside the menu describes every status, not only the current one. */
 export const ChangeStateHelpDescribesEveryState: Story = {
   beforeEach: () => {
     const get = mockArchitectureReads({ elements: [PARENT, ELEMENT], element: ELEMENT, connections: [] });
@@ -92,7 +92,7 @@ export const ChangeStateHelpDescribesEveryState: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Help: Change state" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Help: Change status" }));
     const tip = await within(document.body).findByRole("tooltip");
     for (const state of ["Draft:", "Proposed:", "Active:", "Retired:", "Rejected:"]) await expect(tip).toHaveTextContent(state);
   },
@@ -107,7 +107,7 @@ export const MoveSendsTheVersionAndShowsARefusal: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Change state" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Change status" }));
     await userEvent.click(within(document.body).getByRole("menuitem", { name: "Move from Active to Retired" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/architecture/elements/el-1/status`, { version: 3, status: "retired" },

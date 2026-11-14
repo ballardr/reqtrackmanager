@@ -16,6 +16,8 @@
  * draws a loop). Keyboard operation: the canvas moves a selected state with the arrow keys and removes it with Delete (which
  * asks first); the Selection card is the keyboard route to nesting a state and to the attach points.
  * The status moves are the server's; a move to Active is refused with the list of errors while the checks find any.
+ * Export (PNG and SVG images, Mermaid `stateDiagram-v2` text to download or copy) saves a pending drawing first, then asks the
+ * server for its own drawing and text of the stored diagram, so a file shows what the editor shows.
  *
  * Design decisions:
  * - The findings are the server's (`state_machine_checks`); the page only displays them and tints the states they name.
@@ -56,6 +58,8 @@ import { StateMachineAddMenu } from "./StateMachineAddMenu";
 import { diffStateMachineFields, valuesFromStateMachine } from "./stateMachineFieldValues";
 import { StateMachineFindings } from "./StateMachineFindings";
 import { StateMachineFormModal } from "./StateMachineFormModal";
+import { DiagramExportMenu } from "./DiagramExportMenu";
+import { useDiagramExport } from "./useDiagramExport";
 import {
   PALETTE_KIND_PREFIX, addStateBox, boxOfState, canvasEdges, canvasNodes, defaultSize, frameAt, growAround, moveStates, nextFreeSpot,
   resizeStates, setParent, setTransitionPoints,
@@ -111,6 +115,17 @@ export function StateMachineEditorPage() {
   const tab: EditorTab = tabChoice || "drawing";
   const editor = useStateMachineEditor(projectId, diagramId);
   const { model, layout, dirty } = editor;
+  const diagramRecord = model?.diagram ?? null;
+  const stateMachineApi = useMemo(() => projectStateMachineApi(projectId), [projectId]);
+  // Export is of the stored diagram, so a pending drawing is saved first.
+  const { exporting, exportDiagram } = useDiagramExport(
+    diagramRecord && {
+      code: diagramRecord.unique_code, name: diagramRecord.name,
+      ensureSaved: async () => !dirty || (await editor.save()),
+      loadSvg: () => stateMachineApi.svg(diagramRecord.id),
+      loadMermaid: () => stateMachineApi.mermaid(diagramRecord.id),
+    },
+  );
 
   const [selection, setSelection] = useState<GraphCanvasSelection | null>(null);
   const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
@@ -365,6 +380,7 @@ export function StateMachineEditorPage() {
         Save
       </button>
       <StateMachineAddMenu disabled={!editable} onAdd={(kind) => startState(kind, null)} />
+      <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
       {tab === "drawing" && (
         <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
           <button

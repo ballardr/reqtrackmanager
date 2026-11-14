@@ -2,7 +2,7 @@
 Module: test_architecture_status_moves
 
 Pins the one status transition map (`transitions.STATUS_MOVES`): the moves the server accepts and refuses for an
-element, a connection and a diagram, the `allowed_status_moves` returned with each record (so the "Change state" menu
+element, a connection and a diagram, the `allowed_status_moves` returned with each record (so the "Change status" menu
 offers exactly what the server accepts), the `proposed` and `rejected` labels, and how a rejected record is treated as out of use.
 """
 

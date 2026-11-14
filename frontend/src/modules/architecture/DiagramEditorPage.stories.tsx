@@ -7,7 +7,7 @@ import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement, buildNote,
-  buildViewNode, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
+  buildViewNode, captureDownloads, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
 
@@ -610,13 +610,6 @@ export const APlainDiagramMergesParallelLines: Story = {
     await expect(await canvas.findByLabelText("×2, connection from Gateway to Orders")).toBeInTheDocument();
   },
 };
-
-/** Records the file names of downloads (an anchor click with a `download` name) instead of saving files. */
-function captureDownloads(): string[] {
-  const names: string[] = [];
-  spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { if (this.download) names.push(this.download); });
-  return names;
-}
 
 const PNG_SOURCE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20" width="40" height="20"><rect width="40" height="20" fill="#0f766e"/></svg>';
 

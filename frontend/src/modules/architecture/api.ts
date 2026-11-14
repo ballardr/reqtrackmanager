@@ -311,6 +311,10 @@ export const projectStateMachineApi = (projectId: string) => {
     /** Deletes a transition; resolves with the diagram's new version. */
     removeTransition: (id: string, transitionId: string, version: number) =>
       api.delete<{ version: number }>(`${base}/${id}/transitions/${transitionId}?version=${version}`),
+    /** The saved diagram drawn by the server as an SVG document. */
+    svg: async (id: string) => (await api.getForBlob(`${base}/${id}/svg`)).text(),
+    /** The saved diagram as Mermaid `stateDiagram-v2` text. */
+    mermaid: async (id: string) => (await api.getForBlob(`${base}/${id}/mermaid`)).text(),
   };
 };
 

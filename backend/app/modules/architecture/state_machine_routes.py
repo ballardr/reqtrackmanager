@@ -8,6 +8,8 @@ reading it whole (the editor's model) or one state at a time (the project-wide S
 Responsibilities:
 - Declare the routes and translate `records.RuleError` to its HTTP status.
 - Apply the list filters (`filter_state_machines`, `filter_states`) the lists and the record-table export share.
+- Serve the diagram as SVG and as Mermaid text (`state_machine_svg`, `state_machine_mermaid`), read through the same gate
+  as the model.
 
 RBAC: reading needs project membership and the `architecture_state_machine` sub-component to be enabled; every change
 needs `_shared.require_architect` with the state machine diagram manage atom. Every lookup is scoped to the project in
@@ -19,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -48,7 +50,11 @@ from app.modules.architecture.service import (
     STATE_MACHINE_ARTEFACT_TYPE,
     STATE_MACHINE_SUBCOMPONENT_KEY,
 )
+from app.modules.architecture.state_machine_mermaid import render_state_machine_mermaid
+from app.modules.architecture.state_machine_svg import render_state_machine
+from app.modules.architecture.symbol_routes import SVG_HEADERS
 from app.modules.architecture.visibility import Viewer
+from app.services import report_images
 from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
@@ -144,6 +150,30 @@ def add_state_machine_routes(router: APIRouter) -> None:
         viewer = viewer_of(db, current_user, project_id)
         diagram = as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id))
         return machines.model_of(db, diagram, viewer)
+
+    @router.get("/state-machine-diagrams/{diagram_id}/svg")
+    def get_svg(
+        project_id: uuid.UUID, diagram_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db),
+    ):
+        """The diagram as an SVG document (UML state machine notation), the file the editor's Export downloads."""
+        viewer = viewer_of(db, current_user, project_id)
+        diagram = as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id))
+        return Response(
+            content=render_state_machine(machines.model_of(db, diagram, viewer)), media_type=report_images.SVG_TYPE,
+            headers={**SVG_HEADERS, "Cache-Control": "private, no-store"},
+        )
+
+    @router.get("/state-machine-diagrams/{diagram_id}/mermaid")
+    def get_mermaid(
+        project_id: uuid.UUID, diagram_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db),
+    ):
+        """The diagram as Mermaid `stateDiagram-v2` text (plain text, for pasting into documentation)."""
+        viewer = viewer_of(db, current_user, project_id)
+        diagram = as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id))
+        return Response(
+            content=render_state_machine_mermaid(machines.model_of(db, diagram, viewer)), media_type="text/plain; charset=utf-8",
+            headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+        )
 
     @router.put("/state-machine-diagrams/{diagram_id}", response_model=StateMachineDiagramOut)
     def update_state_machine(

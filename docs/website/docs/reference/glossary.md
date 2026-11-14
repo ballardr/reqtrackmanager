@@ -30,6 +30,10 @@ The formal, versioned history of a requirement or change request: who changed wh
 
 The only way to modify a locked (Approved or Completed) requirement: a proposal with its own reasoning, targeted fields, and an explicit approve/reject decision from a project manager or administrator. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
 
+#### Choice
+
+A diamond in a state machine diagram. The guards on its outgoing transitions decide which path is taken. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
 #### Close the loop
 
 Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
@@ -66,9 +70,21 @@ A proposed solution someone asked the product for, kept in the Product Feedback 
 
 The server-tier licensing lever controlling whether an organisation is allowed to use a given [module](#module) at all, independent of whether the organisation has actually turned it on. See [Modules → Overview](../modules/overview.md).
 
+#### Event
+
+What triggers a transition in a state machine diagram, such as `overpressure`. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
+#### Final state
+
+The ringed dot where a state machine diagram ends. A final state has no outgoing transitions. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
 #### General (Pain Point scores)
 
 The part of a Pain Point's scores that applies to the whole Pain Point: every criterion's level, and the default for the criteria scored per persona. A persona that differs adds its own levels, which override General for that persona. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#scoring-a-pain-point).
+
+#### Guard
+
+A condition, written as text, that must hold for a transition to be taken; it is shown in square brackets on the transition. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Imported person
 
@@ -77,6 +93,10 @@ A named record standing in for someone an import bundle names who is not a membe
 #### Identity (requirement identity)
 
 The part of a requirement that never changes once created: its project, component, category, generated ID, creator, and archival state. Distinct from its versioned content. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
+
+#### Initial state
+
+The filled dot where a state machine diagram starts. An Active diagram needs exactly one initial state at the top level. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Lifecycle (requirement lifecycle)
 
@@ -194,6 +214,14 @@ A per-project setting under which each component follows its own [stage workflow
 
 The expected range (an expected start and end, both calendar dates) of a phase of a stage or of a component's track, with its actual start and completion and the upcoming, overdue and completed reminders sent about it. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#phase-schedule-and-reminders).
 
+#### State
+
+A mode an element can be in, drawn as a rounded rectangle in a state machine diagram. A state has its own code (`STE-001`) and can be linked to requirements, risks and decisions. It is not the status of a record, which is its lifecycle position such as Draft or Active. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
+#### State machine diagram
+
+A record of the states an element can be in and the transitions between them, drawn in UML state machine notation. Written in running text as a "state machine" once defined. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
 #### Storage limit
 
 The most storage an organisation may use for its files and stored report outputs, set by a server administrator or Platform subscription manager (or, for an organisation with none, the deployment's default limit). Reaching it stops new files only; existing files stay readable and deletable. See [Organisation storage](../workflows/server-administration.md#organisation-storage).
@@ -217,6 +245,10 @@ The three ways a module can supply its frontend UI: Tier A is compiled directly 
 #### Trace
 
 The window opened from a record's Links panel that follows its links to any depth, as a tree or a map, split into upstream, downstream and related. See [Links and traceability → Tracing where a record comes from](../core-features/links-and-traceability.md#tracing-where-a-record-comes-from).
+
+#### Transition
+
+An arrow between two states of a state machine diagram, labelled `event [guard] / action`. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Two-factor authentication (2FA)
 

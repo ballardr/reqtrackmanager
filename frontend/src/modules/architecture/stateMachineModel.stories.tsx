@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
 import { buildState, buildStateMachineModel, buildTransition } from "./architectureFixtures";
+import labelCases from "./stateLabelCases.json";
 import {
   actionLines, canvasEdges, canvasNodes, commit, defaultSize, frameAt, isDirty, layoutFromModel, layoutSignature, mergeModel, moveStates,
   nextFreeSpot, redo, resizeStates, setParent, setTransitionPoints, stateTree, startHistory, transitionLabel, undo,
@@ -170,5 +171,15 @@ export const HistoryTracksOnlyTheStoredPartOfTheDrawing: Story = {
     await expect(layoutSignature(history.present)).toBe(layoutSignature(LAYOUT));
     history = redo(history);
     await expect(isDirty(history)).toBe(true);
+  },
+};
+
+/** The label and action-line rules give what the server's rule gives (the shared cases file), so a file and the screen read alike. */
+export const LabelsAndActionLinesMatchTheServersCases: Story = {
+  play: async () => {
+    for (const c of labelCases.labels) await expect(transitionLabel(c), c.name).toBe(c.label);
+    for (const c of labelCases.actions) {
+      await expect(actionLines({ entry_action: c.entry, exit_action: c.exit, activity: c.activity }), c.name).toBe(c.lines.join("\n"));
+    }
   },
 };

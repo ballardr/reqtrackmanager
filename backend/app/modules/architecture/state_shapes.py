@@ -8,12 +8,14 @@ Responsibilities:
   with its frame size and SVG markup.
 - Give the sizes a state, a composite state's header and padding and the corner radius use.
 - Give the curve of a self loop (a transition from a state to itself) and the point its label sits at.
+- Give the text a state's entry, exit and do lines and a transition's `event [guard] / action` label are written as.
 
 Design decisions:
 - **One table, two implementations.** The browser draws the markers and loops with TypeScript copies
   (`frontend/src/modules/architecture/stateShapes.ts`, `frontend/src/components/graphSelfLoop.ts`); this file is the
   server's copy for the SVG, and the shared cases in `stateShapeCases.json` and `graphSelfLoopCases.json` (written by
-  `tests/test_architecture_state_shapes.py`) keep them equal. A change is made in both.
+  `tests/test_architecture_state_shapes.py`) keep them equal; the label rules have their own copy in
+  `stateMachineModel.ts` and cases in `stateLabelCases.json`. A change is made in both.
 - The shapes are fixed standard geometry, not the symbol library. The markup uses one neutral slate that keeps at least 3:1
   contrast on a light and a dark background, because an image cannot read the page's colour tokens.
 
@@ -39,6 +41,9 @@ STATE_CORNER_RADIUS = 12
 #: A composite state's name strip across the top of its frame, and the gap its child states keep from the frame.
 COMPOSITE_HEADER_HEIGHT = 32
 COMPOSITE_PADDING = 16
+
+#: The longest `event [guard] / action` shown on one line; a longer label breaks before the action.
+LABEL_LINE_LENGTH = 28
 
 _INK = "#64748b"
 
@@ -108,3 +113,33 @@ def self_loop_path(box: tuple[float, float, float, float]) -> str:
         return f"{n(point[0])} {n(point[1])}"
 
     return f"M {p(loop['start'])} C {p(loop['control1'])} {p(loop['control2'])} {p(loop['end'])}"
+
+
+def action_lines(entry_action: str, exit_action: str, activity: str) -> list[str]:
+    """The `entry /`, `exit /` and `do /` lines of a state, one each for the ones that are set (empty when none is)."""
+    return [
+        line for line in (
+            f"entry / {entry_action}" if entry_action else "",
+            f"exit / {exit_action}" if exit_action else "",
+            f"do / {activity}" if activity else "",
+        ) if line
+    ]
+
+
+def transition_label(event: str, guard: str, action: str) -> str:
+    """The text on a transition's line: `event [guard] / action`, broken before the action when it is long.
+
+    Args:
+        event: The event that triggers the transition (may be empty).
+        guard: The condition that must hold (may be empty).
+        action: What is done when it is taken (may be empty).
+
+    Returns:
+        The label, with a line break (`\\n`) before the action when the one-line form is longer than `LABEL_LINE_LENGTH`
+        and there is an event or guard to keep on the first line; empty when all three are empty.
+    """
+    head = " ".join(part for part in (event, f"[{guard}]" if guard else "") if part)
+    if not action:
+        return head
+    one = f"{head} / {action}" if head else f"/ {action}"
+    return one if len(one) <= LABEL_LINE_LENGTH or not head else f"{head}\n/ {action}"
