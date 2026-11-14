@@ -23,16 +23,35 @@ const selectionCard = (page: Page) => page.getByRole("region", { name: "Selectio
 /** The Findings card of the editor. */
 const findingsCard = (page: Page) => page.getByRole("region", { name: "Findings" });
 
-/** Adds a state (or marker) from the Add to diagram menu and fills its form; `name` is left as is for a marker. */
+/** The canvas of the editor (the group named for the diagram; the toolbar's name starts the same way but is not a group). */
+const canvasOf = (page: Page) => page.locator('[role="group"][aria-label^="State machine diagram "]');
+
+/** The canvas's top edge on the page itself (the viewport scrolls when the focus moves to the Selection card). */
+async function canvasTop(page: Page): Promise<number> {
+  return canvasOf(page).evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+}
+
+/**
+ * Adds a state (or marker) from the Add to diagram menu: it is created at once with no form, selected, and its name field in
+ * the Selection card holds the focus. `name`, when given, replaces the default name and is stored when the focus leaves the card.
+ */
 async function addState(page: Page, item: "State" | "Initial state" | "Final state" | "Choice", name?: string) {
+  const created = page.waitForResponse((r) => r.url().endsWith("/states") && r.request().method() === "POST");
   await page.getByRole("button", { name: "Add to diagram" }).click();
   await page.getByRole("menuitem", { name: item, exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  if (name !== undefined) await dialog.getByLabel("Name", { exact: true }).fill(name);
-  const stored = page.waitForResponse((r) => r.url().endsWith("/states") && r.request().method() === "POST");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await stored).ok()).toBeTruthy();
+  expect((await created).ok()).toBeTruthy();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  const nameField = selectionCard(page).getByRole("textbox", { name: /^Name/ });
+  await expect(nameField).toBeFocused();
+  await expect(nameField).toHaveValue(item === "State" ? /^State \d+$/ : item);
+  if (name !== undefined) {
+    await nameField.fill(name);
+    const stored = page.waitForResponse((r) => /\/states\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+    await page.getByRole("heading", { level: 1 }).click();
+    expect((await stored).ok()).toBeTruthy();
+    // The model is read again after the store, so the drawing and the lists show the new name.
+    await expect(page.getByLabel(`${name}, node`, { exact: true })).toBeVisible();
+  }
 }
 
 /** Adds a transition from the selected state to another (or itself, named "itself") through the Selection card. */
@@ -135,6 +154,12 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(page.getByRole("button", { name: "Reload state machine diagram" })).toHaveCount(0);
     });
 
+    await test.step("the empty drawing shows no how-to text; the guide is the Add to diagram tooltip", async () => {
+      await expect(page.getByText(/No states yet/)).toHaveCount(0);
+      await page.getByRole("button", { name: "Add to diagram" }).hover();
+      await expect(page.getByRole("tooltip").filter({ hasText: "Initial state: where the machine starts" })).toBeVisible();
+    });
+
     await test.step("an initial state clears the error; a state nobody can reach or leave is a warning", async () => {
       await addState(page, "Initial state");
       await expect(findingsCard(page).getByText("0 errors")).toBeVisible();
@@ -156,14 +181,32 @@ test.describe("System Architecture: state machine diagrams", () => {
     await test.step("the Selection card's actions are icon buttons: named, one height, and reached by keyboard", async () => {
       await selectNode(page, "Idle");
       const actions = selectionCard(page).getByRole("group", { name: "Actions" });
-      for (const name of ["Edit state", "Delete state…"]) {
+      for (const name of ["Comment on this box", "Delete state…"]) {
         const button = actions.getByRole("button", { name });
         await expect(button).toBeVisible();
         expect((await button.textContent())?.trim()).toBe("");
       }
       expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
-      await actions.getByRole("button", { name: "Edit state" }).focus();
-      await expect(page.getByRole("tooltip")).toContainText("Edit state");
+      await actions.getByRole("button", { name: "Delete state…" }).focus();
+      await expect(page.getByRole("tooltip")).toContainText("Delete state");
+    });
+
+    await test.step("a state's values are set in the Selection card, stored when the focus leaves it, and survive a reload", async () => {
+      await selectNode(page, "Idle");
+      await selectionCard(page).getByLabel("Entry action").fill("stop motor");
+      const stored = page.waitForResponse((r) => /\/states\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+      await selectionCard(page).getByRole("button", { name: "Save state" }).click();
+      expect((await stored).ok()).toBeTruthy();
+      await page.reload();
+      await selectNode(page, "Idle");
+      await expect(selectionCard(page).getByLabel("Entry action")).toHaveValue("stop motor");
+    });
+
+    await test.step("double-clicking a state opens the same fields in a dialog", async () => {
+      await page.getByLabel("Idle, node", { exact: true }).dblclick();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByLabel("Entry action")).toHaveValue("stop motor");
+      await dialog.getByRole("button", { name: "Close" }).click();
     });
 
     await test.step("a sound diagram is activated", async () => {
@@ -172,6 +215,36 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
       await expect(page.getByText(/moved to Active/).first()).toBeVisible();
     });
+  });
+
+  test("dropping an Add to diagram item on an empty canvas adds the state there at once, named and selected, without moving the canvas", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdDrop", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Fan ${suffix}`);
+    const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Fan modes ${suffix}`, [], []);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    await expect(canvasOf(page)).toBeVisible();
+    const top = await canvasTop(page);
+
+    const created = page.waitForResponse((r) => r.url().endsWith("/states") && r.request().method() === "POST");
+    // A drag out of a menu is not driven reliably by the browser harness, so the drop is sent as the browser would send it: the
+    // item the menu entry puts on the drag, released over the canvas.
+    const box = (await canvasOf(page).boundingBox())!;
+    const dataTransfer = await page.evaluateHandle(() => {
+      const transfer = new DataTransfer();
+      transfer.setData("application/x-graph-item", "state-kind:state");
+      return transfer;
+    });
+    await canvasOf(page).dispatchEvent("drop", { dataTransfer, clientX: box.x + 400, clientY: box.y + 160 });
+    const response = await created;
+    expect(response.ok()).toBeTruthy();
+    // The state lands where it was dropped (the box is centred on the drop), not at the next free spot.
+    expect((await response.request().postDataJSON()).x).toBeGreaterThan(200);
+    await expect(selectionCard(page).getByRole("textbox", { name: /^Name/ })).toHaveValue("State 1");
+    await expect(selectionCard(page).getByRole("textbox", { name: /^Name/ })).toBeFocused();
+    await expect(page.getByLabel("State 1, node", { exact: true })).toBeVisible();
+    // The first state does not move the canvas: nothing above it appears or goes away.
+    expect(await canvasTop(page)).toBe(top);
   });
 
   test("a state is nested in another, the drawing is stored by Save and survives a reload, and a state is deleted with what goes with it", async ({ page }) => {

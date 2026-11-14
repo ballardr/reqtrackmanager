@@ -7,6 +7,7 @@ import {
   actionLines, canvasEdges, canvasNodes, commit, defaultSize, frameAt, isDirty, layoutFromModel, layoutSignature, mergeModel, moveStates,
   nextFreeSpot, redo, resizeStates, setParent, setTransitionPoints, stateTree, startHistory, transitionLabel, undo,
 } from "./stateMachineModel";
+import { defaultStateName } from "./stateFields";
 import { COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING } from "./stateShapes";
 import type { StateKind } from "./types";
 
@@ -181,5 +182,18 @@ export const LabelsAndActionLinesMatchTheServersCases: Story = {
     for (const c of labelCases.actions) {
       await expect(actionLines({ entry_action: c.entry, exit_action: c.exit, activity: c.activity }), c.name).toBe(c.lines.join("\n"));
     }
+  },
+};
+
+/** A state added straight to the diagram is "State 1", "State 2" and so on (lowest unused number, case-insensitive); a marker is named for its kind. */
+export const ADefaultStateNameIsNeverOneInUse: Story = {
+  play: async () => {
+    await expect(defaultStateName("state", [])).toBe("State 1");
+    await expect(defaultStateName("state", ["State 1", "state 2", "Idle"])).toBe("State 3");
+    await expect(defaultStateName("state", ["State 2"])).toBe("State 1");
+    await expect(defaultStateName("initial", [])).toBe("Initial state");
+    await expect(defaultStateName("initial", ["initial state", "Initial state 2"])).toBe("Initial state 3");
+    await expect(defaultStateName("choice", ["Choice"])).toBe("Choice 2");
+    await expect(defaultStateName("final", [" Final state "])).toBe("Final state 2");
   },
 };

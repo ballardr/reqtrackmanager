@@ -23,6 +23,12 @@ The diagrams use UML state machine notation, which is also the SysML state machi
 
 Guards and actions are text that a person reads. The module does not simulate a diagram or generate code from it.
 
+## Adding and editing states
+
+Choose **Add to diagram**, then Initial state, State, Final state or Choice, or drag the item onto the drawing. The item is added at once with a default name ("State 1", "State 2"; a marker is named for its kind), selected, and its name is ready to type over in the **Selection** card. Dropping an item inside a composite state puts it in that state. Point at **Add to diagram** for a short guide to building a machine.
+
+The Selection card edits the selected state in place: name, kind, and for an ordinary state its description and entry, exit and activity lines. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
+
 ## Checks
 
 The editor lists the findings of the checks beside the drawing. An **error** prevents the diagram from becoming Active; a **warning** never does.

@@ -958,6 +958,18 @@ Where a list of rows each carries a few actions (the comments of a thread), the 
 - **Thread level actions are not revealed.** An action on the whole group (a thread's Resolve or Reopen and Delete) stays visible, as icons beside the one text button that adds to it (Reply).
 - **A confirmation answered from a pop-over does not close it.** A press inside a dialog that the pop-over's own content opened is not a press outside it (`Popover`).
 
+## Pattern: add, then edit in the selection
+
+*(New 2026-11-14 — from user review: adding a state asked for its kind twice, put a form between the person and the drawing, and a how-to paragraph moved the canvas.)*
+
+A canvas creation that has nothing to ask up front **adds at once and is edited in the Selection card**; it never opens a form.
+
+- **The menu item or palette item already decided the kind**, so there is no Kind choice when adding. The item is created with a default name that is not in use (`defaultStateName`: "State 1", "State 2"; a marker is named for its kind), at the drop position or the next free spot, inside a frame when dropped into one.
+- **The new item is selected and its name field in the card holds the focus** (selected, so typing replaces the default name). A refused add shows an error and adds nothing.
+- **The card edits in place** through the same field group the edit dialog uses (`StateFieldGroup`), stored when the focus leaves the card's fields or **Save state** is pressed. A blank name is not stored and says so. Double-clicking the item opens the same fields in a dialog. Kind stays in the edit group so a wrong choice is repairable.
+- **The how-to is the add button's tooltip** ([Pattern: explain in help, not in the layout](#pattern-field-help)), never a paragraph above the canvas: a paragraph that appears for an empty canvas and disappears with the first item moves the canvas down and up.
+- **When this applies:** the item needs no value to exist (a state, a marker). A record that is coded, shared or permissioned with a required choice (a block diagram element, which needs a type) keeps its create form with `QuickLinkField` and `TagField`.
+
 ## Pattern: selection actions
 
 A card that shows the selected item of a canvas (the diagram editors' Selection card) offers its actions as one row of icon buttons, never a row of text buttons.

@@ -11,8 +11,9 @@
  * at once by its form, because the findings and the state's code come from the server. What the drawing *looks like*
  * (a state's position, size and nesting, a transition's attach points) is edited locally with undo and redo and stored together
  * by Save, which quotes the diagram's version; a stale version offers a reload instead of overwriting a newer save. A state
- * is created by choosing it in the Add to diagram menu or dropping it on the canvas (the form opens; Cancel creates nothing),
- * a transition by drawing a line between two states or from the Selection card's "Add transition to" list (the same state
+ * is added at once, with a default name, by choosing it in the Add to diagram menu or dropping it on the canvas; it is then
+ * selected with the cursor in its name, and its values are set in the Selection card (double-clicking a state opens the same
+ * fields in a dialog). A transition by drawing a line between two states or from the Selection card's "Add transition to" list (the same state
  * draws a loop). Keyboard operation: the canvas moves a selected state with the arrow keys and removes it with Delete (which
  * asks first); the Selection card is the keyboard route to nesting a state and to the attach points.
  * The status moves are the server's; a move to Active is refused with the list of errors while the checks find any.
@@ -43,16 +44,14 @@ import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
-import { useCommitTags } from "../../hooks/useCommitTags";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
 import { useUrlChoice } from "../../hooks/useUrlFilter";
 import { projectElementApi, projectStateApi, projectStateMachineApi } from "./api";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { architectureTabPath } from "./architectureTabs";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
-import { StateFormModal, type StateCreateExtras } from "./StateFormModal";
-import { diffStateFields, valuesFromState } from "./stateFields";
+import { StateFormModal } from "./StateFormModal";
+import { blankStateValues, defaultStateName, diffStateFields, valuesFromState } from "./stateFields";
 import { StateMachineAddMenu } from "./StateMachineAddMenu";
 import { diffStateMachineFields, valuesFromStateMachine } from "./stateMachineFieldValues";
 import { StateMachineFindings } from "./StateMachineFindings";
@@ -86,13 +85,6 @@ const EDITOR_TABS = [
 ] as const;
 type EditorTab = (typeof EDITOR_TABS)[number]["key"];
 
-/** A state waiting for its form: what kind it is, where it goes and which frame (if any) it is dropped into. */
-interface PendingState {
-  kind: StateKind;
-  at: { x: number; y: number };
-  parentId: string | null;
-}
-
 /** A delete waiting for the person's confirmation. */
 type PendingDelete =
   | { kind: "state"; state: ArchitectureState; impact: { transitions: number; links: number } }
@@ -105,8 +97,6 @@ export function StateMachineEditorPage() {
   const { user: currentUser } = useAuth();
   const api = useMemo(() => projectStateMachineApi(projectId), [projectId]);
   const stateApi = useMemo(() => projectStateApi(projectId), [projectId]);
-  const commitTags = useCommitTags(projectId, "architecture_state");
-  const commitQuickLinks = useCommitQuickLinks(projectId, "architecture_state");
   const stateLabels = useStateLabel();
 
   const [tabChoice, setTabChoice] = useUrlChoice("tab", ["outline", "comments", "configuration"] as const);
@@ -128,7 +118,7 @@ export function StateMachineEditorPage() {
   const [selection, setSelection] = useState<GraphCanvasSelection | null>(null);
   const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
   const canvasHeight = useFillViewportHeight(canvasBox, CANVAS_MIN_HEIGHT);
-  const [pendingState, setPendingState] = useState<PendingState | null>(null);
+  const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
   const [editingState, setEditingState] = useState<ArchitectureState | null>(null);
   const [connecting, setConnecting] = useState<{ source: string; target: string } | null>(null);
   const [editingTransition, setEditingTransition] = useState<StateTransition | null>(null);
@@ -237,33 +227,35 @@ export function StateMachineEditorPage() {
     if (await editor.save()) showToast("State machine diagram saved.");
   }
 
-  /** Opens the form for a new state; a position inside a composite state's frame nests the new state in it. */
-  function startState(kind: StateKind, at: { x: number; y: number } | null) {
+  /**
+   * Adds a state of `kind` to the diagram at once, with a default name that is not in use: at `at` (the centre of a drop; a
+   * position inside a composite state's frame nests the new state in it) or at the next free spot. The new state is selected and
+   * its name takes the focus; a refusal is shown and nothing is added.
+   */
+  async function addState(kind: StateKind, at: { x: number; y: number } | null) {
+    if (!model || editor.saving) return;
     const size = defaultSize(kind);
-    const place = at ?? nextFreeSpot(layout, size);
+    const place = at ? { x: Math.round(at.x - size.width / 2), y: Math.round(at.y - size.height / 2) } : nextFreeSpot(layout, size);
     const parentId = at ? frameAt(layout, kinds, at) : null;
-    setFormError(null);
-    setPendingState({ kind, at: at ? { x: Math.round(at.x - size.width / 2), y: Math.round(at.y - size.height / 2) } : place, parentId });
-  }
-
-  async function createState(values: StateFieldValues, extras: StateCreateExtras) {
-    const pending = pendingState;
-    if (!pending) return;
-    setFormError(null);
-    const size = defaultSize(values.kind);
+    const values = { ...blankStateValues(kind), name: defaultStateName(kind, model.states.map((s) => s.name)) };
     const created = await editor.write((version) => api.addState(diagramId, version, {
-      ...values, parent_state_id: pending.parentId, x: pending.at.x, y: pending.at.y, width: size.width, height: size.height,
+      ...values, parent_state_id: parentId, x: place.x, y: place.y, width: size.width, height: size.height,
     }));
     if (created === null) {
-      setFormError("Could not create the state.");
+      showToast("Could not add the state.", "error");
       return;
     }
-    await commitQuickLinks(created.id, extras.quickLinks);
-    await commitTags(created.id, extras.tags);
     editor.edit((l) => growAround(addStateBox(l, boxOfState(created)), created.id));
+    setFocusNameOf(created.id);
     setSelection({ kind: "node", id: created.id });
-    setPendingState(null);
-    showToast("State created.");
+    showToast("State added.");
+  }
+
+  /** Stores the fields changed in the Selection card; resolves true when stored (a refusal is shown at the top of the page). */
+  async function saveStateFields(state: ArchitectureState, changed: Partial<StateFieldValues>): Promise<boolean> {
+    if ((await editor.write((version) => stateApi.update(state.id, version, changed))) === null) return false;
+    showToast("State updated.");
+    return true;
   }
 
   async function saveState(values: StateFieldValues) {
@@ -377,7 +369,7 @@ export function StateMachineEditorPage() {
       >
         Save
       </button>
-      <StateMachineAddMenu disabled={!editable} onAdd={(kind) => startState(kind, null)} />
+      <StateMachineAddMenu disabled={!editable || editor.saving} onAdd={(kind) => void addState(kind, null)} />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
       {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
@@ -388,7 +380,7 @@ export function StateMachineEditorPage() {
     <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
       <StateMachineSelectionPanel
         projectId={projectId} model={model} layout={layout} selection={selection} editable={editable}
-        onEditState={(state) => { setFormError(null); setEditingState(state); }}
+        onSaveState={saveStateFields} focusNameOf={focusNameOf} onNameFocused={() => setFocusNameOf(null)}
         onEditTransition={(transition) => { setFormError(null); setEditingTransition(transition); }}
         onDeleteState={(state) => void askDeleteState(state)}
         onDeleteTransition={(transition) => setPendingDelete({ kind: "transition", transition })}
@@ -461,7 +453,7 @@ export function StateMachineEditorPage() {
           </button>
         </div>
       )}
-      {editor.saveError && !pendingState && !editingState && !connecting && !editingTransition && !editingDiagram && (
+      {editor.saveError && !editingState && !connecting && !editingTransition && !editingDiagram && (
         <p role="alert" style={{ color: "var(--color-danger)" }}>{editor.saveError}</p>
       )}
 
@@ -472,11 +464,6 @@ export function StateMachineEditorPage() {
       {tab === "drawing" && (
         <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }} {...tabPanelProps("state-machine-editor", "drawing")}>
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
-            {model.states.length === 0 && (
-              <p className="text-muted" role="status">
-                No states yet. Use Add to diagram, then Initial state to mark where the machine starts, and State for each state it can be in.
-              </p>
-            )}
             <div ref={setCanvasBox}>
               <GraphCanvas
                 nodes={nodes} edges={edges} ariaLabel={`State machine diagram ${diagram.name}`} height={canvasHeight}
@@ -487,8 +474,12 @@ export function StateMachineEditorPage() {
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}
                 onConnect={(source, target) => { setFormError(null); setConnecting({ source, target }); }}
                 onDelete={deleteSelected}
+                onNodeOpen={(id) => {
+                  const state = model.states.find((s) => s.id === id);
+                  if (state && editable) { setFormError(null); setEditingState(state); }
+                }}
                 onDropItem={(payload, at) => {
-                  if (payload.startsWith(PALETTE_KIND_PREFIX)) startState(payload.slice(PALETTE_KIND_PREFIX.length) as StateKind, at);
+                  if (payload.startsWith(PALETTE_KIND_PREFIX)) void addState(payload.slice(PALETTE_KIND_PREFIX.length) as StateKind, at);
                 }}
               />
             </div>
@@ -539,15 +530,9 @@ export function StateMachineEditorPage() {
           onCancel={() => { setEditingDiagram(false); setFormError(null); }} onSave={(values) => void saveDiagramFields(values)}
         />
       )}
-      {pendingState && (
-        <StateFormModal
-          projectId={projectId} defaultKind={pendingState.kind} error={formError}
-          onCancel={() => { setPendingState(null); setFormError(null); }} onSave={(values, extras) => void createState(values, extras)}
-        />
-      )}
       {editingState && (
         <StateFormModal
-          projectId={projectId} initial={editingState} error={formError} holdsStates={layout.boxes.some((b) => b.parent_state_id === editingState.id)}
+          initial={editingState} error={formError} holdsStates={layout.boxes.some((b) => b.parent_state_id === editingState.id)}
           onCancel={() => { setEditingState(null); setFormError(null); }} onSave={(values) => void saveState(values)}
         />
       )}

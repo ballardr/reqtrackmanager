@@ -21,6 +21,7 @@ export const ARCHITECTURE_HELP = {
   diagramType: "Block diagram: the parts of a system and the connections between them.\nState machine diagram: the states one element can be in and the transitions between them. The type cannot be changed after the diagram is created.",
   stateMachineElement: "The element whose behaviour the diagram describes. One element can have several state machine diagrams, for example its operating modes and its fault handling.",
   stateKind: "State: an ordinary state, drawn as a rounded box.\nInitial state: the single start of a level, drawn as a filled dot.\nFinal state: an end, drawn as a ringed dot.\nChoice: a branch whose outgoing transitions are chosen by their guards, drawn as a diamond.",
+  stateAdd: "Adds the item to the diagram at once with a default name; set its name and details in the Selection card. Each entry can also be dragged onto the canvas; dropping it inside a composite state puts the new state in that state.\nInitial state: where the machine starts; one for each level.\nState: a condition the element can be in; add one for each.\nFinal state: where the machine ends.\nChoice: a branch whose outgoing transitions are chosen by their guards.",
   stateEntry: "What happens each time the state is entered. Plain text for readers; it is never run.",
   stateExit: "What happens each time the state is left. Plain text for readers; it is never run.",
   stateActivity: "What goes on while the state is active (the \"do\" line). Plain text for readers; it is never run.",

@@ -129,51 +129,160 @@ export const UndoReturnsToTheSavedDrawing: Story = {
   },
 };
 
-export const AddingAStateOpensItsFormAndCreatesItOnSave: Story = {
-  beforeEach: () => { spyOn(api, "post").mockResolvedValue(buildState({ id: "ste-9", unique_code: "STE-009", name: "Fault" }) as never); },
+/**
+ * The model the add stories read: a store call that creates a state appends it to the model, as the server's next read would
+ * show it. Returns the model so a story can read what was created.
+ */
+function mockAddingStates() {
+  const model = buildStateMachineModel();
+  mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+  spyOn(api, "post").mockImplementation((async (path: string, body: Record<string, unknown>) => {
+    const created = buildState({
+      id: "ste-9", unique_code: "STE-009", name: body.name as string, kind: body.kind as never, x: body.x as number, y: body.y as number,
+      width: body.width as number, height: body.height as number,
+    });
+    if (path.endsWith("/states")) model.states = [...model.states, created];
+    return created;
+  }) as never);
+  return model;
+}
+
+/** Choosing State adds it at once with a default name and no form; it is selected with the cursor in its name field. */
+export const AddingAStateAddsItAtOnceAndFocusesItsName: Story = {
+  beforeEach: () => { mockAddingStates(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
     await addFromMenu(canvas, "State");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText(/^Name/), "Fault");
-    await userEvent.type(dialog.getByLabelText("Entry action"), "raise alarm");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `${MACHINE}/states`,
-      expect.objectContaining({ version: 5, name: "Fault", kind: "state", entry_action: "raise alarm", parent_state_id: null, width: 160, height: 64 }),
+      expect.objectContaining({ version: 5, name: "State 1", kind: "state", parent_state_id: null, width: 160, height: 64 }),
     ));
-    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    const name = await canvas.findByRole("textbox", { name: /^Name/ });
+    await expect(name).toHaveValue("State 1");
+    await waitFor(() => expect(name).toHaveFocus());
+    await expect(canvas.getByRole("combobox", { name: "Kind" })).toHaveValue("state");
   },
 };
 
-export const CancellingTheStateFormCreatesNothing: Story = {
-  beforeEach: () => { spyOn(api, "post").mockResolvedValue(buildState() as never); },
+/** Adding while another state is selected replaces its card: only the new state's fields are shown, with the focus in its name. */
+export const AddingWhileAnotherStateIsSelectedReplacesItsCard: Story = {
+  beforeEach: () => { mockAddingStates(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await select(canvas, "Initial state");
+    await expect(await canvas.findByRole("textbox", { name: /^Name/ })).toHaveValue("Initial state");
     await addFromMenu(canvas, "State");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText(/^Name/), "Never");
-    // Closing a form with typed text asks before discarding it.
-    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
-    await userEvent.click(await within(document.body).findByRole("button", { name: "Discard changes" }));
-    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
-    await expect(api.post).not.toHaveBeenCalled();
+    await waitFor(() => expect(canvas.getByRole("textbox", { name: /^Name/ })).toHaveValue("State 1"));
+    await expect(canvas.getAllByRole("group", { name: "State details" })).toHaveLength(1);
+    await waitFor(() => expect(canvas.getByRole("textbox", { name: /^Name/ })).toHaveFocus());
   },
 };
 
-/** A marker is a shape with no inside: its form takes a name (preset to its kind) and no actions. */
-export const AMarkerFormTakesOnlyAName: Story = {
-  beforeEach: () => { spyOn(api, "post").mockResolvedValue(buildState({ id: "ste-8", kind: "choice" }) as never); },
+/** Selecting another state replaces the card's fields (no copy of the previous state's remains). */
+export const SelectingAnotherStateReplacesTheCard: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await select(canvas, "Initial state");
+    await expect(await canvas.findByRole("textbox", { name: /^Name/ })).toHaveValue("Initial state");
+    await select(canvas, "Idle");
+    await waitFor(() => expect(canvas.getByRole("textbox", { name: /^Name/ })).toHaveValue("Idle"));
+    await expect(canvas.getAllByRole("group", { name: "State details" })).toHaveLength(1);
+  },
+};
+
+/** A marker is added with its kind as its name; its card offers the name and the kind only. */
+export const AddingAMarkerAddsItAtOnce: Story = {
+  beforeEach: () => { mockAddingStates(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
     await addFromMenu(canvas, "Choice");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await expect(dialog.getByLabelText(/^Name/)).toHaveValue("Choice");
-    await expect(dialog.queryByLabelText("Entry action")).not.toBeInTheDocument();
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `${MACHINE}/states`, expect.objectContaining({ kind: "choice", width: 36, height: 36 }),
+      `${MACHINE}/states`, expect.objectContaining({ name: "Choice", kind: "choice", width: 36, height: 36 }),
     ));
+    await expect(await canvas.findByRole("textbox", { name: /^Name/ })).toHaveValue("Choice");
+    await expect(canvas.queryByLabelText("Entry action")).not.toBeInTheDocument();
+  },
+};
+
+/** A default name already in use is skipped: the state is named with the next free number. */
+export const AddingAStateSkipsANameInUse: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: [buildElement()],
+      stateMachineModel: buildStateMachineModel({
+        states: [buildState({ id: "ste-1", name: "state 1" }), buildState({ id: "ste-2", unique_code: "STE-002", name: "State 2", x: 360 })],
+        transitions: [],
+      }),
+    });
+    spyOn(api, "post").mockResolvedValue(buildState({ id: "ste-9", name: "State 3" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("state 1, node");
+    await addFromMenu(canvas, "State");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${MACHINE}/states`, expect.objectContaining({ name: "State 3" })));
+  },
+};
+
+/** A refused add shows an error and adds nothing: no state is drawn and no card opens. */
+export const AFailedAddShowsAnErrorAndAddsNothing: Story = {
+  beforeEach: () => { spyOn(api, "post").mockRejectedValue(new ApiError(400, "A state with that name already exists in this state machine diagram.")); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await addFromMenu(canvas, "State");
+    await expect(await within(document.body).findByText("Could not add the state.")).toBeInTheDocument();
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("A state with that name already exists");
+    await expect(canvas.queryByLabelText("State 1, node")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("textbox", { name: /^Name/ })).not.toBeInTheDocument();
+  },
+};
+
+/** The how-to is the Add to diagram button's tooltip, never text in the layout: an empty diagram shows no paragraph above the canvas. */
+export const AnEmptyDiagramShowsNoHowToTextAboveTheCanvas: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: [buildElement()], stateMachineModel: buildStateMachineModel({ states: [], transitions: [] }) }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const add = await canvas.findByRole("button", { name: "Add to diagram" });
+    await expect(canvas.queryByText(/No states yet/)).not.toBeInTheDocument();
+    await userEvent.hover(add);
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent(/Initial state: where the machine starts/);
+  },
+};
+
+/** Adding the first state does not move the canvas: its top edge is the same before and after. */
+export const AddingTheFirstStateDoesNotMoveTheCanvas: Story = {
+  beforeEach: () => {
+    const model = buildStateMachineModel({ states: [], transitions: [] });
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+    spyOn(api, "post").mockImplementation((async () => {
+      const created = buildState({ id: "ste-9", name: "State 1" });
+      model.states = [created];
+      return created;
+    }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("button", { name: "Add to diagram" });
+    const top = () => canvasElement.querySelector<HTMLElement>("[aria-label^='State machine diagram']")!.getBoundingClientRect().top;
+    const before = top();
+    await addFromMenu(canvas, "State");
+    await canvas.findByLabelText("State 1, node");
+    await expect(top()).toBe(before);
+  },
+};
+
+/** Double-clicking a state opens the shared fields in a dialog. */
+export const DoubleClickingAStateOpensItsFieldsInADialog: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.dblClick(await canvas.findByLabelText("Idle, node"));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByLabelText(/^Name/)).toHaveValue("Idle");
+    await expect(dialog.getByLabelText("Entry action")).toHaveValue("stop motor");
   },
 };
 
@@ -212,18 +321,65 @@ export const ALoopIsAddedByChoosingTheStateItself: Story = {
   },
 };
 
-export const EditingAStateStoresOnlyWhatChanged: Story = {
+/** The Selection card edits in place: moving the focus out of its fields stores only what changed, quoting the version. */
+export const EditingAStateInTheCardStoresOnlyWhatChangedWhenTheFocusLeavesIt: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildState({ name: "Standby" }) as never); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
-    await userEvent.click(await canvas.findByRole("button", { name: "Edit state" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    const name = dialog.getByLabelText(/^Name/);
+    const name = await canvas.findByRole("textbox", { name: /^Name/ });
+    await expect(name).toHaveValue("Idle");
     await userEvent.clear(name);
     await userEvent.type(name, "Standby");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await expect(api.put).not.toHaveBeenCalled();
+    // Moving between the card's own fields stores nothing; leaving them does.
+    await userEvent.tab();
+    await expect(api.put).not.toHaveBeenCalled();
+    await userEvent.click(document.body);
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/states/ste-1`, { version: 5, name: "Standby" }));
+  },
+};
+
+/** Save state stores the same changes without leaving the field, and is unavailable while nothing has changed. */
+export const TheCardsSaveStateButtonStoresTheChanges: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildState({ entry_action: "stop fan" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    const save = await canvas.findByRole("button", { name: "Save state" });
+    await expect(save).toBeDisabled();
+    const entry = canvas.getByLabelText("Entry action");
+    await userEvent.clear(entry);
+    await userEvent.type(entry, "stop fan");
+    await expect(save).toBeEnabled();
+    await userEvent.click(save);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/states/ste-1`, { version: 5, entry_action: "stop fan" }));
+  },
+};
+
+/** A name cleared in the card is not stored: the card says a name is required and the state keeps its name. */
+export const ABlankNameInTheCardIsNotStored: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildState() as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    await userEvent.clear(await canvas.findByRole("textbox", { name: /^Name/ }));
+    await userEvent.click(document.body);
+    await expect(await canvas.findByText("A name is required.")).toBeInTheDocument();
+    await expect(api.put).not.toHaveBeenCalled();
+  },
+};
+
+/** Changing the kind in the card is the repair for a wrong choice: a state becomes a choice and its action fields go. */
+export const TheCardKeepsTheKindSoAWrongChoiceCanBeRepaired: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildState({ kind: "choice" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Kind" }), "choice");
+    await expect(canvas.queryByLabelText("Entry action")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save state" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/states/ste-1`, { version: 5, kind: "choice" }));
   },
 };
 
@@ -387,7 +543,8 @@ export const AnArchivedDiagramCannotBeEdited: Story = {
     await expect(canvas.getByRole("button", { name: "Add to diagram" })).toBeDisabled();
     await expect(canvas.getByRole("button", { name: "Undo" })).toBeDisabled();
     await select(canvas, "Idle");
-    await expect(canvas.queryByRole("button", { name: "Edit state" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("textbox", { name: /^Name/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Save state" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Delete state…" })).not.toBeInTheDocument();
   },
 };
@@ -495,13 +652,13 @@ function actionNames(panel: ReturnType<typeof within>): string[] {
   return [...group.querySelectorAll("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent ?? "");
 }
 
-/** A state's card offers Edit, Comment and Delete as icon buttons (the same set and icons as the block diagram's card). */
+/** A state's card offers Comment and Delete as icon buttons (the same set and icons as the block diagram's card); its fields are edited in place. */
 export const AStateSelectionOffersItsActionsAsIconButtons: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
-    await expect(actionNames(panel)).toEqual(["Edit state", "Comment on this box", "Delete state…"]);
+    await expect(actionNames(panel)).toEqual(["Comment on this box", "Delete state…"]);
     for (const control of panel.getByRole("group", { name: "Actions" }).querySelectorAll("button")) await expect(control.textContent?.trim()).toBe("");
     await expect(buttonHeightViolations(canvasElement)).toEqual([]);
   },

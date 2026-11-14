@@ -2,13 +2,14 @@
  * Module: modules/architecture/StateMachineAddMenu
  *
  * The state machine editor's "Add to diagram" menu button: one entry per state kind (State, Initial state, Final state,
- * Choice). Choosing one opens the state form with the item placed at the next free position; dragging one onto the canvas
- * places it where it is dropped (inside the frame of a composite state it lands on). Dragging is only one way in: every entry
- * is a menu item, so the menu is usable from the keyboard.
+ * Choice). Choosing one adds it at once at the next free position; dragging one onto the canvas places it where it is dropped
+ * (inside the frame of a composite state it lands on). Dragging is only one way in: every entry is a menu item, so the menu is
+ * usable from the keyboard. How to build a machine is the button's tooltip, never text in the layout.
  */
 import { GRAPH_DROP_MIME } from "../../components/GraphCanvas";
 import { MenuButton } from "../../components/MenuButton";
 import type { ActionMenuItem } from "../../components/ActionMenu";
+import { ARCHITECTURE_HELP } from "./help";
 import { PALETTE_KIND_PREFIX } from "./stateMachineModel";
 import { STATE_KIND_LABEL, type StateKind } from "./types";
 
@@ -16,7 +17,7 @@ import { STATE_KIND_LABEL, type StateKind } from "./types";
 const KINDS: StateKind[] = ["state", "initial", "final", "choice"];
 
 /**
- * @param disabled True when the diagram cannot be edited (read-only).
+ * @param disabled True when the diagram cannot be edited (read-only) or a change is being stored.
  * @param onAdd Called with the kind when an entry is chosen.
  */
 export function StateMachineAddMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (kind: StateKind) => void }) {
@@ -30,5 +31,5 @@ export function StateMachineAddMenu({ disabled, onAdd }: { disabled: boolean; on
       event.dataTransfer.effectAllowed = "copy";
     },
   }));
-  return <MenuButton label="Add to diagram" menuLabel="Add to diagram" size="sm" disabled={disabled} items={items} />;
+  return <MenuButton label="Add to diagram" menuLabel="Add to diagram" size="sm" help={ARCHITECTURE_HELP.stateAdd} disabled={disabled} items={items} />;
 }

@@ -2,10 +2,11 @@
  * Module: modules/architecture/StateMachineSelectionPanel
  *
  * The state machine editor's "Selection" card: what the selected state or transition is and what can be done with it.
- * - A state: its code, kind, description and entry, exit and do lines, its tags (the shared `RecordTags`; a state sits in no
- *   component), the findings that name it; Edit (the shared state form), Comment, Delete (confirmed, naming how many
- *   transitions and links go with it) and, for an ordinary or marker state, "Inside": the state it sits inside, the keyboard
- *   route to dragging it into a frame. A state that holds others cannot become a marker.
+ * - A state: its fields, edited in place through the shared field group (name, kind, description, entry, exit and do lines; read-only
+ *   text when the diagram cannot be edited), its tags (the shared `RecordTags`; a state sits in no component), its links, the
+ *   findings that name it; Comment, Delete (confirmed, naming how many transitions and links go with it) and, for an ordinary
+ *   or marker state, "Inside": the state it sits inside, the keyboard route to dragging it into a frame. A state that holds
+ *   others cannot become a marker. Double-clicking a state on the canvas opens the same fields in a dialog.
  * - A transition: its two states, event, guard, action and description, the findings that name it, the attach points of its two
  *   ends (the keyboard route to dragging a line's end); Edit, Comment and Delete.
  * - Nothing selected: a short prompt.
@@ -15,6 +16,7 @@
  * - The card stores nothing: every action is a callback onto the page, which stores content at once and the drawing on Save.
  */
 import { ActivityNote } from "../../components/ActivityNote";
+import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailCard } from "../../components/DetailCard";
 import { FieldCaption } from "../../components/FieldHelp";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
@@ -25,10 +27,11 @@ import { useStrings } from "../../context/TerminologyContext";
 import { ARCHITECTURE_HELP } from "./help";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
+import { StateSelectionFields } from "./StateSelectionFields";
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import {
-  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type StateMachineModel, type StateTransition,
+  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type StateMachineModel, type StateTransition,
 } from "./types";
 
 /** The geometry of a state's box as the canvas draws it, with the points a marker offers. */
@@ -43,7 +46,9 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param layout The drawing being edited.
  * @param selection What is selected on the canvas, or null.
  * @param editable False hides every action that changes the diagram.
- * @param onEditState Opens the state form.
+ * @param onSaveState Stores the changed content fields of a state; resolves true when stored.
+ * @param focusNameOf The id of a state just added, whose name takes the focus when its card appears; null for none.
+ * @param onNameFocused Called once that focus has been given, so it is not repeated.
  * @param onEditTransition Opens the transition form.
  * @param onDeleteState Asks to delete the state (the page confirms, naming what goes with it).
  * @param onDeleteTransition Asks to delete the transition (the page confirms).
@@ -54,7 +59,7 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param onComment Starts a comment on the selected state or transition.
  */
 export function StateMachineSelectionPanel({
-  projectId, model, layout, selection, editable, onEditState, onEditTransition, onDeleteState, onDeleteTransition, onParentChange,
+  projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onEditTransition, onDeleteState, onDeleteTransition, onParentChange,
   onPointsChange, onComment, onConnect,
 }: {
   projectId: string;
@@ -62,7 +67,9 @@ export function StateMachineSelectionPanel({
   layout: StateMachineLayout;
   selection: GraphCanvasSelection | null;
   editable: boolean;
-  onEditState: (state: ArchitectureState) => void;
+  onSaveState: (state: ArchitectureState, changed: Partial<StateFieldValues>) => Promise<boolean>;
+  focusNameOf: string | null;
+  onNameFocused: () => void;
   onEditTransition: (transition: StateTransition) => void;
   onDeleteState: (state: ArchitectureState) => void;
   onDeleteTransition: (transition: StateTransition) => void;
@@ -88,25 +95,33 @@ export function StateMachineSelectionPanel({
       <>
         <p>
           <strong>{stateName(state)}</strong>
-          <span className="text-muted"> · {STATE_KIND_LABEL[state.kind]}</span>
+          {!editable && <span className="text-muted"> · {STATE_KIND_LABEL[state.kind]}</span>}
         </p>
-        {state.description && (
-          <div className="stack" style={{ gap: "var(--space-1)" }}>
-            <FieldCaption label="Description" help={ARCHITECTURE_HELP.elementDescription} />
-            <ActivityNote text={state.description} />
-          </div>
-        )}
-        {!isMarkerKind(state.kind) && (state.entry_action || state.exit_action || state.activity) && (
-          <dl style={{ margin: 0 }}>
-            {state.entry_action && <><dt className="text-muted">Entry action</dt><dd style={{ margin: 0 }}>{state.entry_action}</dd></>}
-            {state.exit_action && <><dt className="text-muted">Exit action</dt><dd style={{ margin: 0 }}>{state.exit_action}</dd></>}
-            {state.activity && <><dt className="text-muted">Activity</dt><dd style={{ margin: 0 }}>{state.activity}</dd></>}
-          </dl>
+        {editable ? (
+          <StateSelectionFields
+            key={`fields:${state.id}`} state={state} holdsStates={holds} autoFocusName={focusNameOf === state.id} onFocused={onNameFocused}
+            onSave={(changed) => onSaveState(state, changed)}
+          />
+        ) : (
+          <>
+            {state.description && (
+              <div className="stack" style={{ gap: "var(--space-1)" }}>
+                <FieldCaption label="Description" help={ARCHITECTURE_HELP.elementDescription} />
+                <ActivityNote text={state.description} />
+              </div>
+            )}
+            {!isMarkerKind(state.kind) && (state.entry_action || state.exit_action || state.activity) && (
+              <dl style={{ margin: 0 }}>
+                {state.entry_action && <><dt className="text-muted">Entry action</dt><dd style={{ margin: 0 }}>{state.entry_action}</dd></>}
+                {state.exit_action && <><dt className="text-muted">Exit action</dt><dd style={{ margin: 0 }}>{state.exit_action}</dd></>}
+                {state.activity && <><dt className="text-muted">Activity</dt><dd style={{ margin: 0 }}>{state.activity}</dd></>}
+              </dl>
+            )}
+          </>
         )}
         <FindingList findings={findings} />
         <SelectionActions
           actions={[
-            editable && selectionAction.edit("Edit state", () => onEditState(state)),
             selectionAction.comment(commentText.commentOnBox, () => onComment({ kind: "node", id: state.id })),
             editable && selectionAction.delete("Delete state…", () => onDeleteState(state)),
           ]}
@@ -126,7 +141,8 @@ export function StateMachineSelectionPanel({
           />
         ) : null}
         {holds && <p className="text-muted">This is a composite state: it holds other states.</p>}
-        <RecordTags key={state.id} projectId={projectId} artefactType="architecture_state" artefactId={state.id} components={false} />
+        <RecordTags key={`tags:${state.id}`} projectId={projectId} artefactType="architecture_state" artefactId={state.id} components={false} />
+        <ArtefactLinksPanel key={`links:${state.id}`} projectId={projectId} artefactType="architecture_state" artefactId={state.id} compact />
       </>
     );
   } else if (transition) {
