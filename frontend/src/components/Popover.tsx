@@ -42,6 +42,10 @@ const MATCH_ANCHOR_MIN_WIDTH_PX = 280;
  * A popover has no header, so it clears any enclosing dialog's header slots: a `FormActions` inside it
  * keeps its buttons in the popover instead of moving them to the dialog behind it.
  *
+ * A press inside a dialog the popover's own content opened (a confirmation) is not "outside": that dialog is a portal
+ * beside the popover in the DOM, so the check follows the React tree (`onMouseDownCapture` bubbles through portals)
+ * and the popover stays open while its confirmation is answered.
+ *
  * `fit` sizes the panel to its content instead of the fixed 280px (up to the
  * viewport width less a margin, `.popover-bubble`'s `max-width`), for a menu
  * whose longest label would otherwise clip.
@@ -70,6 +74,7 @@ export function Popover({
   children: ReactNode;
 }) {
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const pressInsideRef = useRef(false);
   useDialogA11y(bubbleRef, onClose);
 
   useLayoutEffect(() => {
@@ -140,7 +145,9 @@ export function Popover({
   useEffect(() => {
     function onPointerDown(e: MouseEvent) {
       const target = e.target as Node;
-      if (bubbleRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      const insideTree = pressInsideRef.current;
+      pressInsideRef.current = false;
+      if (insideTree || bubbleRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
       onClose();
     }
     document.addEventListener("mousedown", onPointerDown);
@@ -154,6 +161,7 @@ export function Popover({
       role="dialog"
       aria-label={title}
       tabIndex={-1}
+      onMouseDownCapture={() => { pressInsideRef.current = true; }}
       style={{
         position: "fixed",
         // The same layer as Modal and SidePanel, so whichever opened last is on top (DOM order): a popover opened

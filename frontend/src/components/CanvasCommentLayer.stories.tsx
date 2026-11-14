@@ -121,3 +121,23 @@ export const ShowCommentsHidesEveryMarker: Story = {
     await waitFor(() => expect(canvas.queryByRole("button", { name: /Comment thread/ })).toBeNull());
   },
 };
+
+/** Answering a delete confirmation does not count as a click outside the pop-over: the thread stays open and the comment goes. */
+export const DeleteIsConfirmedInsideThePopover: Story = {
+  args: {
+    client: fakeRecordComments({
+      pins: [buildPin({ id: "p-1", comment_count: 2 })],
+      comments: [buildComment({ id: "c-1", pin_id: "p-1", body: "First note." }), buildComment({ id: "c-2", pin_id: "p-1", body: "Second note." })],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /Comment thread by Alex Reviewer, 2 comments/ }));
+    const thread = within(await within(document.body).findByRole("dialog", { name: "Comment thread" }));
+    await userEvent.click(thread.getAllByRole("button", { name: "Delete comment" })[0]);
+    const confirm = within(await within(document.body).findByRole("dialog", { name: "Delete comment" }));
+    await userEvent.click(confirm.getByRole("button", { name: "Delete comment" }));
+    await waitFor(() => expect(thread.queryByText("First note.")).toBeNull());
+    expect(thread.getByText("Second note.")).toBeInTheDocument();
+  },
+};

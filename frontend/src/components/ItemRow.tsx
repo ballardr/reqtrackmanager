@@ -13,20 +13,24 @@ import type { ElementType, HTMLAttributes, ReactNode } from "react";
  * @param actions Buttons and menus; `flex: none`, kept to the right.
  * @param as Element to render (`li`, `div`, ...). Default `div`.
  * @param align Cross-axis alignment: `center` (default) or `start` for multi-line content.
+ * @param revealActions Show the actions only while the row is hovered or has keyboard focus inside it (style guide
+ *   "Pattern: actions revealed on hover"). The actions keep their space, so the row never changes size, and a device
+ *   with no hover always shows them.
  */
 export function ItemRow({
-  children, actions, as, align = "center", className, style, ...rest
+  children, actions, as, align = "center", revealActions = false, className, style, ...rest
 }: {
   children: ReactNode;
   actions?: ReactNode;
   as?: ElementType;
   align?: "center" | "start";
+  revealActions?: boolean;
 } & Omit<HTMLAttributes<HTMLElement>, "children">) {
   const Tag = as ?? "div";
   return (
     <Tag
       {...rest}
-      className={["item-row", className].filter(Boolean).join(" ")}
+      className={["item-row", revealActions && "item-row--reveal", className].filter(Boolean).join(" ")}
       style={align === "start" ? { alignItems: "flex-start", ...style } : style}
     >
       <div className="item-row__content">{children}</div>

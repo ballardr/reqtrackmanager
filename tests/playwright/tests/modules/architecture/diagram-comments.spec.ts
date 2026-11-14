@@ -76,6 +76,35 @@ test.describe("System Architecture: diagram comments", () => {
       await expect(marker(page, 2)).toBeVisible();
     });
 
+    await test.step("a comment is edited and deleted from the keyboard, and the thread's buttons are a small part of the pop-over", async () => {
+      await marker(page, 2).click();
+      const thread = page.getByRole("dialog", { name: "Comment thread" });
+      await thread.getByRole("textbox", { name: "Reply" }).fill("Temporary note");
+      await thread.getByRole("button", { name: "Reply", exact: true }).click();
+      const row = thread.locator(".comment-row", { hasText: "Temporary note" });
+      await expect(row).toBeVisible();
+      // The actions are icon buttons that keyboard focus reveals; none is a text button.
+      const edit = row.getByRole("button", { name: "Edit", exact: true });
+      await edit.focus();
+      await expect(row.locator(".item-row__actions")).toHaveCSS("opacity", "1");
+      await page.keyboard.press("Enter");
+      await thread.getByRole("textbox", { name: "Edit" }).fill("Temporary note, edited");
+      await thread.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(thread.getByText("Temporary note, edited")).toBeVisible();
+      const share = await thread.evaluate((el) => {
+        const area = (b: Element) => { const r = b.getBoundingClientRect(); return r.width * r.height; };
+        const whole = el.getBoundingClientRect();
+        return Array.from(el.querySelectorAll("button")).reduce((sum, b) => sum + area(b), 0) / (whole.width * whole.height);
+      });
+      expect(share).toBeLessThan(0.15);
+      await row.getByRole("button", { name: "Delete comment", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("dialog").last().getByRole("button", { name: "Delete comment", exact: true }).click();
+      await expect(thread.getByText("Temporary note, edited")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(marker(page, 2)).toBeVisible();
+    });
+
     await test.step("the thread is resolved, then hidden with Show resolved", async () => {
       await marker(page, 2).click();
       await page.getByRole("dialog", { name: "Comment thread" }).getByRole("button", { name: "Resolve" }).click();

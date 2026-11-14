@@ -947,6 +947,17 @@ Rules:
 - **Not buttons:** removable chips' "x" and a group's collapse toggle are part of the thing they control, not buttons, and are sized by it.
 - **Consistency checklist for a new screen:** list the buttons on it, group them by who they act on (page, panel, item), and check each group is one size. Measure it: two neighbours that differ by a few pixels are the defect this pattern exists to stop.
 
+## Pattern: actions revealed on hover
+
+Where a list of rows each carries a few actions (the comments of a thread), the actions are small icon buttons that appear when the row is hovered or has keyboard focus inside it, so the text keeps the width.
+
+- **One mechanism.** `ItemRow` with `revealActions` (CSS class `item-row--reveal`); a row never hand-writes its own hover rule.
+- **Never hidden from anyone.** Focus inside the row reveals the actions (they stay in the tab order), and a device with no hover (`@media (hover: none)`) always shows them. Hover is a convenience, not the only route.
+- **Nothing moves.** The actions are hidden with `opacity`, not removed, so they keep their space and the row has the same size either way.
+- **Icon buttons** are `btn btn-sm btn-icon` with an `aria-label` and a `Tooltip` of the same text ([Pattern: help on interactive elements](#pattern-help-on-interactive-elements)); Edit is a pencil and Delete a bin. A control that commits or discards (Save, Cancel) keeps its text.
+- **Thread level actions are not revealed.** An action on the whole group (a thread's Resolve or Reopen and Delete) stays visible, as icons beside the one text button that adds to it (Reply).
+- **A confirmation answered from a pop-over does not close it.** A press inside a dialog that the pop-over's own content opened is not a press outside it (`Popover`).
+
 ## Pattern: pills
 
 *(New 2026-10-18 — from user review: pills wrapped onto two lines and varied in height across pages; 149 hand-written `<span className="badge">` sites had no shared contract.)*

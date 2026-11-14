@@ -1085,6 +1085,24 @@ a.figure-projects-link:hover {
   margin-left: auto;
 }
 
+/* Actions revealed on hover or focus (style guide "Pattern: actions revealed on hover"). Opacity, not `display`, so the
+   actions keep their space and stay in the tab order; focus inside the row reveals them, and a device with no hover
+   shows them always. */
+.item-row--reveal .item-row__actions {
+  opacity: 0;
+}
+
+.item-row--reveal:hover .item-row__actions,
+.item-row--reveal:focus-within .item-row__actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .item-row--reveal .item-row__actions {
+    opacity: 1;
+  }
+}
+
 .text-muted {
   color: var(--color-text-muted);
 }
