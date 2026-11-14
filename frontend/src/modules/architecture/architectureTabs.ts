@@ -16,7 +16,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
 /** A tab of the System Architecture page. */
-export type ArchitectureTab = "elements" | "connections" | "diagrams";
+export type ArchitectureTab = "elements" | "connections" | "diagrams" | "baselines";
 
 /** The page heading every tab shares. */
 export const ARCHITECTURE_PAGE_TITLE = "System Architecture";
@@ -26,6 +26,7 @@ export const ARCHITECTURE_TABS: readonly { key: ArchitectureTab; label: string; 
   { key: "elements", label: "Elements", subComponent: "architecture_element" },
   { key: "connections", label: "Connections", subComponent: "architecture_connection" },
   { key: "diagrams", label: "Diagrams", subComponent: "architecture_diagram" },
+  { key: "baselines", label: "Baselines", subComponent: "architecture_element" },
 ];
 
 /**

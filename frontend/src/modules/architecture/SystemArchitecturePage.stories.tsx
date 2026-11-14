@@ -113,3 +113,24 @@ export const AnEarlierListAddressRedirectsToItsTab: Story = {
     await expect(canvas.getByTestId("address")).toHaveTextContent(`${PATH.replace(":projectId", PROJECT_ID)}?status=active&tab=diagrams`);
   },
 };
+
+/** The Baselines tab lists the baselines that hold architecture records, and is hidden with the Elements sub-component it is read through. */
+export const BaselinesTabListsTheProjectsBaselines: Story = {
+  decorators: [withRouter(`/projects/${PROJECT_ID}/modules/architecture?tab=baselines`, "*")],
+  beforeEach: () => { mockArchitectureReads(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("tab", { name: "Baselines", selected: true })).toBeInTheDocument();
+    await expect(await canvas.findByRole("link", { name: "Before review" })).toBeInTheDocument();
+  },
+};
+
+export const BaselinesTabIsHiddenWithoutElements: Story = {
+  decorators: [withRouter(`/projects/${PROJECT_ID}/modules/architecture?tab=diagrams`, "*")],
+  beforeEach: () => { mockArchitectureReads({ disabledSubComponents: ["architecture_element"] }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("tab", { name: "Diagrams" });
+    await expect(canvas.queryByRole("tab", { name: "Baselines" })).not.toBeInTheDocument();
+  },
+};

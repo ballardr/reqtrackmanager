@@ -856,3 +856,93 @@ export const INTERCHANGE_KIND_LABEL: Record<string, string> = {
   states: "States",
   transitions: "Transitions",
 };
+
+/** A baseline's kind: written by a stage entering a locked phase, or taken on request. */
+export type BaselineKind = "stage" | "manual";
+
+export const BASELINE_KIND_LABEL: Record<BaselineKind, string> = { stage: "Stage", manual: "Manual" };
+
+/** The record types a baseline holds for this module, in display order, with the plural each section is headed by. */
+export const BASELINE_TYPE_LABEL: Record<string, string> = {
+  architecture_element: "Elements",
+  architecture_connection: "Connections",
+  architecture_diagram: "Diagrams",
+  architecture_state_machine_diagram: "State machine diagrams",
+};
+
+/** One baseline of the project, as the core list returns it (counts only). */
+export interface ProjectBaseline {
+  id: string;
+  kind: BaselineKind;
+  label: string;
+  stage_id: string | null;
+  stage_name: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  item_counts: Record<string, number>;
+}
+
+/** A record a baseline holds, without its content. */
+export interface BaselineRecord {
+  id: string;
+  item_type: string;
+  code: string;
+  name: string;
+  status: ArchitectureRecordStatus | null;
+}
+
+/** The architecture records of one baseline. */
+export interface BaselineView {
+  id: string;
+  label: string;
+  kind: BaselineKind;
+  stage_name: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  records: BaselineRecord[];
+}
+
+/** A baseline record with its content as it stood. */
+export interface BaselineItem extends BaselineRecord {
+  content: Record<string, unknown>;
+}
+
+/** One field that differs; a list field reports the entries `added` and `removed` instead of before and after. */
+export interface BaselineFieldChange {
+  field: string;
+  before: string | null;
+  after: string | null;
+  added: string[];
+  removed: string[];
+}
+
+/** A record named in a comparison. */
+export interface BaselineRecordRef {
+  code: string;
+  name: string;
+  status: ArchitectureRecordStatus | null;
+}
+
+/** A record on both sides whose content differs. */
+export interface BaselineRecordChange extends BaselineRecordRef {
+  fields: BaselineFieldChange[];
+}
+
+/** The comparison of one record type. */
+export interface BaselineTypeComparison {
+  item_type: string;
+  added: BaselineRecordRef[];
+  removed: BaselineRecordRef[];
+  changed: BaselineRecordChange[];
+  unchanged: number;
+}
+
+/** A baseline compared with the live model or with another baseline. */
+export interface BaselineComparison {
+  baseline_id: string;
+  baseline_label: string;
+  against: "live" | "baseline";
+  against_id: string | null;
+  against_label: string;
+  types: BaselineTypeComparison[];
+}

@@ -1145,3 +1145,106 @@ class AllocationCoverageOut(BaseModel):
     elements: int
     allocated_elements: int
     suggestions: int
+
+
+class BaselineRecordOut(BaseModel):
+    """One record of a baseline, without its content (`BaselineItemOut` carries that).
+
+    Attributes:
+        id: The baseline item's id.
+        item_type: The artefact type (`architecture_element` and so on).
+        code: The record's code when the baseline was taken.
+        name: Its name then (the code when it had none).
+        status: Its status then, if the type has one.
+    """
+
+    id: UUID
+    item_type: str
+    code: str
+    name: str
+    status: str | None
+
+
+class BaselineViewOut(BaseModel):
+    """The architecture records a baseline holds, for the baseline screen.
+
+    Attributes:
+        id: The baseline.
+        label: Its name.
+        kind: `stage` or `manual`.
+        stage_name: The stage, for a stage baseline.
+        created_at: When it was taken (UTC).
+        created_by_name: Who took it.
+        records: Its records, by type then code (only the types the project has switched on).
+    """
+
+    id: UUID
+    label: str
+    kind: str
+    stage_name: str | None
+    created_at: datetime
+    created_by_name: str | None
+    records: list[BaselineRecordOut]
+
+
+class BaselineItemOut(BaselineRecordOut):
+    """A baseline record with its full content as it stood (the scrubbed bundle entry)."""
+
+    content: dict[str, object]
+
+
+class BaselineFieldChangeOut(BaseModel):
+    """One field that differs between the two sides; a list field reports `added` and `removed` entries instead."""
+
+    field: str
+    before: str | None
+    after: str | None
+    added: list[str]
+    removed: list[str]
+
+
+class BaselineRecordChangeOut(BaseModel):
+    """A record present on both sides whose content differs (named as it is on the second side)."""
+
+    code: str
+    name: str
+    status: str | None
+    fields: list[BaselineFieldChangeOut]
+
+
+class BaselineRecordRefOut(BaseModel):
+    """A record named in a comparison."""
+
+    code: str
+    name: str
+    status: str | None
+
+
+class BaselineTypeComparisonOut(BaseModel):
+    """The comparison of one record type."""
+
+    item_type: str
+    added: list[BaselineRecordRefOut]
+    removed: list[BaselineRecordRefOut]
+    changed: list[BaselineRecordChangeOut]
+    unchanged: int
+
+
+class BaselineComparisonOut(BaseModel):
+    """A baseline compared with the live model or with another baseline.
+
+    Attributes:
+        baseline_id: The first (base) side.
+        baseline_label: Its name.
+        against: `live` or `baseline`.
+        against_id: The other baseline's id, for `baseline`.
+        against_label: The other side's name (`Live model` for `live`).
+        types: One comparison per record type the project has switched on.
+    """
+
+    baseline_id: UUID
+    baseline_label: str
+    against: str
+    against_id: UUID | None
+    against_label: str
+    types: list[BaselineTypeComparisonOut]

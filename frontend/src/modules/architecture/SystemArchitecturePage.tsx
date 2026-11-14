@@ -2,7 +2,7 @@
  * Module: modules/architecture/SystemArchitecturePage
  *
  * The one System Architecture page, mounted at `/projects/:projectId/modules/architecture` (the module's single
- * navigation entry). A shared `Tabs` strip switches between the Elements, Connections and Diagrams lists; the
+ * navigation entry). A shared `Tabs` strip switches between the Elements, Connections, Diagrams and Baselines lists; the
  * chosen tab is the `tab` query parameter and each list keeps its own filters in the same address.
  *
  * - A tab whose sub-component is off for the project is not offered; an address naming one opens the default tab.
@@ -21,6 +21,7 @@ import { useProjectEnabledModules } from "../../hooks/useProjectEnabledModules";
 import {
   ARCHITECTURE_TABS, architectureTabPath, type ArchitectureListChrome, type ArchitectureTab,
 } from "./architectureTabs";
+import { ProjectBaselinesPage } from "./ProjectBaselinesPage";
 import { ProjectConnectionsPage } from "./ProjectConnectionsPage";
 import { ProjectDiagramsPage } from "./ProjectDiagramsPage";
 import { ProjectElementsPage } from "./ProjectElementsPage";
@@ -129,6 +130,7 @@ export function SystemArchitecturePage() {
 
   if (active === "connections") return <ProjectConnectionsPage chrome={chrome} />;
   if (active === "diagrams") return <ProjectDiagramsPage chrome={chrome} />;
+  if (active === "baselines") return <ProjectBaselinesPage chrome={chrome} />;
   return <ProjectElementsPage chrome={chrome} />;
 }
 

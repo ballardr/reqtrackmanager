@@ -112,16 +112,16 @@ def _kept(key: str, item: Any) -> bool:
     return isinstance(item, str) if key == "owner" else True
 
 
-def _scrub(value: Any) -> Any:
+def scrub(value: Any) -> Any:
     """A copy of exported data without comments, element owners and `*_email` keys (the personal data a bundle carries)."""
     if isinstance(value, dict):
-        return {key: _scrub(item) for key, item in value.items() if _kept(key, item)}
+        return {key: scrub(item) for key, item in value.items() if _kept(key, item)}
     if isinstance(value, list):
-        return [_scrub(item) for item in value]
+        return [scrub(item) for item in value]
     return value
 
 
-def _empty_hidden_refs(db: Session, viewer: Viewer, project: Project, data: dict[str, Any]) -> dict[str, Any]:
+def empty_hidden_refs(db: Session, viewer: Viewer, project: Project, data: dict[str, Any]) -> dict[str, Any]:
     """Empties every external reference to an element the viewer cannot read (a connection end, a diagram scope, a box)."""
     own = ArchitectureConnection.project_id == project.id
     candidates: set[UUID] = set(db.scalars(select(ArchitectureConnection.source_element_id).where(own)))
@@ -163,8 +163,8 @@ def export_document(db: Session, project: Project, user: User) -> dict[str, Any]
         and `data` (the sections of `SECTIONS`).
     """
     exported, _assets = bundle.export_project_data(db, project)
-    data = _scrub({key: exported.get(key, []) for key in SECTIONS})
-    data = _empty_hidden_refs(db, Viewer.of_user(user, project), project, data)
+    data = scrub({key: exported.get(key, []) for key in SECTIONS})
+    data = empty_hidden_refs(db, Viewer.of_user(user, project), project, data)
     organization = db.get(Organization, project.organization_id)
     return {
         "format": FORMAT, "version": VERSION, "exported_at": datetime.now(UTC).isoformat(timespec="seconds"),

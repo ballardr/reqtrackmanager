@@ -16,6 +16,10 @@ import type {
   AllocationAcceptResult,
   AllocationCoverage,
   AllocationView,
+  BaselineComparison,
+  BaselineItem,
+  BaselineView,
+  ProjectBaseline,
   ArchitectureCollection,
   ArchitectureConnection,
   ArchitectureDiagram,
@@ -410,5 +414,23 @@ export const projectInterchangeApi = (projectId: string) => {
     preview: (document: unknown) => api.post<InterchangeReport>(`${base}/json/preview`, document),
     /** Imports the parsed file, numbering its records afresh. */
     apply: (document: unknown) => api.post<InterchangeReport>(`${base}/json`, document),
+  };
+};
+
+/**
+ * The baselines of a project: the list and taking one (core endpoints, counts only), and this module's reads of what a
+ * baseline holds (its records, one record's content, and a comparison with the live model or another baseline).
+ */
+export const projectBaselineApi = (projectId: string) => {
+  const core = `/api/v1/projects/${projectId}/baselines`;
+  const base = `${projectBase(projectId)}/baselines`;
+  return {
+    list: () => api.get<ProjectBaseline[]>(core),
+    /** Takes a manual baseline of the given record types as they stand now; it approves and locks nothing. */
+    take: (label: string, itemTypes: string[]) => api.post<ProjectBaseline>(core, { label, item_types: itemTypes }),
+    view: (id: string) => api.get<BaselineView>(`${base}/${id}`),
+    item: (id: string, itemId: string) => api.get<BaselineItem>(`${base}/${id}/items/${itemId}`),
+    /** `against` is `live` or another baseline's id; the baseline named first is the base. */
+    compare: (id: string, against: string) => api.get<BaselineComparison>(`${base}/${id}/compare?against=${encodeURIComponent(against)}`),
   };
 };

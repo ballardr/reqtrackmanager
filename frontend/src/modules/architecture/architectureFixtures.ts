@@ -17,6 +17,10 @@ import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
   ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, StateMachineFinding, StateMachineModel, StateTransition,
+  BaselineComparison,
+  BaselineItem,
+  BaselineView,
+  ProjectBaseline,
 } from "./types";
 
 export const PROJECT_ID = "project-1";
@@ -348,6 +352,16 @@ export interface ArchitectureReads {
   comments?: Partial<RecordThread>;
   /** The pinned threads anchored to a box or line (`anchored-comments`); none by default. */
   anchoredComments?: AnchoredThread[];
+  /** The project's baselines as the core list returns them (counts only); one manual baseline by default. */
+  baselines?: ProjectBaseline[];
+  /** What the architecture holds of a baseline (its records, without content). */
+  baselineView?: BaselineView;
+  /** Answers the baseline read as not found (404), as for another project's baseline. */
+  baselineMissing?: boolean;
+  /** One baseline record with its content. */
+  baselineItem?: BaselineItem;
+  /** The comparison a baseline's compare call answers with. */
+  baselineComparison?: BaselineComparison;
 }
 
 /**
@@ -364,6 +378,13 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.endsWith("/modules/architecture/capabilities")) return { manage_types: reads.canManageTypes ?? false };
     if (base.endsWith("/enabled-modules")) {
       return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];
+    }
+    if (base.endsWith(`/projects/${PROJECT_ID}/baselines`)) return reads.baselines ?? [buildBaseline()];
+    if (base.includes("/modules/architecture/baselines/") && base.endsWith("/compare")) return reads.baselineComparison ?? buildBaselineComparison();
+    if (base.includes("/modules/architecture/baselines/") && base.includes("/items/")) return reads.baselineItem ?? buildBaselineItem();
+    if (base.includes("/modules/architecture/baselines/")) {
+      if (reads.baselineMissing) throw new ApiError(404, "Baseline not found.");
+      return reads.baselineView ?? buildBaselineView();
     }
     if (base.endsWith("/anchored-comments")) return { threads: reads.anchoredComments ?? [] };
     if (base.endsWith("/comments")) return { comments: [], pins: [], can_pin: base.includes("/architecture_diagram/") || base.includes("/architecture_state_machine_diagram/"), can_manage: true, ...reads.comments };
@@ -412,6 +433,65 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.endsWith("/api/v1/projects")) return [];
     throw new Error(`Unmocked GET: ${path}`);
   });
+}
+
+/** One manual baseline holding architecture records (and a requirement, which the Baselines tab does not count). */
+export function buildBaseline(overrides: Partial<ProjectBaseline> = {}): ProjectBaseline {
+  return {
+    id: "bl-1", kind: "manual", label: "Before review", stage_id: null, stage_name: null, created_by_name: "Ada Admin",
+    created_at: "2026-11-10T09:00:00Z",
+    item_counts: { requirement: 4, architecture_element: 2, architecture_connection: 1, architecture_diagram: 1, architecture_state_machine_diagram: 0 },
+    ...overrides,
+  };
+}
+
+/** The records of the fixture baseline: two elements, a connection and a diagram. */
+export function buildBaselineView(overrides: Partial<BaselineView> = {}): BaselineView {
+  return {
+    id: "bl-1", label: "Before review", kind: "manual", stage_name: null, created_at: "2026-11-10T09:00:00Z", created_by_name: "Ada Admin",
+    records: [
+      { id: "bi-1", item_type: "architecture_element", code: "ELM-001", name: "Gateway", status: "active" },
+      { id: "bi-2", item_type: "architecture_element", code: "ELM-002", name: "Cloud", status: "draft" },
+      { id: "bi-3", item_type: "architecture_connection", code: "CON-001", name: "Gateway to Cloud", status: "active" },
+      { id: "bi-4", item_type: "architecture_diagram", code: "DGM-001", name: "Context", status: "active" },
+    ],
+    ...overrides,
+  };
+}
+
+/** The content of the Gateway element in the fixture baseline. */
+export function buildBaselineItem(overrides: Partial<BaselineItem> = {}): BaselineItem {
+  return {
+    id: "bi-1", item_type: "architecture_element", code: "ELM-001", name: "Gateway", status: "active",
+    content: {
+      unique_code: "ELM-001", name: "Gateway", description: "Terminates clients.", type_name: "Service", status: "active",
+      ports: [{ name: "uplink", direction: "out" }], tags: [],
+    },
+    ...overrides,
+  };
+}
+
+/** A comparison with the live model: one element renamed, one added, one removed, a port gained. */
+export function buildBaselineComparison(overrides: Partial<BaselineComparison> = {}): BaselineComparison {
+  return {
+    baseline_id: "bl-1", baseline_label: "Before review", against: "live", against_id: null, against_label: "Live model",
+    types: [
+      {
+        item_type: "architecture_element", unchanged: 0,
+        added: [{ code: "ELM-003", name: "Cache", status: "draft" }],
+        removed: [{ code: "ELM-002", name: "Cloud", status: "draft" }],
+        changed: [{
+          code: "ELM-001", name: "Edge gateway", status: "active",
+          fields: [
+            { field: "name", before: "Gateway", after: "Edge gateway", added: [], removed: [] },
+            { field: "ports", before: null, after: null, added: ['{"direction":"in","name":"clients"}'], removed: [] },
+          ],
+        }],
+      },
+      { item_type: "architecture_connection", unchanged: 1, added: [], removed: [], changed: [] },
+    ],
+    ...overrides,
+  };
 }
 
 /** Records the file names of downloads (an anchor click with a `download` name) instead of saving files. */

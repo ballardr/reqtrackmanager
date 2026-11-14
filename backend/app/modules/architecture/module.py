@@ -24,6 +24,8 @@ Registered contributions:
   search, report fields, record tables (export; import for the element and connection, `NOT_IMPORTABLE` for the
   diagram), scaling probes, dataset generators and the link types the module adds (`LINK_TYPE_SEEDS`). All are
   taggable through the shared tables, and placeable except the state (`not_placeable`).
+- `baseline_snapshots` (`baseline_snapshot`): an element, connection, diagram and state machine diagram enter every baseline of
+  a project (with their ports, boxes, states and transitions), read back and compared through `baseline_routes`.
 - `principal_references` for an element's owner and for the group a collection grant names.
 - `on_org_created` seeds each new organisation's default types; the migration
   backfills existing organisations so a module switched on later has them.
@@ -61,6 +63,7 @@ from app.modules.architecture._shared import (
     STATE_MACHINE_MANAGE_PERMISSION,
 )
 from app.modules.architecture.allocation_metrics import OVERVIEW_METRICS
+from app.modules.architecture.baseline_snapshot import SNAPSHOT_PROVIDERS
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
 from app.modules.architecture.comments import RECORD_COMMENTS
 from app.modules.architecture.models import (
@@ -233,6 +236,7 @@ MODULE_DEFINITION = ModuleDefinition(
         STATE_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_states, order=199),
     },
     link_type_seeds=LINK_TYPE_SEEDS,
+    baseline_snapshots=SNAPSHOT_PROVIDERS,
     principal_references=(
         PrincipalReference(
             model=ArchitectureElement, field="owner", label="element owners", audit_entity_type=ELEMENT_ARTEFACT_TYPE,

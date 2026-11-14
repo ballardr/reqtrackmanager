@@ -1,14 +1,14 @@
 /**
  * Module: modules/architecture/architectureSort
  *
- * The sortable value of each sortable column on the Elements, Connections and Diagrams lists, for `sortRows`. The lists
+ * The sortable value of each sortable column on the Elements, Connections, Diagrams, States and Baselines lists, for `sortRows`. The lists
  * load their whole filtered set in one request, so the order is applied in the browser; the keys are the column keys and
  * the sort lives in the URL (`useUrlSort`). A column with no natural order (none here) stays unsortable.
  */
 import type { SortValue } from "../../utils/sortRows";
 import {
-  ARCHITECTURE_STATUS_LABEL, DIAGRAM_KIND_LABEL, STATE_KIND_LABEL, type ArchitectureConnection, type ArchitectureDiagram,
-  type ArchitectureElement, type ArchitectureState, type DiagramKind, type StateMachineDiagram,
+  ARCHITECTURE_STATUS_LABEL, BASELINE_KIND_LABEL, BASELINE_TYPE_LABEL, DIAGRAM_KIND_LABEL, STATE_KIND_LABEL, type ArchitectureConnection, type ArchitectureDiagram,
+  type ArchitectureElement, type ArchitectureState, type ProjectBaseline, type DiagramKind, type StateMachineDiagram,
 } from "./types";
 
 type Values<Row> = Record<string, (row: Row) => SortValue>;
@@ -90,7 +90,23 @@ export const STATE_SORT_VALUES: Values<ArchitectureState> = {
   element: (s) => `${s.element_code ?? ""} ${s.element_name ?? ""}`.trim(),
 };
 
+/** Number of architecture records a baseline holds (the count the list shows). */
+export function baselineRecordCount(baseline: ProjectBaseline): number {
+  return Object.entries(baseline.item_counts).reduce((sum, [type, n]) => (type in BASELINE_TYPE_LABEL ? sum + n : sum), 0);
+}
+
+/** Sortable columns of the Baselines list. */
+export const BASELINE_SORT_VALUES: Values<ProjectBaseline> = {
+  name: (b) => b.label,
+  kind: (b) => BASELINE_KIND_LABEL[b.kind],
+  stage: (b) => b.stage_name,
+  taken: (b) => b.created_at,
+  by: (b) => b.created_by_name,
+  records: baselineRecordCount,
+};
+
 export const ELEMENT_SORT_KEYS = ["code", "name", "type", "folder", "parent", "owner", "connections", "status"] as const;
 export const CONNECTION_SORT_KEYS = ["code", "name", "type", "folder", "source", "target", "protocol", "status"] as const;
 export const DIAGRAM_SORT_KEYS = ["code", "name", "type", "folder", "scope", "boxes", "toggles", "status"] as const;
+export const BASELINE_SORT_KEYS = ["name", "kind", "stage", "taken", "by", "records"] as const;
 export const STATE_SORT_KEYS = ["code", "name", "diagram", "kind", "element"] as const;

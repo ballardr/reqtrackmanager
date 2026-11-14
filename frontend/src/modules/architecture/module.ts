@@ -5,6 +5,7 @@ import { AllocationPanel } from "./AllocationPanel";
 import { AllocationCoverageTiles } from "./AllocationCoverageTiles";
 import { ArchitectureTypesPanel } from "./ArchitectureTypesPanel";
 import { ConnectionDetailPage } from "./ConnectionDetailPage";
+import { BaselineDetailPage } from "./BaselineDetailPage";
 import { CreateDiagramDialog } from "./CreateDiagramDialog";
 import { CreateElementDialog } from "./CreateElementDialog";
 import { DiagramEditorPage } from "./DiagramEditorPage";
@@ -28,8 +29,8 @@ import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./typ
  * notifications and search hits resolve without core naming this module.
  * `artefactStatusLabels` / `artefactInactiveStatuses`: a retired record is greyed out in shared lists.
  *
- * `routes`: the System Architecture page (tabs Elements, Connections, Diagrams), the earlier list paths redirecting to its
- * tabs, the detail pages (the diagram's is the editor; a state redirects to its state machine diagram), and the Sharing page (collections).
+ * `routes`: the System Architecture page (tabs Elements, Connections, Diagrams, Baselines), the earlier list paths redirecting to its
+ * tabs, the detail pages (the baseline's reads what it holds and compares it; the diagram's is the editor; a state redirects to its state machine diagram), and the Sharing page (collections).
  * `overviewWidgets`: the allocation coverage tiles of the project overview.
  * `requirementDetailSections`: the "Architecture" allocation card on a requirement (`AllocationPanel`), shown only when it has
  * something to list.
@@ -99,6 +100,8 @@ export const moduleDefinition: TierAModuleDefinition = {
     { path: "/projects/:projectId/modules/architecture/diagrams/:diagramId", element: createElement(DiagramEditorPage) },
     { path: "/projects/:projectId/modules/architecture/state-machine-diagrams/:diagramId", element: createElement(StateMachineEditorPage) },
     { path: "/projects/:projectId/modules/architecture/states/:stateId", element: createElement(StateRedirect) },
+    { path: "/projects/:projectId/modules/architecture/baselines", element: createElement(ArchitectureListRedirect, { tab: "baselines" }) },
+    { path: "/projects/:projectId/modules/architecture/baselines/:baselineId", element: createElement(BaselineDetailPage) },
     { path: "/projects/:projectId/modules/architecture/sharing", element: createElement(ProjectSharingPage) },
   ],
   projectAdminSections: [

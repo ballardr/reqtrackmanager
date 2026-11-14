@@ -24,7 +24,7 @@ The record of security- and administration-relevant events (logins, permission g
 
 #### Baseline
 
-A permanent snapshot of every requirement that was in draft or reviewed status at the moment a project stage was approved. Answers "what did we commit to" reliably, even after later changes. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
+A permanent snapshot of every requirement that was in draft or reviewed status at the moment a project stage was approved. Answers "what did we commit to" reliably, even after later changes. See [Change requests and baselines](../concepts/change-requests-and-baselines.md). A baseline can also hold a module's records (the architecture), and can be taken manually without a stage; see [Baselines](../modules/system-architecture-module/baselines.md).
 
 #### Change log
 

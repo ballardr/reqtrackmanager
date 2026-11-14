@@ -2478,7 +2478,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
     drone with a symbol uploaded to the project's own library. The flight controller is placed in the Avionics component, with
     one requirement allocated to it and one suggestion dismissed. And a state machine diagram of the flight controller's modes
-    (with a nested Flying state).
+    (with a nested Flying state), and a manual baseline of it taken before a later edit.
     Returns the number of elements, connections, diagrams and state machine diagrams created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
@@ -2745,6 +2745,19 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
             httpx.post(f"{base}/allocation/accept", headers=headers, timeout=30, json={"pairs": pairs[:1]}).raise_for_status()
         if len(pairs) > 1:
             httpx.post(f"{base}/allocation/dismiss", headers=headers, timeout=30, json=pairs[1]).raise_for_status()
+    # A manual baseline of the architecture, then a later edit, so the baseline's comparison with the live model has a difference.
+    httpx.post(
+        f"{BASE}/projects/{project_id}/baselines", headers=headers, timeout=30,
+        json={"label": "Falcon-3 architecture, first agreed", "item_types": [
+            "architecture_element", "architecture_connection", "architecture_diagram", "architecture_state_machine_diagram",
+        ]},
+    ).raise_for_status()
+    current = httpx.get(f"{base}/elements/{fc['id']}", headers=headers, timeout=30)
+    current.raise_for_status()
+    httpx.put(
+        f"{base}/elements/{fc['id']}", headers=headers, timeout=30,
+        json={"version": current.json()["version"], "description": "Dual-redundant flight controller; the second channel was added after the first baseline."},
+    ).raise_for_status()
     return {"elements": 8, "connections": 6, "diagrams": 1, "state_machine_diagrams": 1}
 
 

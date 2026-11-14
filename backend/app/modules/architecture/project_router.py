@@ -6,7 +6,7 @@ Project-scoped API of the Architecture module, mounted at
 element types, connection types and symbols, its own rows, hiding and restoring the
 organisation's defaults, and the project's elements, ports and connections
 (`record_routes`), collections (`collection_routes`), diagrams (`diagram_routes`) and the JSON and Structurizr
-interchange (`interchange_routes`).
+interchange (`interchange_routes`) and the read of the baselines (`baseline_routes`).
 
 RBAC: the record type's sub-component and project membership to read; a
 vocabulary change needs `_shared.require_architecture_admin` and a record change
@@ -25,6 +25,7 @@ from app.models.user import User
 from app.modules.architecture import _shared as sh
 from app.modules.architecture import symbol_routes, vocabulary_routes
 from app.modules.architecture.allocation_routes import add_allocation_routes
+from app.modules.architecture.baseline_routes import add_baseline_routes
 from app.modules.architecture.collection_routes import add_project_collection_routes
 from app.modules.architecture.comments import add_comment_routes
 from app.modules.architecture.diagram_routes import add_diagram_routes
@@ -94,6 +95,7 @@ add_diagram_routes(router)
 add_state_machine_routes(router)
 add_comment_routes(router)
 add_allocation_routes(router)
+add_baseline_routes(router)
 add_interchange_routes(router)
 router.include_router(REPORT_ROUTERS.project)
 add_project_collection_routes(router)
