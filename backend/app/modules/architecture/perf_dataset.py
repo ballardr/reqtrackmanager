@@ -32,11 +32,12 @@ from __future__ import annotations
 import math
 import random
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 
 from app.modules.architecture.diagram_resolver import outer_side
-from app.modules.architecture.enums import DISPLAY_NOTE_MAX, AttachPoint, PortDirection, RecordStatus
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX, AttachPoint, NoteTone, PortDirection, RecordStatus
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionRealisation,
@@ -82,6 +83,26 @@ _FOLDER_DEPTH = 4
 #: How many diagrams besides the first are given boundary boxes, and the most boxes one diagram gets.
 _SCOPED_DIAGRAMS = 5
 _MAX_BOUNDARIES = 20
+_NOTE_TONES = [tone.value for tone in NoteTone]
+
+
+def _note_leader(
+    rng: random.Random, placed: list[uuid.UUID], connections: list[uuid.UUID], order: int, *, forced: bool,
+) -> dict[str, Any]:
+    """The leader columns of a generated note: none, a box of the diagram, a connection of the project (drawn only when a
+    line of the diagram stands for it) or a free point. With `forced` the kind follows `order` (a box, a connection, a
+    point), so the project's first diagram always has one of each."""
+    none: dict[str, Any] = {
+        "leader_kind": "none", "leader_element_id": None, "leader_connection_id": None, "leader_x": None, "leader_y": None,
+    }
+    roll = (order + 0.5) / 3 * 0.75 if forced else rng.random()
+    if roll < 0.3 and placed:
+        return {**none, "leader_kind": "element", "leader_element_id": rng.choice(placed)}
+    if roll < 0.55 and connections:
+        return {**none, "leader_kind": "connection", "leader_connection_id": rng.choice(connections)}
+    if roll < 0.75:
+        return {**none, "leader_kind": "point", "leader_x": float(order * 180 + 80), "leader_y": -200.0}
+    return none
 
 
 def _type_ids(
@@ -285,6 +306,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
     rng = ctx.rng
     count = ctx.spec.ratios.count_for(DIAGRAM_ARTEFACT_TYPE, len(ctx.shared.get("requirement", [])))
     elements = ctx.shared.get(ELEMENT_ARTEFACT_TYPE, [])
+    project_connections = ctx.shared.get(CONNECTION_ARTEFACT_TYPE, [])
     if count == 0 or not elements:
         return {}
     start = dict(ctx.counts)
@@ -341,10 +363,12 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
                     "id": batch.new_id(), "inner_connection_id": realising, "outer_connection_id": connection_id,
                     "created_at": created, "updated_at": created,
                 })
-        for order in range(rng.choice((0, 1, 1, 2))):
+        for order in range(3 if index == 0 else rng.choice((0, 1, 1, 2))):
+            leader = _note_leader(rng, placed, project_connections, order, forced=index == 0)
             batch.satellite(ArchitectureDiagramNote, {
                 "id": batch.new_id(), "diagram_id": record_id, "text": textgen.title(rng), "x": float(order * 180),
-                "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "created_at": created, "updated_at": created,
+                "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "tone": rng.choice(_NOTE_TONES),
+                "leader_arrow": rng.random() < 0.8, "created_at": created, "updated_at": created, **leader,
             })
         if index == 0 or rng.random() < 0.4:
             toggle_id = batch.new_id()

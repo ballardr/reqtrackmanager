@@ -279,3 +279,35 @@ def test_the_display_note_migration_adds_the_column_with_an_empty_default_and_re
         assert conn.execute(
             text("SELECT display_note FROM architecture_elements WHERE id = :i"), {"i": element["id"]},
         ).scalar_one() == ""
+
+
+def test_the_note_leader_migration_adds_the_columns_with_neutral_defaults_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0182 drops the annotation columns; upgrading gives every existing note a neutral tone and no leader."""
+    from app.modules.architecture.tests._helpers import make_connection, make_diagram, make_element, place_all, project_base, setup
+    from tests.conftest import auth_headers
+
+    _org, project, token = setup(client, admin_token, "Arch leader migration")
+    a, b = make_element(client, token, project["id"], "Alpha"), make_element(client, token, project["id"], "Bravo")
+    make_connection(client, token, project["id"], a["id"], b["id"])
+    diagram = place_all(client, token, project["id"], make_diagram(client, token, project["id"], "Flow"), a["id"], b["id"])
+    saved = client.put(
+        f"{project_base(project['id'])}/diagrams/{diagram['id']}/layout", headers=auth_headers(token),
+        json={
+            "version": diagram["version"], "placements": [{"element_id": a["id"]}, {"element_id": b["id"], "x": 300}],
+            "notes": [{"text": "Kept", "tone": "danger", "leader_kind": "element", "leader_element_id": a["id"]}],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    command.downgrade(build_alembic_config(), "0182")
+    try:
+        with engine.connect() as conn:
+            columns = {r[0] for r in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_diagram_notes'"
+            ))}
+            assert columns.isdisjoint({"tone", "leader_kind", "leader_element_id", "leader_connection_id", "leader_x", "leader_y", "leader_arrow"})
+            assert conn.execute(text("SELECT count(*) FROM architecture_diagram_notes WHERE text = 'Kept'")).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT tone, leader_kind, leader_arrow FROM architecture_diagram_notes WHERE text = 'Kept'")).one()
+    assert tuple(row) == ("neutral", "none", True)

@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildUser, withRouter, withStatefulAuth } from "../../testing/storybook-helpers";
-import { buildConnection, buildViewBoundary, buildViewEdge, buildViewNode } from "./architectureFixtures";
-import { boundaryFromView, boundaryNodeId, boxFromNode } from "./diagramEditorModel";
+import { buildConnection, buildNote, buildViewBoundary, buildViewEdge, buildViewNode } from "./architectureFixtures";
+import { boundaryFromView, boundaryNodeId, boxFromNode, noteFromView } from "./diagramEditorModel";
 import { DiagramOutline } from "./DiagramOutline";
 import { connectionRows, outlineSize, outlineTree } from "./diagramOutlineModel";
 import { exportFileName, toggleStates } from "./diagramExport";
@@ -24,7 +24,7 @@ const meta: Meta<typeof DiagramOutline> = {
   args: {
     boxes: [GATEWAY, ORDERS, API, FIREWALL], notes: [], boundaries: [], covered: new Set<string>(),
     edges: [buildViewEdge({ target_element_id: "el-5" })], parents: PARENTS,
-    hidden: new Set<string>(), descriptions: new Map([["el-5", "Accepts orders over REST and queues them."]]),
+    drawnEdgeIds: new Set<string>(), hidden: new Set<string>(), descriptions: new Map([["el-5", "Accepts orders over REST and queues them."]]),
     selection: null, onSelect: fn(),
   },
 };
@@ -73,7 +73,7 @@ export const TheTreeCollapsesAndExpandsAsAWhole: Story = {
 };
 
 export const EachSectionCollapsesToItsTitle: Story = {
-  args: { notes: [{ key: "n1", id: "n1", text: "Check with ops", x: 0, y: 0, width: 160, height: 60 }] },
+  args: { notes: [noteFromView(buildNote({ text: "Check with ops" }))] },
   play: async ({ canvasElement }) => {
     const outline = within(canvasElement);
     await userEvent.click(outline.getByRole("button", { name: "Lines section" }));
@@ -137,7 +137,7 @@ export const AnUnreadableElementShowsItsCodeOnly: Story = {
 };
 
 export const NotesAreListedAsPlainText: Story = {
-  args: { notes: [{ key: "n1", id: "n1", text: "<b>Check with ops</b>", x: 0, y: 0, width: 160, height: 60 }] },
+  args: { notes: [noteFromView(buildNote({ text: "<b>Check with ops</b>" }))] },
   play: async ({ canvasElement }) => {
     const note = within(canvasElement).getByRole("button", { name: "<b>Check with ops</b>" });
     await expect(note.querySelector("b")).toBeNull();

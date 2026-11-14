@@ -172,3 +172,47 @@
 .graph-canvas-readonly .react-flow__handle {
   visibility: hidden;
 }
+
+/* A toned node (an annotation) takes its tone's colour for its border and a light tint of it behind the text. */
+.graph-node-tone {
+  --graph-node-tone-color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--graph-node-tone-color) 12%, var(--color-surface));
+  border-color: var(--graph-node-tone-color);
+}
+
+.graph-node-tone-info { --graph-node-tone-color: var(--color-info); }
+.graph-node-tone-success { --graph-node-tone-color: var(--color-accent); }
+.graph-node-tone-warning { --graph-node-tone-color: var(--color-warning); }
+.graph-node-tone-danger { --graph-node-tone-color: var(--color-danger); }
+
+/* A leader is a thin line from an annotation to what it describes; it follows the annotation's selection. */
+.graph-canvas .react-flow__edge.graph-leader .react-flow__edge-path {
+  stroke-width: 1.5px;
+  stroke: var(--color-text-muted);
+}
+
+.graph-canvas .react-flow__edge.graph-leader.selected .react-flow__edge-path {
+  stroke: var(--color-primary);
+}
+
+/* The end node of a leader: invisible at a line's middle, a small draggable dot at a free position. */
+.graph-leader-end {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.graph-leader-end .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.graph-leader-end-free {
+  background: var(--color-surface);
+  border: 2px solid var(--color-text-muted);
+  cursor: grab;
+}
+
+.graph-canvas-readonly .graph-leader-end-free {
+  cursor: default;
+}

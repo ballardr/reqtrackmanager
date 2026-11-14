@@ -11,7 +11,8 @@ Responsibilities:
   when several connections collapse into it, and (with connection detail on) its type and protocol.
 - Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with the
   connection's code, the element outside and a covered or not covered marker.
-- Draw notes as plain text.
+- Draw annotation notes as plain text in a block of their tone, with the leader line (and arrowhead) to the box, the line's
+  midpoint or the free point they point at; a leader whose target is not drawn is not drawn.
 
 Design decisions:
 - **Everything user-supplied is text.** Names, codes, notes and labels are XML-escaped and stripped of control
@@ -38,11 +39,11 @@ from xml.sax.saxutils import escape
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.architecture.diagram_points import line_points, point_xy
-from app.modules.architecture.enums import AttachPoint
+from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy
+from app.modules.architecture.enums import AttachPoint, LeaderKind
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
-from app.modules.architecture.schemas import AnchorOut, DiagramView, ViewBoundary, ViewEdge, ViewNode
+from app.modules.architecture.schemas import AnchorOut, DiagramView, NoteOut, ViewBoundary, ViewEdge, ViewNode
 from app.modules.architecture.symbols import symbol_svg
 
 _DEFAULT_COLOR = "#475569"
@@ -255,8 +256,9 @@ def _anchor_points(
 
 def _edges(
     edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut],
-) -> tuple[str, str]:
-    """The `<defs>` (arrowheads) and the lines."""
+) -> tuple[str, str, dict[str, tuple[float, float]]]:
+    """The `<defs>` (arrowheads), the lines and where each line's middle is (by line id, for a note's leader)."""
+    middles: dict[str, tuple[float, float]] = {}
     colors: dict[str, int] = {}
     lines: list[str] = []
     rank: dict[frozenset, int] = {}
@@ -288,6 +290,7 @@ def _edges(
             f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
         )
         mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        middles[edge.id] = (mx, my)
         if edge.label:
             lines.append(
                 f'<text x="{mx:.1f}" y="{my - 5:.1f}" text-anchor="middle" font-size="10" fill="{_TEXT_COLOR}" '
@@ -303,7 +306,86 @@ def _edges(
         f'<path d="M0,0 L10,5 L0,10 z" fill="{color}"/></marker>'
         for color, i in colors.items()
     )
-    return defs, "".join(lines)
+    return defs, "".join(lines), middles
+
+
+#: Fill and stroke of an annotation note by tone (the light-theme values of the product's tone colours).
+_TONES: dict[str, tuple[str, str]] = {
+    "neutral": ("#F1F5F9", "#64748B"),
+    "info": ("#DBEAFE", "#2563EB"),
+    "success": ("#DCFCE7", "#16A34A"),
+    "warning": ("#FEF9C3", "#CA8A04"),
+    "danger": ("#FEE2E2", "#DC2626"),
+}
+
+
+def _leader_end(
+    note: NoteOut, boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
+    edges: list[ViewEdge],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Where a note's leader runs, as `(start, end)`, or `None` when it has none or its target is not drawn.
+
+    An element target is the nearest pair of attach points of the note's block and the box; a line's midpoint or a free
+    point is met at the note's attach point nearest to it (the same rule the browser uses).
+    """
+    kind = note.leader_kind
+    block = (note.x, note.y, note.width, note.height)
+    end: tuple[float, float]
+    if kind == LeaderKind.ELEMENT and note.leader_element_id is not None:
+        target = boxes.get(note.leader_element_id)
+        if target is None:
+            return None
+        target_box = (target.x, target.y, target.width, target.height)
+        from_point, to_point = line_points(block, target_box)
+        return point_xy(block, from_point), point_xy(target_box, to_point)
+    if kind == LeaderKind.CONNECTION and note.leader_connection_id is not None:
+        drawn = next((e for e in edges if e.id in middles and any(c.id == note.leader_connection_id for c in e.connections)), None)
+        if drawn is None:
+            return None
+        end = middles[drawn.id]
+    elif kind == LeaderKind.POINT and note.leader_x is not None and note.leader_y is not None:
+        end = (note.leader_x, note.leader_y)
+    else:
+        return None
+    return point_xy(block, nearest_point(block, end)), end
+
+
+def _notes(
+    notes: list[NoteOut], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
+    edges: list[ViewEdge],
+) -> tuple[str, str, str]:
+    """The `<defs>` (a leader arrowhead per tone used), the leaders (drawn under everything) and the note blocks (over it)."""
+    defs: list[str] = []
+    leaders: list[str] = []
+    blocks: list[str] = []
+    seen: set[str] = set()
+    for n in notes:
+        tone = n.tone.value if n.tone.value in _TONES else "neutral"
+        fill, stroke = _TONES[tone]
+        run = _leader_end(n, boxes, middles, edges)
+        if run is not None:
+            arrow = ""
+            if n.leader_arrow:
+                if tone not in seen:
+                    seen.add(tone)
+                    defs.append(
+                        f'<marker id="leader-{tone}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" '
+                        f'orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="{stroke}"/></marker>'
+                    )
+                arrow = f' marker-end="url(#leader-{tone})"'
+            (x1, y1), (x2, y2) = run
+            leaders.append(
+                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{stroke}" stroke-width="1.5"{arrow}/>'
+            )
+        blocks.append(
+            f'<g data-note="{n.id}"><rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" '
+            f'fill="{fill}" stroke="{stroke}"/>'
+            + "".join(
+                f'<text x="{n.x + 6:.1f}" y="{n.y + 16 + i * 13:.1f}" font-size="11" fill="{_TEXT_COLOR}">{_text(line)}</text>'
+                for i, line in enumerate(_wrap(n.text, max(int(n.width / 6.5), 6), max(int((n.height - 8) / 13), 1)))
+            ) + "</g>"
+        )
+    return "".join(defs), "".join(leaders), "".join(blocks)
 
 
 def render_diagram(db: Session, view: DiagramView) -> str:
@@ -329,8 +411,11 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     boxes.update({b.id: b for b in view.boundaries})
     drawn_edges = [e for e in view.edges if e.source_element_id in boxes and e.target_element_id in boxes]
     drawn_boxes: list[ViewNode | ViewBoundary] = [*visible, *view.boundaries]
+    points = [(n.leader_x, n.leader_y) for n in view.notes if n.leader_kind == LeaderKind.POINT]
     xs = [v for n in drawn_boxes for v in (n.x, n.x + n.width)] + [v for n in view.notes for v in (n.x, n.x + n.width)]
+    xs += [px for px, _ in points if px is not None]
     ys = [v for n in drawn_boxes for v in (n.y - 6, n.y + n.height + 6)] + [v for n in view.notes for v in (n.y, n.y + n.height)]
+    ys += [py for _, py in points if py is not None]
     if not xs:
         min_x, min_y, width, height = 0.0, 0.0, 320.0, 120.0
         body = '<text x="160" y="60" text-anchor="middle" font-size="12" fill="#64748B">Empty diagram</text>'
@@ -338,16 +423,12 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     else:
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
-        defs, edge_svg = _edges(drawn_edges, boxes, view.anchors)
-        notes = "".join(
-            f'<g><rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" fill="#FEF9C3" stroke="#CA8A04"/>'
-            + "".join(
-                f'<text x="{n.x + 6:.1f}" y="{n.y + 16 + i * 13:.1f}" font-size="11" fill="{_TEXT_COLOR}">{_text(line)}</text>'
-                for i, line in enumerate(_wrap(n.text, max(int(n.width / 6.5), 6), max(int((n.height - 8) / 13), 1)))
-            ) + "</g>"
-            for n in view.notes
+        defs, edge_svg, middles = _edges(drawn_edges, boxes, view.anchors)
+        note_defs, leaders, notes = _notes(view.notes, boxes, middles, drawn_edges)
+        defs += note_defs
+        body = (
+            f"{edge_svg}{leaders}{''.join(_node(n, symbols) for n in visible)}{''.join(_boundary(b) for b in view.boundaries)}{notes}"
         )
-        body = f"{edge_svg}{''.join(_node(n, symbols) for n in visible)}{''.join(_boundary(b) for b in view.boundaries)}{notes}"
     title = _text(f"{view.diagram.unique_code} {view.diagram.name}")
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{min_x:.1f} {min_y:.1f} {width:.1f} {height:.1f}" '

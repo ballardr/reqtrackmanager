@@ -45,9 +45,10 @@ def test_a_note_longer_than_the_cap_is_refused_and_one_at_the_cap_is_kept(client
 
 
 def test_the_audit_names_the_changed_field_and_never_the_note(client, admin_token):
+    from sqlalchemy import select
+
     from app.database import SessionLocal
     from app.models import AuditEvent
-    from sqlalchemy import select
 
     _org, project, token = setup(client, admin_token, "Arch note audit")
     element = make_element(client, token, project["id"], "Gateway")

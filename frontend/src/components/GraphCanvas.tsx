@@ -6,8 +6,9 @@
  * lazy loader for the drawing itself (`GraphCanvasView`, the only file that imports `@xyflow/react`).
  *
  * Responsibilities:
- * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`) and the events it gets back. A box
- *   has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
+ * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`, `GraphCanvasLeader`) and the events it
+ *   gets back. A box has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
+ *   A leader is a thin line from a node (an annotation) to another node, to the middle of a line or to a free point.
  * - Load the canvas on first use, so React Flow stays out of the main bundle, and show the list view while it
  *   loads, if it fails to load, or when the person (or consumer) asks for the list.
  *
@@ -34,6 +35,9 @@ import { Spinner } from "./Spinner";
  */
 export type GraphNodeOutline = "rectangle" | "pointed-right" | "pointed-left" | "pointed-both" | "ellipse";
 
+/** The colour family of a node (an annotation), drawn from the theme's tokens so it follows light and dark. */
+export type GraphNodeTone = "neutral" | "info" | "success" | "warning" | "danger";
+
 /** A box on the canvas. `x`/`y` are the top-left corner in canvas units. */
 export interface GraphCanvasNode {
   id: string;
@@ -59,6 +63,25 @@ export interface GraphCanvasNode {
   body?: string;
   /** The outline; defaults to `rectangle`. */
   outline?: GraphNodeOutline;
+  /** Tints the node (its border and background) in a tone's colour; none draws the usual surface. */
+  tone?: GraphNodeTone;
+}
+
+/** What a leader points at: a node, a line (its middle) or a free position in canvas units. */
+export type GraphLeaderTarget = { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "point"; x: number; y: number };
+
+/**
+ * A thin line from a node to something it describes (an annotation's pointer). It is not selectable. The canvas skips a
+ * leader whose node, target node or target line is not on the canvas, so a consumer can pass every leader and let a hidden
+ * target hide its leader.
+ */
+export interface GraphCanvasLeader {
+  id: string;
+  /** The node the line starts from; it meets the nearest attach point of that node. */
+  from: string;
+  to: GraphLeaderTarget;
+  /** Draws an arrowhead at the target end; defaults to true. */
+  arrow?: boolean;
 }
 
 /** The data-transfer type a consumer's draggable palette item sets, so a drop on the canvas reaches `onDropItem`. */
@@ -94,6 +117,8 @@ export interface GraphCanvasSelection {
 export interface GraphCanvasProps {
   nodes: GraphCanvasNode[];
   edges: GraphCanvasEdge[];
+  /** Leaders (annotation pointers); none by default. */
+  leaders?: GraphCanvasLeader[];
   /** Accessible name for the canvas and the list; required so every instance is named. */
   ariaLabel: string;
   /** The view shown first: `diagram` (default) or `list`. */
@@ -129,6 +154,14 @@ export interface GraphCanvasProps {
    * inner diagram) belongs to the consumer, who must also offer a keyboard route (Enter is left to selecting).
    */
   onNodeOpen?: (nodeId: string) => void;
+  /**
+   * Called once when a person drags a leader's target end (not in read-only mode): dropped on a node it names that node, and
+   * dropped on empty canvas (or dragged, for a free end) it names that position. The canvas stores nothing: the consumer
+   * keeps the target and passes it back in `leaders`.
+   */
+  onLeaderTargetChange?: (leaderId: string, target: GraphLeaderTarget) => void;
+  /** Called when empty canvas is clicked (not in read-only mode), with the position in canvas units, before the selection is cleared. */
+  onCanvasClick?: (position: { x: number; y: number }) => void;
   /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */

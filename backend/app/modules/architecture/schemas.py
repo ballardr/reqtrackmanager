@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
@@ -27,7 +27,9 @@ from app.modules.architecture.enums import (
     Domain,
     ElementShape,
     FolderKind,
+    LeaderKind,
     LineStyle,
+    NoteTone,
     PortDirection,
     RecordStatus,
 )
@@ -544,7 +546,12 @@ class PlacementIn(BaseModel):
 
 
 class NoteIn(BaseModel):
-    """A plain-text note on a diagram (`id` keeps an existing note; none creates one)."""
+    """An annotation on a diagram: plain text in a block with a tone and an optional leader line (`id` keeps an existing
+    note; none creates one).
+
+    `leader_kind` says what the leader points at and exactly the matching target is given: `leader_element_id` for
+    `element`, `leader_connection_id` for `connection`, `leader_x` and `leader_y` together for `point`; none for `none`.
+    """
 
     id: UUID | None = None
     text: str = Field(default="", max_length=2000)
@@ -552,6 +559,32 @@ class NoteIn(BaseModel):
     y: Coordinate = 0.0
     width: Extent = 160.0
     height: Extent = 60.0
+    tone: NoteTone = NoteTone.NEUTRAL
+    leader_kind: LeaderKind = LeaderKind.NONE
+    leader_element_id: UUID | None = None
+    leader_connection_id: UUID | None = None
+    leader_x: Coordinate | None = None
+    leader_y: Coordinate | None = None
+    leader_arrow: bool = True
+
+    @model_validator(mode="after")
+    def _leader_matches_its_kind(self) -> NoteIn:
+        """Rejects a leader whose target does not match its kind (a missing target, or a second one)."""
+        given = {
+            LeaderKind.ELEMENT: self.leader_element_id is not None,
+            LeaderKind.CONNECTION: self.leader_connection_id is not None,
+            LeaderKind.POINT: self.leader_x is not None or self.leader_y is not None,
+        }
+        for kind, present in given.items():
+            if present and self.leader_kind != kind:
+                raise ValueError("A leader names only the target of its own kind.")
+        if self.leader_kind == LeaderKind.ELEMENT and self.leader_element_id is None:
+            raise ValueError("A leader to an element names the element.")
+        if self.leader_kind == LeaderKind.CONNECTION and self.leader_connection_id is None:
+            raise ValueError("A leader to a connection names the connection.")
+        if self.leader_kind == LeaderKind.POINT and (self.leader_x is None or self.leader_y is None):
+            raise ValueError("A leader to a point gives both coordinates.")
+        return self
 
 
 class AnchorIn(BaseModel):
@@ -639,7 +672,7 @@ class ToggleOut(BaseModel):
 
 
 class NoteOut(BaseModel):
-    """A note on a diagram."""
+    """An annotation on a diagram. A leader whose target was deleted is given as `none`."""
 
     id: UUID
     text: str
@@ -647,6 +680,13 @@ class NoteOut(BaseModel):
     y: float
     width: float
     height: float
+    tone: NoteTone
+    leader_kind: LeaderKind
+    leader_element_id: UUID | None
+    leader_connection_id: UUID | None
+    leader_x: float | None
+    leader_y: float | None
+    leader_arrow: bool
 
 
 class ViewPort(BaseModel):

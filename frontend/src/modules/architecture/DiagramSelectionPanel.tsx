@@ -8,7 +8,9 @@
  *   once, as on the element's page. Its project components (the shared `RecordPlacements`, also saved at once) are set
  *   here too; a box shared from another owner shows none, since a component belongs to one project and its own
  *   project's tree is not disclosed to another.
- * - A note: edit its text (applied when the field loses focus, as one undo step) or remove it.
+ * - A note (an annotation): edit its text (applied when the field loses focus, as one undo step), its tone, what its leader
+ *   line points at (a box or connection from a list, or a spot on the canvas) and the arrowhead, or remove it
+ *   (`DiagramNoteEditor`).
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
  *   keyboard route to dragging a line's end. Each connection of this project has an Edit button that opens the shared
@@ -29,7 +31,6 @@ import { ActivityNote } from "../../components/ActivityNote";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
-import { TextAreaField } from "../../components/FormFields";
 import { FieldCaption } from "../../components/FieldHelp";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordPlacements } from "../../components/RecordPlacements";
@@ -38,13 +39,16 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, lineAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
 import {
-  BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, type EditorBoundary, type EditorBox,
-  type EditorNote,
+  BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, leaderIsDrawn, type EditorBoundary,
+  type EditorBox, type EditorNote, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { boxName } from "./diagramOutlineModel";
+import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
 import { PortList } from "./PortList";
-import type { ArchitectureConnection, ArchitectureElement, ConnectionRef, ConnectionType, DiagramAnchor, DiagramViewEdge, PortValues } from "./types";
+import type {
+  ArchitectureConnection, ArchitectureElement, ConnectionRef, ConnectionType, DiagramAnchor, DiagramViewEdge, NoteTone, PortValues,
+} from "./types";
 
 /**
  * @param projectId The diagram's project, for the links.
@@ -70,7 +74,13 @@ import type { ArchitectureConnection, ArchitectureElement, ConnectionRef, Connec
  * @param onOpenInside Opens (or creates) the diagram of the element's inside.
  * @param onDeleteElement Deletes the element from the model.
  * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic).
+ * @param drawnEdgeIds The ids of the lines the canvas draws (a note's leader to a connection needs one of them).
+ * @param pickingSpot The key of the note waiting for a click on the canvas to place its leader's end, or null.
  * @param onEditNote Sets a note's text.
+ * @param onNoteTone Sets a note's tone.
+ * @param onNoteArrow Sets whether a note's leader ends in an arrowhead.
+ * @param onNotePointAt Points a note's leader at a box or connection, or removes it.
+ * @param onPickSpot Starts (true) or cancels (false) waiting for the canvas click that places a note's leader end.
  * @param onRemoveNote Removes a note.
  * @param onRemoveBoundary Takes a boundary box off the diagram (the connection is not changed).
  * @param onConnectBoundary Starts a connection between an inner element and the element outside a boundary box.
@@ -78,7 +88,7 @@ import type { ArchitectureConnection, ArchitectureElement, ConnectionRef, Connec
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, onEditNote, onRemoveNote, elements, connectionTypes, onEditElement, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, drawnEdgeIds, pickingSpot, onEditNote, onNoteTone, onNoteArrow, onNotePointAt, onPickSpot, onRemoveNote, elements, connectionTypes, onEditElement, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises,
 }: {
   projectId: string;
@@ -100,7 +110,13 @@ export function DiagramSelectionPanel({
   onOpenInside: (box: EditorBox) => void;
   onDeleteElement: (box: EditorBox) => void;
   onAnchorChange: (edge: DiagramViewEdge, change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
+  drawnEdgeIds: ReadonlySet<string>;
+  pickingSpot: string | null;
   onEditNote: (key: string, text: string) => void;
+  onNoteTone: (key: string, tone: NoteTone) => void;
+  onNoteArrow: (key: string, arrow: boolean) => void;
+  onNotePointAt: (key: string, target: NoteLeaderTarget) => void;
+  onPickSpot: (key: string, picking: boolean) => void;
   onRemoveNote: (key: string) => void;
   elements: ArchitectureElement[];
   connectionTypes: ConnectionType[];
@@ -217,10 +233,16 @@ export function DiagramSelectionPanel({
       </>
     );
   } else if (note) {
+    const drawnBoxes = boxes.filter((b) => !hidden.has(b.elementId));
+    const drawnConnections = new Map<string, ArchitectureConnection>();
+    for (const e of edges) if (drawnEdgeIds.has(e.id)) for (const c of e.connections) drawnConnections.set(c.id, c);
     body = (
-      <NoteEditor
-        key={note.key} note={note} editable={editable}
-        onCommit={(text) => onEditNote(note.key, text)} onRemove={() => onRemoveNote(note.key)}
+      <DiagramNoteEditor
+        key={note.key} note={note} editable={editable} boxes={drawnBoxes} connections={[...drawnConnections.values()]}
+        drawn={leaderIsDrawn(note, new Set(drawnBoxes.map((b) => b.elementId)), edges, drawnEdgeIds)} picking={pickingSpot === note.key}
+        onText={(text) => onEditNote(note.key, text)} onTone={(tone) => onNoteTone(note.key, tone)}
+        onArrow={(arrow) => onNoteArrow(note.key, arrow)} onPointAt={(target) => onNotePointAt(note.key, target)}
+        onPickSpot={(picking) => onPickSpot(note.key, picking)} onRemove={() => onRemoveNote(note.key)}
       />
     );
   } else if (edge) {
@@ -370,18 +392,5 @@ function LineEnds({
         options={options(targetAutomatic)} onChange={(value) => onChange({ targetPoint: parse(value) })}
       />
     </>
-  );
-}
-
-/** A note's text field: edited locally and applied on blur, so one edit is one undo step and not one per keystroke. */
-function NoteEditor({
-  note, editable, onCommit, onRemove,
-}: { note: EditorNote; editable: boolean; onCommit: (text: string) => void; onRemove: () => void }) {
-  const [draft, setDraft] = useState(note.text);
-  return (
-    <div className="stack" onBlur={() => { if (draft !== note.text) onCommit(draft); }}>
-      <TextAreaField helpNotNeeded label="Note text" value={draft} onChange={setDraft} disabled={!editable} />
-      {editable && <button type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={onRemove}>Remove note</button>}
-    </div>
   );
 }

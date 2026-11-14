@@ -63,5 +63,8 @@ export const ARCHITECTURE_HELP = {
   folderIncludeSub: "Ticked: the list also shows the records in the folders below the chosen one. Unticked: only the chosen folder's own records.",
   folderParent: "The folder this one sits in. Leave it empty for the top level. A folder can be moved into another folder, but not into itself or one of its own sub-folders.",
   folderDelete: "The folder's records and sub-folders move up to its parent; nothing else is deleted.",
+  noteTone: "The colour of the note, to tell kinds of note apart.\nNeutral: a plain remark.\nInformation: background a reader needs.\nPositive: something settled or working.\nCaution: something to watch or check.\nCritical: a problem or a hard constraint.",
+  notePointsAt: "What the note's line points at. A box: the line ends at the nearest point of that box. A connection: it ends at the middle of the drawn line that stands for it. A spot: a free position on the canvas, set by clicking the canvas or dragging the end of the line. Nothing: the note has no line. A line to something switched off or removed from the diagram is hidden and returns with it.",
+  noteArrow: "Draws an arrowhead where the note's line meets what it points at. Unticked, the line has no head.",
   symbolUpload: "An SVG drawing (or an EPS or PDF when conversion is available). It is sanitised on upload. Upload only artwork the organisation is licensed to use.",
 } as const;

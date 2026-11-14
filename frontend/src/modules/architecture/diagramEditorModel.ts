@@ -19,12 +19,12 @@
  *   from the layout and the model data, so a box added in the editor has its lines at once. This file only draws the
  *   lines it is given.
  */
-import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
+import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
   ArchitectureConnection, ArchitectureElement, BoundaryShape, BoundaryValues, DiagramAnchor, DiagramNote, DiagramView,
-  DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, NoteValues, PlacementValues,
+  DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, NoteLeader, NoteTone, NoteValues, PlacementValues,
 } from "./types";
 import { isOutOfUse } from "./types";
 
@@ -71,8 +71,8 @@ export interface EditorBox {
   collapsed: boolean;
 }
 
-/** A plain-text note; `id` is null until it is saved, `key` is stable while editing. */
-export interface EditorNote {
+/** An annotation: plain text in a toned block with an optional leader line; `id` is null until it is saved, `key` is stable while editing. */
+export interface EditorNote extends NoteLeader {
   key: string;
   id: string | null;
   text: string;
@@ -80,6 +80,44 @@ export interface EditorNote {
   y: number;
   width: number;
   height: number;
+  tone: NoteTone;
+}
+
+/** What a note's leader points at, as one value. */
+export type NoteLeaderTarget =
+  | { kind: "none" }
+  | { kind: "element"; elementId: string }
+  | { kind: "connection"; connectionId: string }
+  | { kind: "point"; x: number; y: number };
+
+/** @param note A note. @returns What its leader points at (none when the target fields do not match its kind). */
+export function leaderOf(note: NoteLeader): NoteLeaderTarget {
+  if (note.leader_kind === "element" && note.leader_element_id) return { kind: "element", elementId: note.leader_element_id };
+  if (note.leader_kind === "connection" && note.leader_connection_id) return { kind: "connection", connectionId: note.leader_connection_id };
+  if (note.leader_kind === "point" && note.leader_x !== null && note.leader_y !== null) return { kind: "point", x: note.leader_x, y: note.leader_y };
+  return { kind: "none" };
+}
+
+/** The "Points at" option value of a free position. */
+export const LEADER_SPOT_OPTION = "spot";
+
+/** @param target What a leader points at. @returns The "Points at" list's option value for it (empty for none). */
+export function leaderOptionValue(target: NoteLeaderTarget): string {
+  if (target.kind === "element") return `element:${target.elementId}`;
+  if (target.kind === "connection") return `connection:${target.connectionId}`;
+  return target.kind === "point" ? LEADER_SPOT_OPTION : "";
+}
+
+/** @param target What a leader points at. @param arrow Whether it ends in an arrowhead. @returns The note fields that hold it. */
+export function leaderFields(target: NoteLeaderTarget, arrow: boolean): NoteLeader {
+  return {
+    leader_kind: target.kind,
+    leader_element_id: target.kind === "element" ? target.elementId : null,
+    leader_connection_id: target.kind === "connection" ? target.connectionId : null,
+    leader_x: target.kind === "point" ? target.x : null,
+    leader_y: target.kind === "point" ? target.y : null,
+    leader_arrow: arrow,
+  };
 }
 
 /**
@@ -162,8 +200,13 @@ export function boxFromNode(node: DiagramViewNode): EditorBox {
   };
 }
 
-function noteFromView(note: DiagramNote): EditorNote {
-  return { key: note.id, id: note.id, text: note.text, x: note.x, y: note.y, width: note.width, height: note.height };
+/** @param note A note of a resolved view. @returns Its editor form (its key is its id). */
+export function noteFromView(note: DiagramNote): EditorNote {
+  return {
+    key: note.id, id: note.id, text: note.text, x: note.x, y: note.y, width: note.width, height: note.height, tone: note.tone,
+    leader_kind: note.leader_kind, leader_element_id: note.leader_element_id, leader_connection_id: note.leader_connection_id,
+    leader_x: note.leader_x, leader_y: note.leader_y, leader_arrow: note.leader_arrow,
+  };
 }
 
 /** @param view A resolved view. @returns The layout it holds (every placement and note, hidden or not). */
@@ -225,7 +268,9 @@ export function layoutToSave(
     placements: layout.boxes.map((b) => ({
       element_id: b.elementId, x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed,
     })),
-    notes: layout.notes.map((n) => ({ id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height })),
+    notes: layout.notes.map((n) => ({
+      id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height, tone: n.tone, ...leaderFields(leaderOf(n), n.leader_arrow),
+    })),
     anchors: layout.anchors,
     boundaries: layout.boundaries.map((b) => ({ connection_id: b.connectionId, x: b.x, y: b.y, width: b.width, height: b.height })),
   };
@@ -236,7 +281,7 @@ function signature(layout: EditorLayout): string {
   const { placements, notes, anchors, boundaries } = layoutToSave(layout);
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
-    notes.map((n) => [n.text, n.x, n.y, n.width, n.height]),
+    notes.map((n) => [n.text, n.x, n.y, n.width, n.height, n.tone, n.leader_kind, n.leader_element_id, n.leader_connection_id, n.leader_x, n.leader_y, n.leader_arrow]),
     anchors.map((a) => [a.source_element_id, a.target_element_id, a.source_point, a.target_point]).sort(),
     [...boundaries].sort((a, b) => a.connection_id.localeCompare(b.connection_id)),
   ]);
@@ -352,12 +397,27 @@ export function removeBoundary(layout: EditorLayout, connectionId: string): Edit
   return { ...layout, boundaries: layout.boundaries.filter((b) => b.connectionId !== connectionId) };
 }
 
+/** @param key A fresh note key. @param at Where its top-left corner goes. @returns A new, empty, neutral note with no leader. */
+export function newNote(key: string, at: { x: number; y: number }): EditorNote {
+  return {
+    key, id: null, text: "", x: at.x, y: at.y, width: NOTE_WIDTH, height: NOTE_HEIGHT, tone: "neutral", ...leaderFields({ kind: "none" }, true),
+  };
+}
+
 export function addNote(layout: EditorLayout, note: EditorNote): EditorLayout {
   return { ...layout, notes: [...layout.notes, note] };
 }
 
-export function editNote(layout: EditorLayout, key: string, text: string): EditorLayout {
-  return { ...layout, notes: layout.notes.map((n) => (n.key === key ? { ...n, text } : n)) };
+/** Changes the text, tone or arrowhead of a note. */
+export function updateNote(
+  layout: EditorLayout, key: string, patch: Partial<Pick<EditorNote, "text" | "tone" | "leader_arrow">>,
+): EditorLayout {
+  return { ...layout, notes: layout.notes.map((n) => (n.key === key ? { ...n, ...patch } : n)) };
+}
+
+/** Points a note's leader at a target (`none` removes the leader); the arrowhead setting is kept. */
+export function setNoteLeader(layout: EditorLayout, key: string, target: NoteLeaderTarget): EditorLayout {
+  return { ...layout, notes: layout.notes.map((n) => (n.key === key ? { ...n, ...leaderFields(target, n.leader_arrow) } : n)) };
 }
 
 export function removeNote(layout: EditorLayout, key: string): EditorLayout {
@@ -480,7 +540,7 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
   }));
   const notes = layout.notes.map<GraphCanvasNode>((n) => ({
     id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: ctx.noteCaption,
-    x: n.x, y: n.y, width: n.width, height: n.height, dashed: true,
+    x: n.x, y: n.y, width: n.width, height: n.height, dashed: true, tone: n.tone,
   }));
   const boundaries = layout.boundaries.map<GraphCanvasNode>((b) => ({
     id: boundaryNodeId(b.connectionId), label: b.connection_code,
@@ -525,6 +585,69 @@ export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidd
       direction: e.two_way ? "none" : "forward",
       ...anchorOf(layout.anchors, e.source_element_id, e.target_element_id),
     }));
+}
+
+/**
+ * The canvas leaders of the notes. A leader to a box is passed as is (the canvas draws it only while that box is drawn); a
+ * leader to a connection goes to the drawn line that stands for it (a merged or rolled-up line stands for several), and is
+ * left out when no drawn line does.
+ *
+ * @param layout The layout being edited.
+ * @param edges The resolved lines.
+ * @param drawn The ids of the lines the canvas draws (`canvasEdges`).
+ */
+export function canvasLeaders(layout: EditorLayout, edges: DiagramViewEdge[], drawn: ReadonlySet<string>): GraphCanvasLeader[] {
+  const out: GraphCanvasLeader[] = [];
+  for (const n of layout.notes) {
+    const target = leaderOf(n);
+    const from = NOTE_NODE_PREFIX + n.key;
+    if (target.kind === "element") out.push({ id: n.key, from, to: { kind: "node", id: target.elementId }, arrow: n.leader_arrow });
+    else if (target.kind === "point") out.push({ id: n.key, from, to: { kind: "point", x: target.x, y: target.y }, arrow: n.leader_arrow });
+    else if (target.kind === "connection") {
+      const line = edges.find((e) => drawn.has(e.id) && e.connections.some((c) => c.id === target.connectionId));
+      if (line) out.push({ id: n.key, from, to: { kind: "edge", id: line.id }, arrow: n.leader_arrow });
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a note's leader is drawn: a box leader needs the box on the diagram and not switched off, a connection leader a
+ * drawn line that stands for it; a free point and no leader are always "drawn".
+ *
+ * @param note The note.
+ * @param visibleBoxIds The elements drawn as boxes.
+ * @param edges The resolved lines.
+ * @param drawn The ids of the lines the canvas draws.
+ */
+export function leaderIsDrawn(note: NoteLeader, visibleBoxIds: ReadonlySet<string>, edges: DiagramViewEdge[], drawn: ReadonlySet<string>): boolean {
+  const target = leaderOf(note);
+  if (target.kind === "element") return visibleBoxIds.has(target.elementId);
+  if (target.kind === "connection") return edges.some((e) => drawn.has(e.id) && e.connections.some((c) => c.id === target.connectionId));
+  return true;
+}
+
+/**
+ * What a note's leader points at, in words, for lists and the Outline.
+ *
+ * @param note The note.
+ * @param boxes Every box of the layout.
+ * @param edges The resolved lines (their connections name a connection target).
+ * @param drawn Whether the leader is drawn (`leaderIsDrawn`); a leader that is not drawn says so.
+ * @returns "Points at ELM-001 Gateway", "Points at CON-001 Link", "Points at a spot", each with " (not drawn)" when hidden; null with no leader.
+ */
+export function leaderSummary(note: NoteLeader, boxes: readonly EditorBox[], edges: readonly DiagramViewEdge[], drawn: boolean): string | null {
+  const target = leaderOf(note);
+  let what: string;
+  if (target.kind === "element") {
+    const box = boxes.find((b) => b.elementId === target.elementId);
+    what = box ? (box.locked ? box.unique_code : `${box.unique_code} ${box.name}`) : "an element not on this diagram";
+  } else if (target.kind === "connection") {
+    const connection = edges.flatMap((e) => e.connections).find((c) => c.id === target.connectionId);
+    what = connection ? `${connection.unique_code}${connection.name ? ` ${connection.name}` : ""}` : "a connection not drawn here";
+  } else if (target.kind === "point") what = "a spot";
+  else return null;
+  return `Points at ${what}${drawn ? "" : " (not drawn)"}`;
 }
 
 /** A fresh key for a note added in the editor. */

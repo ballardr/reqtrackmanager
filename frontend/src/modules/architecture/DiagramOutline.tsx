@@ -2,7 +2,8 @@
  * Module: modules/architecture/DiagramOutline
  *
  * The editor's "Outline" card: the text alternative to the canvas, with the same content in a form a keyboard or screen
- * reader can use. It lists the elements shown as a tree (nested by their parent among the elements placed), the notes, and the
+ * reader can use. It lists the elements shown as a tree (nested by their parent among the elements placed), the notes (each with
+ * what its leader points at, and whether that is drawn), and the
  * lines drawn as a table with their ends, direction, type, count and, for a bridged line, the hidden elements it passes
  * through. On a diagram of an element's inside the outer connections (boundary boxes) are a table too, each with its
  * direction and whether it is covered.
@@ -29,7 +30,8 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import {
-  BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, boundaryNodeId, boundaryOutsideName, type EditorBoundary, type EditorBox, type EditorNote,
+  BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, boundaryNodeId, boundaryOutsideName, leaderIsDrawn, leaderSummary, type EditorBoundary,
+  type EditorBox, type EditorNote,
 } from "./diagramEditorModel";
 import {
   boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
@@ -51,6 +53,7 @@ function noteSummary(text: string): string {
  * @param boundaries The boundary boxes (outer connections drawn on a diagram of an element's inside).
  * @param covered The outer connections at least one connection realises.
  * @param edges The lines resolved for the current view.
+ * @param drawnEdgeIds The ids of the lines the canvas draws (a note's leader to a connection needs one of them).
  * @param parents `{element id: parent id}` for the placed elements and their ancestors.
  * @param hidden The placed elements a view switch hides.
  * @param descriptions `{element id: description}` for the elements that have one (the table's Description column).
@@ -58,13 +61,14 @@ function noteSummary(text: string): string {
  * @param onSelect Selects an element, note or line.
  */
 export function DiagramOutline({
-  boxes, notes, boundaries, covered, edges, parents, hidden, descriptions, selection, onSelect,
+  boxes, notes, boundaries, covered, edges, drawnEdgeIds, parents, hidden, descriptions, selection, onSelect,
 }: {
   boxes: EditorBox[];
   notes: EditorNote[];
   boundaries: EditorBoundary[];
   covered: ReadonlySet<string>;
   edges: DiagramViewEdge[];
+  drawnEdgeIds: ReadonlySet<string>;
   parents: Record<string, string | null>;
   hidden: ReadonlySet<string>;
   descriptions: ReadonlyMap<string, string>;
@@ -78,6 +82,7 @@ export function DiagramOutline({
   const branchIds = outlineBranchIds(tree);
   const expanded = new Set(branchIds.filter((id) => !collapsed.has(id)));
   const elements = elementRows(tree);
+  const visibleBoxIds = new Set(boxes.filter((b) => !hidden.has(b.elementId)).map((b) => b.elementId));
   const hiddenCount = boxes.filter((b) => hidden.has(b.elementId)).length;
   const isSelected = (kind: GraphCanvasSelection["kind"], id: string) => selection?.kind === kind && selection.id === id;
 
@@ -199,7 +204,9 @@ export function DiagramOutline({
       {notes.length > 0 && (
         <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" variant="plain" summary={String(notes.length)}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {notes.map((n) => (
+            {notes.map((n) => {
+              const pointsAt = leaderSummary(n, boxes, edges, leaderIsDrawn(n, visibleBoxIds, edges, drawnEdgeIds));
+              return (
               <li key={n.key}>
                 <button
                   type="button" className={isSelected("node", NOTE_NODE_PREFIX + n.key) ? "btn btn-sm btn-primary" : "btn btn-sm"}
@@ -208,8 +215,10 @@ export function DiagramOutline({
                 >
                   {noteSummary(n.text)}
                 </button>
+                {pointsAt && <span className="text-muted"> · {pointsAt}</span>}
               </li>
-            ))}
+              );
+            })}
           </ul>
         </CollapsibleSection>
       )}

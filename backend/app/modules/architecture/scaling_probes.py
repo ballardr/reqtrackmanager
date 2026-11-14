@@ -140,6 +140,11 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
             "version": diagram["version"],
             "placements": [{"element_id": end["id"], "x": order * 200, "y": 0} for order, end in enumerate(ends[:-1])],
             "boundaries": [{"connection_id": outer["id"], "x": -240, "y": 0}],
+            "notes": [
+                {"text": "Probe note", "x": 0, "y": -120, "tone": "info", "leader_kind": "element", "leader_element_id": ends[0]["id"]},
+                {"text": "Probe line note", "x": 200, "y": -120, "leader_kind": "connection", "leader_connection_id": outer["id"]},
+                {"text": "Probe spot note", "x": 400, "y": -120, "leader_kind": "point", "leader_x": 440, "leader_y": -220},
+            ],
         })
         diagram = api.post(
             f"{base}/diagrams/{diagram['id']}/placements",

@@ -58,8 +58,8 @@ import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
   addBoundaries, addBoxes, addNote, boundaryFromConnection, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
-  canvasNodes, editNote, moveItems, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
-  setLineAnchor, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH,
+  canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
+  setLineAnchor, setNoteLeader, updateNote, BOUNDARY_NODE_PREFIX, NOTE_NODE_PREFIX, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
 import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
@@ -120,6 +120,8 @@ export function DiagramEditorPage() {
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
   const [connections, setConnections] = useState<ArchitectureConnection[]>([]);
   const [selection, setSelection] = useState<GraphCanvasSelection | null>(null);
+  /** The note waiting for a click on the canvas to place the end of its leader. */
+  const [pickingSpot, setPickingSpot] = useState<string | null>(null);
   const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
   const canvasHeight = useFillViewportHeight(canvasBox, CANVAS_MIN_HEIGHT);
   const [editingDiagram, setEditingDiagram] = useState(false);
@@ -284,6 +286,8 @@ export function DiagramEditorPage() {
     () => canvasEdges(resolved.edges, layout, resolved.hidden, effectiveTheme),
     [resolved, layout, effectiveTheme],
   );
+  const drawnEdgeIds = useMemo(() => new Set(edges.map((e) => e.id)), [edges]);
+  const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds), [layout, resolved, drawnEdgeIds]);
 
   const archive = useArchiveAction({
     noun: "Diagram",
@@ -406,8 +410,17 @@ export function DiagramEditorPage() {
   function addNewNote() {
     const key = newNoteKey(layout);
     const at = nextFreePosition(layout);
-    editor.edit((l) => addNote(l, { key, id: null, text: "", x: at.x, y: at.y, width: NOTE_WIDTH, height: NOTE_HEIGHT }));
+    editor.edit((l) => addNote(l, newNote(key, at)));
     setSelection({ kind: "node", id: NOTE_NODE_PREFIX + key });
+  }
+
+  /**
+   * Points a note's leader at a target. A leader may name only a box of this diagram (never a note or a boundary box, which
+   * have canvas ids of their own), so another node id is ignored.
+   */
+  function pointNoteAt(key: string, target: NoteLeaderTarget) {
+    if (target.kind === "element" && !layout.boxes.some((b) => b.elementId === target.elementId)) return;
+    editor.edit((l) => setNoteLeader(l, key, target));
   }
 
   /** Opens the diagram of an element's inside; with unsaved changes it first asks, since leaving discards them. */
@@ -596,8 +609,13 @@ export function DiagramEditorPage() {
         onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
         onDeleteElement={(box) => void deleteElement(box.elementId)}
         onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
-        onEditNote={(key, text) => editor.edit((l) => editNote(l, key, text))}
-        onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); }}
+        drawnEdgeIds={drawnEdgeIds} pickingSpot={pickingSpot}
+        onEditNote={(key, text) => editor.edit((l) => updateNote(l, key, { text }))}
+        onNoteTone={(key, tone) => editor.edit((l) => updateNote(l, key, { tone }))}
+        onNoteArrow={(key, arrow) => editor.edit((l) => updateNote(l, key, { leader_arrow: arrow }))}
+        onNotePointAt={pointNoteAt}
+        onPickSpot={(key, picking) => setPickingSpot(picking ? key : null)}
+        onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); setPickingSpot(null); }}
       />
     </div>
   );
@@ -655,8 +673,19 @@ export function DiagramEditorPage() {
             )}
             <div ref={setCanvasBox}>
             <GraphCanvas
-              nodes={nodes} edges={edges} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
-              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
+              nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
+              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection}
+              // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
+              onSelect={(next) => { if (next !== null || pickingSpot === null) setSelection(next); }}
+              onCanvasClick={(at) => {
+                if (pickingSpot === null) return;
+                pointNoteAt(pickingSpot, { kind: "point", x: Math.round(at.x), y: Math.round(at.y) });
+                setPickingSpot(null);
+              }}
+              onLeaderTargetChange={(noteKey, target) => {
+                if (target.kind === "point") pointNoteAt(noteKey, { kind: "point", x: target.x, y: target.y });
+                else if (target.kind === "node") pointNoteAt(noteKey, { kind: "element", elementId: target.id });
+              }}
               onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
               onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
               onEdgeAnchorChange={(edgeId, change) => {
@@ -679,7 +708,7 @@ export function DiagramEditorPage() {
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
             <DiagramOutline
               boxes={layout.boxes} notes={layout.notes} boundaries={layout.boundaries} covered={new Set(realisedBy.keys())}
-              edges={resolved.edges} parents={model.parents} hidden={resolved.hidden} descriptions={descriptions}
+              edges={resolved.edges} drawnEdgeIds={drawnEdgeIds} parents={model.parents} hidden={resolved.hidden} descriptions={descriptions}
               selection={selection} onSelect={setSelection}
             />
           </div>

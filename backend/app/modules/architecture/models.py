@@ -610,16 +610,31 @@ class ArchitectureDiagramPlacement(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
-    """A plain-text note on a diagram: the only shape with no element behind it. Never rendered as markup.
+    """An annotation on a diagram: a plain-text block with a tone and an optional leader line to what it describes. It is
+    the only shape with no element behind it. Never rendered as markup.
 
     Attributes:
         diagram_id: The diagram; deleting it removes its notes.
         text: The note's text.
-        x / y / width / height: The box in diagram units.
+        x / y / width / height: The block in diagram units.
         sort_order: Order among the diagram's notes.
+        tone: A `NoteTone` value.
+        leader_kind: A `LeaderKind` value. `leader_element_id` is set only for `element`, `leader_connection_id` only for
+            `connection` and `leader_x`/`leader_y` (both) only for `point`. Deleting the target element or connection
+            empties its column and the leader is read as none, so the note stays and nothing dangles.
+        leader_arrow: Whether the leader ends in an arrowhead at its target.
     """
 
     __tablename__ = "architecture_diagram_notes"
+    __table_args__ = (
+        CheckConstraint("leader_kind IN ('none', 'element', 'connection', 'point')", name="ck_architecture_diagram_notes_leader_kind"),
+        CheckConstraint(
+            "(leader_element_id IS NULL OR leader_kind = 'element') AND (leader_connection_id IS NULL OR leader_kind = 'connection')"
+            " AND ((leader_x IS NULL AND leader_y IS NULL) OR leader_kind = 'point')"
+            " AND (leader_kind <> 'point' OR (leader_x IS NOT NULL AND leader_y IS NOT NULL))",
+            name="ck_architecture_diagram_notes_leader_target",
+        ),
+    )
 
     diagram_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
@@ -630,6 +645,17 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     width: Mapped[float] = mapped_column(Float, default=160.0)
     height: Mapped[float] = mapped_column(Float, default=60.0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    tone: Mapped[str] = mapped_column(String(16), default="neutral", server_default="neutral")
+    leader_kind: Mapped[str] = mapped_column(String(16), default="none", server_default="none")
+    leader_element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    leader_connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    leader_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    leader_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    leader_arrow: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
 class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):

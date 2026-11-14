@@ -11,6 +11,8 @@
  * - Draw eight attach handles on every box and route each line between the points `graphAttachPoints` chooses (the nearest
  *   pair, or the ends the consumer fixed), following a box while it is dragged or resized; dragging a line's end to
  *   another handle of the same box is reported as an anchor change.
+ * - Draw each leader (an annotation's pointer) as a thin line from its node to the target: a node (nearest attach points), the
+ *   middle of a line or a free position (a small end handle the person can drag; dropping a dragged end on a node names that node).
  * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
  *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
  *   Backspace asks the consumer to delete it, each with a spoken name.
@@ -42,6 +44,7 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  type FinalConnectionState,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -50,8 +53,10 @@ import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type CS
 import { useStrings } from "../context/TerminologyContext";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
-import { GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection, type GraphNodeOutline } from "./GraphCanvas";
-import { ATTACH_POINTS, lineAttachPoints, type AttachPoint } from "./graphAttachPoints";
+import {
+  GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphNodeOutline, type GraphNodeTone,
+} from "./GraphCanvas";
+import { ATTACH_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint } from "./graphAttachPoints";
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
@@ -66,6 +71,13 @@ const RESIZE_KEYS: Record<string, { width: number; height: number }> = {
   ArrowUp: { width: 0, height: -KEY_RESIZE_STEP },
 };
 
+/** The id prefix of the small node that ends a leader at a line's middle or a free position, and of a leader's own line. */
+const LEADER_END_PREFIX = "leader-end:";
+const LEADER_EDGE_PREFIX = "leader:";
+/** The side of a leader's end node, and the end handle's id. */
+const LEADER_END_SIZE = 14;
+const LEADER_END_HANDLE = "end";
+
 type NodeData = {
   label: string;
   caption?: string;
@@ -74,9 +86,11 @@ type NodeData = {
   accent?: string;
   dashed?: boolean;
   outline: GraphNodeOutline;
+  tone?: GraphNodeTone;
   resizable: boolean;
 };
-type FlowNode = Node<NodeData, "graph">;
+type FlowNode = Node<NodeData, "graph"> | Node<{ free: boolean }, "leaderEnd">;
+type GraphFlowNode = Node<NodeData, "graph">;
 
 /**
  * Where each attach point's handle sits. A handle is centred on its point; the position tells React Flow which part of the
@@ -141,9 +155,12 @@ function NodeBody({ text }: { text: string }) {
 }
 
 /** One box on the canvas: accent edge, optional symbol and the text label; the eight handles are for drawing lines. */
-function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
+function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
   const shaped = data.outline !== "rectangle";
-  const classes = ["graph-node", data.dashed ? "graph-node-dashed" : "", shaped ? "graph-node-shaped" : ""].filter(Boolean).join(" ");
+  const classes = [
+    "graph-node", data.dashed ? "graph-node-dashed" : "", shaped ? "graph-node-shaped" : "",
+    data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
+  ].filter(Boolean).join(" ");
   return (
     <div className={classes} style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}>
       {shaped && <NodeOutline outline={data.outline} />}
@@ -161,7 +178,16 @@ function GraphNodeBox({ data, selected }: NodeProps<FlowNode>) {
   );
 }
 
-const NODE_TYPES = { graph: GraphNodeBox };
+/** The end of a leader at a line's middle or a free position: a small dot, visible and draggable only for a free end. */
+function LeaderEndNode({ data }: NodeProps<Node<{ free: boolean }, "leaderEnd">>) {
+  return (
+    <div className={data.free ? "graph-leader-end graph-leader-end-free" : "graph-leader-end"}>
+      <Handle id={LEADER_END_HANDLE} type="source" position={Position.Top} isConnectable={false} />
+    </div>
+  );
+}
+
+const NODE_TYPES = { graph: GraphNodeBox, leaderEnd: LeaderEndNode };
 
 type Moved = Record<string, { x: number; y: number; baseX: number; baseY: number }>;
 type Sized = Record<string, { width: number; height: number; baseWidth: number; baseHeight: number }>;
@@ -174,6 +200,7 @@ type Sized = Record<string, { width: number; height: number; baseWidth: number; 
 export function GraphCanvasView({
   nodes,
   edges,
+  leaders = [],
   ariaLabel,
   readOnly = false,
   selected,
@@ -187,12 +214,16 @@ export function GraphCanvasView({
   onDelete,
   onDropItem,
   onNodeOpen,
+  onLeaderTargetChange,
+  onCanvasClick,
   height = 480,
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
   const helpId = useId();
   const [moved, setMoved] = useState<Moved>({});
   const [sized, setSized] = useState<Sized>({});
+  /** A free leader end while it is dragged (and until the consumer's leader reaches it), keyed by leader id. */
+  const [endMoved, setEndMoved] = useState<Record<string, { x: number; y: number; baseX: number; baseY: number }>>({});
   const flow = useRef<ReactFlowInstance<FlowNode, Edge> | null>(null);
   /** The geometry a resize last reached, read when it ends (state is not yet committed inside that event). */
   const resizing = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});
@@ -209,7 +240,7 @@ export function GraphCanvasView({
 
   const labels = useMemo(() => new Map(nodes.map((n) => [n.id, n.label])), [nodes]);
 
-  const flowNodes = useMemo<FlowNode[]>(
+  const flowNodes = useMemo<GraphFlowNode[]>(
     () =>
       nodes.map((n) => {
         const o = moved[n.id];
@@ -228,7 +259,7 @@ export function GraphCanvasView({
           ariaLabel: text.nodeAria(n.label),
           data: {
             label: n.label, caption: n.caption, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
-            accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", resizable: resizable && !readOnly,
+            accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone, resizable: resizable && !readOnly,
           },
         };
       }),
@@ -262,6 +293,55 @@ export function GraphCanvasView({
     });
   }, [edges, flowNodes, selection, labels, text, readOnly, onEdgeAnchorChange]);
 
+  /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
+  const flowLeaders = useMemo(() => {
+    const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
+    const middles = new Map<string, { x: number; y: number }>();
+    for (const e of edges) {
+      const from = boxes.get(e.source);
+      const to = boxes.get(e.target);
+      if (!from || !to) continue;
+      const [a, b] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
+      const pa = pointXY(from, a);
+      const pb = pointXY(to, b);
+      middles.set(e.id, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 });
+    }
+    const ends: Node<{ free: boolean }, "leaderEnd">[] = [];
+    const lines: Edge[] = [];
+    for (const l of leaders) {
+      const start = boxes.get(l.from);
+      if (!start) continue;
+      const marker = l.arrow === false ? undefined : { type: MarkerType.ArrowClosed };
+      const common = {
+        id: LEADER_EDGE_PREFIX + l.id, source: l.from, type: "straight", className: "graph-leader", selectable: false, focusable: false,
+        selected: selection?.kind === "node" && selection.id === l.from, markerEnd: marker,
+        reconnectable: !readOnly && onLeaderTargetChange !== undefined ? ("target" as const) : false,
+      };
+      if (l.to.kind === "node") {
+        const target = boxes.get(l.to.id);
+        if (!target || l.to.id === l.from) continue;
+        const [sourceHandle, targetHandle] = lineAttachPoints(start, target);
+        lines.push({ ...common, target: l.to.id, sourceHandle, targetHandle });
+        continue;
+      }
+      let at: { x: number; y: number } | undefined;
+      if (l.to.kind === "edge") at = middles.get(l.to.id);
+      else {
+        const o = endMoved[l.id];
+        at = o && o.baseX === l.to.x && o.baseY === l.to.y ? { x: o.x + LEADER_END_SIZE / 2, y: o.y + LEADER_END_SIZE / 2 } : { x: l.to.x, y: l.to.y };
+      }
+      if (!at) continue;
+      const free = l.to.kind === "point";
+      ends.push({
+        id: LEADER_END_PREFIX + l.id, type: "leaderEnd", position: { x: at.x - LEADER_END_SIZE / 2, y: at.y - LEADER_END_SIZE / 2 },
+        width: LEADER_END_SIZE, height: LEADER_END_SIZE, data: { free }, selectable: false, focusable: false, connectable: false,
+        draggable: free && !readOnly && onLeaderTargetChange !== undefined,
+      });
+      lines.push({ ...common, target: LEADER_END_PREFIX + l.id, sourceHandle: nearestPoint(start, at), targetHandle: LEADER_END_HANDLE });
+    }
+    return { ends, lines };
+  }, [leaders, flowNodes, edges, endMoved, selection, readOnly, onLeaderTargetChange]);
+
   const choose = useCallback(
     (next: GraphCanvasSelection | null) => {
       latestSelection.current = next;
@@ -292,7 +372,19 @@ export function GraphCanvasView({
   );
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<FlowNode>[]) => {
+    (allChanges: NodeChange<FlowNode>[]) => {
+      const isLeaderEnd = (c: NodeChange<FlowNode>) => "id" in c && c.id.startsWith(LEADER_END_PREFIX);
+      for (const c of allChanges.filter(isLeaderEnd)) {
+        if (readOnly || c.type !== "position" || !c.position) continue;
+        const leaderId = c.id.slice(LEADER_END_PREFIX.length);
+        const leader = leaders.find((l) => l.id === leaderId);
+        if (!leader || leader.to.kind !== "point") continue;
+        setEndMoved((m) => ({ ...m, [leaderId]: { x: c.position!.x, y: c.position!.y, baseX: leader.to.kind === "point" ? leader.to.x : 0, baseY: leader.to.kind === "point" ? leader.to.y : 0 } }));
+        if (c.dragging !== true) {
+          onLeaderTargetChange?.(leaderId, { kind: "point", x: Math.round(c.position.x + LEADER_END_SIZE / 2), y: Math.round(c.position.y + LEADER_END_SIZE / 2) });
+        }
+      }
+      const changes = allChanges.filter((c) => !isLeaderEnd(c)) as NodeChange<GraphFlowNode>[];
       applySelect("node", changes);
       const base = new Map(nodes.map((n) => [n.id, n]));
       const resizingIds = new Set<string>();
@@ -337,7 +429,7 @@ export function GraphCanvasView({
       if (finished.length > 0) onNodesMove?.(finished);
       if (resized.length > 0) onNodesResize?.(resized);
     },
-    [applySelect, nodes, readOnly, onNodesMove, onNodesResize],
+    [applySelect, nodes, leaders, readOnly, onNodesMove, onNodesResize, onLeaderTargetChange],
   );
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => applySelect("edge", changes), [applySelect]);
@@ -355,6 +447,14 @@ export function GraphCanvasView({
    */
   const handleReconnect = useCallback(
     (previous: Edge, c: Connection) => {
+      if (previous.id.startsWith(LEADER_EDGE_PREFIX)) {
+        const target = c.target;
+        // A leader's end dropped on another box names that box; a drop on its own end or its own note changes nothing.
+        if (target && !target.startsWith(LEADER_END_PREFIX) && target !== previous.source && nodes.some((n) => n.id === target)) {
+          onLeaderTargetChange?.(previous.id.slice(LEADER_EDGE_PREFIX.length), { kind: "node", id: target });
+        }
+        return;
+      }
       if (!onEdgeAnchorChange) return;
       const forward = c.source === previous.source && c.target === previous.target;
       const swapped = c.source === previous.target && c.target === previous.source;
@@ -366,8 +466,29 @@ export function GraphCanvasView({
       if (targetHandle && targetHandle !== previous.targetHandle) change.targetPoint = targetHandle;
       if (change.sourcePoint || change.targetPoint) onEdgeAnchorChange(previous.id, change);
     },
-    [onEdgeAnchorChange],
+    [onEdgeAnchorChange, onLeaderTargetChange, nodes],
   );
+
+  /** A leader's end dropped on empty canvas becomes a free end at that position. */
+  const handleReconnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, edge: Edge, _handleType: unknown, state: FinalConnectionState) => {
+      if (!edge.id.startsWith(LEADER_EDGE_PREFIX) || state.isValid || !flow.current || !onLeaderTargetChange) return;
+      const leaderId = edge.id.slice(LEADER_EDGE_PREFIX.length);
+      const over = state.toNode?.id;
+      if (over && over !== edge.source && !over.startsWith(LEADER_END_PREFIX)) {
+        onLeaderTargetChange(leaderId, { kind: "node", id: over });
+        return;
+      }
+      const point = "changedTouches" in event ? event.changedTouches[0] : event;
+      const at = flow.current.screenToFlowPosition({ x: point.clientX, y: point.clientY });
+      const target: GraphLeaderTarget = { kind: "point", x: Math.round(at.x), y: Math.round(at.y) };
+      onLeaderTargetChange(leaderId, target);
+    },
+    [onLeaderTargetChange],
+  );
+
+  const allNodes = useMemo<FlowNode[]>(() => [...flowNodes, ...flowLeaders.ends], [flowNodes, flowLeaders]);
+  const allEdges = useMemo<Edge[]>(() => [...flowEdges, ...flowLeaders.lines], [flowEdges, flowLeaders]);
 
   const keyResize = resizable && !readOnly && onNodesResize !== undefined;
   const keyDelete = !readOnly && onDelete !== undefined;
@@ -425,14 +546,19 @@ export function GraphCanvasView({
       </span>
       <ReactFlow
         className={readOnly ? "graph-canvas graph-canvas-readonly" : "graph-canvas"}
-        nodes={flowNodes}
-        edges={flowEdges}
+        nodes={allNodes}
+        edges={allEdges}
         nodeTypes={NODE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         onReconnect={handleReconnect}
-        edgesReconnectable={!readOnly && onEdgeAnchorChange !== undefined}
+        onReconnectEnd={handleReconnectEnd}
+        onPaneClick={(event) => {
+          if (readOnly || !onCanvasClick || !flow.current) return;
+          onCanvasClick(flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }}
+        edgesReconnectable={!readOnly && (onEdgeAnchorChange !== undefined || onLeaderTargetChange !== undefined)}
         onNodeDoubleClick={(_event, node) => onNodeOpen?.(node.id)}
         onInit={(instance) => { flow.current = instance; }}
         nodesDraggable={!readOnly}

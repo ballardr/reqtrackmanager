@@ -2624,10 +2624,19 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         {"element_id": item["id"], "x": index * 220, "y": 0 if index < 2 else 140}
         for index, item in enumerate((gps, imu, fc, radio, ground))
     ]
-    # The airframe's outer connection is drawn as a boundary box; the radio's upload is drawn to it.
+    # The airframe's outer connection is drawn as a boundary box; the radio's upload is drawn to it. Two annotations
+    # point at a box and at a line (a caution and an information note).
     placed = httpx.put(
         f"{base}/diagrams/{placed['id']}/layout", headers=headers, timeout=30,
-        json={"version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 600, "y": 280}]},
+        json={
+            "version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 600, "y": 280}],
+            "notes": [
+                {"text": "Single flight controller: redundancy is decided separately.", "x": 380, "y": -150, "width": 200, "height": 70,
+                 "tone": "warning", "leader_kind": "element", "leader_element_id": fc["id"]},
+                {"text": "All telemetry leaves the airframe over this link.", "x": 700, "y": 40, "width": 200, "height": 60,
+                 "tone": "info", "leader_kind": "connection", "leader_connection_id": upload["id"], "leader_arrow": False},
+            ],
+        },
     )
     placed.raise_for_status()
     placed = placed.json()

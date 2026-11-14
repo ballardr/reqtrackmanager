@@ -522,6 +522,69 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
+  test("an architect annotates a diagram with a toned note, points it at a box and then at a spot, and the leader is kept", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchLead", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const gateway = `Gateway ${suffix}`;
+    const gatewayId = await createElement(page.request, adminHeaders, project.id, gateway);
+    const created = await page.request.post(`${base}/diagrams`, {
+      headers: adminHeaders, data: { name: `Leader ${suffix}`, activate: true, populate: true },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
+    const leaders = page.locator(".react-flow__edge.graph-leader");
+    /** Presses Save and waits for the layout write and the read-back that follows it, so a later read sees what was stored. */
+    const saveLayout = async () => {
+      const saved = page.waitForResponse((r) => r.url().endsWith(`/diagrams/${diagram.id}/layout`) && r.request().method() === "PUT");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      expect((await saved).ok()).toBeTruthy();
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    };
+    const stored = async () => (await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json()).notes;
+
+    await test.step("a note gets text, a tone and a leader to the box", async () => {
+      await page.getByRole("button", { name: "Add to diagram" }).click();
+      await page.getByRole("menuitem", { name: "Add note" }).click();
+      await page.getByRole("textbox", { name: "Note text" }).fill("Single point of failure");
+      await page.getByRole("combobox", { name: "Tone", exact: true }).selectOption("danger");
+      await page.getByRole("combobox", { name: "Points at", exact: true }).selectOption(`element:${gatewayId}`);
+      await expect(leaders).toHaveCount(1);
+      await saveLayout();
+      expect(await stored()).toMatchObject([{ text: "Single point of failure", tone: "danger", leader_kind: "element", leader_element_id: gatewayId }]);
+    });
+
+    await test.step("the leader and the tone are still there after a reload", async () => {
+      await page.reload();
+      await expect(leaders).toHaveCount(1);
+      await expect(page.locator(".graph-node-tone-danger")).toHaveCount(1);
+    });
+
+    await test.step("Point at a spot waits for a click on the canvas, and undo returns to the box", async () => {
+      await page.getByLabel("Single point of failure, node").focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("button", { name: "Point at a spot" }).click();
+      await expect(page.getByText("Click the canvas to place the end of the line.")).toBeVisible();
+      const pane = page.locator(".react-flow__pane");
+      const box = await pane.boundingBox();
+      await page.mouse.click(box!.x + box!.width - 40, box!.y + box!.height - 40);
+      await expect(page.getByRole("combobox", { name: "Points at", exact: true })).toHaveValue("spot");
+      await expect(leaders).toHaveCount(1);
+      await page.getByRole("button", { name: "Undo" }).click();
+      await expect(page.getByRole("combobox", { name: "Points at", exact: true })).toHaveValue(`element:${gatewayId}`);
+      await page.getByRole("button", { name: "Redo" }).click();
+      await saveLayout();
+      expect(await stored()).toMatchObject([{ leader_kind: "point", leader_element_id: null }]);
+    });
+
+    await test.step("removing the leader keeps the note", async () => {
+      await page.getByRole("combobox", { name: "Points at", exact: true }).selectOption("");
+      await expect(leaders).toHaveCount(0);
+      await saveLayout();
+      expect(await stored()).toMatchObject([{ text: "Single point of failure", leader_kind: "none" }]);
+    });
+  });
+
   test("an architect edits a connection from the diagram and the line is redrawn", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchConEdit", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

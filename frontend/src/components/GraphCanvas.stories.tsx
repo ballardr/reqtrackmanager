@@ -604,3 +604,133 @@ export const ChoosingALineWhileABoxIsSelectedSelectsTheLine: Story = {
     await waitFor(() => expect(canvas.getByTestId("selection")).toHaveTextContent("edge:e1"));
   },
 };
+
+const LEADER_NODES: GraphCanvasNode[] = [
+  { id: "a", label: "Gateway", x: 0, y: 0 },
+  { id: "b", label: "Orders", x: 300, y: 0 },
+  { id: "note", label: "Check with ops", caption: "Note", x: 120, y: 160, width: 160, height: 60, dashed: true, tone: "warning" },
+];
+
+/** The leader lines drawn, by the id the consumer gave them. */
+const leaderIds = (root: HTMLElement) => [...root.querySelectorAll(".react-flow__edge.graph-leader")].map((el) => el.getAttribute("data-id"));
+
+/** A leader to a node, to the middle of a line and to a free position is drawn as its own non-selectable line. */
+export const LeadersPointAtANodeALineAndAPosition: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={LEADER_NODES} edges={[{ id: "e1", source: "a", target: "b", label: "REST" }]} ariaLabel="Leaders" showViewToggle={false}
+      leaders={[
+        { id: "n", from: "note", to: { kind: "node", id: "a" } },
+        { id: "l", from: "note", to: { kind: "edge", id: "e1" }, arrow: false },
+        { id: "p", from: "note", to: { kind: "point", x: 380, y: 200 } },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Check with ops, node");
+    await waitFor(() => expect(leaderIds(canvasElement)).toEqual(["leader:n", "leader:l", "leader:p"]));
+    // Only the arrowed leaders have a head, and a leader is not offered as a connection to select.
+    const heads = (id: string) => canvasElement.querySelector(`[data-id="leader:${id}"] .react-flow__edge-path`)?.getAttribute("marker-end");
+    expect(heads("n")).toBeTruthy();
+    expect(heads("l")).toBeFalsy();
+    expect(canvas.queryByLabelText(/connection from Check with ops/)).toBeNull();
+    expect(canvasElement.querySelectorAll(".graph-leader-end-free").length).toBe(1);
+  },
+};
+
+/** A leader whose node, target node or target line is not on the canvas (switched off or removed) is not drawn. */
+export const ALeaderToSomethingNotDrawnIsLeftOut: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={LEADER_NODES} edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Hidden leaders" showViewToggle={false}
+      leaders={[
+        { id: "n", from: "note", to: { kind: "node", id: "gone" } },
+        { id: "l", from: "note", to: { kind: "edge", id: "missing" } },
+        { id: "s", from: "absent", to: { kind: "node", id: "a" } },
+        { id: "ok", from: "note", to: { kind: "node", id: "b" } },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    await waitFor(() => expect(leaderIds(canvasElement)).toEqual(["leader:ok"]));
+  },
+};
+
+/** A toned node takes its tone's class; one with no tone does not. */
+export const ATonedNodeIsTintedInItsTone: Story = {
+  render: () => <GraphCanvas nodes={LEADER_NODES} edges={[]} ariaLabel="Tones" showViewToggle={false} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect((await canvas.findByLabelText("Check with ops, node")).querySelector(".graph-node-tone-warning")).not.toBeNull();
+    expect((await canvas.findByLabelText("Gateway, node")).querySelector(".graph-node-tone")).toBeNull();
+  },
+};
+
+/** Dragging a free leader end reports its new position once, when the drag ends. */
+export const DraggingAFreeLeaderEndReportsThePosition: Story = {
+  args: { onLeaderTargetChange: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={LEADER_NODES} edges={[]} ariaLabel="Free end" showViewToggle={false}
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 380, y: 200 } }]} onLeaderTargetChange={args.onLeaderTargetChange}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    const end = await waitFor(() => {
+      const found = canvasElement.querySelector(".react-flow__node-leaderEnd") as HTMLElement | null;
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    const box = end.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: end, coords: { clientX: x, clientY: y } },
+      { target: end, coords: { clientX: x + 20, clientY: y + 20 } },
+      { target: end, coords: { clientX: x + 60, clientY: y + 40 } },
+      { keys: "[/MouseLeft]", target: end, coords: { clientX: x + 60, clientY: y + 40 } },
+    ]);
+    await waitFor(() => expect(args.onLeaderTargetChange).toHaveBeenCalled());
+    const calls = (args.onLeaderTargetChange as ReturnType<typeof fn>).mock.calls as [string, { kind: string; x: number; y: number }][];
+    const last = calls[calls.length - 1];
+    expect(last[0]).toBe("p");
+    expect(last[1].kind).toBe("point");
+    expect(last[1].x).toBeGreaterThan(380);
+    expect(last[1].y).toBeGreaterThan(200);
+  },
+};
+
+/** Read-only: a free leader end cannot be dragged and nothing is reported. */
+export const ReadOnlyLeaderEndsAreNotDraggable: Story = {
+  args: { onLeaderTargetChange: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={LEADER_NODES} edges={[]} ariaLabel="Read-only leaders" showViewToggle={false} readOnly
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 380, y: 200 } }]} onLeaderTargetChange={args.onLeaderTargetChange}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    await waitFor(() => expect(leaderIds(canvasElement)).toEqual(["leader:p"]));
+    expect(canvasElement.querySelector(".react-flow__edgeupdater")).toBeNull();
+    expect(args.onLeaderTargetChange).not.toHaveBeenCalled();
+  },
+};
+
+/** A click on empty canvas is reported with its position; a click on a node is not. */
+export const AClickOnEmptyCanvasReportsItsPosition: Story = {
+  args: { onCanvasClick: fn() },
+  render: (args) => <GraphCanvas nodes={LEADER_NODES} edges={[]} ariaLabel="Click" showViewToggle={false} onCanvasClick={args.onCanvasClick} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByLabelText("Gateway, node"));
+    expect(args.onCanvasClick).not.toHaveBeenCalled();
+    await userEvent.click(canvasElement.querySelector(".react-flow__pane") as HTMLElement);
+    await waitFor(() => expect(args.onCanvasClick).toHaveBeenCalledTimes(1));
+    const [position] = (args.onCanvasClick as ReturnType<typeof fn>).mock.calls[0] as [{ x: number; y: number }];
+    expect(Number.isFinite(position.x) && Number.isFinite(position.y)).toBe(true);
+  },
+};

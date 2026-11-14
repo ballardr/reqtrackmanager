@@ -16,7 +16,10 @@ Design decisions:
   end, are not written, so nothing hidden leaves in the text.
 - **Flat.** Placed elements are not nested as subgraphs: a rolled-up line already joins the nearest placed ancestors, and
   a line to a subgraph is drawn unreliably by Mermaid.
-- **Positions, notes and colours are left out**: Mermaid lays the graph out itself, and a note has no flowchart form.
+- **Positions and colours are left out**: Mermaid lays the graph out itself.
+- An annotation note with text is a flag-shaped node. A leader to a drawn box is a dotted link from the note (with a head when the
+  leader has an arrowhead); a leader to a line or a free point is not written, because Mermaid cannot point at a line, and
+  a leader to a box that is not drawn is not written either, so nothing hidden leaves in the text.
 - A boundary box is one node in the outline of its direction (a trapezoid each way for an input or an output, a hexagon
   for two-way, a circle where none is disclosed), labelled with the outer connection's code and the element outside.
 - A locked node (an element the viewer cannot read) is written with its code only.
@@ -29,7 +32,8 @@ from __future__ import annotations
 import re
 import uuid
 
-from app.modules.architecture.schemas import DiagramView, ViewBoundary, ViewEdge, ViewNode
+from app.modules.architecture.enums import LeaderKind
+from app.modules.architecture.schemas import DiagramView, NoteOut, ViewBoundary, ViewEdge, ViewNode
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f￾￿]+")
 #: Characters Mermaid would read as syntax inside a quoted label, written as its numeric entity (`#35;`).
@@ -79,6 +83,19 @@ def _edge(source: str, target: str, edge: ViewEdge) -> str:
     return f'    {source} {arrow}|"{_text(text)}"| {target}' if text else f"    {source} {arrow} {target}"
 
 
+def _note(key: str, note: NoteOut) -> str:
+    """One annotation note node line: its text lines, each made safe."""
+    return f'    {key}>"{"<br/>".join(_text(line) for line in note.text.splitlines() if line.strip())}"]'
+
+
+def _leader(key: str, note: NoteOut, keys: dict[uuid.UUID, str]) -> str | None:
+    """The dotted link from a note to the box its leader points at, or `None` when it points at another kind of target or
+    at a box that is not drawn."""
+    if note.leader_kind != LeaderKind.ELEMENT or note.leader_element_id not in keys:
+        return None
+    return f"    {key} -.-> {keys[note.leader_element_id]}" if note.leader_arrow else f"    {key} -.- {keys[note.leader_element_id]}"
+
+
 def render_mermaid(view: DiagramView) -> str:
     """The diagram as Mermaid flowchart text.
 
@@ -94,10 +111,14 @@ def render_mermaid(view: DiagramView) -> str:
     keys.update({b.id: f"b{i}" for i, b in enumerate(view.boundaries, start=1)})
     lines += [_node(keys[n.element_id], n) for n in visible]
     lines += [_boundary(keys[b.id], b) for b in view.boundaries]
-    if not visible and not view.boundaries:
+    notes = [n for n in view.notes if n.text.strip()]
+    if not visible and not view.boundaries and not notes:
         lines.append('    empty["Empty diagram"]')
     lines += [
         _edge(keys[e.source_element_id], keys[e.target_element_id], e)
         for e in view.edges if e.source_element_id in keys and e.target_element_id in keys
     ]
+    note_keys = {n.id: f"t{i}" for i, n in enumerate(notes, start=1)}
+    lines += [_note(note_keys[n.id], n) for n in notes]
+    lines += [link for n in notes if (link := _leader(note_keys[n.id], n, keys)) is not None]
     return "\n".join(lines) + "\n"

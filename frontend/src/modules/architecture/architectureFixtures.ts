@@ -14,7 +14,7 @@ import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
-  DiagramModel, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
+  DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
   ModelElement, Port,
 } from "./types";
 
@@ -92,6 +92,14 @@ export function buildViewEdge(overrides: Partial<DiagramViewEdge> = {}): Diagram
     id: "edge-1", source_element_id: "el-1", target_element_id: "el-2", source_is_boundary: false, target_is_boundary: false, two_way: false, indirect: false, rolled_up: false,
     bridged: false, count: 1, type_name: null, line_style: null, color_light: null, color_dark: null, label: null,
     connections: [buildConnection()], hops: [], ...overrides,
+  };
+}
+
+/** An annotation as the view lists it: neutral, 160 x 60 at the origin, with no leader. */
+export function buildNote(overrides: Partial<DiagramNote> = {}): DiagramNote {
+  return {
+    id: "nt-1", text: "Check with ops", x: 0, y: -120, width: 160, height: 60, tone: "neutral", leader_kind: "none",
+    leader_element_id: null, leader_connection_id: null, leader_x: null, leader_y: null, leader_arrow: true, ...overrides,
   };
 }
 

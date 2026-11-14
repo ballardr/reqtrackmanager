@@ -22,6 +22,26 @@ export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string>
 
 export type PortDirection = "in" | "out" | "both";
 
+/** The colour family of an annotation note on a diagram. */
+export type NoteTone = "neutral" | "info" | "success" | "warning" | "danger";
+
+export const NOTE_TONE_LABEL: Record<NoteTone, string> = {
+  neutral: "Neutral", info: "Information", success: "Positive", warning: "Caution", danger: "Critical",
+};
+
+/** What an annotation's leader line points at. */
+export type LeaderKind = "none" | "element" | "connection" | "point";
+
+/** The fields of a note that name what its leader points at, and its arrowhead (mirrors `NoteIn` in `schemas.py`). */
+export interface NoteLeader {
+  leader_kind: LeaderKind;
+  leader_element_id: string | null;
+  leader_connection_id: string | null;
+  leader_x: number | null;
+  leader_y: number | null;
+  leader_arrow: boolean;
+}
+
 export const PORT_DIRECTION_LABEL: Record<PortDirection, string> = {
   in: "In",
   out: "Out",
@@ -475,13 +495,14 @@ export interface DiagramViewBoundary {
   height: number;
 }
 
-export interface DiagramNote {
+export interface DiagramNote extends NoteLeader {
   id: string;
   text: string;
   x: number;
   y: number;
   width: number;
   height: number;
+  tone: NoteTone;
 }
 
 /** A diagram resolved for drawing. */
@@ -565,13 +586,14 @@ export interface PlacementValues {
 }
 
 /** One note as saved (`id` keeps an existing note; none creates one). */
-export interface NoteValues {
+export interface NoteValues extends NoteLeader {
   id: string | null;
   text: string;
   x: number;
   y: number;
   width: number;
   height: number;
+  tone: NoteTone;
 }
 
 /** One boundary box as saved: the outer connection it stands for and its box. */
