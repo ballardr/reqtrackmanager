@@ -28,13 +28,13 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
-from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
+from app.models.enums import BaselineKind, RequirementLevel, RequirementReviewOutcome, RequirementStatus
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
@@ -194,13 +194,28 @@ class RequirementVersion(UUIDPKMixin, Base):
 
 
 class Baseline(UUIDPKMixin, TimestampMixin, Base):
-    """An immutable snapshot of a project stage's approved requirements (C-G-10)."""
+    """An immutable snapshot of a project's records at a point in time (C-G-10).
+
+    A `stage` baseline is written when a stage enters a locked phase and holds the stage's approved requirements
+    plus whatever each enabled module's snapshot provider contributes; a `manual` baseline is taken on request and
+    names no stage. Its `items` are the `BaselineItem` rows.
+    """
 
     __tablename__ = "baselines"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'stage' AND stage_id IS NOT NULL) OR (kind = 'manual' AND stage_id IS NULL AND component_id IS NULL)",
+            name="ck_baselines_kind_stage",
+        ),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
-    stage_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE")
+    kind: Mapped[BaselineKind] = mapped_column(
+        str_enum(BaselineKind, 10), default=BaselineKind.STAGE, server_default=BaselineKind.STAGE.value
+    )
+    # Set for a `stage` baseline; NULL for a `manual` one. Every reader of this column filters or tolerates NULL.
+    stage_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE"), nullable=True
     )
     # Set for a baseline written when one component entered a locked phase (it holds that component's
     # requirements for the stage only); NULL for the stage's own baseline.
@@ -214,17 +229,36 @@ class Baseline(UUIDPKMixin, TimestampMixin, Base):
 
 
 class BaselineItem(UUIDPKMixin, Base):
-    """One requirement's snapshot version captured within a baseline."""
+    """One record captured within a baseline.
+
+    A requirement item (`item_type` `requirement`) points at the requirement and the version that was current, as
+    before; `item_id` repeats the requirement's id. Any other item belongs to a module: `item_type` is one of that
+    module's registered artefact types, `snapshot` is the JSON its snapshot provider produced (a self-contained copy,
+    so the baseline survives the record changing or being deleted), and `item_id` is the live record's id when the
+    snapshot was taken. A project import leaves `item_id` NULL for these, since the live record has a new id there.
+    """
 
     __tablename__ = "baseline_items"
-    __table_args__ = (UniqueConstraint("baseline_id", "requirement_id"),)
+    __table_args__ = (
+        UniqueConstraint("baseline_id", "requirement_id"),
+        UniqueConstraint("baseline_id", "item_type", "item_id", name="uq_baseline_items_baseline_type_item"),
+        CheckConstraint(
+            "(item_type = 'requirement' AND requirement_id IS NOT NULL AND requirement_version_id IS NOT NULL)"
+            " OR (item_type <> 'requirement' AND requirement_id IS NULL AND requirement_version_id IS NULL"
+            " AND snapshot IS NOT NULL)",
+            name="ck_baseline_items_shape",
+        ),
+    )
 
     baseline_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("baselines.id", ondelete="CASCADE"))
-    requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
+    item_type: Mapped[str] = mapped_column(String(40), default="requirement", server_default="requirement")
+    item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), nullable=True
     )
-    requirement_version_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="CASCADE")
+    requirement_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="CASCADE"), nullable=True
     )
 
     baseline: Mapped[Baseline] = relationship(back_populates="items")

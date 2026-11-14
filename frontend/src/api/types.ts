@@ -276,6 +276,7 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   change_request_vote: "Change request vote",
   project: "Project",
   project_stage: "Project stage",
+  baseline: "Baseline",
   project_component: "Component",
   project_category: "Category",
   project_group: "Project group",

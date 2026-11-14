@@ -29,7 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest
-from app.models.enums import ChangeRequestStatus, StagePhaseKind
+from app.models.enums import BaselineKind, ChangeRequestStatus, StagePhaseKind
 from app.models.file import RequirementFile
 from app.models.project import ProjectStage
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
@@ -147,7 +147,7 @@ def project_stage_progress(db: Session, project_id: UUID, own_requirement_count:
         .select_from(Baseline)
         .outerjoin(BaselineItem, BaselineItem.baseline_id == Baseline.id)
         .outerjoin(Requirement, Requirement.id == BaselineItem.requirement_id)
-        .where(Baseline.project_id == project_id)
+        .where(Baseline.project_id == project_id, Baseline.kind == BaselineKind.STAGE)
         .group_by(Baseline.id, Baseline.stage_id, Baseline.component_id, Baseline.created_at)
         .order_by(Baseline.created_at, Baseline.id)
     ).all():

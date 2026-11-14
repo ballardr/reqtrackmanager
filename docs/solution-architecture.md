@@ -735,9 +735,9 @@ erDiagram
     REQUIREMENT ||--o{ REQUIREMENT_KEYWORD : tagged_with
     REQUIREMENT ||--o{ REQUIREMENT_REVIEW : reviewed_in
     REQUIREMENT_VERSION ||--o{ REQUIREMENT_REVIEW : reviewed_as
-    PROJECT_STAGE ||--o{ BASELINE : snapshot_of
+    PROJECT_STAGE |o--o{ BASELINE : snapshot_of
     BASELINE ||--o{ BASELINE_ITEM : captures
-    REQUIREMENT_VERSION ||--o{ BASELINE_ITEM : captured_as
+    REQUIREMENT_VERSION |o--o{ BASELINE_ITEM : captured_as
     PROJECT ||--o{ CHANGE_REQUEST : has
     REQUIREMENT |o--o{ CHANGE_REQUEST : targets
     CHANGE_REQUEST ||--o{ CHANGE_REQUEST_VERSION : has_history
@@ -747,6 +747,8 @@ erDiagram
 ```
 
 A `PROJECT_STAGE` follows a `STAGE_WORKFLOW` (organisation tier: `project_id` NULL; project tier: set) and sits in one `STAGE_WORKFLOW_PHASE`, whose `kind` (open, review, locked, on hold, closed), never its name, decides the stage's behaviour: entering a locked phase writes the baseline, entering a closed one records completion, and a review phase takes the review deadline (`services/stage_workflows.py`). The first phase by order is the starting phase. A project's usable workflows are its own (else its nearest ancestor's) plus the organisation's minus the ones it hid.
+
+A `BASELINE` is `stage` (written by the stage transition) or `manual` (no stage, nothing approved or locked). Its `BASELINE_ITEM` rows are requirement versions or a module's JSON snapshots, captured through the module's `BaselineSnapshotProvider` (`docs/modules.md` §4l9).
 
 With component phases on, a `COMPONENT_STAGE_STATE` gives each component its own workflow, phase and owner for a stage (`services/component_stages.py`). A `STAGE_PHASE_PLAN` holds the expected range (calendar dates) and actual start and completion (UTC instants) of one phase of a stage, or of a component's state within it (`services/stage_phase_plans.py`); `apply_phase_move` records every move there, and the daily sweep sends the upcoming and overdue reminders once per date to the owner (else the project managers).
 

@@ -2074,6 +2074,56 @@ class RecordCommentProvider:
     validate_anchor: Callable[[Session, uuid.UUID, uuid.UUID, str, str], bool] | None = None
 
 
+@dataclass(frozen=True)
+class BaselineSnapshotRecord:
+    """One record a `BaselineSnapshotProvider` captured.
+
+    Attributes:
+        item_id: The live record's id when the snapshot was taken.
+        content: A self-contained JSON object describing the record as it stood (never a reference that needs the live
+            record to read, and never a Restricted-classified or personal-data value, since the baseline outlives the
+            record and travels in the project bundle).
+    """
+
+    item_id: uuid.UUID
+    content: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class BaselineSnapshotContext:
+    """What a snapshot provider is told about the baseline being written.
+
+    Attributes:
+        kind: `stage` (a stage entered a locked phase) or `manual` (taken on request).
+        stage_id: The stage being baselined, for a `stage` baseline.
+        component_id: Set when the baseline is one component's own (component phases); a provider whose records do not
+            belong to a component returns nothing then, so the project-wide baseline is the only one that holds them.
+        actor_id: The person who triggered it.
+    """
+
+    kind: str
+    stage_id: uuid.UUID | None
+    component_id: uuid.UUID | None
+    actor_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
+class BaselineSnapshotProvider:
+    """How a module's records enter a baseline (`services.baseline`), for one of its own `artefact_types`.
+
+    Attributes:
+        snapshot: `snapshot(db, project, context)` returns the project's records of this type as they stand, one
+            `BaselineSnapshotRecord` each, in a stable order. It reads through the module's own visibility rules and
+            never flushes or commits; it runs inside the caller's transaction, so a failure stores no baseline.
+        permission: The permission atom (`services.permissions.encode_permission`) a person needs to put this type in a
+            manual baseline. An automatic stage baseline is written for the person who moved the stage and is not
+            subject to it.
+    """
+
+    snapshot: Callable[[Session, Any, BaselineSnapshotContext], list[BaselineSnapshotRecord]]
+    permission: str
+
+
 class ScalingProbeApi:
     """The calls a `ScalingProbe.create` makes: `post(path, body)`, `put(path, body)` and `get(path)` return the decoded
     JSON and raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation. A
@@ -3005,6 +3055,10 @@ class ModuleDefinition:
             the generic comments (ordinary and, where the provider allows anchors, pinned threads on a drawing) with
             no table or route of its own. Read via `get_record_comment_providers`. Existing module-local comment
             tables are unchanged.
+        baseline_snapshots: Maps one of this module's own `artefact_types` to a `BaselineSnapshotProvider`, so the
+            records of that type are captured in every baseline of a project where the module is on: a stage baseline
+            when a stage enters a locked phase, and a manual one taken on request. Read via
+            `get_baseline_snapshot_providers`. A type with none is not part of baselines.
         not_placeable: `{artefact type: reason}` for a type that cannot be placed in the project's component/category
             tree (a record that exists only as part of a structure of its own). Every other registered type is placed
             through the shared `artefact_placements` table with no module code. Read via `get_not_placeable_types`.
@@ -3144,6 +3198,7 @@ class ModuleDefinition:
     not_creatable_from_links: dict[str, str] = field(default_factory=dict)
     not_placeable: dict[str, str] = field(default_factory=dict)
     record_comments: dict[str, RecordCommentProvider] = field(default_factory=dict)
+    baseline_snapshots: dict[str, BaselineSnapshotProvider] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
@@ -5003,6 +5058,17 @@ def get_record_comment_providers() -> dict[str, RecordCommentProvider]:
     providers: dict[str, RecordCommentProvider] = {}
     for definition in get_module_registry().values():
         providers.update(definition.record_comments)
+    return providers
+
+
+def get_baseline_snapshot_providers() -> dict[str, tuple[str, BaselineSnapshotProvider]]:
+    """`{artefact type: (module key, BaselineSnapshotProvider)}` for every type a module opted into baselines (no
+    core type is among them: requirements are captured by `services.baseline` itself). A type claimed twice keeps the
+    first registration."""
+    providers: dict[str, tuple[str, BaselineSnapshotProvider]] = {}
+    for key, definition in get_module_registry().items():
+        for artefact_type, provider in definition.baseline_snapshots.items():
+            providers.setdefault(artefact_type, (key, provider))
     return providers
 
 

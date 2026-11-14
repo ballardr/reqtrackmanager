@@ -133,6 +133,18 @@ class ProjectVisibility(str, enum.Enum):
     ORG_WIDE = "org_wide"
 
 
+class BaselineKind(str, enum.Enum):
+    """How a baseline came about.
+
+    STAGE: written automatically when a stage enters a locked phase (it names the stage, and a component's own
+        baseline names the component too).
+    MANUAL: taken on request at any time; it names no stage and approves nothing.
+    """
+
+    STAGE = "stage"
+    MANUAL = "manual"
+
+
 class StagePhaseKind(str, enum.Enum):
     """What a stage workflow phase does, whatever it is called.
 
