@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.architecture.diagram_points import ATTACH_POINTS, Box, line_points, nearest_pair, point_xy
+from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, Box, line_points, nearest_pair, point_xy
 from app.modules.architecture.enums import AttachPoint
 
 CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "components" / "graphAttachPointCases.json"
@@ -26,15 +26,24 @@ CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "compone
 
 def _case(
     name: str, source: Box, target: Box, source_point: AttachPoint | None = None, target_point: AttachPoint | None = None,
+    source_sides: bool = False, target_sides: bool = False,
 ) -> dict:
-    """One case: the inputs and the points the rule returns."""
-    chosen = line_points(source, target, source_point, target_point)
-    return {
+    """One case: the inputs and the points the rule returns. A box that offers only the sides (a marker) says so."""
+    chosen = line_points(
+        source, target, source_point, target_point,
+        SIDE_POINTS if source_sides else ATTACH_POINTS, SIDE_POINTS if target_sides else ATTACH_POINTS,
+    )
+    result: dict = {
         "name": name, "source": list(source), "target": list(target),
         "source_point": source_point.value if source_point else None,
         "target_point": target_point.value if target_point else None,
-        "expected": [chosen[0].value, chosen[1].value],
     }
+    if source_sides:
+        result["source_offers"] = [p.value for p in SIDE_POINTS]
+    if target_sides:
+        result["target_offers"] = [p.value for p in SIDE_POINTS]
+    result["expected"] = [chosen[0].value, chosen[1].value]
+    return result
 
 
 def cases() -> list[dict]:
@@ -57,6 +66,10 @@ def cases() -> list[dict]:
         _case("a fixed source corner pulls the target to the nearest corner", a, (300, 200, 160, 80), AttachPoint.TOP_LEFT, None),
         _case("both ends fixed are used as given", a, (300, 0, 160, 80), AttachPoint.LEFT, AttachPoint.RIGHT),
         _case("a fixed end on the far side of its box is kept", a, (300, 0, 160, 80), AttachPoint.LEFT, None),
+        _case("a marker up and to the right is met on a side, not the corner", a, (300, -200, 24, 24), None, None, False, True),
+        _case("a marker down and to the left of a marker meets side to side", (0, 0, 24, 24), (-300, 200, 24, 24), None, None, True, True),
+        _case("a marker as the source offers only its sides", (0, 0, 36, 36), (200, 150, 160, 80), None, None, True, False),
+        _case("a fixed end on a marker is used as given", (0, 0, 36, 36), a, AttachPoint.TOP_RIGHT, None, True, False),
     ]
 
 
@@ -73,6 +86,7 @@ def test_the_shared_attach_point_cases_are_current():
 def test_the_cases_reach_every_point_and_every_kind_of_choice():
     used = {p for case in cases() for p in case["expected"]}
     assert used == {p.value for p in AttachPoint}
+    assert any("source_offers" in case or "target_offers" in case for case in cases())
     assert any(case["source_point"] and not case["target_point"] for case in cases())
     assert any(case["target_point"] and not case["source_point"] for case in cases())
     assert any(case["source_point"] and case["target_point"] for case in cases())
@@ -93,3 +107,10 @@ def test_boxes_side_by_side_always_meet_on_the_sides_whatever_the_gap(gap):
     right: Box = (160 + gap, 0, 160, 80)
     assert nearest_pair(left, right) == (AttachPoint.RIGHT, AttachPoint.LEFT)
     assert nearest_pair(right, left) == (AttachPoint.LEFT, AttachPoint.RIGHT)
+
+
+def test_a_marker_never_meets_a_line_at_a_corner_unless_one_is_fixed():
+    marker: Box = (0, 0, 24, 24)
+    for target in [(300, -200, 160, 80), (-300, 200, 160, 80), (200, 150, 160, 80), (100, -100, 50, 50)]:
+        a, _ = line_points(marker, target, None, None, SIDE_POINTS, ATTACH_POINTS)
+        assert a in SIDE_POINTS

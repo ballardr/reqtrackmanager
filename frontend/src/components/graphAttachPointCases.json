@@ -334,5 +334,119 @@
       "left",
       "left"
     ]
+  },
+  {
+    "name": "a marker up and to the right is met on a side, not the corner",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      -200,
+      24,
+      24
+    ],
+    "source_point": null,
+    "target_point": null,
+    "target_offers": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "expected": [
+      "top_right",
+      "bottom"
+    ]
+  },
+  {
+    "name": "a marker down and to the left of a marker meets side to side",
+    "source": [
+      0,
+      0,
+      24,
+      24
+    ],
+    "target": [
+      -300,
+      200,
+      24,
+      24
+    ],
+    "source_point": null,
+    "target_point": null,
+    "source_offers": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "target_offers": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "expected": [
+      "left",
+      "right"
+    ]
+  },
+  {
+    "name": "a marker as the source offers only its sides",
+    "source": [
+      0,
+      0,
+      36,
+      36
+    ],
+    "target": [
+      200,
+      150,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "source_offers": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "expected": [
+      "right",
+      "top_left"
+    ]
+  },
+  {
+    "name": "a fixed end on a marker is used as given",
+    "source": [
+      0,
+      0,
+      36,
+      36
+    ],
+    "target": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": null,
+    "source_offers": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "expected": [
+      "top_right",
+      "top_left"
+    ]
   }
 ]

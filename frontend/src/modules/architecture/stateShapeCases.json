@@ -1,0 +1,25 @@
+{
+  "markers": {
+    "initial": {
+      "size": 20,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" width=\"20\" height=\"20\"><circle cx=\"10\" cy=\"10\" r=\"9\" fill=\"#64748b\"/></svg>"
+    },
+    "final": {
+      "size": 28,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 28 28\" width=\"28\" height=\"28\"><circle cx=\"14\" cy=\"14\" r=\"12.5\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\"/><circle cx=\"14\" cy=\"14\" r=\"7\" fill=\"#64748b\"/></svg>"
+    },
+    "choice": {
+      "size": 36,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 36 36\" width=\"36\" height=\"36\"><polygon points=\"18,1 35,18 18,35 1,18\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>"
+    }
+  },
+  "state": {
+    "width": 160,
+    "height": 64,
+    "corner_radius": 12
+  },
+  "composite": {
+    "header_height": 32,
+    "padding": 16
+  }
+}

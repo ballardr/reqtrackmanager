@@ -242,3 +242,65 @@
 .graph-pin-movable {
   touch-action: none;
 }
+
+/* A line's label as HTML over the canvas: several lines when the text has line breaks, a loop's label from its corner. */
+.graph-edge-label {
+  position: absolute;
+  max-width: 220px;
+  padding: 1px var(--space-1);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.graph-edge-label-corner {
+  text-align: left;
+}
+
+/* A marker node is only its drawing (a dot, a ring, a diamond): no box, border or text. */
+.graph-node-marker {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-node-marker-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-node-marker-empty {
+  border: 2px dashed var(--color-text-muted);
+  border-radius: 50%;
+}
+
+.react-flow__node.selected .graph-node-marker-image {
+  filter: drop-shadow(0 0 2px var(--color-primary)) drop-shadow(0 0 2px var(--color-primary));
+}
+
+.react-flow__node.selected .graph-node-marker-empty {
+  border-color: var(--color-primary);
+}
+
+/* A container is a rounded, see-through frame with its label in a strip across the top; its children are drawn above it. */
+.graph-node-container {
+  justify-content: flex-start;
+  background: color-mix(in srgb, var(--color-surface-alt) 70%, transparent);
+  border-left-width: 1px;
+  border-left-color: var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1) var(--space-2);
+}
+
+.graph-node-container .graph-node-text {
+  width: 100%;
+  min-height: 24px;
+  justify-content: center;
+}

@@ -16,6 +16,10 @@
  * - In comment mode report a click (empty canvas, a node or a line) instead of selecting or editing, and draw the consumer's
  *   pins in a layer above the canvas: each at one screen size, anchored to a node's corner or a line's middle, draggable
  *   when `movable`, and rendered by the consumer (`renderPin`).
+ * - Draw a line from a node back to itself as a loop (`graphSelfLoop`), a line label with line breaks over several lines, a
+ *   marker node (consumer-supplied SVG filling the frame, met only on its sides) and a container node whose children sit
+ *   inside it: React Flow places a child relative to its parent, so this file converts between that and the consumer's
+ *   absolute coordinates, and moving a container reports every node inside it.
  * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
  *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
  *   Backspace asks the consumer to delete it, each with a spoken name.
@@ -34,8 +38,11 @@
  */
 import {
   Background,
+  BaseEdge,
   ConnectionMode,
   Controls,
+  EdgeLabelRenderer,
+  getStraightPath,
   Handle,
   MarkerType,
   NodeResizer,
@@ -46,6 +53,7 @@ import {
   type Connection,
   type Edge,
   type EdgeChange,
+  type EdgeProps,
   type Node,
   type NodeChange,
   type NodeProps,
@@ -65,7 +73,10 @@ import {
   GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphNodeOutline,
   type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
 } from "./GraphCanvas";
-import { ATTACH_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint } from "./graphAttachPoints";
+import {
+  ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint, type BoxGeometry,
+} from "./graphAttachPoints";
+import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
@@ -97,6 +108,8 @@ type NodeData = {
   outline: GraphNodeOutline;
   tone?: GraphNodeTone;
   resizable: boolean;
+  marker: boolean;
+  container: boolean;
 };
 type FlowNode = Node<NodeData, "graph"> | Node<{ free: boolean }, "leaderEnd">;
 type GraphFlowNode = Node<NodeData, "graph">;
@@ -165,9 +178,20 @@ function NodeBody({ text }: { text: string }) {
 
 /** One box on the canvas: accent edge, optional symbol and the text label; the eight handles are for drawing lines. */
 function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
+  if (data.marker) {
+    return (
+      <div className={data.symbol ? "graph-node-marker" : "graph-node-marker graph-node-marker-empty"}>
+        {data.symbol && <img className="graph-node-marker-image" src={data.symbol} alt="" />}
+        {SIDE_POINTS.map((point) => (
+          <Handle key={point} id={point} type="source" position={HANDLE_POSITION[point]} />
+        ))}
+      </div>
+    );
+  }
   const shaped = data.outline !== "rectangle";
   const classes = [
     "graph-node", data.dashed ? "graph-node-dashed" : "", shaped ? "graph-node-shaped" : "",
+    data.container ? "graph-node-container" : "",
     data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
   ].filter(Boolean).join(" ");
   return (
@@ -198,7 +222,43 @@ function LeaderEndNode({ data }: NodeProps<Node<{ free: boolean }, "leaderEnd">>
 
 const NODE_TYPES = { graph: GraphNodeBox, leaderEnd: LeaderEndNode };
 
-type Box = { x: number; y: number; width: number; height: number };
+/** The text of a line, one block per line break, drawn by HTML over the canvas (anchored by its middle, or by its bottom left corner). */
+function EdgeLabel({ text, at, corner }: { text: string; at: LoopPoint; corner?: boolean }) {
+  const place = corner ? "translate(0, -100%)" : "translate(-50%, -50%)";
+  return (
+    <EdgeLabelRenderer>
+      <div className={corner ? "graph-edge-label graph-edge-label-corner nodrag nopan" : "graph-edge-label nodrag nopan"} style={{ transform: `${place} translate(${at.x}px, ${at.y}px)` }}>
+        {text}
+      </div>
+    </EdgeLabelRenderer>
+  );
+}
+
+/** A straight line whose label has line breaks (the built-in line draws one line of text only). */
+function GraphLineEdge({ id, sourceX, sourceY, targetX, targetY, markerStart, markerEnd, style, data }: EdgeProps<Edge<{ label?: string }, "multiline">>) {
+  const [path, x, y] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+  return (
+    <>
+      <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
+      {data?.label && <EdgeLabel text={data.label} at={{ x, y }} />}
+    </>
+  );
+}
+
+/** A loop on one box: the path and label anchor come from `graphSelfLoop`, passed in `data`. */
+function GraphLoopEdge({ id, markerStart, markerEnd, style, data }: EdgeProps<Edge<{ path: string; label?: string; at: LoopPoint }, "loop">>) {
+  if (!data) return null;
+  return (
+    <>
+      <BaseEdge id={id} path={data.path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
+      {data.label && <EdgeLabel text={data.label} at={data.at} corner />}
+    </>
+  );
+}
+
+const EDGE_TYPES = { multiline: GraphLineEdge, loop: GraphLoopEdge };
+
+type Box = BoxGeometry;
 
 /** The middle of each drawn line, by edge id, from the attach points the line joins. */
 function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"]): Map<string, { x: number; y: number }> {
@@ -207,6 +267,10 @@ function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"]):
     const from = boxes.get(e.source);
     const to = boxes.get(e.target);
     if (!from || !to) continue;
+    if (e.source === e.target) {
+      middles.set(e.id, selfLoop(from).label);
+      continue;
+    }
     const [a, b] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
     const pa = pointXY(from, a);
     const pb = pointXY(to, b);
@@ -348,62 +412,120 @@ export function GraphCanvasView({
 
   const labels = useMemo(() => new Map(nodes.map((n) => [n.id, n.label])), [nodes]);
 
-  const flowNodes = useMemo<GraphFlowNode[]>(
-    () =>
-      nodes.map((n) => {
-        const o = moved[n.id];
-        const position = o && o.baseX === n.x && o.baseY === n.y ? { x: o.x, y: o.y } : { x: n.x, y: n.y };
-        const baseWidth = n.width ?? DEFAULT_WIDTH;
-        const baseHeight = n.height ?? DEFAULT_HEIGHT;
-        const z = sized[n.id];
-        const keep = z && z.baseWidth === baseWidth && z.baseHeight === baseHeight;
-        return {
-          id: n.id,
-          type: "graph",
-          position,
-          width: keep ? z.width : baseWidth,
-          height: keep ? z.height : baseHeight,
-          selected: selection?.kind === "node" && selection.id === n.id,
-          ariaLabel: text.nodeAria(n.label),
-          data: {
-            label: n.label, caption: n.caption, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
-            accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone, resizable: resizable && !readOnly,
-          },
-        };
-      }),
-    [nodes, moved, sized, selection, text, resizable, readOnly],
+  /** The node each node sits inside: unknown ids, a node's own id and a loop of parents are ignored. */
+  const parents = useMemo(() => {
+    const ids = new Set(nodes.map((n) => n.id));
+    const map = new Map<string, string>();
+    for (const n of nodes) if (n.parentId !== undefined && n.parentId !== n.id && ids.has(n.parentId)) map.set(n.id, n.parentId);
+    for (const id of [...map.keys()]) {
+      const seen = new Set([id]);
+      let cur = id;
+      while (map.has(cur)) {
+        cur = map.get(cur)!;
+        if (seen.has(cur)) { map.delete(id); break; }
+        seen.add(cur);
+      }
+    }
+    return map;
+  }, [nodes]);
+
+  /** Every node's box in absolute canvas units, with a local move or resize applied until the consumer's props catch up. */
+  const boxes = useMemo(() => {
+    const map = new Map<string, Box>();
+    for (const n of nodes) {
+      const o = moved[n.id];
+      const position = o && o.baseX === n.x && o.baseY === n.y ? { x: o.x, y: o.y } : { x: n.x, y: n.y };
+      const baseWidth = n.width ?? DEFAULT_WIDTH;
+      const baseHeight = n.height ?? DEFAULT_HEIGHT;
+      const z = sized[n.id];
+      const keep = z && z.baseWidth === baseWidth && z.baseHeight === baseHeight;
+      map.set(n.id, {
+        ...position, width: keep ? z.width : baseWidth, height: keep ? z.height : baseHeight,
+        points: n.marker ? SIDE_POINTS : undefined,
+      });
+    }
+    return map;
+  }, [nodes, moved, sized]);
+
+  /** The nodes inside each node, at any depth. */
+  const descendantsOf = useCallback(
+    (id: string): string[] => {
+      const found: string[] = [];
+      const queue = [id];
+      while (queue.length > 0) {
+        const at = queue.pop()!;
+        for (const [child, parent] of parents) if (parent === at) { found.push(child); queue.push(child); }
+      }
+      return found;
+    },
+    [parents],
   );
 
+  /** How many parents a node has above it; a parent is drawn before (below) its children. */
+  const depthOf = useCallback((id: string) => {
+    let depth = 0;
+    for (let cur = parents.get(id); cur !== undefined; cur = parents.get(cur)) depth += 1;
+    return depth;
+  }, [parents]);
+
+  const flowNodes = useMemo<GraphFlowNode[]>(() => {
+    const ordered = parents.size > 0 ? [...nodes].sort((a, b) => depthOf(a.id) - depthOf(b.id)) : nodes;
+    return ordered.map((n) => {
+      const box = boxes.get(n.id)!;
+      const parent = parents.get(n.id);
+      const parentBox = parent !== undefined ? boxes.get(parent) : undefined;
+      return {
+        id: n.id,
+        type: "graph",
+        // React Flow positions a child relative to its parent; the consumer's coordinates stay absolute.
+        position: parentBox ? { x: box.x - parentBox.x, y: box.y - parentBox.y } : { x: box.x, y: box.y },
+        ...(parentBox ? { parentId: parent, extent: "parent" as const } : {}),
+        width: box.width,
+        height: box.height,
+        selected: selection?.kind === "node" && selection.id === n.id,
+        ariaLabel: text.nodeAria(n.label),
+        data: {
+          label: n.label, caption: n.caption, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
+          accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone,
+          resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, container: n.container === true,
+        },
+      };
+    });
+  }, [nodes, boxes, parents, depthOf, selection, text, resizable, readOnly]);
+
   const flowEdges = useMemo<Edge[]>(() => {
-    const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
     return edges.flatMap<Edge>((e) => {
       const from = boxes.get(e.source);
       const to = boxes.get(e.target);
       if (!from || !to) return [];
       const direction = e.direction ?? "forward";
       const marker = { type: MarkerType.ArrowClosed, color: e.color };
-      const [sourceHandle, targetHandle] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
+      const loop = e.source === e.target;
+      // A loop's shape is fixed; React Flow only needs a handle that exists on the box (every box has "top").
+      const [sourceHandle, targetHandle] = loop ? (["top", "top"] as const) : lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
+      const multiline = e.label !== undefined && e.label.includes("\n");
+      const shape = loop
+        ? { type: "loop", data: { path: selfLoopPath(selfLoop(from)), label: e.label, at: selfLoop(from).label } }
+        : multiline ? { type: "multiline", data: { label: e.label } } : { type: "straight", label: e.label };
       return [{
         id: e.id,
         source: e.source,
         target: e.target,
         sourceHandle,
         targetHandle,
-        type: "straight",
-        label: e.label,
+        ...shape,
         selected: selection?.kind === "edge" && selection.id === e.id,
-        reconnectable: !readOnly && onEdgeAnchorChange !== undefined,
+        reconnectable: !readOnly && onEdgeAnchorChange !== undefined && !loop,
         ariaLabel: text.edgeAria(labels.get(e.source) ?? e.source, labels.get(e.target) ?? e.target, e.label),
         markerEnd: direction === "none" ? undefined : marker,
         markerStart: direction === "both" ? marker : undefined,
         style: { stroke: e.color, strokeDasharray: e.dashed ? "6 4" : undefined },
       }];
     });
-  }, [edges, flowNodes, selection, labels, text, readOnly, onEdgeAnchorChange]);
+  }, [edges, boxes, selection, labels, text, readOnly, onEdgeAnchorChange]);
 
   /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
   const flowLeaders = useMemo(() => {
-    const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
     const middles = edgeMiddles(boxes, edges);
     const ends: Node<{ free: boolean }, "leaderEnd">[] = [];
     const lines: Edge[] = [];
@@ -439,12 +561,11 @@ export function GraphCanvasView({
       lines.push({ ...common, target: LEADER_END_PREFIX + l.id, sourceHandle: nearestPoint(start, at), targetHandle: LEADER_END_HANDLE });
     }
     return { ends, lines };
-  }, [leaders, flowNodes, edges, endMoved, selection, readOnly, onLeaderTargetChange]);
+  }, [leaders, boxes, edges, endMoved, selection, readOnly, onLeaderTargetChange]);
 
   /** Where each pin is drawn: on its node's top-right corner or its line's middle, else at its own place. */
   const pinPlaces = useMemo<PinPlace[]>(() => {
     if (pins.length === 0) return [];
-    const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
     const middles = edgeMiddles(boxes, edges);
     return pins.map((pin) => {
       const anchor = pin.anchor;
@@ -457,22 +578,21 @@ export function GraphCanvasView({
       }
       return { pin, x: pin.x, y: pin.y, detached: anchor !== undefined };
     });
-  }, [pins, flowNodes, edges]);
+  }, [pins, boxes, edges]);
 
   /** The topmost node holding a canvas position (a pin dropped on it is anchored to it), else empty canvas. */
   const anchorAt = useCallback(
     (point: { x: number; y: number }): GraphPointAnchor => {
       for (let i = flowNodes.length - 1; i >= 0; i--) {
         const n = flowNodes[i];
-        const width = n.width ?? DEFAULT_WIDTH;
-        const height = n.height ?? DEFAULT_HEIGHT;
-        if (point.x >= n.position.x && point.x <= n.position.x + width && point.y >= n.position.y && point.y <= n.position.y + height) {
+        const box = boxes.get(n.id);
+        if (box && point.x >= box.x && point.x <= box.x + box.width && point.y >= box.y && point.y <= box.y + box.height) {
           return { kind: "node", id: n.id };
         }
       }
       return { kind: "none" };
     },
-    [flowNodes],
+    [flowNodes, boxes],
   );
 
   const choose = useCallback(
@@ -522,6 +642,17 @@ export function GraphCanvasView({
       const base = new Map(nodes.map((n) => [n.id, n]));
       const resizingIds = new Set<string>();
       for (const c of changes) if (c.type === "dimensions" && c.resizing === true) resizingIds.add(c.id);
+      // React Flow reports a child's position relative to its parent; the consumer's coordinates are absolute. A parent is
+      // resolved before its children, so a child moved in the same batch (a resize from the top or left edge keeps the
+      // children where they were) is placed against its parent's new position.
+      const absolute = new Map<string, { x: number; y: number }>();
+      const positioned = changes.filter((c): c is NodeChange<GraphFlowNode> & { type: "position"; position: { x: number; y: number } } => c.type === "position" && c.position !== undefined);
+      positioned.sort((a, b) => depthOf(a.id) - depthOf(b.id));
+      for (const c of positioned) {
+        const parent = parents.get(c.id);
+        const parentAt = parent !== undefined ? (absolute.get(parent) ?? boxes.get(parent)) : undefined;
+        absolute.set(c.id, parentAt ? { x: parentAt.x + c.position.x, y: parentAt.y + c.position.y } : { x: c.position.x, y: c.position.y });
+      }
       const finished: { id: string; x: number; y: number }[] = [];
       const resized: { id: string; x: number; y: number; width: number; height: number }[] = [];
       const patch: Moved = {};
@@ -532,12 +663,26 @@ export function GraphCanvasView({
         const n = base.get(c.id);
         if (!n) continue;
         if (c.type === "position" && c.position) {
-          patch[c.id] = { x: c.position.x, y: c.position.y, baseX: n.x, baseY: n.y };
+          const at = absolute.get(c.id)!;
+          patch[c.id] = { x: at.x, y: at.y, baseX: n.x, baseY: n.y };
           // A resize from the top or left edge moves the node too; that is part of the resize, not a move.
           if (resizingIds.has(c.id)) {
-            resizing.current[c.id] = { ...(resizing.current[c.id] ?? { width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }), x: c.position.x, y: c.position.y };
-          } else if (c.dragging !== true) {
-            finished.push({ id: c.id, x: Math.round(c.position.x), y: Math.round(c.position.y) });
+            resizing.current[c.id] = { ...(resizing.current[c.id] ?? { width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }), x: at.x, y: at.y };
+          } else {
+            // A child kept in place while its container is resized from the top or left has not moved: nothing to report.
+            const keptInPlace = resizingIds.has(parents.get(c.id) ?? "");
+            if (c.dragging !== true && !keptInPlace) finished.push({ id: c.id, x: Math.round(at.x), y: Math.round(at.y) });
+            // Moving a node moves what is inside it, and the consumer hears about those too.
+            const before = boxes.get(c.id);
+            for (const inner of before ? descendantsOf(c.id) : []) {
+              const box = boxes.get(inner);
+              const innerBase = base.get(inner);
+              if (!box || !innerBase || absolute.has(inner)) continue;
+              const x = box.x + at.x - before!.x;
+              const y = box.y + at.y - before!.y;
+              patch[inner] = { x, y, baseX: innerBase.x, baseY: innerBase.y };
+              if (c.dragging !== true) finished.push({ id: inner, x: Math.round(x), y: Math.round(y) });
+            }
           }
         } else if (c.type === "dimensions" && c.dimensions && c.dimensions.width > 0 && c.dimensions.height > 0 && c.resizing === true) {
           // A node measured as empty (its frame was momentarily not laid out) is not a size the person chose.
@@ -562,7 +707,7 @@ export function GraphCanvasView({
       if (finished.length > 0) onNodesMove?.(finished);
       if (resized.length > 0) onNodesResize?.(resized);
     },
-    [applySelect, commenting, nodes, leaders, readOnly, onNodesMove, onNodesResize, onLeaderTargetChange],
+    [applySelect, commenting, nodes, boxes, parents, depthOf, descendantsOf, leaders, readOnly, onNodesMove, onNodesResize, onLeaderTargetChange],
   );
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => { if (!commenting) applySelect("edge", changes); }, [applySelect, commenting]);
@@ -655,7 +800,8 @@ export function GraphCanvasView({
         ...m,
         [selection.id]: { width, height, baseWidth: base?.width ?? DEFAULT_WIDTH, baseHeight: base?.height ?? DEFAULT_HEIGHT },
       }));
-      onNodesResize?.([{ id: selection.id, x: Math.round(node.position.x), y: Math.round(node.position.y), width, height }]);
+      const at = boxes.get(selection.id) ?? node.position;
+      onNodesResize?.([{ id: selection.id, x: Math.round(at.x), y: Math.round(at.y), width, height }]);
     } else if (keyDelete && (event.key === "Delete" || event.key === "Backspace")) {
       event.preventDefault();
       onDelete?.(selection);
@@ -691,6 +837,7 @@ export function GraphCanvasView({
         nodes={allNodes}
         edges={allEdges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}

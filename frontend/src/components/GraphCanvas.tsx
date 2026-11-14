@@ -9,6 +9,8 @@
  * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`, `GraphCanvasLeader`, `GraphCanvasPin`)
  *   and the events it gets back. A box has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
  *   A leader is a thin line from a node (an annotation) to another node, to the middle of a line or to a free point.
+ * - Offer shapes beyond the plain box with no per-consumer code: a line from a node to itself (a loop), multi-line line labels,
+ *   marker nodes (a consumer-supplied drawing, no box) and containers (a rounded frame holding the nodes whose `parentId` names it).
  * - Offer a comment mode (a click reports what it landed on instead of selecting) and draw consumer-supplied pins at one
  *   screen size at any zoom, each rendered by the consumer (`renderPin`); a pin anchored to a node or line follows it.
  * - Load the canvas on first use, so React Flow stays out of the main bundle, and show the list view while it
@@ -67,6 +69,25 @@ export interface GraphCanvasNode {
   outline?: GraphNodeOutline;
   /** Tints the node (its border and background) in a tone's colour; none draws the usual surface. */
   tone?: GraphNodeTone;
+  /**
+   * Draws the node as a marker: no box, border or text, only `symbolSvg` filling the node's frame (a dot, a ring, a diamond).
+   * The label is spoken and listed but not drawn. A marker is met by lines only at the middle of its sides, is not
+   * resizable and is not a container.
+   */
+  marker?: boolean;
+  /**
+   * Draws the node as a container: a rounded frame with its label in a strip across the top and a see-through body, drawn
+   * behind the nodes whose `parentId` names it. A node does not need this to be named as a parent; it only changes how
+   * the frame looks.
+   */
+  container?: boolean;
+  /**
+   * The id of the node this one sits inside. Positions stay absolute canvas units whatever the nesting, so a consumer
+   * stores one coordinate system. The child is drawn above its parent and cannot be dragged outside it; dragging or
+   * moving the parent moves the children with it, and `onNodesMove` then reports the parent and every node inside it. An
+   * unknown id, the node's own id and a loop of parents are ignored (the node is not nested).
+   */
+  parentId?: string;
 }
 
 /** What a leader points at: a node, a line (its middle) or a free position in canvas units. */
@@ -111,11 +132,15 @@ export interface GraphPinContext {
 /** The data-transfer type a consumer's draggable palette item sets, so a drop on the canvas reaches `onDropItem`. */
 export const GRAPH_DROP_MIME = "application/x-graph-item";
 
-/** A line between two nodes. */
+/**
+ * A line between two nodes. A line whose source and target are the same node is drawn as a loop at the box's top right
+ * corner (a fixed shape, `graphSelfLoop`); `sourcePoint` and `targetPoint` do not apply to it.
+ */
 export interface GraphCanvasEdge {
   id: string;
   source: string;
   target: string;
+  /** Text on the line; a line break starts a new line of text. Never interpreted as markup. */
   label?: string;
   /** Draws the line dashed (a bridged or rolled-up connection). */
   dashed?: boolean;

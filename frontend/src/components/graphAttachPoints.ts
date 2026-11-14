@@ -8,7 +8,8 @@
  * Responsibilities:
  * - Give the position of each attach point of a box.
  * - Choose the points of one line: an end the consumer fixed stays as given, an end left open is the point nearest the
- *   other end, and with both open the pair of points nearest each other.
+ *   other end, and with both open the pair of points nearest each other. A box may offer fewer points (`points`): a marker
+ *   (a dot or a diamond) offers only the middle of each side, since its corners are not on its outline.
  *
  * Design decisions:
  * - The same rule runs on the server for the architecture SVG (`diagram_points.py`); `graphAttachPointCases.json` holds
@@ -33,12 +34,17 @@ export const ATTACH_POINT_LABEL: Record<AttachPoint, string> = {
   top_right: "Top right", bottom_right: "Bottom right", bottom_left: "Bottom left", top_left: "Top left",
 };
 
+/** The four points at the middle of a side: all a round or diamond marker offers (its corners are not on its outline). */
+export const SIDE_POINTS: readonly AttachPoint[] = ["top", "right", "bottom", "left"];
+
 /** A box: its top-left corner and size. */
 export interface BoxGeometry {
   x: number;
   y: number;
   width: number;
   height: number;
+  /** The points an open end may choose (in `ATTACH_POINTS` order); all eight when omitted. A fixed end is used as given. */
+  points?: readonly AttachPoint[];
 }
 
 /** A distance must beat the best so far by more than this to win, so equal distances keep the earlier point. */
@@ -63,9 +69,10 @@ const squared = (a: { x: number; y: number }, b: { x: number; y: number }): numb
 
 /** @returns The point of `box` nearest the position `to` (ties go to the sides, then to the order of `ATTACH_POINTS`). */
 export function nearestPoint(box: BoxGeometry, to: { x: number; y: number }): AttachPoint {
+  const points = box.points ?? ATTACH_POINTS;
   let best = Number.POSITIVE_INFINITY;
-  let chosen: AttachPoint = ATTACH_POINTS[0];
-  for (const a of ATTACH_POINTS) {
+  let chosen: AttachPoint = points[0];
+  for (const a of points) {
     const distance = squared(pointXY(box, a), to);
     if (distance < best - TOLERANCE) {
       best = distance;
@@ -77,11 +84,13 @@ export function nearestPoint(box: BoxGeometry, to: { x: number; y: number }): At
 
 /** @returns The point of each box that lies nearest each other (ties as in `nearestPoint`). */
 export function nearestPair(source: BoxGeometry, target: BoxGeometry): [AttachPoint, AttachPoint] {
+  const sourcePoints = source.points ?? ATTACH_POINTS;
+  const targetPoints = target.points ?? ATTACH_POINTS;
   let best = Number.POSITIVE_INFINITY;
-  let chosen: [AttachPoint, AttachPoint] = [ATTACH_POINTS[0], ATTACH_POINTS[0]];
-  for (const a of ATTACH_POINTS) {
+  let chosen: [AttachPoint, AttachPoint] = [sourcePoints[0], targetPoints[0]];
+  for (const a of sourcePoints) {
     const pa = pointXY(source, a);
-    for (const b of ATTACH_POINTS) {
+    for (const b of targetPoints) {
       const distance = squared(pa, pointXY(target, b));
       if (distance < best - TOLERANCE) {
         best = distance;
