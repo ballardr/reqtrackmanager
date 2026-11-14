@@ -837,3 +837,22 @@ export interface AllocationCoverage {
   allocated_elements: number;
   suggestions: number;
 }
+
+
+/** What an interchange import did, or (a preview) would do: rows added by kind, and what could not be resolved. */
+export interface InterchangeReport {
+  created: Record<string, number>;
+  warnings: string[];
+}
+
+/** The kinds an interchange report counts, in the order they are listed, with their labels. */
+export const INTERCHANGE_KIND_LABEL: Record<string, string> = {
+  element_types: "Element types",
+  connection_types: "Connection types",
+  elements: "Elements",
+  connections: "Connections",
+  diagrams: "Diagrams",
+  state_machine_diagrams: "State machine diagrams",
+  states: "States",
+  transitions: "Transitions",
+};

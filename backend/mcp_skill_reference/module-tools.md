@@ -1969,10 +1969,17 @@ Understand the structure of the product: elements, the typed connections between
 
 Model: an **element** is a part of the product (a system, service, board) in a tree, with ports. A **connection** joins two elements and has a type (REST API, SPI, Power). A connection is **outer** for an element when exactly one of its ends is inside that element (the element itself or something below it): it crosses the element's boundary. An inner connection **realises** an outer one when it lies inside the interface the outer one declares; an outer connection is **Covered** when at least one connection realises it.
 
-The only tool today is the boundary coverage report (`architecture_get_boundary_coverage_report`, project-level, read-only). It lists, for each element that contains others (or the one named by `element`, a code such as `ELM-003` or a name), the outer connections with the connections that realise them, and a second table of the ones nothing realises.
+The tools are read-only project reports (the generated reference lists each tool's name and parameters):
+- **Boundary coverage** (AR1): for each element that contains others (or the one named by `element`, a code such as `ELM-003` or a name), the outer connections with the connections that realise them, and the ones nothing realises.
+- **Allocation coverage** (AR2): requirements with no allocated element (with the elements suggested for each), elements and connections with no requirement, and leaf elements with no owner.
+- **Interface list** (AR3): every live connection with both ends, type, protocol, direction and linked requirements; `element` and `type` narrow it.
+- **Element breakdown** (AR4): the element tree, a parent before its children, with a `Level` column.
+- **Diagram** (AR5): the elements and lines one diagram shows (`diagram`, a code or name); the picture is for documents, not for this tool.
+- **Unconnected elements** (AR6): elements with no connection (counting what is inside them), and elements no diagram shows.
+- **State machines** (AR7): each element's state machine diagrams with their states and transitions; `element` narrows it, `state_machine` names the one to draw.
 
 Rules and gotchas:
-- Do not read "Not covered" as an error: some interfaces are deliberately not refined further. Report the figures; let the person decide.
+- Do not read "Not covered" or an unallocated requirement as an error: some interfaces are deliberately not refined further. Report the figures; let the person decide.
 - A shared element (owned by another project or the organisation) is shown as "Shared element", with no code or name.
 - Codes (`ELM-001`, `CON-001`) name records in conversation; do not invent them, read them from the report.
 
@@ -1983,3 +1990,39 @@ Rules and gotchas:
 Boundary coverage: For each element that contains others: the connections crossing its boundary, the inner connections that realise each, and the ones that nothing realises.
 
 Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `element` (string, in query)
+
+#### `architecture_get_allocation_coverage_report` (read)
+
+Allocation coverage: Requirements with no allocated element, elements and connections with no requirement, and leaf elements with no owner.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `architecture_get_interface_list_report` (read)
+
+Interface list: Every connection with its two ends, type, protocol, direction and linked requirements.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `element` (string, in query), `type` (string, in query)
+
+#### `architecture_get_element_breakdown_report` (read)
+
+Element breakdown: The element tree: each element under its parent, with type, status and owner.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `element` (string, in query)
+
+#### `architecture_get_unconnected_elements_report` (read)
+
+Unconnected elements: Elements with no connection and elements that no diagram shows.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `architecture_get_diagram_report` (read)
+
+Diagram: One diagram drawn as the screen shows it, with the elements and lines it contains.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `diagram` (string, in query)
+
+#### `architecture_get_state_machines_report` (read)
+
+State machines: The state machine diagrams of the elements, their states and transitions, and one diagram's drawing.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `element` (string, in query), `state_machine` (string, in query)

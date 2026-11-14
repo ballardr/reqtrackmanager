@@ -53,6 +53,7 @@ import type {
   StateMachineCreateValues,
   StateMachineDiagram,
   StateMachineFieldValues,
+  InterchangeReport,
   StateMachineModel,
   StateTransition,
   TransitionFieldValues,
@@ -396,5 +397,18 @@ export const projectAllocationApi = (projectId: string) => {
     dismiss: (pair: { requirement_id: string; element_id: string }) => api.post<void>(`${base}/allocation/dismiss`, pair),
     restore: (pair: { requirement_id: string; element_id: string }) => api.post<void>(`${base}/allocation/restore`, pair),
     coverage: () => api.get<AllocationCoverage>(`${base}/allocation/coverage`),
+  };
+};
+
+/** The interchange endpoints of a project: the JSON file and the Structurizr DSL export, and the JSON import with its preview. */
+export const projectInterchangeApi = (projectId: string) => {
+  const base = `${projectBase(projectId)}/interchange`;
+  return {
+    exportJson: () => api.getForBlob(`${base}/json`),
+    exportStructurizr: () => api.getForBlob(`${base}/structurizr`),
+    /** What importing the parsed file would create; nothing is stored. */
+    preview: (document: unknown) => api.post<InterchangeReport>(`${base}/json/preview`, document),
+    /** Imports the parsed file, numbering its records afresh. */
+    apply: (document: unknown) => api.post<InterchangeReport>(`${base}/json`, document),
   };
 };

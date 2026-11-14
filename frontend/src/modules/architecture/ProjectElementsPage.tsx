@@ -46,6 +46,7 @@ import { ELEMENT_SORT_KEYS, elementSortValues } from "./architectureSort";
 import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { buildElementTree, elementCodeRecord } from "./architectureFields";
 import { ElementFormModal } from "./ElementFormModal";
+import { InterchangeMenu } from "./InterchangeMenu";
 import { useCreateElement } from "./useCreateElement";
 import { useFolderListControls } from "./useFolderListControls";
 import { useArchitectureReference } from "./useArchitectureReference";
@@ -172,6 +173,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
         actions={
           <>
             <Link className="btn" to={`/projects/${projectId}/modules/architecture/sharing`}>Sharing</Link>
+            <InterchangeMenu projectId={projectId} onImported={() => setRefreshKey((k) => k + 1)} />
             <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New element</button>
           </>
         }

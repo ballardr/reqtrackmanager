@@ -81,6 +81,7 @@ from app.modules.architecture.perf_dataset import (
 from app.modules.architecture.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.architecture.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.architecture.report_fields import REPORT_FIELDS
+from app.modules.architecture.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.architecture.reports import REPORT_DEFINITIONS
 from app.modules.architecture.scaling_probes import SCALING_PROBES
 from app.modules.architecture.search import SEARCH_PROVIDERS
@@ -217,6 +218,7 @@ MODULE_DEFINITION = ModuleDefinition(
     mcp_tools=report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX),
     mcp_guidance=_MCP_GUIDANCE,
     report_fields=REPORT_FIELDS,
+    report_starter_sections=REPORT_STARTER_SECTIONS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,

@@ -431,8 +431,27 @@ def accept(db: Session, project: Project, user: User, pairs: list[tuple[uuid.UUI
     return AcceptResult(done, failed)
 
 
-def coverage(db: Session, project: Project) -> Coverage:
-    """The project's allocation figures (see `Coverage`), in a fixed number of statements."""
+@dataclass(frozen=True)
+class CoverageGaps:
+    """What the allocation figures count, as records: the lists behind `Coverage` (the allocation report names them).
+
+    Attributes:
+        requirements: Every live requirement of the project.
+        unallocated_requirements: Those with no element linked.
+        elements: Every live element the project owns.
+        unallocated_elements: Those with no requirement linked.
+        suggestions: Suggested allocations awaiting a decision, by requirement then element code.
+    """
+
+    requirements: int
+    unallocated_requirements: list[RequirementRef]
+    elements: int
+    unallocated_elements: list[ElementRef]
+    suggestions: list[Pair]
+
+
+def coverage_gaps(db: Session, project: Project) -> CoverageGaps:
+    """The records behind the project's allocation figures, in a fixed number of statements."""
     requirement_ids = set(db.scalars(select(Requirement.id).where(
         Requirement.project_id == project.id, Requirement.is_archived.is_(False)
     )))
@@ -440,11 +459,27 @@ def coverage(db: Session, project: Project) -> Coverage:
     links = _linked(db, requirement_ids, set(elements))
     pairs, placed = _candidates(db, project)
     suggested, _ = _split(db, project, pairs, placed)
-    return Coverage(
+    open_requirements = requirement_ids - {r for r, _ in links}
+    allocated_elements = {e for _, e in links}
+    refs = _requirement_refs(db, open_requirements)
+    return CoverageGaps(
         requirements=len(requirement_ids),
-        allocated_requirements=len({r for r, _ in links}),
+        unallocated_requirements=sorted(refs.values(), key=lambda r: r.unique_code),
         elements=len(elements),
-        allocated_elements=len({e for _, e in links}),
-        suggestions=len(suggested),
+        unallocated_elements=sorted(
+            (_element_ref(e) for i, e in elements.items() if i not in allocated_elements), key=lambda e: e.unique_code,
+        ),
+        suggestions=_pairs_out(db, project, suggested),
     )
 
+
+def coverage(db: Session, project: Project) -> Coverage:
+    """The project's allocation figures (see `Coverage`), in a fixed number of statements."""
+    found = coverage_gaps(db, project)
+    return Coverage(
+        requirements=found.requirements,
+        allocated_requirements=found.requirements - len(found.unallocated_requirements),
+        elements=found.elements,
+        allocated_elements=found.elements - len(found.unallocated_elements),
+        suggestions=len(found.suggestions),
+    )

@@ -5,6 +5,7 @@ their own paths (link candidates, diagram, report, interchange, MCP) here. Every
 
 from __future__ import annotations
 
+import json
 import uuid
 
 from sqlalchemy import event
@@ -167,3 +168,40 @@ def test_the_diagram_view_svg_and_mermaid_use_the_same_number_of_statements_howe
         headers=auth_headers(architect),
     )
     assert [count(u) for u in urls] == few
+
+
+def test_the_interchange_file_the_dsl_and_the_reports_never_name_a_shared_element_the_person_can_no_longer_read(client, admin_token):
+    """Interchange and report read paths: an end another owner shares is written as a reference only while the caller may read it; after the
+    grant is revoked the file, the Structurizr export and every report show a placeholder with no code and no name."""
+    org, _owner, consumer, _o, token, member, _out = _world(client, admin_token, "Arch reads interchange")
+    base = org_base(org["id"])
+    shared = make_org_element(client, token, org["id"], "Zephyr platform", activate=True)
+    collection = make_collection(client, token, base, "Org infra", members=[shared["id"]])
+    given = grant(client, token, base, collection["id"], project_id=consumer["id"])
+    architect = make_architect(client, token, org["id"], consumer["id"], "arch.reads.interchange@example.com")
+    local = make_element(client, token, consumer["id"], "Local app")
+    connection = make_connection(client, architect, consumer["id"], local["id"], shared["id"])
+    headers = auth_headers(architect)
+    path = project_base(consumer["id"])
+
+    def read() -> dict[str, str]:
+        return {
+            "json": client.get(f"{path}/interchange/json", headers=headers).text,
+            "dsl": client.get(f"{path}/interchange/structurizr", headers=headers).text,
+            "interfaces": client.get(f"{path}/reports/interface-list", params={"format": "json"}, headers=headers).text,
+            "breakdown": client.get(f"{path}/reports/element-breakdown", params={"format": "json"}, headers=headers).text,
+            "boundary": client.get(f"{path}/reports/boundary-coverage", params={"format": "json"}, headers=headers).text,
+        }
+
+    before = read()
+    reference = json.loads(before["json"])["data"]["architecture_connections"][0]["target_ref"]
+    assert reference["code"] == shared["unique_code"] and reference["owner"] == "organization"
+    assert "Zephyr platform" not in "".join(before.values())  # the name is never part of a reference
+
+    assert client.delete(f"{base}/collections/{collection['id']}/grants/{given['id']}", headers=auth_headers(token)).status_code == 204
+    after = read()
+    (entry,) = json.loads(after["json"])["data"]["architecture_connections"]
+    assert entry["target_ref"] == {} and entry["target_code"] is None
+    assert "owner_code" not in after["json"]
+    assert "Shared element" in after["interfaces"] and connection["unique_code"] in after["interfaces"]
+    assert "Zephyr platform" not in "".join(after.values()) and member

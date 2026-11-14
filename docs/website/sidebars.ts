@@ -197,6 +197,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'modules/system-architecture-module/allocation',
             'modules/system-architecture-module/state-machine-diagrams',
+            'modules/system-architecture-module/reports-and-interchange',
           ],
         },
         {

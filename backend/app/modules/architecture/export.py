@@ -584,7 +584,7 @@ def _email(emails: dict[UUID, str], user_id: UUID | None) -> str | None:
     return emails.get(user_id) if user_id else None
 
 
-def _foreign_refs(db: Session, element_ids: set[UUID]) -> dict[UUID, dict[str, str]]:
+def foreign_refs(db: Session, element_ids: set[UUID]) -> dict[UUID, dict[str, str]]:
     """`{element id: reference}` for connection ends another owner owns: `{"owner": "project" or "organization",
     "owner_code", "code"}`, codes only (the project already holds them in its connection)."""
     if not element_ids:
@@ -718,7 +718,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         }
         for e in elements
     ]
-    foreign = _foreign_refs(db, {
+    foreign = foreign_refs(db, {
         end for c in connections for end in (c.source_element_id, c.target_element_id) if end not in codes
     } | {m.element_id for m in machines if m.element_id not in codes})
     connection_codes = {c.id: c.unique_code for c in connections}
@@ -835,7 +835,7 @@ def _diagrams_json(
         {b.element_id for b in boxes} | {d.scope_element_id for d in rows if d.scope_element_id}
         | {m.element_id for m in members if m.element_id}
     )
-    foreign = _foreign_refs(db, {e for e in wanted if e not in codes})
+    foreign = foreign_refs(db, {e for e in wanted if e not in codes})
     prime_record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, ids)
     prime_record_placements(db, DIAGRAM_ARTEFACT_TYPE, ids)
 

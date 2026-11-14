@@ -5,8 +5,10 @@ Report data layer for System Architecture: one project-level report, `collect_bo
 `REPORT_DEFINITIONS` that declare it to the registry. Result shapes, scope, rendering, routes, the MCP tool and the
 catalogue live in `app.services.report_framework`, so this module is a declaration and a query.
 
-Report: AR1 Boundary coverage — for each element that contains other elements, the connections that cross its
-boundary (*outer* connections), the inner connections that realise each, and the outer connections nothing realises.
+Reports, in key order: AR1 Boundary coverage (here: the connections that cross an element's boundary and the inner
+connections that realise each), AR2 Allocation coverage (`reports_allocation`), AR3 Interface list, AR4 Element
+breakdown and AR6 Unconnected elements (`reports_structure`), AR5 Diagram and AR7 State machines, which carry a
+drawing (`reports_drawing`).
 
 Design decisions (all Decided by: Agent unless stated):
 - **Neutral wording (Decided by: User).** A connection is "Covered" or "Not covered"; nothing is called a defect or a
@@ -33,6 +35,10 @@ from sqlalchemy.orm import Session
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureConnectionType, ArchitectureElement
 from app.modules.architecture.realisations import realisations_of
+from app.modules.architecture.report_support import chain_of, element_text
+from app.modules.architecture.reports_allocation import DEFINITION as ALLOCATION_COVERAGE
+from app.modules.architecture.reports_drawing import DEFINITIONS as DRAWING_REPORTS
+from app.modules.architecture.reports_structure import DEFINITIONS as STRUCTURE_REPORTS
 from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_ARTEFACT_TYPE,
@@ -45,24 +51,7 @@ from app.services.report_framework import ReportContext, ReportMetric, ReportRes
 MODULE_KEY = ARCHITECTURE_MODULE_KEY
 
 COLUMNS = ["Element", "Connection", "Name", "Type", "Direction", "Outside element", "Coverage", "Realised by", "Project"]
-_SHARED = "Shared element"
 _CLIP = 120
-
-
-def _chain(parents: dict[uuid.UUID, uuid.UUID | None], element_id: uuid.UUID) -> list[uuid.UUID]:
-    """The element and its ancestors, nearest first (cycle-safe)."""
-    seen: list[uuid.UUID] = []
-    current: uuid.UUID | None = element_id
-    while current is not None and current not in seen and len(seen) < 64:
-        seen.append(current)
-        current = parents.get(current)
-    return seen
-
-
-def _element_text(req: ReportContext, project_id: uuid.UUID, elements: dict[uuid.UUID, ArchitectureElement], element_id: uuid.UUID) -> str:
-    """An element as the report names it: its code and name, or "Shared element" for one the project does not own."""
-    element = elements.get(element_id)
-    return f"{req.code(element.unique_code, project_id)} {element.name}".strip() if element is not None else _SHARED
 
 
 def collect_boundary_coverage(db: Session, req: ReportContext) -> ReportResult:
@@ -107,7 +96,7 @@ def collect_boundary_coverage(db: Session, req: ReportContext) -> ReportResult:
 
         scopes: dict[uuid.UUID, list[tuple[ArchitectureConnection, uuid.UUID]]] = {}
         for c in connections:
-            source_chain, target_chain = _chain(parents, c.source_element_id), _chain(parents, c.target_element_id)
+            source_chain, target_chain = chain_of(parents, c.source_element_id), chain_of(parents, c.target_element_id)
             for crossed in set(source_chain) ^ set(target_chain):
                 if crossed in elements:
                     scopes.setdefault(crossed, []).append((c, c.source_element_id if crossed in source_chain else c.target_element_id))
@@ -126,8 +115,8 @@ def collect_boundary_coverage(db: Session, req: ReportContext) -> ReportResult:
                 outside = c.target_element_id if scope_is_source else c.source_element_id
                 by = realisers.get(c.id, [])
                 row = [
-                    _element_text(req, project.id, elements, scope_id), req.code(c.unique_code, project.id), c.name[:_CLIP],
-                    kind.name if kind else "", direction, _element_text(req, project.id, elements, outside),
+                    element_text(req, project.id, elements, scope_id), req.code(c.unique_code, project.id), c.name[:_CLIP],
+                    kind.name if kind else "", direction, element_text(req, project.id, elements, outside),
                     "Covered" if by else "Not covered", ", ".join(by), project.name,
                 ]
                 outer_rows.append(row)
@@ -171,6 +160,9 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         parts=(ReportPartDefinition("outer", "Outer connections"), ReportPartDefinition("not_covered", "Not covered")),
         record_types=(ELEMENT_ARTEFACT_TYPE, CONNECTION_ARTEFACT_TYPE),
     ),
+    ALLOCATION_COVERAGE,
+    *STRUCTURE_REPORTS,
+    *DRAWING_REPORTS,
 )
 
 # Project router for the module to include; there is no organisation-wide variant.
