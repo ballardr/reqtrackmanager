@@ -16,7 +16,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
-  ModelElement, Port, ArchitectureState, StateMachineDiagram, StateMachineFinding, StateMachineModel, StateTransition,
+  ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, StateMachineFinding, StateMachineModel, StateTransition,
 } from "./types";
 
 export const PROJECT_ID = "project-1";
@@ -317,6 +317,8 @@ export const SYMBOL_SVG = new Blob(
 
 /** What `mockArchitectureReads` answers with; each list defaults to the fixtures above or empty. */
 export interface ArchitectureReads {
+  /** The allocation view of a requirement or an element (nothing allocated or suggested by default, so no card). */
+  allocation?: AllocationView;
   elements?: ArchitectureElement[];
   shared?: ArchitectureElement[];
   connections?: ArchitectureConnection[];
@@ -373,6 +375,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.endsWith("/modules/architecture/connection-types")) return CONNECTION_TYPES;
     if (base.endsWith("/modules/architecture/symbols")) return SYMBOLS;
     if (base.includes("/modules/architecture/symbols/") && base.endsWith("/content")) return SYMBOL_SVG;
+    if (base.endsWith("/allocation")) return reads.allocation ?? buildAllocationView();
     if (base.endsWith("/modules/architecture/elements/shared")) return reads.shared ?? [];
     if (base.endsWith("/modules/architecture/elements")) return elements;
     if (base.includes("/modules/architecture/elements/")) return reads.element ?? elements[0];
@@ -416,4 +419,20 @@ export function captureDownloads(): string[] {
   const names: string[] = [];
   spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { if (this.download) names.push(this.download); });
   return names;
+}
+
+/** One requirement and one element for the allocation stories; `link_id` is set for an allocated pair. */
+export function buildAllocationPair(overrides: Partial<AllocationPair> & { code?: string; name?: string } = {}): AllocationPair {
+  const { code = "REQ-001", name = "Report latency", ...rest } = overrides;
+  return {
+    requirement: { id: `req-${code}`, unique_code: code, name, status: "draft" },
+    element: { id: "el-1", unique_code: "ELM-001", name: "Gateway", status: "active", project_id: PROJECT_ID, organization_id: null },
+    link_id: null,
+    ...rest,
+  };
+}
+
+/** An allocation view with nothing in it (the card draws nothing) unless a list is given. */
+export function buildAllocationView(overrides: Partial<AllocationView> = {}): AllocationView {
+  return { allocated: [], suggested: [], dismissed: [], can_manage: true, ...overrides };
 }

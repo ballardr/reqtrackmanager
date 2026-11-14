@@ -69,9 +69,9 @@ from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
+from app.modules.architecture import allocation_export, state_machine_export
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
-from app.modules.architecture import state_machine_export
 from app.modules.architecture.diagrams import effective_leader_kind
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
@@ -82,6 +82,7 @@ from app.modules.architecture.enums import (
     RecordStatus,
 )
 from app.modules.architecture.models import (
+    ArchitectureAllocationDismissal,
     ArchitectureCollection,
     ArchitectureCollectionMember,
     ArchitectureConnection,
@@ -759,6 +760,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         STATE_MACHINE_ARTEFACT_TYPE: {m.id: m.unique_code for m in machines},
         STATE_ARTEFACT_TYPE: {s.id: s.unique_code for s in states},
     })
+    data[allocation_export.DISMISSALS_KEY] = allocation_export.export_dismissals(
+        db, project, _emails(db, set(db.scalars(select(ArchitectureAllocationDismissal.dismissed_by).where(
+            ArchitectureAllocationDismissal.project_id == project.id, ArchitectureAllocationDismissal.dismissed_by.is_not(None),
+        ))))
+    )
     return data, assets
 
 
@@ -1380,5 +1386,8 @@ def import_project_data(
             STATE_MACHINE_ARTEFACT_TYPE: machine_ids, STATE_ARTEFACT_TYPE: state_ids,
         },
         current_user, users, warnings, context="System Architecture",
+    )
+    allocation_export.import_dismissals(
+        db, project, data.get(allocation_export.DISMISSALS_KEY, []), elements, current_user, users, warnings,
     )
     db.flush()

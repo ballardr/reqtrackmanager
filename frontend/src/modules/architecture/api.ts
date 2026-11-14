@@ -13,6 +13,9 @@ import { appendTagParams, type TagListFilters } from "../../api/tags";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type { ToggleStates } from "./diagramExport";
 import type {
+  AllocationAcceptResult,
+  AllocationCoverage,
+  AllocationView,
   ArchitectureCollection,
   ArchitectureConnection,
   ArchitectureDiagram,
@@ -380,3 +383,18 @@ function folderCalls(base: string, kind: FolderKind) {
 
 export const projectFolderApi = (projectId: string, kind: FolderKind) => folderCalls(projectBase(projectId), kind);
 export const orgFolderApi = (organizationId: string) => folderCalls(orgBase(organizationId), "element");
+
+/** The allocation endpoints of a project: a requirement's or an element's view, accepting, dismissing and restoring. */
+export const projectAllocationApi = (projectId: string) => {
+  const base = projectBase(projectId);
+  return {
+    forRequirement: (requirementId: string) => api.get<AllocationView>(`${base}/requirements/${requirementId}/allocation`),
+    forElement: (elementId: string) => api.get<AllocationView>(`${base}/elements/${elementId}/allocation`),
+    /** Turns suggested pairs into allocation links; a pair that cannot be accepted comes back in `failed`. */
+    accept: (pairs: { requirement_id: string; element_id: string }[]) =>
+      api.post<AllocationAcceptResult>(`${base}/allocation/accept`, { pairs }),
+    dismiss: (pair: { requirement_id: string; element_id: string }) => api.post<void>(`${base}/allocation/dismiss`, pair),
+    restore: (pair: { requirement_id: string; element_id: string }) => api.post<void>(`${base}/allocation/restore`, pair),
+    coverage: () => api.get<AllocationCoverage>(`${base}/allocation/coverage`),
+  };
+};

@@ -208,3 +208,31 @@ def test_a_bundle_note_is_cut_to_the_cap_and_a_bundle_without_the_field_gives_an
 
     assert _display_note({"display_note": "x" * (DISPLAY_NOTE_MAX + 50)}) == "x" * DISPLAY_NOTE_MAX
     assert _display_note({}) == "" and _display_note({"display_note": None}) == ""
+
+
+def test_dismissed_allocations_round_trip_and_a_dismissal_still_applies_after_the_import(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch dismissal bundle")
+    h = auth_headers(token)
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    requirement = client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "Req", "component_id": component_id, "category_id": category_id}, headers=h,
+    )
+    assert requirement.status_code == 201, requirement.text
+    element = make_element(client, token, project["id"], "Gateway")
+    placed = client.put(
+        f"/api/v1/projects/{project['id']}/artefacts/{ELEMENT}/{element['id']}/placements",
+        json={"placements": [{"component_id": component_id}]}, headers=h,
+    )
+    assert placed.status_code == 200, placed.text
+    pair = {"requirement_id": requirement.json()["id"], "element_id": element["id"]}
+    assert client.post(f"{project_base(project['id'])}/allocation/dismiss", json=pair, headers=h).status_code == 204
+
+    content, bundle = _export(client, token, project["id"])
+    exported = bundle["architecture_allocation_dismissals"]
+    assert [(e["requirement_code"], e["element_code"]) for e in exported] == [(requirement.json()["unique_code"], "ELM-001")]
+    imported = _import(client, token, org["id"], content, "Dismissal copy")["project"]
+    new_requirement = client.get(f"/api/v1/projects/{imported['id']}/requirements", headers=h).json()
+    new_requirement = (new_requirement["items"] if isinstance(new_requirement, dict) else new_requirement)[0]
+    view = client.get(f"{project_base(imported['id'])}/requirements/{new_requirement['id']}/allocation", headers=h).json()
+    assert view["suggested"] == [] and [p["element"]["unique_code"] for p in view["dismissed"]] == ["ELM-001"]

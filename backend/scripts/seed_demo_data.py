@@ -2476,7 +2476,9 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     through a collection, a diagram of the airframe with a boundary box for that link and a toggle that hides its sensors, and
     folders that organise the three lists (Hardware with Boards and Sensors, Software, Buses, Overviews, and the organisation's Shared services).
     The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
-    drone with a symbol uploaded to the project's own library. and a state machine diagram of the flight controller's modes (with a nested Flying state).
+    drone with a symbol uploaded to the project's own library. The flight controller is placed in the Avionics component, with
+    one requirement allocated to it and one suggestion dismissed. And a state machine diagram of the flight controller's modes
+    (with a nested Flying state).
     Returns the number of elements, connections, diagrams and state machine diagrams created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
@@ -2726,6 +2728,23 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         f"{base}/state-machine-diagrams/{machine_id}/status", headers=headers, timeout=30,
         json={"version": version, "status": "active"},
     ).raise_for_status()
+    # Allocation: the flight controller sits in the Avionics component, so its requirements are suggested for it; one
+    # suggestion is accepted (an "Allocated to" link) and another dismissed, so the requirement's Architecture card and the
+    # element's Requirements card show all three lists.
+    components = httpx.get(f"{BASE}/projects/{project_id}/components", headers=headers, timeout=30)
+    components.raise_for_status()
+    avionics = next((c for c in components.json() if c.get("prefix") == "AV"), None)
+    if avionics is not None:
+        place_record(headers, project_id, "architecture_element", fc["id"], [(avionics, None)])
+        suggested = httpx.get(f"{base}/elements/{fc['id']}/allocation", headers=headers, timeout=30)
+        suggested.raise_for_status()
+        pairs = [
+            {"requirement_id": p["requirement"]["id"], "element_id": fc["id"]} for p in suggested.json()["suggested"]
+        ]
+        if pairs:
+            httpx.post(f"{base}/allocation/accept", headers=headers, timeout=30, json={"pairs": pairs[:1]}).raise_for_status()
+        if len(pairs) > 1:
+            httpx.post(f"{base}/allocation/dismiss", headers=headers, timeout=30, json=pairs[1]).raise_for_status()
     return {"elements": 8, "connections": 6, "diagrams": 1, "state_machine_diagrams": 1}
 
 

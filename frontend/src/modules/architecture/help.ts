@@ -8,6 +8,7 @@
 
 /** Help text for the System Architecture module's form fields, passed as `help` to the shared field components. */
 export const ARCHITECTURE_HELP = {
+  allocationSuggested: "Suggested allocations come from placement: an element placed in a requirement's component is suggested for each requirement of that component that is not yet allocated to it. A suggestion becomes a link only when accepted.\nAccept: creates an \"Allocated to\" link.\nDismiss: hides the suggestion. It returns if the element leaves the component and is placed there again.",
   elementType: "What kind of part this is (a service, a board, a datastore). It sets how the element is drawn and which parts it is grouped with.",
   elementParent: "The element this one is a part of. Parents form a tree up to 12 levels deep; a diagram can open a parent to show its children.",
   elementDescription: "What the element is and does, for readers of its record, reports and search. It is not drawn on a diagram; use the display note for the line a diagram shows.",

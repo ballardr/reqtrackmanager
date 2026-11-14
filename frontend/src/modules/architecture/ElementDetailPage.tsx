@@ -40,6 +40,7 @@ import { useCreateElement } from "./useCreateElement";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ElementFormModal } from "./ElementFormModal";
 import { ElementSharingCard } from "./ElementSharingCard";
+import { AllocationPanel } from "./AllocationPanel";
 import { ElementStateMachinesCard } from "./ElementStateMachinesCard";
 import { ARCHITECTURE_HELP } from "./help";
 import { PortList } from "./PortList";
@@ -244,6 +245,8 @@ export function ElementDetailPage() {
             </ul>
           )}
         </DetailCard>
+
+        <AllocationPanel projectId={projectId} perspective={{ kind: "element", elementId: element.id }} />
 
         <ElementStateMachinesCard projectId={projectId} element={element} candidates={[...owned, ...shared]} readOnly={element.is_archived} />
 

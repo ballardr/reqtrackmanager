@@ -789,3 +789,51 @@ export interface TransitionPointsValues {
   source_point: AttachPoint | null;
   target_point: AttachPoint | null;
 }
+
+/** A requirement as the allocation panels name it. */
+export interface AllocationRequirement {
+  id: string;
+  unique_code: string;
+  name: string;
+  status: string;
+}
+
+/** An element as the allocation panels name it; `organization_id` is set for an organisation-owned one. */
+export interface AllocationElement {
+  id: string;
+  unique_code: string;
+  name: string;
+  status: ArchitectureRecordStatus;
+  project_id: string | null;
+  organization_id: string | null;
+}
+
+/** One requirement and one element; `link_id` is the allocation link when the pair is allocated. */
+export interface AllocationPair {
+  requirement: AllocationRequirement;
+  element: AllocationElement;
+  link_id: string | null;
+}
+
+/** What a requirement's Architecture panel or an element's Requirements card shows. */
+export interface AllocationView {
+  allocated: AllocationPair[];
+  suggested: AllocationPair[];
+  dismissed: AllocationPair[];
+  can_manage: boolean;
+}
+
+/** The result of accepting suggestions: how many became links and which pairs did not, with the reason. */
+export interface AllocationAcceptResult {
+  accepted: number;
+  failed: { requirement_id: string; element_id: string; reason: string }[];
+}
+
+/** The project's allocation counts. */
+export interface AllocationCoverage {
+  requirements: number;
+  allocated_requirements: number;
+  elements: number;
+  allocated_elements: number;
+  suggestions: number;
+}

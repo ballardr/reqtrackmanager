@@ -28,7 +28,9 @@ Registered contributions:
 - `on_org_created` seeds each new organisation's default types; the migration
   backfills existing organisations so a module switched on later has them.
 - `org_bundle_hooks` / `project_bundle_hooks` (`export.py`); the vocabularies are
-  template configuration and the records are template records.
+  template configuration and the records are template records; dismissed allocations (`allocation_export`) are excluded
+  from templates.
+- `overview_metrics` (`allocation_metrics`) and the `allocation_coverage` overview widget: the project's allocation coverage figures.
 - `frontend_manifest`: one navigation entry, "System Architecture", opening a page with the tabs Elements, Connections and
   Diagrams (shown while any of the three sub-components is on); the pages, the
   "Create new" element dialog and the settings panels are served by `frontend/src/modules/architecture/module.ts`.
@@ -47,8 +49,8 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import LinkFlow
 from app.models.project import Project
+from app.modules.architecture import allocation_export, records
 from app.modules.architecture import export as architecture_export
-from app.modules.architecture import records
 from app.modules.architecture._shared import (
     ARCHITECT_ROLE,
     ARCHITECTURE_ADMIN_ROLE,
@@ -58,6 +60,7 @@ from app.modules.architecture._shared import (
     ELEMENT_MANAGE_PERMISSION,
     STATE_MACHINE_MANAGE_PERMISSION,
 )
+from app.modules.architecture.allocation_metrics import OVERVIEW_METRICS
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
 from app.modules.architecture.comments import RECORD_COMMENTS
 from app.modules.architecture.models import (
@@ -110,6 +113,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
+    OverviewWidgetType,
     PerfDatasetGenerator,
     PrincipalReference,
 )
@@ -267,6 +271,17 @@ MODULE_DEFINITION = ModuleDefinition(
             key=STATE_MACHINE_SUBCOMPONENT_KEY, name="State machine diagrams", default_enabled=True,
         ),
     ),
+    overview_metrics=OVERVIEW_METRICS,
+    overview_widgets={
+        "allocation_coverage": OverviewWidgetType(
+            label="Allocation coverage",
+            description=(
+                "The share of requirements allocated to an element, the requirements not allocated and the suggested "
+                "allocations awaiting a decision."
+            ),
+            width=12, height=2, in_default_layout=True,
+        ),
+    },
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=architecture_export.export_org_data, import_=architecture_export.import_org_data,
         export_files=architecture_export.export_org_files, import_files=architecture_export.import_org_files,
@@ -276,6 +291,7 @@ MODULE_DEFINITION = ModuleDefinition(
         template_configuration_keys=architecture_export.PROJECT_KEYS,
         template_record_keys=architecture_export.RECORD_KEYS,
         template_reset=architecture_export.reset_for_template,
+        template_excluded={allocation_export.DISMISSALS_KEY: allocation_export.TEMPLATE_REASON},
     ),
     roles=(
         ModuleRoleDefinition(

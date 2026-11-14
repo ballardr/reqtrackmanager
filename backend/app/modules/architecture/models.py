@@ -21,6 +21,7 @@ The two vocabularies every architecture record is typed by, and the records:
   model; it holds no truth of its own.
 - `ArchitectureStateMachineDiagram`, `ArchitectureState` and `ArchitectureTransition` — the behaviour of one element as
   states (with a place on the drawing) and the labelled arrows between them.
+- `ArchitectureAllocationDismissal` — a requirement's suggested allocation to an element that a person dismissed.
 
 Each is one table whose owner is a project *or* an organisation (a CHECK keeps
 exactly one). An organisation row is a default every project of the organisation
@@ -927,3 +928,36 @@ class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class ArchitectureAllocationDismissal(UUIDPKMixin, TimestampMixin, Base):
+    """A person's decision that an element is not a suggested allocation for a requirement.
+
+    A suggestion is computed from an element's place in the requirement's component (`allocation`); this row only
+    hides one suggestion. It applies while the element has stayed in that component since `created_at`, so removing the
+    element from the component and placing it there again suggests it afresh (`allocation.dismissal_applies`).
+
+    Attributes:
+        project_id: The owning project (the requirement's and the element's).
+        requirement_id: The requirement the suggestion was for; deleting it removes the row.
+        element_id: The element suggested; deleting it removes the row.
+        dismissed_by: The person who dismissed it, kept empty if they are later removed.
+    """
+
+    __tablename__ = "architecture_allocation_dismissals"
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "element_id", name="uq_architecture_allocation_dismissals_pair"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    dismissed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

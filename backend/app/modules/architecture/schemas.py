@@ -1069,3 +1069,79 @@ class StateMachineModel(BaseModel):
     states: list[StateOut]
     transitions: list[TransitionOut]
     findings: list[FindingOut]
+
+
+class AllocationRequirementOut(BaseModel):
+    """A requirement as the allocation panels name it."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    status: str
+
+
+class AllocationElementOut(BaseModel):
+    """An element as the allocation panels name it; `organization_id` is set for an organisation-owned one."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    status: str
+    project_id: UUID | None
+    organization_id: UUID | None
+
+
+class AllocationPairOut(BaseModel):
+    """One requirement and one element; `link_id` is the allocation link when the pair is allocated."""
+
+    requirement: AllocationRequirementOut
+    element: AllocationElementOut
+    link_id: UUID | None = None
+
+
+class AllocationViewOut(BaseModel):
+    """What a requirement's Architecture panel or an element's Requirements tab shows: the allocations, the
+    suggestions awaiting a decision, the dismissed suggestions, and whether the caller may act on them."""
+
+    allocated: list[AllocationPairOut]
+    suggested: list[AllocationPairOut]
+    dismissed: list[AllocationPairOut]
+    can_manage: bool
+
+
+class AllocationPairIn(BaseModel):
+    """A requirement and an element of the request project."""
+
+    requirement_id: UUID
+    element_id: UUID
+
+
+class AllocationAcceptIn(BaseModel):
+    """The suggested pairs to turn into allocation links."""
+
+    pairs: list[AllocationPairIn] = Field(min_length=1, max_length=500)
+
+
+class AllocationFailureOut(BaseModel):
+    """A pair that was not accepted and why."""
+
+    requirement_id: UUID
+    element_id: UUID
+    reason: str
+
+
+class AllocationAcceptOut(BaseModel):
+    """How many pairs became links, and the pairs that did not."""
+
+    accepted: int
+    failed: list[AllocationFailureOut]
+
+
+class AllocationCoverageOut(BaseModel):
+    """The project's allocation counts (live records only)."""
+
+    requirements: int
+    allocated_requirements: int
+    elements: int
+    allocated_elements: int
+    suggestions: int

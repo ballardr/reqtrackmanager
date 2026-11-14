@@ -195,6 +195,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'System Architecture module',
           items: [
+            'modules/system-architecture-module/allocation',
             'modules/system-architecture-module/state-machine-diagrams',
           ],
         },

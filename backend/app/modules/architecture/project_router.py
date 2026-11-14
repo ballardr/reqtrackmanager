@@ -23,6 +23,7 @@ from app.database import get_db
 from app.models.user import User
 from app.modules.architecture import _shared as sh
 from app.modules.architecture import symbol_routes, vocabulary_routes
+from app.modules.architecture.allocation_routes import add_allocation_routes
 from app.modules.architecture.collection_routes import add_project_collection_routes
 from app.modules.architecture.comments import add_comment_routes
 from app.modules.architecture.diagram_routes import add_diagram_routes
@@ -90,6 +91,7 @@ add_record_routes(router)
 add_diagram_routes(router)
 add_state_machine_routes(router)
 add_comment_routes(router)
+add_allocation_routes(router)
 router.include_router(REPORT_ROUTERS.project)
 add_project_collection_routes(router)
 add_project_folder_routes(router)

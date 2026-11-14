@@ -1,6 +1,8 @@
 import { createElement } from "react";
 
 import type { TierAModuleDefinition } from "../types";
+import { AllocationPanel } from "./AllocationPanel";
+import { AllocationCoverageTiles } from "./AllocationCoverageTiles";
 import { ArchitectureTypesPanel } from "./ArchitectureTypesPanel";
 import { ConnectionDetailPage } from "./ConnectionDetailPage";
 import { CreateDiagramDialog } from "./CreateDiagramDialog";
@@ -28,6 +30,9 @@ import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./typ
  *
  * `routes`: the System Architecture page (tabs Elements, Connections, Diagrams), the earlier list paths redirecting to its
  * tabs, the detail pages (the diagram's is the editor; a state redirects to its state machine diagram), and the Sharing page (collections).
+ * `overviewWidgets`: the allocation coverage tiles of the project overview.
+ * `requirementDetailSections`: the "Architecture" allocation card on a requirement (`AllocationPanel`), shown only when it has
+ * something to list.
  * `linkedRecordCreators`: "Create new" element or diagram in another record's Links panel. A connection needs two elements, so it
  * is created from the Connections list or an element's page.
  * `projectAdminSections` / `orgAdminSections`: the two type vocabularies and the symbol library at each level, and the
@@ -39,6 +44,19 @@ const ARCHITECTURE_ADMIN_GROUP = { key: "architecture", label: "System Architect
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "architecture",
+  overviewWidgets: [
+    {
+      key: "allocation_coverage",
+      render: ({ projectId }) => createElement(AllocationCoverageTiles, { projectId }),
+    },
+  ],
+  requirementDetailSections: [
+    {
+      key: "allocation",
+      render: ({ projectId, requirementId, refreshToken }) =>
+        createElement(AllocationPanel, { projectId, perspective: { kind: "requirement", requirementId }, refreshToken }),
+    },
+  ],
   linkedRecordCreators: {
     architecture_element: { label: "Element", render: (props) => createElement(CreateElementDialog, props) },
     architecture_diagram: { label: "Diagram", render: (props) => createElement(CreateDiagramDialog, props) },
