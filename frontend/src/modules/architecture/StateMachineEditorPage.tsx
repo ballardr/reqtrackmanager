@@ -130,7 +130,6 @@ export function StateMachineEditorPage() {
   // A link to a state (`?state=`, from a search result or the States list) opens the diagram with that state selected.
   const [searchParams] = useSearchParams();
   const linkedState = searchParams.get("state");
-  const linkedPin = searchParams.get("pin");
   const selectedLinked = useRef(false);
   useEffect(() => {
     if (linkedState && model && !selectedLinked.current && model.states.some((s) => s.id === linkedState)) {
@@ -174,16 +173,7 @@ export function StateMachineEditorPage() {
   );
   const commentLayer = useCanvasComments({
     projectId, artefactType: "architecture_state_machine_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick,
-    initialPin: linkedPin,
   });
-  const linkedPinThread = commentLayer.comments.thread;
-  const focusedLinkedPin = useRef(false);
-  useEffect(() => {
-    if (linkedPin && linkedPinThread && !focusedLinkedPin.current) {
-      focusedLinkedPin.current = true;
-      commentLayer.focusPin(linkedPin);
-    }
-  }, [linkedPin, linkedPinThread, commentLayer]);
 
   const diagram = model?.diagram ?? null;
   const archive = useArchiveAction({

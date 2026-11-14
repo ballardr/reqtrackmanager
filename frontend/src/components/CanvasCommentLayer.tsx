@@ -10,6 +10,9 @@
  *   all of them on request.
  * - In comment mode turn a canvas click into a composer at that spot (anchored to the box or line clicked, else free) and a
  *   dropped pin into a move; open a thread from its marker; centre the canvas on a thread (`focusPin`).
+ * - Open the thread a link names (`?pin=`) and only then: a canvas never starts with a thread open. The link is handled once,
+ *   after the canvas has fitted the drawing, and every way of closing the thread (Escape, a click outside, its marker or its
+ *   close button) removes `pin` from the address (a replace, so Back does not reopen it and a reload stays closed).
  * - Keep comments out of the layout: they are saved at once, so they never mark a drawing as having unsaved changes.
  *
  * Design decisions:
@@ -19,9 +22,11 @@
  * - A pin dropped by a drag keeps its new place at once while the change is stored, so it does not jump back.
  * - Comments are not live: the thread is read again when the window regains focus and after each change.
  *
- * Dependencies: `api/recordComments`, `hooks/useRecordComments`, `GraphCanvas` types, `CommentMarker`, `CommentThreadView`.
+ * Dependencies: `api/recordComments`, `hooks/useRecordComments`, `GraphCanvas` types, `CommentMarker`, `CommentThreadView`,
+ * react-router (the `pin` search parameter).
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import type { PinAnchorKind, PlaceInput, RecordComment, RecordCommentPin, RecordCommentsApi } from "../api/recordComments";
 import { useStrings } from "../context/TerminologyContext";
@@ -47,9 +52,10 @@ export interface CanvasCommentsOptions {
   placeOf: (position: { x: number; y: number }, anchor: GraphPointAnchor) => PlaceInput;
   /** The API to use; defaults to the live one (a story injects its own). */
   client?: RecordCommentsApi;
-  /** A thread to open as soon as the comments load (from a link to it). */
-  initialPin?: string | null;
 }
+
+/** The search parameter naming the thread a link opens. */
+const PIN_PARAM = "pin";
 
 /** What `useCanvasComments` returns. */
 export interface CanvasComments {
@@ -70,7 +76,7 @@ export interface CanvasComments {
   /** The ordinary comment waiting for a click to be placed, or null. */
   pinning: string | null;
   /** The props to spread onto the `GraphCanvas`. */
-  canvasProps: Pick<GraphCanvasProps, "mode" | "onCanvasPoint" | "pins" | "renderPin" | "onPinMove" | "centerOn">;
+  canvasProps: Pick<GraphCanvasProps, "mode" | "onCanvasPoint" | "onBackgroundClick" | "pins" | "renderPin" | "onPinMove" | "centerOn">;
 }
 
 /**
@@ -78,20 +84,26 @@ export interface CanvasComments {
  * @returns The comment state, its switches and the props for the canvas.
  */
 export function useCanvasComments(options: CanvasCommentsOptions): CanvasComments {
-  const { projectId, artefactType, recordId, anchorOf, placeOf, client, initialPin = null } = options;
+  const { projectId, artefactType, recordId, anchorOf, placeOf, client } = options;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedPin = searchParams.get(PIN_PARAM);
   const text = useStrings().canvasComments;
   const comments = useRecordComments(projectId, artefactType, recordId, client);
   const [commentMode, setCommentMode] = useState(false);
   const [showComments, setShowComments] = useState(true);
   const [showResolved, setShowResolved] = useState(true);
-  const [selectedPin, setSelectedPin] = useState<string | null>(initialPin);
+  const [chosenPin, setSelectedPinState] = useState<string | null>(null);
   const [pending, setPending] = useState<PlaceInput | null>(null);
   const [pinning, setPinning] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, Pick<GraphCanvasPin, "x" | "y" | "anchor">>>({});
-  const [centerOn, setCenterOn] = useState<{ x: number; y: number; key: number } | undefined>(undefined);
+  const [centered, setCenterOn] = useState<{ x: number; y: number; key: number } | undefined>(undefined);
   const closedAt = useRef(0);
 
   const thread = comments.thread;
+  // The thread a link names is open from the moment the comments load, until anything closes or replaces it (which drops
+  // `pin` from the address); it is derived, not stored, so a canvas with no link never has a thread open.
+  const linked = linkedPin !== null ? thread?.pins.find((p) => p.id === linkedPin) : undefined;
+  const selectedPin = chosenPin ?? linked?.id ?? null;
   const byPin = useMemo(() => {
     const found = new Map<string, RecordComment[]>();
     for (const c of thread?.comments ?? []) if (c.pin_id) found.set(c.pin_id, [...(found.get(c.pin_id) ?? []), c]);
@@ -110,11 +122,27 @@ export function useCanvasComments(options: CanvasCommentsOptions): CanvasComment
     [anchorOf],
   );
 
+  /** Selects a thread (or none) and drops `pin` from the address when it no longer names the selected thread. */
+  const setSelectedPin = useCallback(
+    (pinId: string | null) => {
+      setSelectedPinState(pinId);
+      if (searchParams.get(PIN_PARAM) === null || searchParams.get(PIN_PARAM) === pinId) return;
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete(PIN_PARAM);
+        return next;
+      }, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
   const closeAll = useCallback(() => {
     closedAt.current = Date.now();
     setSelectedPin(null);
     setPending(null);
-  }, []);
+  }, [setSelectedPin]);
+
+  const centerOn = centered ?? (linked ? { x: linked.x, y: linked.y, key: 0 } : undefined);
 
   const pins = useMemo<GraphCanvasPin[]>(() => {
     const shown: GraphCanvasPin[] = [];
@@ -172,7 +200,7 @@ export function useCanvasComments(options: CanvasCommentsOptions): CanvasComment
         </CommentMarker>
       );
     },
-    [text, comments, pending, thread, byPin, selectedPin, closeAll],
+    [text, comments, pending, thread, byPin, selectedPin, closeAll, setSelectedPin],
   );
 
   const onCanvasPoint = useCallback(
@@ -217,8 +245,18 @@ export function useCanvasComments(options: CanvasCommentsOptions): CanvasComment
       setSelectedPin(pinId);
       setCenterOn((c) => ({ x: pin.x, y: pin.y, key: (c?.key ?? 0) + 1 }));
     },
-    [thread],
+    [thread, setSelectedPin],
   );
+
+  // A link naming a thread that is gone is dropped from the address.
+  useEffect(() => {
+    if (linkedPin === null || thread === null || thread.pins.some((p) => p.id === linkedPin)) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete(PIN_PARAM);
+      return next;
+    }, { replace: true });
+  }, [linkedPin, thread, setSearchParams]);
 
   return {
     comments, commentMode, setCommentMode: (on) => { setCommentMode(on); if (!on) setPinning(null); }, showComments, setShowComments, showResolved, setShowResolved, focusPin,
@@ -231,6 +269,6 @@ export function useCanvasComments(options: CanvasCommentsOptions): CanvasComment
       setPinning(commentId);
       setCommentMode(true);
     },
-    canvasProps: { mode: commentMode ? "comment" : "select", onCanvasPoint: commentMode ? onCanvasPoint : undefined, pins, renderPin, onPinMove, centerOn },
+    canvasProps: { mode: commentMode ? "comment" : "select", onCanvasPoint: commentMode ? onCanvasPoint : undefined, onBackgroundClick: closeAll, pins, renderPin, onPinMove, centerOn },
   };
 }

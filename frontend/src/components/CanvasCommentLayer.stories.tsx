@@ -141,3 +141,68 @@ export const DeleteIsConfirmedInsideThePopover: Story = {
     expect(thread.getByText("Second note.")).toBeInTheDocument();
   },
 };
+
+const LINKED = fakeRecordComments({
+  pins: [buildPin({ id: "p-1", anchor_kind: "node", anchor_key: "gateway", comment_count: 1 })],
+  comments: [buildComment({ id: "c-1", pin_id: "p-1", body: "Missing the retry path." })],
+});
+
+/** A canvas never starts with a thread open: a record that has threads shows only their markers. */
+export const NoThreadOpensWithoutALink: Story = {
+  args: { client: LINKED },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("button", { name: /Comment thread by Alex Reviewer/ });
+    expect(within(document.body).queryByRole("dialog", { name: "Comment thread" })).toBeNull();
+    expect(canvas.getByLabelText("Address search")).toBeEmptyDOMElement();
+  },
+};
+
+/** A link naming a thread opens it, and Escape closes it and drops the link from the address. */
+export const ALinkedThreadClosesWithEscape: Story = {
+  args: { client: LINKED, initialPath: "/?pin=p-1" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const thread = await within(document.body).findByRole("dialog", { name: "Comment thread" });
+    expect(within(thread).getByText("Missing the retry path.")).toBeInTheDocument();
+    expect(canvas.getByLabelText("Address search")).toHaveTextContent("?pin=p-1");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Comment thread" })).toBeNull());
+    expect(canvas.getByLabelText("Address search")).toBeEmptyDOMElement();
+  },
+};
+
+/** A click on empty canvas closes a linked thread and drops the link from the address. */
+export const ALinkedThreadClosesWithAClickOnEmptyCanvas: Story = {
+  args: { client: LINKED, initialPath: "/?pin=p-1" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await within(document.body).findByRole("dialog", { name: "Comment thread" });
+    await userEvent.click(canvasElement.querySelector(".react-flow__pane") as HTMLElement);
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Comment thread" })).toBeNull());
+    expect(canvas.getByLabelText("Address search")).toBeEmptyDOMElement();
+  },
+};
+
+/** The thread's own marker closes a linked thread and drops the link from the address. */
+export const ALinkedThreadClosesWithItsMarker: Story = {
+  args: { client: LINKED, initialPath: "/?pin=p-1" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await within(document.body).findByRole("dialog", { name: "Comment thread" });
+    await userEvent.click(await canvas.findByRole("button", { name: /Comment thread by Alex Reviewer/ }));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Comment thread" })).toBeNull());
+    expect(canvas.getByLabelText("Address search")).toBeEmptyDOMElement();
+  },
+};
+
+/** A link naming a thread that no longer exists opens nothing and is dropped from the address. */
+export const AStaleLinkIsDropped: Story = {
+  args: { client: LINKED, initialPath: "/?pin=gone" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("button", { name: /Comment thread by Alex Reviewer/ });
+    await waitFor(() => expect(canvas.getByLabelText("Address search")).toBeEmptyDOMElement());
+    expect(within(document.body).queryByRole("dialog", { name: "Comment thread" })).toBeNull();
+  },
+};

@@ -212,6 +212,11 @@ export interface GraphCanvasProps {
   /** Called when empty canvas is clicked (not in read-only mode), with the position in canvas units, before the selection is cleared. */
   onCanvasClick?: (position: { x: number; y: number }) => void;
   /**
+   * Called when empty canvas is clicked outside comment mode, in read-only mode too. The canvas swallows the press itself
+   * (panning), so a pop-over that closes on a click outside never sees it: a consumer with one open closes it from here.
+   */
+  onBackgroundClick?: () => void;
+  /**
    * `select` (default) or `comment`. In comment mode nothing is moved, connected, selected or resized: a click on empty
    * canvas, a node or a line calls `onCanvasPoint` instead, and the canvas shows a crosshair.
    */

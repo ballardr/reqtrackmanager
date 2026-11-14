@@ -24,8 +24,8 @@
  * `diagramLines`, so an added box or a flipped switch redraws at once; the server's resolved view (`GET .../view`) gives
  * the boxes, notes and switches on load and stays the authority for the SVG and documents.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { CommentModeToggle } from "../../components/CommentModeToggle";
@@ -308,26 +308,16 @@ export function DiagramEditorPage() {
   const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds), [layout, resolved, drawnEdgeIds]);
 
   // Comments are stored at once and apart from the layout, so they never make the drawing look unsaved; a link to a thread
-  // (`?pin=`) opens the Drawing with that thread selected and centred.
+  // (`?pin=`) is opened by `useCanvasComments`, after the drawing is fitted.
   const { user: currentUser } = useAuth();
-  const [searchParams] = useSearchParams();
-  const linkedPin = searchParams.get("pin");
   const anchorOfPin = useCallback((place: Parameters<typeof pinAnchorOf>[0]) => pinAnchorOf(place, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)), [layout.boxes, resolved.edges, drawnEdgeIds]);
   const placeOfClick = useCallback(
     (position: { x: number; y: number }, anchor: Parameters<typeof pinPlaceOf>[1]) => pinPlaceOf(position, anchor, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)),
     [layout.boxes, resolved.edges, drawnEdgeIds],
   );
   const commentLayer = useCanvasComments({
-    projectId, artefactType: "architecture_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick, initialPin: linkedPin,
+    projectId, artefactType: "architecture_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick,
   });
-  const linkedPinThread = commentLayer.comments.thread;
-  const focusedLinkedPin = useRef(false);
-  useEffect(() => {
-    if (linkedPin && linkedPinThread && !focusedLinkedPin.current) {
-      focusedLinkedPin.current = true;
-      commentLayer.focusPin(linkedPin);
-    }
-  }, [linkedPin, linkedPinThread, commentLayer]);
 
   const archive = useArchiveAction({
     noun: "Diagram",

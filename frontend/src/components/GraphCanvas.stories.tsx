@@ -735,6 +735,19 @@ export const AClickOnEmptyCanvasReportsItsPosition: Story = {
   },
 };
 
+/** A click on empty canvas is reported as a background click in read-only mode too, and a click on a node is not. */
+export const AClickOnEmptyCanvasIsABackgroundClick: Story = {
+  args: { onBackgroundClick: fn() },
+  render: (args) => <GraphCanvas nodes={LEADER_NODES} edges={[]} ariaLabel="Background" showViewToggle={false} readOnly onBackgroundClick={args.onBackgroundClick} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByLabelText("Gateway, node"));
+    expect(args.onBackgroundClick).not.toHaveBeenCalled();
+    await userEvent.click(canvasElement.querySelector(".react-flow__pane") as HTMLElement);
+    await waitFor(() => expect(args.onBackgroundClick).toHaveBeenCalledTimes(1));
+  },
+};
+
 /** Comment mode reports a click on empty canvas, on a node and on a line, and selects and moves nothing. */
 export const CommentModeReportsWhatAClickLandedOn: Story = {
   args: { onCanvasPoint: fn(), onSelect: fn() },

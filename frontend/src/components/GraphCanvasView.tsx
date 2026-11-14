@@ -381,6 +381,7 @@ export function GraphCanvasView({
   onNodeOpen,
   onLeaderTargetChange,
   onCanvasClick,
+  onBackgroundClick,
   mode = "select",
   onCanvasPoint,
   pins = [],
@@ -768,14 +769,27 @@ export function GraphCanvasView({
   const allNodes = useMemo<FlowNode[]>(() => [...flowNodes, ...flowLeaders.ends], [flowNodes, flowLeaders]);
   const allEdges = useMemo<Edge[]>(() => [...flowEdges, ...flowLeaders.lines], [flowEdges, flowLeaders]);
 
-  // A change of `centerOn.key` moves the view to the position, keeping the zoom unless it is too small to read.
+  // A change of `centerOn.key` moves the view to the position, keeping the zoom unless it is too small to read. The first move
+  // fits the drawing explicitly before moving (the canvas's own fit on load can land after it and undo it), so the view is
+  // always fitted first and then moved; the fit is never repeated, so a later move keeps the person's own zoom.
+  const [initialised, setInitialised] = useState(false);
+  const fittedForCentre = useRef(false);
   const centerKey = centerOn?.key;
   const latestCenter = useLatest(centerOn);
   useEffect(() => {
     const target = latestCenter.current;
-    if (centerKey === undefined || target === undefined || !flow.current) return;
-    void flow.current.setCenter(target.x, target.y, { zoom: Math.max(flow.current.getZoom(), 0.75), duration: 200 });
-  }, [centerKey, latestCenter]);
+    const instance = flow.current;
+    if (!initialised || centerKey === undefined || target === undefined || !instance) return undefined;
+    const move = () => {
+      void instance.setCenter(target.x, target.y, { zoom: Math.max(instance.getZoom(), 0.75), duration: 200 });
+    };
+    if (fittedForCentre.current) move();
+    else {
+      fittedForCentre.current = true;
+      void instance.fitView({ maxZoom: fitMaxZoom, duration: 0 }).then(move);
+    }
+    return undefined;
+  }, [centerKey, latestCenter, initialised, fitMaxZoom]);
 
   const keyResize = resizable && !readOnly && onNodesResize !== undefined;
   const keyDelete = !readOnly && onDelete !== undefined;
@@ -847,7 +861,10 @@ export function GraphCanvasView({
           if (!flow.current) return;
           const at = flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY });
           if (commenting) onCanvasPoint?.(at, { kind: "none" });
-          else if (!readOnly) onCanvasClick?.(at);
+          else {
+            onBackgroundClick?.();
+            if (!readOnly) onCanvasClick?.(at);
+          }
         }}
         onNodeClick={(event, node) => {
           if (!commenting || !flow.current || node.type !== "graph") return;
@@ -859,7 +876,7 @@ export function GraphCanvasView({
         }}
         edgesReconnectable={!readOnly && !commenting && (onEdgeAnchorChange !== undefined || onLeaderTargetChange !== undefined)}
         onNodeDoubleClick={(_event, node) => onNodeOpen?.(node.id)}
-        onInit={(instance) => { flow.current = instance; }}
+        onInit={(instance) => { flow.current = instance; setInitialised(true); }}
         nodesDraggable={!readOnly && !commenting}
         nodesConnectable={!readOnly && !commenting}
         nodesFocusable
