@@ -25,15 +25,17 @@ import { TagInput } from "./TagInput";
  * @param value The tag names chosen so far; the form owns them.
  * @param onChange Called with the new list.
  * @param api Injectable calls (stories pass a fake).
+ * @param components False leaves out the component picker, for a type that cannot be placed in the component tree.
  */
 export function TagField({
-  projectId, artefactType, value, onChange, api = recordTagsApi,
+  projectId, artefactType, value, onChange, api = recordTagsApi, components = true,
 }: {
   projectId: string;
   artefactType: string;
   value: string[];
   onChange: (names: string[]) => void;
   api?: RecordTagsApi;
+  components?: boolean;
 }) {
   const strings = useStrings();
   const [data, setData] = useState<RecordTags | null>(null);
@@ -57,7 +59,7 @@ export function TagField({
           <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.tags.create.hint}</span>
         </div>
       )}
-      <ComponentField projectId={projectId} artefactType={artefactType} />
+      {components && <ComponentField projectId={projectId} artefactType={artefactType} />}
     </>
   );
 }

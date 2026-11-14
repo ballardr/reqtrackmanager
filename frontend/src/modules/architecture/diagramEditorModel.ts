@@ -27,6 +27,9 @@ import type {
   DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, NoteLeader, NoteTone, NoteValues, PlacementValues,
 } from "./types";
 import { isOutOfUse } from "./types";
+import {
+  commitStep, isDirtyBy, redoStep, refreshPresentOf, startHistoryOf, undoStep, type History as HistoryOf,
+} from "../../utils/editHistory";
 
 export type EditorTheme = "light" | "dark";
 
@@ -38,8 +41,6 @@ export const NOTE_WIDTH = 160;
 export const NOTE_HEIGHT = 60;
 /** Gap left between boxes when new ones are placed in a grid. */
 const GRID_GAP = 40;
-/** How many steps of undo are kept. */
-export const HISTORY_LIMIT = 100;
 /** Prefix of a note's canvas node id, so a node is told from an element by its id alone. */
 export const NOTE_NODE_PREFIX = "note:";
 /** Prefix of a boundary box's canvas node id (the rest is its outer connection's id). */
@@ -448,41 +449,25 @@ export function nextFreePosition(layout: EditorLayout, index = 0, columns = 4): 
 // --- History ---
 
 /** An undo/redo history over layouts; `saved` is the layout last stored on the server. */
-export interface History {
-  past: EditorLayout[];
-  present: EditorLayout;
-  future: EditorLayout[];
-  saved: EditorLayout;
-}
+export type History = HistoryOf<EditorLayout>;
 
 /** @param layout The layout just loaded (it is also the saved baseline). */
 export function startHistory(layout: EditorLayout): History {
-  return { past: [], present: layout, future: [], saved: layout };
+  return startHistoryOf(layout);
 }
 
 /** Records `next` as the new present, clearing redo; an edit that changes nothing adds no step. */
 export function commit(history: History, next: EditorLayout): History {
-  if (signature(next) === signature(history.present)) return history;
-  return {
-    ...history, past: [...history.past, history.present].slice(-HISTORY_LIMIT), present: next, future: [],
-  };
+  return commitStep(history, next, signature);
 }
 
-export function undo(history: History): History {
-  const previous = history.past[history.past.length - 1];
-  if (!previous) return history;
-  return { ...history, past: history.past.slice(0, -1), present: previous, future: [history.present, ...history.future] };
-}
+export const undo = (history: History): History => undoStep(history);
 
-export function redo(history: History): History {
-  const [next, ...rest] = history.future;
-  if (!next) return history;
-  return { ...history, past: [...history.past, history.present], present: next, future: rest };
-}
+export const redo = (history: History): History => redoStep(history);
 
 /** Replaces the present without a history step (a merged view's display data is not an edit). */
 export function refreshPresent(history: History, present: EditorLayout): History {
-  return { ...history, present };
+  return refreshPresentOf(history, present);
 }
 
 /** Marks the present as stored on the server (after a successful save). */
@@ -492,7 +477,7 @@ export function markSaved(history: History, saved: EditorLayout): History {
 
 /** True when the present differs from what the server holds. */
 export function isDirty(history: History): boolean {
-  return signature(history.present) !== signature(history.saved);
+  return isDirtyBy(history, signature);
 }
 
 // --- Canvas mapping ---

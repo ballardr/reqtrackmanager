@@ -40,6 +40,7 @@ import { useCreateElement } from "./useCreateElement";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ElementFormModal } from "./ElementFormModal";
 import { ElementSharingCard } from "./ElementSharingCard";
+import { ElementStateMachinesCard } from "./ElementStateMachinesCard";
 import { ARCHITECTURE_HELP } from "./help";
 import { PortList } from "./PortList";
 import { SymbolImage } from "./SymbolImage";
@@ -243,6 +244,8 @@ export function ElementDetailPage() {
             </ul>
           )}
         </DetailCard>
+
+        <ElementStateMachinesCard projectId={projectId} element={element} candidates={[...owned, ...shared]} readOnly={element.is_archived} />
 
         <ElementSharingCard projectId={projectId} element={element} />
 

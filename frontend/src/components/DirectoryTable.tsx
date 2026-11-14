@@ -52,7 +52,7 @@ import { Link } from "react-router-dom";
 
 import { placementsText, type RecordPlacementsApi } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";
-import { usePagePlacements } from "../hooks/usePagePlacements";
+import { usePagePlacementsByType } from "../hooks/usePagePlacements";
 
 import { InlineCheckbox } from "./FormFields";
 import { LoadMoreButton } from "./LoadMoreButton";
@@ -90,6 +90,20 @@ export interface DirectoryColumn<Row> {
    * it has no effect on a `sortable` column. */
   width?: string;
   render: (row: Row) => ReactNode;
+}
+
+/** The row ids on the page grouped by record type, for the Components column's read (one type unless the list mixes several). */
+function placementIdsByType<Row>(
+  rows: Row[],
+  placements: { artefactType: string | ((row: Row) => string); rowId: (row: Row) => string } | undefined,
+): Record<string, string[]> {
+  const found: Record<string, string[]> = {};
+  if (!placements) return found;
+  for (const row of rows) {
+    const type = typeof placements.artefactType === "string" ? placements.artefactType : placements.artefactType(row);
+    (found[type] ??= []).push(placements.rowId(row));
+  }
+  return found;
 }
 
 /**
@@ -152,12 +166,18 @@ export function DirectoryTable<Row>({
   /** Adds a Components column showing where each row's record sits in the project's component tree, read for the
    * whole page at once. The column appears only when a row on the page is placed somewhere, so a project that does
    * not use components sees no new column. `api` is injectable for stories. */
-  placements?: { projectId: string | undefined; artefactType: string; rowId: (row: Row) => string; api?: RecordPlacementsApi };
+  placements?: {
+    projectId: string | undefined;
+    /** The record type of the rows, or (a list of several types) a function giving each row's type. */
+    artefactType: string | ((row: Row) => string);
+    rowId: (row: Row) => string;
+    api?: RecordPlacementsApi;
+  };
   /** Adds a leading column of checkboxes for a bulk action; the caller owns the selected keys and the action itself. */
   selection?: DirectoryTableSelection<Row>;
 }): JSX.Element {
   const strings = useStrings();
-  const placed = usePagePlacements(placements?.projectId, placements?.artefactType, rows.map((r) => placements?.rowId(r) ?? ""), placements?.api);
+  const placed = usePagePlacementsByType(placements?.projectId, placementIdsByType(rows, placements), placements?.api);
   const showPlacements = placements !== undefined && rows.some((r) => (placed[placements.rowId(r)] ?? []).length > 0);
   const selectAll = useRef<HTMLInputElement>(null);
   const choosable = selection ? rows.filter((r) => selection.selectable?.(r) ?? true) : [];

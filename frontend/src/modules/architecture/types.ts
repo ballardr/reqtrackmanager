@@ -624,3 +624,168 @@ export interface ArchitectureFolder {
   /** Records directly in the folder (not in its sub-folders). */
   record_count: number;
 }
+
+// --- State machine diagrams (mirror the schemas in `backend/app/modules/architecture/schemas.py`) ---
+
+/** What a state is: an ordinary state, or one of the three markers (the start, an end, a choice). */
+export type StateKind = "initial" | "state" | "final" | "choice";
+
+export const STATE_KIND_LABEL: Record<StateKind, string> = {
+  initial: "Initial state",
+  state: "State",
+  final: "Final state",
+  choice: "Choice",
+};
+
+/** The kinds drawn as a marker (a shape with no text inside) rather than a box. */
+export const STATE_MARKER_KINDS: readonly StateKind[] = ["initial", "final", "choice"];
+
+/** How serious a modelling finding is: an error blocks activation, a warning never does. */
+export type FindingSeverity = "error" | "warning";
+
+export const FINDING_SEVERITY_LABEL: Record<FindingSeverity, string> = { error: "Error", warning: "Warning" };
+
+/** Which kind of diagram a Diagrams-tab row is. */
+export type DiagramKind = "block" | "state_machine";
+
+export const DIAGRAM_KIND_LABEL: Record<DiagramKind, string> = { block: "Block diagram", state_machine: "State machine diagram" };
+
+/** A state machine diagram with its counts. The element's name is blank when the viewer cannot read it. */
+export interface StateMachineDiagram extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  name: string;
+  description: string;
+  element_id: string;
+  element_code: string | null;
+  element_name: string | null;
+  status: ArchitectureRecordStatus;
+  allowed_status_moves: ArchitectureRecordStatus[];
+  version: number;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  state_count: number;
+  transition_count: number;
+  error_count: number;
+  warning_count: number;
+}
+
+/** The fields the state machine diagram create and edit forms share. */
+export interface StateMachineFieldValues {
+  name: string;
+  description: string;
+  element_id: string;
+}
+
+/** Create payload: the shared fields plus Save and activate. */
+export interface StateMachineCreateValues extends StateMachineFieldValues {
+  activate: boolean;
+}
+
+/** A state (or marker) with the diagram and element it belongs to. */
+export interface ArchitectureState extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  state_machine_diagram_id: string;
+  state_machine_diagram_code: string;
+  state_machine_diagram_name: string;
+  state_machine_diagram_version: number;
+  element_id: string;
+  element_code: string | null;
+  element_name: string | null;
+  name: string;
+  description: string;
+  kind: StateKind;
+  parent_state_id: string | null;
+  parent_state_code: string | null;
+  entry_action: string;
+  exit_action: string;
+  activity: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+  status: ArchitectureRecordStatus;
+  is_archived: boolean;
+  creator_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The fields the state form edits (a state's drawing is edited on the canvas). */
+export interface StateFieldValues {
+  name: string;
+  description: string;
+  kind: StateKind;
+  entry_action: string;
+  exit_action: string;
+  activity: string;
+}
+
+/** A transition with the codes of its two states and the diagram's version after the change. */
+export interface StateTransition {
+  id: string;
+  state_machine_diagram_id: string;
+  state_machine_diagram_version: number;
+  source_state_id: string;
+  source_state_code: string;
+  target_state_id: string;
+  target_state_code: string;
+  event: string;
+  guard: string;
+  action: string;
+  description: string;
+  sort_order: number;
+  source_point: AttachPoint | null;
+  target_point: AttachPoint | null;
+}
+
+/** The fields the transition form edits. */
+export interface TransitionFieldValues {
+  source_state_id: string;
+  target_state_id: string;
+  event: string;
+  guard: string;
+  action: string;
+  description: string;
+}
+
+/** One modelling finding; `subject` is the code of the state or transition it concerns (empty for the whole diagram). */
+export interface StateMachineFinding {
+  severity: FindingSeverity;
+  code: string;
+  subject: string;
+  message: string;
+}
+
+/** A state machine diagram with everything it holds, as the editor and the outline read it. */
+export interface StateMachineModel {
+  diagram: StateMachineDiagram;
+  states: ArchitectureState[];
+  transitions: StateTransition[];
+  findings: StateMachineFinding[];
+}
+
+/** One state's box and nesting as saved. */
+export interface StateLayoutValues {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+  parent_state_id: string | null;
+}
+
+/** One transition's attach points as saved (`null` is automatic). */
+export interface TransitionPointsValues {
+  id: string;
+  source_point: AttachPoint | null;
+  target_point: AttachPoint | null;
+}

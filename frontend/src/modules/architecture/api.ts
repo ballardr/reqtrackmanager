@@ -19,6 +19,7 @@ import type {
   ArchitectureElement,
   ArchitectureFolder,
   ArchitectureRecordStatus,
+  ArchitectureState,
   ArchitectureSymbol,
   CollectionGrant,
   CollectionGrantValues,
@@ -43,6 +44,16 @@ import type {
   PlacementValues,
   Port,
   PortValues,
+  StateFieldValues,
+  StateKind,
+  StateLayoutValues,
+  StateMachineCreateValues,
+  StateMachineDiagram,
+  StateMachineFieldValues,
+  StateMachineModel,
+  StateTransition,
+  TransitionFieldValues,
+  TransitionPointsValues,
 } from "./types";
 
 const projectBase = (projectId: string) => `/api/v1/projects/${projectId}/modules/architecture`;
@@ -69,13 +80,18 @@ export interface ConnectionListFilters extends TagListFilters, ScopeListFilters 
   search?: string;
 }
 
-/** Writes the simple filters both lists share as query parameters. */
-function listQuery(filters: ElementListFilters | ConnectionListFilters): string {
+/** The plain text filters the lists send as query parameters. */
+const LIST_QUERY_KEYS = ["status", "element_type_id", "connection_type_id", "element_id", "parent_id", "search", "kind", "state_machine_diagram_id"];
+
+/** Writes the simple filters the lists share as query parameters. */
+function listQuery(
+  filters: ElementListFilters | ConnectionListFilters | DiagramListFilters | StateMachineListFilters | StateListFilters,
+): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (typeof value === "boolean") {
       if (value) params.set(key, "true");
-    } else if (typeof value === "string" && ["status", "element_type_id", "connection_type_id", "element_id", "parent_id", "search"].includes(key) && value) {
+    } else if (typeof value === "string" && LIST_QUERY_KEYS.includes(key) && value) {
       params.set(key, value);
     }
   }
@@ -239,6 +255,78 @@ export const projectDiagramApi = (projectId: string) => {
     svg: async (id: string, states: ToggleStates) => (await api.getForBlob(`${base}/${id}/svg${statesQuery(states)}`)).text(),
     /** The saved diagram as Mermaid flowchart text, for the view-switch states named. */
     mermaid: async (id: string, states: ToggleStates) => (await api.getForBlob(`${base}/${id}/mermaid${statesQuery(states)}`)).text(),
+  };
+};
+
+/** Filters of the state machine diagram list. */
+export interface StateMachineListFilters extends TagListFilters, ScopeListFilters {
+  include_archived?: boolean;
+  status?: ArchitectureRecordStatus;
+  open_only?: boolean;
+  search?: string;
+  element_id?: string;
+}
+
+/** Filters of the project-wide state list. */
+export interface StateListFilters extends TagListFilters, ScopeListFilters {
+  include_archived?: boolean;
+  kind?: StateKind;
+  search?: string;
+  state_machine_diagram_id?: string;
+}
+
+/** What a state is created with: the diagram's `version` (the lock), the fields and the drawing. */
+export interface StateCreateValues extends StateFieldValues {
+  parent_state_id: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A project's state machine diagrams with their states and transitions (each write quotes the diagram's `version`). */
+export const projectStateMachineApi = (projectId: string) => {
+  const base = `${projectBase(projectId)}/state-machine-diagrams`;
+  return {
+    list: (filters: StateMachineListFilters = {}) => api.get<StateMachineDiagram[]>(`${base}${listQuery(filters)}`),
+    create: (values: StateMachineCreateValues) => api.post<StateMachineDiagram>(base, values),
+    get: (id: string) => api.get<StateMachineDiagram>(`${base}/${id}`),
+    /** The diagram with its states, transitions and modelling findings. */
+    model: (id: string) => api.get<StateMachineModel>(`${base}/${id}/model`),
+    update: (id: string, version: number, values: Partial<StateMachineFieldValues>) =>
+      api.put<StateMachineDiagram>(`${base}/${id}`, { version, ...values }),
+    setStatus: (id: string, version: number, status: ArchitectureRecordStatus) =>
+      api.post<StateMachineDiagram>(`${base}/${id}/status`, { version, status }),
+    archive: (id: string) => api.post<StateMachineDiagram>(`${base}/${id}/archive`),
+    unarchive: (id: string) => api.post<StateMachineDiagram>(`${base}/${id}/unarchive`),
+    remove: (id: string) => api.delete<void>(`${base}/${id}`),
+    saveLayout: (id: string, version: number, states: StateLayoutValues[], transitions: TransitionPointsValues[]) =>
+      api.put<StateMachineDiagram>(`${base}/${id}/layout`, { version, states, transitions }),
+    addState: (id: string, version: number, values: StateCreateValues) =>
+      api.post<ArchitectureState>(`${base}/${id}/states`, { version, ...values }),
+    addTransition: (id: string, version: number, values: TransitionFieldValues) =>
+      api.post<StateTransition>(`${base}/${id}/transitions`, { version, ...values }),
+    updateTransition: (id: string, transitionId: string, version: number, values: Partial<TransitionFieldValues>) =>
+      api.put<StateTransition>(`${base}/${id}/transitions/${transitionId}`, { version, ...values }),
+    /** Deletes a transition; resolves with the diagram's new version. */
+    removeTransition: (id: string, transitionId: string, version: number) =>
+      api.delete<{ version: number }>(`${base}/${id}/transitions/${transitionId}?version=${version}`),
+  };
+};
+
+/** A project's states: the project-wide list, one state, its edit and its delete (with the impact the confirmation names). */
+export const projectStateApi = (projectId: string) => {
+  const base = `${projectBase(projectId)}/states`;
+  return {
+    list: (filters: StateListFilters = {}) => api.get<ArchitectureState[]>(`${base}${listQuery(filters)}`),
+    get: (id: string) => api.get<ArchitectureState>(`${base}/${id}`),
+    update: (id: string, version: number, values: Partial<StateFieldValues> & { parent_state_id?: string | null }) =>
+      api.put<ArchitectureState>(`${base}/${id}`, { version, ...values }),
+    /** How many transitions and links deleting the state would remove. */
+    impact: (id: string) => api.get<{ transitions: number; links: number }>(`${base}/${id}/impact`),
+    /** Deletes a state with its transitions and links; resolves with what went and the diagram's new version. */
+    remove: (id: string, version: number) =>
+      api.delete<{ transitions: number; links: number; version: number }>(`${base}/${id}?version=${version}`),
   };
 };
 

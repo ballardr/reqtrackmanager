@@ -7,7 +7,7 @@
  */
 import { spyOn } from "storybook/test";
 
-import { api } from "../../api/client";
+import { ApiError, api } from "../../api/client";
 import type { Placement } from "../../api/placements";
 import type { AnchoredThread, RecordThread } from "../../api/recordComments";
 import type { OrgUser } from "../../api/types";
@@ -16,7 +16,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
-  ModelElement, Port,
+  ModelElement, Port, ArchitectureState, StateMachineDiagram, StateMachineFinding, StateMachineModel, StateTransition,
 } from "./types";
 
 export const PROJECT_ID = "project-1";
@@ -77,6 +77,56 @@ export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): Arch
     folder_id: null, folder_path: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", placement_count: 3, note_count: 0, toggle_count: 1, ...overrides,
   };
+}
+
+/** A state machine diagram of the fixtures' Gateway element. */
+export function buildStateMachine(overrides: Partial<StateMachineDiagram> = {}): StateMachineDiagram {
+  return {
+    id: "smd-1", project_id: PROJECT_ID, unique_code: "SMD-001", name: "Gateway modes", description: "The operating modes of the gateway.",
+    element_id: "el-1", element_code: "ELM-001", element_name: "Gateway", status: "draft", allowed_status_moves: movesFrom(overrides.status ?? "draft"),
+    version: 5, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
+    updated_at: "2026-11-01T00:00:00Z", state_count: 4, transition_count: 4, error_count: 0, warning_count: 0, ...overrides,
+  };
+}
+
+/** A state (or marker) of `buildStateMachine`'s diagram. */
+export function buildState(overrides: Partial<ArchitectureState> = {}): ArchitectureState {
+  return {
+    id: "ste-1", project_id: PROJECT_ID, unique_code: "STE-001", state_machine_diagram_id: "smd-1", state_machine_diagram_code: "SMD-001",
+    state_machine_diagram_name: "Gateway modes", state_machine_diagram_version: 5, element_id: "el-1", element_code: "ELM-001",
+    element_name: "Gateway", name: "Idle", description: "", kind: "state", parent_state_id: null, parent_state_code: null,
+    entry_action: "", exit_action: "", activity: "", x: 200, y: 40, width: 160, height: 64, collapsed: false, status: "draft",
+    is_archived: false, creator_id: "user-1", created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
+  };
+}
+
+/** A transition between two of the fixtures' states. */
+export function buildTransition(overrides: Partial<StateTransition> = {}): StateTransition {
+  return {
+    id: "trn-1", state_machine_diagram_id: "smd-1", state_machine_diagram_version: 5, source_state_id: "ste-1", source_state_code: "STE-001",
+    target_state_id: "ste-2", target_state_code: "STE-002", event: "start", guard: "", action: "", description: "", sort_order: 0,
+    source_point: null, target_point: null, ...overrides,
+  };
+}
+
+/**
+ * A small, sound state machine: an initial marker, Idle (entry and exit lines), Running (a self loop) and a final marker.
+ * Pass `findings` to show the checks' answers on it.
+ */
+export function buildStateMachineModel(overrides: Partial<StateMachineModel> & { findings?: StateMachineFinding[] } = {}): StateMachineModel {
+  const states = overrides.states ?? [
+    buildState({ id: "ste-0", unique_code: "STE-000", name: "Initial state", kind: "initial", x: 40, y: 56, width: 20, height: 20 }),
+    buildState({ id: "ste-1", name: "Idle", entry_action: "stop motor", exit_action: "log", x: 120, y: 34 }),
+    buildState({ id: "ste-2", unique_code: "STE-002", name: "Running", activity: "regulate", x: 360, y: 34 }),
+    buildState({ id: "ste-3", unique_code: "STE-003", name: "Final state", kind: "final", x: 620, y: 52, width: 28, height: 28 }),
+  ];
+  const transitions = overrides.transitions ?? [
+    buildTransition({ id: "trn-0", source_state_id: "ste-0", source_state_code: "STE-000", target_state_id: "ste-1", target_state_code: "STE-001", event: "" }),
+    buildTransition({ id: "trn-1", event: "start", guard: "ready" }),
+    buildTransition({ id: "trn-2", source_state_id: "ste-2", source_state_code: "STE-002", target_state_id: "ste-2", target_state_code: "STE-002", event: "tick", action: "adjust" }),
+    buildTransition({ id: "trn-3", source_state_id: "ste-2", source_state_code: "STE-002", target_state_id: "ste-3", target_state_code: "STE-003", event: "stop" }),
+  ];
+  return { diagram: buildStateMachine(), states, transitions, findings: [], ...overrides };
 }
 
 export function buildViewNode(overrides: Partial<DiagramViewNode> = {}): DiagramViewNode {
@@ -276,6 +326,14 @@ export interface ArchitectureReads {
   diagrams?: ArchitectureDiagram[];
   diagramView?: DiagramView;
   diagramModel?: DiagramModel;
+  /** The project's state machine diagrams (the Diagrams list merges them with `diagrams`); none by default. */
+  stateMachines?: StateMachineDiagram[];
+  /** Answers the state machine diagram list as refused (403), as for a person with no access to that type. */
+  stateMachinesRefused?: boolean;
+  /** The state machine diagram's model (the editor's data). */
+  stateMachineModel?: StateMachineModel;
+  /** The project-wide States list. */
+  states?: ArchitectureState[];
   /** Sub-components switched off for the project (the page hides their tabs). */
   disabledSubComponents?: string[];
   /** The project's (or organisation's) folders, answered for every kind and filtered by the kind in the address. */
@@ -306,7 +364,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
       return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];
     }
     if (base.endsWith("/anchored-comments")) return { threads: reads.anchoredComments ?? [] };
-    if (base.endsWith("/comments")) return { comments: [], pins: [], can_pin: base.includes("/architecture_diagram/"), can_manage: true, ...reads.comments };
+    if (base.endsWith("/comments")) return { comments: [], pins: [], can_pin: base.includes("/architecture_diagram/") || base.includes("/architecture_state_machine_diagram/"), can_manage: true, ...reads.comments };
     if (path.endsWith("/records/architecture_element/columns")) return buildRecordColumns({ label: "Elements" });
     if (path.endsWith("/records/architecture_connection/columns")) return buildRecordColumns({ label: "Connections" });
     const folderKind = /\/modules\/architecture\/(element|connection|diagram)-folders$/.exec(base);
@@ -320,10 +378,20 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.includes("/modules/architecture/elements/")) return reads.element ?? elements[0];
     if (base.endsWith("/modules/architecture/connections")) return reads.connections ?? [buildConnection()];
     if (base.includes("/modules/architecture/connections/")) return reads.connection ?? buildConnection();
+    if (base.endsWith("/modules/architecture/state-machine-diagrams")) {
+      if (reads.stateMachinesRefused) throw new ApiError(403, "You do not have access to state machine diagrams.");
+      return reads.stateMachines ?? [];
+    }
+    if (base.includes("/modules/architecture/state-machine-diagrams/") && base.endsWith("/model")) return reads.stateMachineModel ?? buildStateMachineModel();
+    if (base.includes("/modules/architecture/state-machine-diagrams/")) return (reads.stateMachineModel ?? buildStateMachineModel()).diagram;
+    if (base.endsWith("/modules/architecture/states")) return reads.states ?? [];
+    if (base.includes("/modules/architecture/states/") && base.endsWith("/impact")) return { transitions: 2, links: 1 };
     if (base.endsWith("/modules/architecture/diagrams")) return reads.diagrams ?? [buildDiagram()];
     if (base.includes("/modules/architecture/diagrams/") && base.endsWith("/view")) return reads.diagramView ?? buildDiagramView();
     if (base.includes("/modules/architecture/diagrams/") && base.endsWith("/model")) return reads.diagramModel ?? buildDiagramModel();
     if (base.includes("/modules/architecture/diagrams/")) return (reads.diagramView ?? buildDiagramView()).diagram;
+    if (path.endsWith("/records/architecture_state_machine_diagram/columns")) return buildRecordColumns({ label: "State machine diagrams" });
+    if (path.endsWith("/records/architecture_state/columns")) return buildRecordColumns({ label: "States" });
     if (path.endsWith("/records/architecture_diagram/columns")) return buildRecordColumns({ label: "Diagrams" });
     if (base.endsWith("/modules/architecture/collections")) return reads.collections ?? [buildCollection()];
     if (base.includes("/collections/") && base.endsWith("/members")) return [{ element_id: "el-1", unique_code: "ELM-001", name: "Gateway" }];

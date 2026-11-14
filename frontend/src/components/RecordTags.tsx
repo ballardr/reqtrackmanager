@@ -39,11 +39,13 @@ import { Tooltip } from "./Tooltip";
  * @param artefactId The record's id.
  * @param onChanged Called after a change was saved.
  * @param inline The compact form for the header's badge line (see the module note).
+ * @param components False leaves out the components, for a type that cannot be placed in the component tree.
  * @param api The tag calls (the live ones by default).
  * @param placementsApi The component calls (the live ones by default).
  */
 export function RecordTags({
   projectId, artefactType, artefactId, onChanged, inline = false, api = recordTagsApi, placementsApi = recordPlacementsApi,
+  components = true,
 }: {
   projectId: string;
   artefactType: string;
@@ -52,6 +54,7 @@ export function RecordTags({
   inline?: boolean;
   api?: RecordTagsApi;
   placementsApi?: RecordPlacementsApi;
+  components?: boolean;
 }) {
   if (inline) {
     return (
@@ -64,7 +67,9 @@ export function RecordTags({
   return (
     <>
       <RecordTagList projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={api} />
-      <RecordPlacements projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={placementsApi} />
+      {components && (
+        <RecordPlacements projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={placementsApi} />
+      )}
     </>
   );
 }

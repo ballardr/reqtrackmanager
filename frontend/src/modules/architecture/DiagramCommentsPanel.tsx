@@ -24,25 +24,22 @@ import type { CanvasComments } from "../../components/CanvasCommentLayer";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useStrings } from "../../context/TerminologyContext";
-import { pinAnchorOf } from "./diagramComments";
-import type { EditorBox } from "./diagramEditorModel";
-import type { DiagramViewEdge } from "./types";
+import type { PinDescriber } from "./diagramComments";
 
 type StateFilter = "open" | "resolved" | "all";
 
 /**
  * @param layer The page's comment state and actions (`useCanvasComments`).
- * @param boxes The boxes on the diagram, to name a box a thread is anchored to.
- * @param edges The drawn lines, to name a connection a thread is anchored to.
+ * @param describe How the drawing names what a thread is anchored to (a block diagram's boxes and connections, a state machine
+ *   diagram's states and transitions), so this list serves both editors.
  * @param currentUserId The viewer, so only their comments offer Edit.
  * @param onShow Called after "Show on drawing" selects the thread, so the page can switch to the Drawing tab.
  */
 export function DiagramCommentsPanel({
-  layer, boxes, edges, currentUserId, onShow,
+  layer, describe, currentUserId, onShow,
 }: {
   layer: CanvasComments;
-  boxes: readonly EditorBox[];
-  edges: readonly DiagramViewEdge[];
+  describe: PinDescriber;
   currentUserId?: string;
   onShow: () => void;
 }) {
@@ -62,13 +59,9 @@ export function DiagramCommentsPanel({
     const pin = pins.get(pinId);
     if (!pin) return "";
     if (pin.anchor_kind === "none") return text.pinnedFree;
-    if (!pinAnchorOf(pin, boxes, edges)) return text.pinnedGone;
-    if (pin.anchor_kind === "node") {
-      const box = boxes.find((b) => b.elementId === pin.anchor_key);
-      return text.pinnedOnBox(box ? `${box.unique_code} ${box.name}`.trim() : "");
-    }
-    const connection = edges.flatMap((e) => e.connections).find((c) => c.id === pin.anchor_key);
-    return text.pinnedOnLine(connection ? connection.unique_code : "");
+    if (!describe.drawn(pin)) return text.pinnedGone;
+    if (pin.anchor_kind === "node") return text.pinnedOnBox(describe.boxName(pin.anchor_key ?? ""));
+    return text.pinnedOnLine(describe.lineName(pin.anchor_key ?? ""));
   }
 
   return (

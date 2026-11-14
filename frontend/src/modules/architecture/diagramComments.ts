@@ -21,6 +21,32 @@ import type { GraphPointAnchor } from "../../components/GraphCanvas";
 import type { EditorBox } from "./diagramEditorModel";
 import type { DiagramViewEdge } from "./types";
 
+/** How a drawing names the box or line a stored pin is anchored to, for the Comments tab (one per kind of diagram). */
+export interface PinDescriber {
+  /** Whether the pin's anchor is on the drawing. */
+  drawn: (place: { anchor_kind: PinAnchorKind; anchor_key: string | null }) => boolean;
+  /** The name of the box the key stands for (empty when unknown). */
+  boxName: (key: string) => string;
+  /** The name of the line the key stands for (empty when unknown). */
+  lineName: (key: string) => string;
+}
+
+/**
+ * @param boxes The boxes on the diagram.
+ * @param edges The drawn lines.
+ * @returns The block diagram's describer: a box is named by its code and name, a line by its connection's code.
+ */
+export function blockPinDescriber(boxes: readonly EditorBox[], edges: readonly DiagramViewEdge[]): PinDescriber {
+  return {
+    drawn: (place) => pinAnchorOf(place, boxes, edges) !== undefined,
+    boxName: (key) => {
+      const box = boxes.find((b) => b.elementId === key);
+      return box ? `${box.unique_code} ${box.name}`.trim() : "";
+    },
+    lineName: (key) => edges.flatMap((e) => e.connections).find((c) => c.id === key)?.unique_code ?? "",
+  };
+}
+
 /**
  * @param place The stored pin's anchor.
  * @param boxes The boxes on the diagram.

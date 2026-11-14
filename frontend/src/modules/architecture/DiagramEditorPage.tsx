@@ -67,7 +67,7 @@ import {
 import { outerSide } from "./diagramResolver";
 import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
-import { pinAnchorOf, pinPlaceOf } from "./diagramComments";
+import { blockPinDescriber, pinAnchorOf, pinPlaceOf } from "./diagramComments";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { DiagramAddMenu } from "./DiagramAddMenu";
 import { DiagramOutline } from "./DiagramOutline";
@@ -776,7 +776,7 @@ export function DiagramEditorPage() {
       {tab === "comments" && (
         <div className="stack" {...tabPanelProps("diagram-editor", "comments")}>
           <DiagramCommentsPanel
-            layer={commentLayer} boxes={layout.boxes} edges={drawnLines(resolved.edges, drawnEdgeIds)} currentUserId={currentUser?.id}
+            layer={commentLayer} describe={blockPinDescriber(layout.boxes, drawnLines(resolved.edges, drawnEdgeIds))} currentUserId={currentUser?.id}
             onShow={() => setTabChoice("")}
           />
         </div>

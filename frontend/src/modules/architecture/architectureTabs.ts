@@ -44,3 +44,14 @@ export interface ArchitectureListChrome {
   tabs: ReactNode;
   contentProps: HTMLAttributes<HTMLDivElement>;
 }
+
+/**
+ * The address of a diagram's own editor.
+ *
+ * @param projectId The project the diagram belongs to.
+ * @param kind `block` or `state_machine`.
+ * @param id The diagram's id.
+ */
+export function diagramEditorPath(projectId: string, kind: "block" | "state_machine", id: string): string {
+  return `/projects/${projectId}/modules/architecture/${kind === "block" ? "diagrams" : "state-machine-diagrams"}/${id}`;
+}

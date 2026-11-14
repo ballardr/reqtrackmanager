@@ -7,7 +7,8 @@
  */
 import type { SortValue } from "../../utils/sortRows";
 import {
-  ARCHITECTURE_STATUS_LABEL, type ArchitectureConnection, type ArchitectureDiagram, type ArchitectureElement,
+  ARCHITECTURE_STATUS_LABEL, DIAGRAM_KIND_LABEL, STATE_KIND_LABEL, type ArchitectureConnection, type ArchitectureDiagram,
+  type ArchitectureElement, type ArchitectureState, type DiagramKind, type StateMachineDiagram,
 } from "./types";
 
 type Values<Row> = Record<string, (row: Row) => SortValue>;
@@ -46,17 +47,50 @@ export const CONNECTION_SORT_VALUES: Values<ArchitectureConnection> = {
   status: (c) => ARCHITECTURE_STATUS_LABEL[c.status],
 };
 
-/** Sortable columns of the Diagrams list; a diagram with no scope element is the system context and sorts first. */
-export const DIAGRAM_SORT_VALUES: Values<ArchitectureDiagram> = {
-  code: (d) => d.unique_code,
-  name: (d) => d.name,
-  folder: (d) => d.folder_path,
-  scope: (d) => (d.scope_element_id ? `${d.scope_element_code ?? ""} ${d.scope_element_name ?? ""}`.trim() : ""),
-  boxes: (d) => d.placement_count,
-  toggles: (d) => d.toggle_count,
-  status: (d) => ARCHITECTURE_STATUS_LABEL[d.status],
+/** One row of the merged Diagrams list: a block diagram or a state machine diagram, with the values the columns show. */
+export type DiagramListRow =
+  | { kind: "block"; id: string; source: ArchitectureDiagram }
+  | { kind: "state_machine"; id: string; source: StateMachineDiagram };
+
+/** The registered artefact type of each diagram type (the record type its Export, Import and Components column address). */
+export const DIAGRAM_KIND_ARTEFACT_TYPE: Record<DiagramKind, string> = {
+  block: "architecture_diagram", state_machine: "architecture_state_machine_diagram",
+};
+
+/** @param row A list row. @returns The code, name and status common to both types. */
+const common = (row: DiagramListRow) => row.source;
+
+/** The text of the Element column: a block diagram's scope element (empty for the system context), a state machine diagram's element. */
+export function rowElementText(row: DiagramListRow): string {
+  if (row.kind === "block") return row.source.scope_element_id ? `${row.source.scope_element_code ?? ""} ${row.source.scope_element_name ?? ""}`.trim() : "";
+  return `${row.source.element_code ?? ""} ${row.source.element_name ?? ""}`.trim();
+}
+
+/** The count the Contents column shows: a block diagram's elements, a state machine diagram's states. */
+export const rowContents = (row: DiagramListRow): number => (row.kind === "block" ? row.source.placement_count : row.source.state_count);
+
+/** Sortable columns of the merged Diagrams list. */
+export const DIAGRAM_ROW_SORT_VALUES: Values<DiagramListRow> = {
+  code: (r) => common(r).unique_code,
+  name: (r) => common(r).name,
+  type: (r) => DIAGRAM_KIND_LABEL[r.kind satisfies DiagramKind],
+  folder: (r) => (r.kind === "block" ? r.source.folder_path : null),
+  scope: rowElementText,
+  boxes: rowContents,
+  toggles: (r) => (r.kind === "block" ? r.source.toggle_count : null),
+  status: (r) => ARCHITECTURE_STATUS_LABEL[common(r).status],
+};
+
+/** Sortable columns of the project-wide States list. */
+export const STATE_SORT_VALUES: Values<ArchitectureState> = {
+  code: (s) => s.unique_code,
+  name: (s) => s.name,
+  diagram: (s) => `${s.state_machine_diagram_code} ${s.state_machine_diagram_name}`,
+  kind: (s) => STATE_KIND_LABEL[s.kind],
+  element: (s) => `${s.element_code ?? ""} ${s.element_name ?? ""}`.trim(),
 };
 
 export const ELEMENT_SORT_KEYS = ["code", "name", "type", "folder", "parent", "owner", "connections", "status"] as const;
 export const CONNECTION_SORT_KEYS = ["code", "name", "type", "folder", "source", "target", "protocol", "status"] as const;
-export const DIAGRAM_SORT_KEYS = ["code", "name", "folder", "scope", "boxes", "toggles", "status"] as const;
+export const DIAGRAM_SORT_KEYS = ["code", "name", "type", "folder", "scope", "boxes", "toggles", "status"] as const;
+export const STATE_SORT_KEYS = ["code", "name", "diagram", "kind", "element"] as const;

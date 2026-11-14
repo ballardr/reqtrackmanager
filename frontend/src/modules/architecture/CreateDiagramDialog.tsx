@@ -1,7 +1,7 @@
 /**
  * Module: modules/architecture/CreateDiagramDialog
  *
- * A self-contained "New diagram" dialog for another record's Links panel (registered as
+ * A self-contained "New diagram" dialog (block diagrams only: a state machine diagram is created from the Diagrams list or an element's page) for another record's Links panel (registered as
  * `TierAModuleDefinition.linkedRecordCreators.architecture_diagram`): it loads the project's elements, shows the same
  * `DiagramFormModal` the Diagrams list uses and reports the new id.
  */
@@ -31,5 +31,9 @@ export function CreateDiagramDialog({ projectId, onCreated, onCancel }: LinkedRe
   }, [projectId]);
 
   if (elements === null) return null;
-  return <DiagramFormModal elements={elements} projectId={projectId} error={form.error} onCancel={onCancel} onSave={form.create} />;
+  return (
+    <DiagramFormModal
+      elements={elements} projectId={projectId} kinds={["block"]} error={form.error} onCancel={onCancel} onSave={form.create}
+    />
+  );
 }
