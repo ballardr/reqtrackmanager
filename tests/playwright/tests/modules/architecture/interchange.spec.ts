@@ -71,7 +71,7 @@ test.describe("System Architecture: interchange", () => {
       await dialog.getByRole("button", { name: "Import" }).click();
       await imported;
       await expect(page.getByText("Imported 3 records.")).toBeVisible();
-      await expect(page.getByRole("link", { name: new RegExp(`Gateway ${suffix}`) })).toHaveCount(2);
+      await expect(page.getByRole("cell", { name: `Gateway ${suffix}`, exact: true })).toHaveCount(2);
     });
   });
 });

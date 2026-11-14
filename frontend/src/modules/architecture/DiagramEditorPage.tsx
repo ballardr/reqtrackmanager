@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { CommentModeToggle } from "../../components/CommentModeToggle";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Badge } from "../../components/Badge";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -43,7 +44,6 @@ import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
-import { useStrings } from "../../context/TerminologyContext";
 import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useUrlChoice, useUrlFlag, useUrlList } from "../../hooks/useUrlFilter";
@@ -310,7 +310,6 @@ export function DiagramEditorPage() {
   // Comments are stored at once and apart from the layout, so they never make the drawing look unsaved; a link to a thread
   // (`?pin=`) opens the Drawing with that thread selected and centred.
   const { user: currentUser } = useAuth();
-  const commentText = useStrings().canvasComments;
   const [searchParams] = useSearchParams();
   const linkedPin = searchParams.get("pin");
   const anchorOfPin = useCallback((place: Parameters<typeof pinAnchorOf>[0]) => pinAnchorOf(place, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)), [layout.boxes, resolved.edges, drawnEdgeIds]);
@@ -587,17 +586,7 @@ export function DiagramEditorPage() {
         onSetup={canManageTypes ? () => (dirty ? setLeaveForSetup(true) : navigate(SETUP_PATH(projectId))) : undefined}
       />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
-      {tab === "drawing" && (
-        <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
-          <button
-            type="button" className={commentLayer.commentMode ? "btn btn-sm btn-primary" : "btn btn-sm"} aria-pressed={commentLayer.commentMode}
-            onClick={() => commentLayer.setCommentMode(!commentLayer.commentMode)}
-          >
-            {commentText.modeLabel}
-          </button>
-          <FieldHelp label={commentText.modeLabel} help={commentText.modeHelp} />
-        </span>
-      )}
+      {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
       <DiagramSettingsButton
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}

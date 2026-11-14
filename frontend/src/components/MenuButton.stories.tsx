@@ -92,3 +92,16 @@ export const ItemsCanBeDragged: Story = {
     await expect(args.items[0].onSelect).not.toHaveBeenCalled();
   },
 };
+
+/** The menu's help is the trigger's own tooltip, with no `(?)` beside it. */
+export const HelpIsATooltipOnTheTrigger: Story = {
+  args: { help: "Persona: a person.\nStakeholder: a party." },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "New" });
+    await expect(within(canvasElement).queryByRole("button", { name: /^Help:/ })).not.toBeInTheDocument();
+    await userEvent.hover(trigger);
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("Persona: a person.");
+    await expect(trigger).toHaveAttribute("aria-describedby", tip.id);
+  },
+};

@@ -169,6 +169,17 @@ test.describe("System Architecture: diagram editor", () => {
       expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
     });
 
+    await test.step("the toolbar explains the Comment toggle on the button itself, with no (?) beside it", async () => {
+      const toolbar = page.getByRole("toolbar", { name: "Diagram editing" });
+      await expect(toolbar.getByRole("button", { name: /^Help:/ })).toHaveCount(0);
+      const toggle = toolbar.getByRole("button", { name: "Comment", exact: true });
+      await toggle.hover();
+      await expect(page.getByRole("tooltip")).toContainText("Off:");
+      await page.mouse.move(0, 0);
+      await toggle.focus();
+      await expect(page.getByRole("tooltip")).toContainText("On:");
+    });
+
     await test.step("a record with no tags or components shows no empty line, only the button", async () => {
       await expect(page.getByText("Not placed in a component")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Tags and components" })).toBeVisible();

@@ -29,10 +29,10 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { Badge } from "../../components/Badge";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
+import { CommentModeToggle } from "../../components/CommentModeToggle";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import { DetailLayout } from "../../components/DetailLayout";
-import { FieldHelp } from "../../components/FieldHelp";
 import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
@@ -42,7 +42,6 @@ import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
-import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
@@ -104,7 +103,6 @@ export function StateMachineEditorPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const commentText = useStrings().canvasComments;
   const api = useMemo(() => projectStateMachineApi(projectId), [projectId]);
   const stateApi = useMemo(() => projectStateApi(projectId), [projectId]);
   const commitTags = useCommitTags(projectId, "architecture_state");
@@ -381,17 +379,7 @@ export function StateMachineEditorPage() {
       </button>
       <StateMachineAddMenu disabled={!editable} onAdd={(kind) => startState(kind, null)} />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
-      {tab === "drawing" && (
-        <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
-          <button
-            type="button" className={commentLayer.commentMode ? "btn btn-sm btn-primary" : "btn btn-sm"} aria-pressed={commentLayer.commentMode}
-            onClick={() => commentLayer.setCommentMode(!commentLayer.commentMode)}
-          >
-            {commentText.modeLabel}
-          </button>
-          <FieldHelp label={commentText.modeLabel} help={commentText.modeHelp} />
-        </span>
-      )}
+      {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
   );

@@ -941,6 +941,7 @@ Rules:
 - **One order, settings last.** A group of buttons keeps the same order in every layout of the same component (a Links panel's Add link, Trace, then View options, whether full-size or compact), so nothing moves when the layout flips, and a settings or view-options button always sits at the end of the group, never between actions.
 - **One icon size per button size, set by the button's CSS:** `.btn svg` is 16px, `.btn-sm svg` is 14px and `.badge svg` is 12px, whatever `size` the icon was given, so do not pass `size` to an icon inside a button. Icon-only buttons need an `aria-label`, and may repeat it as a `title` (Principle 8). `iconSizeViolations` (`frontend/src/testing/iconSizes.ts`) checks it in stories and in the long-text Playwright spec; an ancestor with `data-icon-size-ok` opts out. Scale for icons outside buttons: see the Icons section below.
 - **Measured, not only stated.** `buttonHeightViolations` (`frontend/src/testing/buttonHeights.ts`) reads the rendered height of the buttons in each horizontal row (a `.btn`, or a wrapper holding exactly one, such as a tooltip or a menu trigger) and fails a row whose neighbours on one line differ by more than a pixel. The Storybook stories and Playwright specs of both diagram editors run it on the toolbar and the Selection card; `data-button-size-ok` on an ancestor opts out and states why beside it. `MenuButton` takes `size="sm"` for a menu trigger inside a group of small buttons: a diagram editor's toolbar is a dense working surface in the page body, so all of it is small, because medium buttons wrap the toolbar onto a second line in the editor's column.
+- **One control, one target.** A button never has a `(?)` beside it: that doubles its targets and widens the row. Its help is its tooltip ([Pattern: help on interactive elements](#pattern-help-on-interactive-elements)).
 - **Edit on a detail page is `btn btn-icon`.** Every record's detail page puts the same pencil in the same place at the same size.
 - **Not only buttons:** the same rule applies to every control and label that sit together; see [Pattern: chips](#pattern-chips).
 - **Not buttons:** removable chips' "x" and a group's collapse toggle are part of the thing they control, not buttons, and are sized by it.
@@ -1151,19 +1152,39 @@ Every form field that is not self-explanatory carries a `(?)` help button after 
 - **Copy:** the text lives in `strings.help` in `frontend/src/i18n/strings.ts`, written for the end user in one or two sentences: what the field is, what it affects, a typical value. Terminology tokens (`{requirement}`, `{project}`) are filled in per organisation, so help follows the renamed terms.
 - **Opt out:** a self-explanatory field (a name, a title, a comment, an email) passes `helpNotNeeded` instead, which keeps the decision greppable. A field whose visible `hint` already explains it opts out too; do not show the same sentence twice. Never pass both.
 - **Enforced:** `scripts/check_field_help.py` (a pytest, `backend/tests/test_field_help.py`) fails on a field with neither prop. Its baseline (`scripts/field_help_baseline.json`) is empty: a new field decides when it is written.
-- **Instructions for a surface (not a field):** a paragraph that only teaches how to use an editor (the Blocks how-to, the grid editor's selection keys) goes behind a `FieldHelp` (?) placed beside the control it explains, not in a permanent line of canvas. A line that reports a *state* (read-only, conflict, unsaved, where the next block will go) stays visible.
+- **Instructions for a surface (not a field):** a paragraph that only teaches how to use an editor (the Blocks how-to, the grid editor's selection keys) goes behind a `FieldHelp` (?) on the caption of the surface (a button is never given a `(?)`: see [Pattern: help on interactive elements](#pattern-help-on-interactive-elements)), not in a permanent line of canvas. A line that reports a *state* (read-only, conflict, unsaved, where the next block will go) stays visible.
 - **Definition-driven fields** (a custom field's label comes from its definition, a list of text areas from a field table) opt out: the label is data, not a place to hard-code copy.
 
 ## Pattern: explain in help, not in the layout
 
 What a control, option, mode or count *means* is shown in a `(?)` tooltip on its caption (or a shared `Tooltip` on the control), never as muted text permanently beside or under it. Reason: that text is useful once; on every later visit it only takes space and pushes the page down (a scope filter that printed "Includes records from related projects you can open. Counts cover all of them." under its select; a "Links are added when the record is saved." line under every create form's Link to box).
 
-- **How:** `help` on a shared field component, on `FilterField`, or `FieldHelp`/`FieldCaption` where there is no field component. A control that has no caption of its own (a title-row select) puts the text in a `Tooltip` and in `aria-describedby`, as `ProjectScopeSelect` does. Use the shared `Tooltip`, never a native `title`, to explain (an icon-only button may still carry a `title` that only repeats its `aria-label`): a `title` is slow, never opens on touch or keyboard focus, and has been reported as "there is no tooltip".
+- **How:** `help` on a shared field component, on `FilterField`, or `FieldHelp`/`FieldCaption` where there is no field component; a button, toggle or menu trigger takes its help as a tooltip on itself ([Pattern: help on interactive elements](#pattern-help-on-interactive-elements)). A control that has no caption of its own (a title-row select) puts the text in a `Tooltip` and in `aria-describedby`, as `ProjectScopeSelect` does. Use the shared `Tooltip`, never a native `title`, to explain (an icon-only button may still carry a `title` that only repeats its `aria-label`): a `title` is slow, never opens on touch or keyboard focus, and has been reported as "there is no tooltip".
 - **List every option,** one line per option, not only the selected one, so the person can compare before choosing (the wrapped tooltip keeps line breaks). The selected option's own name is already visible in the control.
 - **What may stay visible:** a validation error, a warning before a destructive or irreversible action, a count of what is hidden or withheld, an empty state, a required next step. A `hint` under a field is for a format or limit needed while typing (`PROJ-123`, a character limit), not for saying what the field or its options are.
 - **A control with help in a `FilterField`** names itself with `aria-label`, because the caption and the control are siblings (a button inside a `<label>` would take the label's place).
 - **Test:** ask whether the text will still be useful the fifth time the page is opened. If not, it is a tooltip.
 - **Known remainder:** many existing `hint=` lines (about 90) predate this rule and were not swept; convert one when its screen is next touched, and do not add new ones of this kind.
+
+## Pattern: help on interactive elements
+
+*(New 2026-11-14 — from user review of the diagram editors, where the Comment toggle and the Change status menu each had a `(?)` beside them: two targets for one control.)*
+
+Help goes where the thing it explains is. A control has one target, so help for a control is a tooltip **on the control**; a `(?)` is the help of a caption.
+
+| Element | Help is |
+| --- | --- |
+| A form field, filter or settings row | `help` on the shared field component (a `(?)` on its caption), [Pattern: field help](#pattern-field-help) |
+| A button, toggle, menu trigger or split button | A `Tooltip` on the control itself: `help` on `ToggleButton` and `MenuButton`, or a `Tooltip` wrapped round a hand-written one |
+| An icon-only button | Its name as the `aria-label` **and** as a tooltip with the same text; any longer help follows the name on the lines after it |
+| A read-only value | The same `Tooltip` on the value |
+
+- **How it behaves:** the tooltip opens on hover, on keyboard focus and on a touch press, closes on Escape, and the control points to it with `aria-describedby`. It never moves the layout (it is portalled, see `Tooltip`).
+- **A toggle** states both states, one line each (`On: ...`, `Off: ...`); a **menu** lists what each choice does, one line per choice, so a person can compare before choosing.
+- **A tooltip never holds the only copy of something needed to avoid an error:** a validation message, a warning before an irreversible action or a required next step stays visible ([Pattern: explain in help, not in the layout](#pattern-explain-in-help-not-in-the-layout)).
+- **A caption's own help stays a `(?)`:** a group of controls that shares one caption (a "Selecting cells" caption over a toolbar) uses `FieldCaption`, which is the caption's help, not a button's.
+- **Shared parts:** `CommentModeToggle` (a canvas's comment mode), `ToggleButton` and `MenuButton` carry `help`, so a screen does not assemble a button and a help button by hand.
+- **Checked** by `scripts/check_help_beside_button.py` (pinned by `backend/tests/test_help_beside_button.py`, empty baseline): a `FieldHelp` that is a sibling of a `<button`, `MenuButton`, `ToggleButton` or any element with a `btn` class fails. A line may opt out with `data-help-beside-ok` and a reason beside it.
 
 ## Pattern: list actions (export and import)
 

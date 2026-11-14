@@ -84,7 +84,7 @@ export const ChangeStateOffersTheServersMoves: Story = {
   },
 };
 
-/** The (?) beside the menu describes every status, not only the current one. */
+/** The menu button's own tooltip describes every status, not only the current one. */
 export const ChangeStateHelpDescribesEveryState: Story = {
   beforeEach: () => {
     const get = mockArchitectureReads({ elements: [PARENT, ELEMENT], element: ELEMENT, connections: [] });
@@ -92,7 +92,7 @@ export const ChangeStateHelpDescribesEveryState: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Help: Change status" }));
+    await userEvent.hover(await canvas.findByRole("button", { name: "Change status" }));
     const tip = await within(document.body).findByRole("tooltip");
     for (const state of ["Draft:", "Proposed:", "Active:", "Retired:", "Rejected:"]) await expect(tip).toHaveTextContent(state);
   },

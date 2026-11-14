@@ -4695,7 +4695,7 @@ const en = {
   canvasComments: {
     modeLabel: "Comment",
     modeHelp:
-      "Switches to comment mode: a click on empty canvas, a box or a line places a comment there. Comments are saved at once and are not part of the diagram's saved layout.\nTurn it off to edit the drawing again.",
+      "On: a click on empty canvas, a box or a line places a comment there; comments are saved at once, apart from the diagram's saved layout.\nOff: a click selects and edits the drawing again.",
     showComments: "Show comments",
     showResolved: "Show resolved",
     showCommentsHelp: "Shows or hides every comment marker on the canvas. Only you see this choice.",

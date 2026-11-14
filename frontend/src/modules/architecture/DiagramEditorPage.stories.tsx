@@ -1208,6 +1208,7 @@ export const CommentModeAndTheDisplaySwitches: Story = {
     const canvas = within(canvasElement);
     const toggle = await canvas.findByRole("button", { name: "Comment" });
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(canvas.queryByRole("button", { name: /^Help: Comment/ })).toBeNull();
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));

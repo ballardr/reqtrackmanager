@@ -8,7 +8,6 @@
  * manage the record may use it; the server answers a refusal (for example retiring an element that still has children
  * in use), which the page shows. A record with no moves draws nothing.
  */
-import { FieldHelp } from "../../components/FieldHelp";
 import { MenuButton } from "../../components/MenuButton";
 import { ARCHITECTURE_HELP } from "./help";
 import { ARCHITECTURE_STATUS_LABEL, type ArchitectureRecordStatus } from "./types";
@@ -27,16 +26,14 @@ export function ArchitectureStatusControls({
 }) {
   if (moves.length === 0) return null;
   return (
-    <span className="row" style={{ gap: "var(--space-1)", flexWrap: "nowrap" }}>
-      <MenuButton
-        label="Change status"
-        menuLabel="Change status"
-        items={moves.map((next) => ({
-          label: `Move from ${ARCHITECTURE_STATUS_LABEL[status]} to ${ARCHITECTURE_STATUS_LABEL[next]}`,
-          onSelect: () => void onMove(next),
-        }))}
-      />
-      <FieldHelp label="Change status" help={ARCHITECTURE_HELP.statusMenu} />
-    </span>
+    <MenuButton
+      label="Change status"
+      menuLabel="Change status"
+      help={ARCHITECTURE_HELP.statusMenu}
+      items={moves.map((next) => ({
+        label: `Move from ${ARCHITECTURE_STATUS_LABEL[status]} to ${ARCHITECTURE_STATUS_LABEL[next]}`,
+        onSelect: () => void onMove(next),
+      }))}
+    />
   );
 }
