@@ -30,5 +30,5 @@ export function StateMachineAddMenu({ disabled, onAdd }: { disabled: boolean; on
       event.dataTransfer.effectAllowed = "copy";
     },
   }));
-  return <MenuButton label="Add to diagram" menuLabel="Add to diagram" disabled={disabled} items={items} />;
+  return <MenuButton label="Add to diagram" menuLabel="Add to diagram" size="sm" disabled={disabled} items={items} />;
 }

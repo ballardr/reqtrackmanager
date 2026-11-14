@@ -88,7 +88,7 @@ export function DiagramAddMenu({
 }) {
   return (
     <MenuButton
-      label="Add to diagram" menuLabel="Add to diagram" disabled={disabled}
+      label="Add to diagram" menuLabel="Add to diagram" size="sm" disabled={disabled}
       items={addMenuItems(elementTypes, { onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter })}
     />
   );

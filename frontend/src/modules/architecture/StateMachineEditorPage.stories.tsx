@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
+import { buttonHeightViolations } from "../../testing/buttonHeights";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
@@ -50,6 +51,31 @@ async function addFromMenu(canvas: ReturnType<typeof within>, item: string) {
   await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
   await userEvent.click(await within(document.body).findByRole("menuitem", { name: item }));
 }
+
+/** The toolbar's buttons and menu triggers are one height, and so are the Selection card's, at a wide and a narrow editor. */
+export const ToolbarAndSelectionButtonsShareAHeight: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await expect(canvas.getByRole("toolbar")).toBeInTheDocument();
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+    await select(canvas, "Idle");
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+    // A line has its own Selection card.
+    (await canvas.findByLabelText("start [ready], connection from Idle to Running")).focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** The same check at a narrow width, where the toolbar wraps and each line is compared on its own. */
+export const ToolbarButtonsShareAHeightWhenNarrow: Story = {
+  decorators: [(Story) => <div style={{ width: 480 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Idle, node");
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+  },
+};
 
 export const DrawsStatesMarkersAndTransitionsFromTheModel: Story = {
   play: async ({ canvasElement }) => {

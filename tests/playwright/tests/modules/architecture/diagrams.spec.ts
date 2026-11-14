@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
+import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
 import { installCleanupHook } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 
@@ -161,6 +162,11 @@ test.describe("System Architecture: diagram editor", () => {
       expect(box).not.toBeNull();
       expect(box!.y).toBeGreaterThanOrEqual(0);
       expect(box!.y + box!.height).toBeLessThanOrEqual(720);
+    });
+
+    await test.step("the toolbar's buttons and menu triggers are one height", async () => {
+      await expect(page.getByRole("toolbar", { name: "Diagram editing" })).toBeVisible();
+      expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
     });
 
     await test.step("a record with no tags or components shows no empty line, only the button", async () => {

@@ -19,6 +19,8 @@ import { Popover } from "./Popover";
  * @param primary - Gives the button the primary style (the page's main action).
  * @param disabled - Disables the button.
  * @param menuLabel - The menu's accessible name; defaults to `label`.
+ * @param size - `md` (default) at page or panel level; `sm` inside a group of small buttons such as a diagram editor's
+ *   toolbar, so the trigger matches its neighbours' height (docs/ux-style-guide.md, "Pattern: button sizes").
  */
 export function MenuButton({
   label,
@@ -26,12 +28,14 @@ export function MenuButton({
   primary,
   disabled,
   menuLabel,
+  size = "md",
 }: {
   label: ReactNode;
   items: ActionMenuItem[];
   primary?: boolean;
   disabled?: boolean;
   menuLabel?: string;
+  size?: "md" | "sm";
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -42,7 +46,7 @@ export function MenuButton({
       <button
         ref={triggerRef}
         type="button"
-        className={primary ? "btn btn-primary" : "btn"}
+        className={`btn${primary ? " btn-primary" : ""}${size === "sm" ? " btn-sm" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}

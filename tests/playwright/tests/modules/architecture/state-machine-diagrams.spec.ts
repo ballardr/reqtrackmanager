@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
+import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
 import { installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 
@@ -118,6 +119,11 @@ test.describe("System Architecture: state machine diagrams", () => {
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page).toHaveURL(/\/state-machine-diagrams\//);
       await expect(page.getByRole("heading", { name: `Modes ${suffix}` })).toBeVisible();
+    });
+
+    await test.step("the toolbar's buttons and menu triggers are one height", async () => {
+      await expect(page.getByRole("toolbar", { name: "State machine diagram editing" })).toBeVisible();
+      expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
     });
 
     await test.step("an empty diagram has an error, and activating it is refused with the reason", async () => {

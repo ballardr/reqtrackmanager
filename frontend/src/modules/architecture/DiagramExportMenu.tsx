@@ -11,7 +11,7 @@ import type { DiagramExportKind } from "./diagramExport";
 export function DiagramExportMenu({ disabled, onExport }: { disabled: boolean; onExport: (kind: DiagramExportKind) => void }) {
   return (
     <MenuButton
-      label="Export" menuLabel="Export diagram" disabled={disabled}
+      label="Export" menuLabel="Export diagram" size="sm" disabled={disabled}
       items={[
         { label: "PNG image", group: "Image", onSelect: () => onExport("png") },
         { label: "SVG image", group: "Image", onSelect: () => onExport("svg") },
