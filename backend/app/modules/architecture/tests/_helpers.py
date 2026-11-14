@@ -241,3 +241,77 @@ def save_toggles(client, token, project_id, diagram, toggles, *, expect=200) -> 
     )
     assert resp.status_code == expect, resp.text
     return resp.json()
+
+
+# --- State machine diagrams ---------------------------------------------------
+
+
+def make_machine(client, token, project_id, element_id, name="Modes", *, expect=201, **fields) -> dict:
+    """Creates a state machine diagram of an element; returns the response body (or the response when `expect` is not 201)."""
+    resp = client.post(
+        f"{project_base(project_id)}/state-machine-diagrams", json={"name": name, "element_id": element_id, **fields},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def machine_version(client, token, project_id, machine_id) -> int:
+    """The current `version` of a state machine diagram."""
+    resp = client.get(f"{project_base(project_id)}/state-machine-diagrams/{machine_id}", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    return resp.json()["version"]
+
+
+def add_state(client, token, project_id, machine_id, name, *, kind="state", expect=201, **fields) -> dict:
+    """Adds a state to a state machine diagram at its current version; returns the response body."""
+    resp = client.post(
+        f"{project_base(project_id)}/state-machine-diagrams/{machine_id}/states",
+        json={"version": machine_version(client, token, project_id, machine_id), "name": name, "kind": kind, **fields},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def add_transition(client, token, project_id, machine_id, source_id, target_id, *, expect=201, **fields) -> dict:
+    """Adds a transition at the diagram's current version; returns the response body."""
+    resp = client.post(
+        f"{project_base(project_id)}/state-machine-diagrams/{machine_id}/transitions",
+        json={
+            "version": machine_version(client, token, project_id, machine_id), "source_state_id": source_id,
+            "target_state_id": target_id, **fields,
+        },
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def sound_machine(client, token, project_id, element_id, name="Modes") -> tuple[dict, dict[str, dict]]:
+    """A state machine diagram with no finding of either severity: Start (initial) to Running to Stop (final), Running
+    ending on a `halt` event. Returns the diagram's record and its states by name."""
+    machine = make_machine(client, token, project_id, element_id, name)
+    start = add_state(client, token, project_id, machine["id"], "Start", kind="initial")
+    running = add_state(client, token, project_id, machine["id"], "Running", entry_action="spin_up()")
+    stop = add_state(client, token, project_id, machine["id"], "Stop", kind="final")
+    add_transition(client, token, project_id, machine["id"], start["id"], running["id"])
+    add_transition(client, token, project_id, machine["id"], running["id"], stop["id"], event="halt")
+    return machine, {"Start": start, "Running": running, "Stop": stop}
+
+
+def machine_model(client, token, project_id, machine_id, *, expect=200) -> dict:
+    """The model endpoint's body: the diagram, its states and transitions, and its findings."""
+    resp = client.get(f"{project_base(project_id)}/state-machine-diagrams/{machine_id}/model", headers=auth_headers(token))
+    assert resp.status_code == expect, resp.text
+    return resp.json()
+
+
+def move_status(client, token, project_id, machine_id, status, *, expect=200) -> dict:
+    """Moves a state machine diagram to `status` at its current version."""
+    resp = client.post(
+        f"{project_base(project_id)}/state-machine-diagrams/{machine_id}/status",
+        json={"version": machine_version(client, token, project_id, machine_id), "status": status}, headers=auth_headers(token),
+    )
+    assert resp.status_code == expect, resp.text
+    return resp.json()

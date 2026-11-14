@@ -6,7 +6,8 @@ The gates behind the Architecture routers.
 RBAC: any project member can read the vocabularies, elements and connections once
 the matching sub-component is enabled. Creating and changing elements, ports and
 connections needs the project `architect` role or a Fine-Grained Access Control
-`(architecture_element, manage)` / `(architecture_connection, manage)` / `(architecture_diagram, manage)` grant;
+`(architecture_element, manage)` / `(architecture_connection, manage)` / `(architecture_diagram, manage)` /
+`(architecture_state_machine_diagram, manage)` grant;
 changing a project's vocabulary or symbol library needs the project `architecture_admin` role and
 changing the organisation's defaults the organisation `architecture_org_admin` role.
 All compose with server admin, organisation admin and (for a project) project manager.
@@ -27,6 +28,7 @@ from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
     DIAGRAM_ARTEFACT_TYPE,
     ELEMENT_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
 )
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
@@ -39,6 +41,8 @@ ARCHITECT_ROLE = "architect"
 ELEMENT_MANAGE_PERMISSION = encode_permission(ELEMENT_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 CONNECTION_MANAGE_PERMISSION = encode_permission(CONNECTION_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 DIAGRAM_MANAGE_PERMISSION = encode_permission(DIAGRAM_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
+#: Serves both state machine diagrams and their states (a state exists only inside its diagram).
+STATE_MACHINE_MANAGE_PERMISSION = encode_permission(STATE_MACHINE_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
 
 
 def require_architect(db: Session, current_user: User, project: Project, permission: str) -> None:

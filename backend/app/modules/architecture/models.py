@@ -19,6 +19,8 @@ The two vocabularies every architecture record is typed by, and the records:
   `ArchitectureDiagramAnchor`s, `ArchitectureDiagramBoundary`s (the outer connections drawn inside a scope) and
   `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a saved view over the project's
   model; it holds no truth of its own.
+- `ArchitectureStateMachineDiagram`, `ArchitectureState` and `ArchitectureTransition` — the behaviour of one element as
+  states (with a place on the drawing) and the labelled arrows between them.
 
 Each is one table whose owner is a project *or* an organisation (a CHECK keeps
 exactly one). An organisation row is a default every project of the organisation
@@ -798,3 +800,130 @@ class ArchitectureDiagramToggleMember(UUIDPKMixin, TimestampMixin, Base):
     connection_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), nullable=True, index=True
     )
+
+
+class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
+    """The behaviour of one element drawn as states and transitions (a UML state machine).
+
+    It is a record of its own (code, status, version, tags, links, comments) that holds its states
+    (`ArchitectureState`) and transitions (`ArchitectureTransition`). Its `version` is advanced by every change to the
+    diagram or to a state or transition it holds, so an editor holding a stale copy is told before it overwrites.
+
+    Attributes:
+        project_id: The owning project.
+        unique_code: Project-scoped identifier (`SMD-001`).
+        name / description: Display name and what the behaviour is for.
+        element_id: The element described. Required; one element may have several (operating modes, a connection's
+            lifecycle). The element may belong to another owner the project can read; the database refuses to delete it
+            while a state machine diagram describes it.
+        status: A `RecordStatus` value.
+        version: Optimistic counter.
+        creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
+    """
+
+    __tablename__ = "architecture_state_machine_diagrams"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_state_machine_diagrams_project_unique_code"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
+    """A state (or an initial, final or choice marker) of a state machine diagram, with its place on the drawing.
+
+    A state has no status of its own (it follows its state machine diagram) and no placement table: a state machine
+    diagram has exactly one drawing, so the layout is on the state.
+
+    Attributes:
+        state_machine_diagram_id: The state machine diagram; deleting it removes its states.
+        project_id: The diagram's project (kept for the code counter and the project scope).
+        unique_code: Project-scoped identifier (`STE-001`), never reused.
+        name: Unique within the state machine diagram (compared without regard to case).
+        description: Plain text.
+        kind: A `StateKind` value.
+        parent_state_id: The composite state this state is nested in, or `None` at the top level. The database
+            refuses to delete a state that still has children (the rules ask for them to be moved or deleted first).
+        entry_action / exit_action / activity: Plain text a person reads, never evaluated or drawn as markup.
+        x / y / width / height / collapsed: The box in diagram units; a collapsed composite state is drawn as one box.
+        creator_id: The author.
+    """
+
+    __tablename__ = "architecture_states"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_states_project_unique_code"),
+        UniqueConstraint("state_machine_diagram_id", "name", name="uq_architecture_states_name"),
+        CheckConstraint("kind IN ('initial', 'state', 'final', 'choice')", name="ck_architecture_states_kind"),
+    )
+
+    state_machine_diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(16), default="state")
+    parent_state_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id"), nullable=True, index=True
+    )
+    entry_action: Mapped[str] = mapped_column(Text, default="")
+    exit_action: Mapped[str] = mapped_column(Text, default="")
+    activity: Mapped[str] = mapped_column(Text, default="")
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=160.0)
+    height: Mapped[float] = mapped_column(Float, default=64.0)
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=False)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
+    """An arrow between two states of one state machine diagram, labelled `event [guard] / action`.
+
+    A transition has no code and is not a registered type: a link names its source or target state, or the state machine
+    diagram. A self transition (source equals target) is allowed.
+
+    Attributes:
+        state_machine_diagram_id: The state machine diagram; deleting it removes its transitions.
+        source_state_id / target_state_id: The two states, both of this state machine diagram. Deleting a state removes
+            the transitions that start or end at it.
+        event / guard / action / description: Plain text a person reads; never evaluated.
+        sort_order: Order among the diagram's transitions.
+        source_point / target_point: An `AttachPoint` value fixing where the line meets a box, or `None` for automatic.
+    """
+
+    __tablename__ = "architecture_transitions"
+
+    state_machine_diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    source_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id", ondelete="CASCADE"), index=True
+    )
+    target_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id", ondelete="CASCADE"), index=True
+    )
+    event: Mapped[str] = mapped_column(String(200), default="")
+    guard: Mapped[str] = mapped_column(String(500), default="")
+    action: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)

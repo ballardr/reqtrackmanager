@@ -11,7 +11,13 @@ Design decisions:
 
 from __future__ import annotations
 
-from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, DIAGRAM_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
+from app.modules.architecture.service import (
+    CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
+    ELEMENT_ARTEFACT_TYPE,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+)
 from app.modules.registry import RecordAttachmentProvider
 
 RECORD_ATTACHMENTS: dict[str, RecordAttachmentProvider] = {}
@@ -20,4 +26,6 @@ NO_RECORD_ATTACHMENTS: dict[str, str] = {
     ELEMENT_ARTEFACT_TYPE: "An element has no file attachments; its drawing comes from the symbol library.",
     CONNECTION_ARTEFACT_TYPE: "A connection has no file attachments.",
     DIAGRAM_ARTEFACT_TYPE: "A diagram has no file attachments; its drawing is rendered from the model (the diagram SVG).",
+    STATE_MACHINE_ARTEFACT_TYPE: "A state machine diagram has no file attachments; its drawing is rendered from its states and transitions.",
+    STATE_ARTEFACT_TYPE: "A state has no file attachments; it exists only inside its state machine diagram.",
 }

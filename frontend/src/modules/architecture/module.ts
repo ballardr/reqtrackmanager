@@ -20,7 +20,7 @@ import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./typ
  * The System Architecture module's frontend registration, the mirror of `backend/app/modules/architecture/
  * module.py`'s `MODULE_DEFINITION`. `frontend/src/modules/registry.ts` auto-discovers this file.
  *
- * `artefactPaths` / `artefactListPaths`: where an element, a connection, a diagram and their lists live, so links,
+ * `artefactPaths` / `artefactListPaths`: where an element, a connection, a diagram, a state machine diagram, a state and their lists live, so links,
  * notifications and search hits resolve without core naming this module.
  * `artefactStatusLabels` / `artefactInactiveStatuses`: a retired record is greyed out in shared lists.
  *
@@ -45,21 +45,29 @@ export const moduleDefinition: TierAModuleDefinition = {
     architecture_element: (projectId, id) => `/projects/${projectId}/modules/architecture/elements/${id}`,
     architecture_connection: (projectId, id) => `/projects/${projectId}/modules/architecture/connections/${id}`,
     architecture_diagram: (projectId, id) => `/projects/${projectId}/modules/architecture/diagrams/${id}`,
+    architecture_state_machine_diagram: (projectId, id) => `/projects/${projectId}/modules/architecture/state-machine-diagrams/${id}`,
+    architecture_state: (projectId, id) => `/projects/${projectId}/modules/architecture/states/${id}`,
   },
   artefactListPaths: {
     architecture_element: (projectId) => architectureTabPath(projectId, "elements"),
     architecture_connection: (projectId) => architectureTabPath(projectId, "connections"),
     architecture_diagram: (projectId) => architectureTabPath(projectId, "diagrams"),
+    architecture_state_machine_diagram: (projectId) => architectureTabPath(projectId, "diagrams"),
+    architecture_state: (projectId) => architectureTabPath(projectId, "diagrams"),
   },
   artefactStatusLabels: {
     architecture_element: ARCHITECTURE_STATUS_LABEL,
     architecture_connection: ARCHITECTURE_STATUS_LABEL,
     architecture_diagram: ARCHITECTURE_STATUS_LABEL,
+    architecture_state_machine_diagram: ARCHITECTURE_STATUS_LABEL,
+    architecture_state: ARCHITECTURE_STATUS_LABEL,
   },
   artefactInactiveStatuses: {
     architecture_element: ARCHITECTURE_INACTIVE_STATUSES,
     architecture_connection: ARCHITECTURE_INACTIVE_STATUSES,
     architecture_diagram: ARCHITECTURE_INACTIVE_STATUSES,
+    architecture_state_machine_diagram: ARCHITECTURE_INACTIVE_STATUSES,
+    architecture_state: ARCHITECTURE_INACTIVE_STATUSES,
   },
   routes: [
     { path: "/projects/:projectId/modules/architecture", element: createElement(SystemArchitecturePage) },

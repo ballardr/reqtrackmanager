@@ -1,13 +1,13 @@
 """
 Module: modules.architecture.comments
 
-Opts the three architecture types into the generic record comments (`services.record_comments`) and gives each its
-`/comments` route under the module's own path.
+Opts the architecture types (a state takes none: its comments are its diagram's) into the generic record comments
+(`services.record_comments`) and gives each its `/comments` route under the module's own path.
 
 Responsibilities:
 - `RECORD_COMMENTS`: the `RecordCommentProvider` of each type. A diagram's threads may be pinned to a free spot, a box
-  (an element placed on it) or a line (a connection of its project); an element or connection takes ordinary
-  comments only.
+  (an element placed on it) or a line (a connection of its project); a state machine diagram's, to a state or a
+  transition of it; an element or connection takes ordinary comments only.
 - `add_comment_routes`: `GET` and `POST <kind>/{id}/comments` for a type, behind the type's sub-component gate, so a
   project with the module or sub-component off answers 404. They return the same thread as the generic API
   (`routers.record_comments`); editing, resolving and moving go through the generic routes.
@@ -30,7 +30,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureDiagramPlacement
+from app.modules.architecture.models import (
+    ArchitectureConnection,
+    ArchitectureDiagramPlacement,
+    ArchitectureState,
+    ArchitectureTransition,
+)
 from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_ARTEFACT_TYPE,
@@ -39,6 +44,8 @@ from app.modules.architecture.service import (
     DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_SUBCOMPONENT_KEY,
+    STATE_MACHINE_ARTEFACT_TYPE,
+    STATE_MACHINE_SUBCOMPONENT_KEY,
 )
 from app.modules.registry import RecordCommentProvider
 from app.routers import record_comments as generic
@@ -75,21 +82,49 @@ def validate_diagram_anchor(db: Session, project_id: uuid.UUID, diagram_id: uuid
     return False
 
 
+def validate_state_machine_anchor(
+    db: Session, project_id: uuid.UUID, diagram_id: uuid.UUID, kind: str, key: str,
+) -> bool:
+    """Whether a state machine diagram's pin may anchor to `key`: a state of the diagram (`node`) or one of its
+    transitions (`edge`)."""
+    target = _as_uuid(key)
+    if target is None:
+        return False
+    if kind == "node":
+        return db.scalar(
+            select(ArchitectureState.id).where(
+                ArchitectureState.id == target, ArchitectureState.state_machine_diagram_id == diagram_id,
+                ArchitectureState.project_id == project_id,
+            )
+        ) is not None
+    if kind == "edge":
+        return db.scalar(
+            select(ArchitectureTransition.id).where(
+                ArchitectureTransition.id == target, ArchitectureTransition.state_machine_diagram_id == diagram_id
+            )
+        ) is not None
+    return False
+
+
 RECORD_COMMENTS: dict[str, RecordCommentProvider] = {
     ELEMENT_ARTEFACT_TYPE: RecordCommentProvider(),
     CONNECTION_ARTEFACT_TYPE: RecordCommentProvider(),
     DIAGRAM_ARTEFACT_TYPE: RecordCommentProvider(
         anchor_kinds=("node", "edge"), validate_anchor=validate_diagram_anchor
     ),
+    STATE_MACHINE_ARTEFACT_TYPE: RecordCommentProvider(
+        anchor_kinds=("node", "edge"), validate_anchor=validate_state_machine_anchor
+    ),
 }
 
 
 def add_comment_routes(router: APIRouter) -> None:
-    """Adds `GET`/`POST` `{elements,connections,diagrams}/{id}/comments` to the module's project router."""
+    """Adds `GET`/`POST` `{elements,connections,diagrams,state-machine-diagrams}/{id}/comments` to the module's project router."""
     for path, artefact_type, subcomponent in (
         ("elements", ELEMENT_ARTEFACT_TYPE, ELEMENT_SUBCOMPONENT_KEY),
         ("connections", CONNECTION_ARTEFACT_TYPE, CONNECTION_SUBCOMPONENT_KEY),
         ("diagrams", DIAGRAM_ARTEFACT_TYPE, DIAGRAM_SUBCOMPONENT_KEY),
+        ("state-machine-diagrams", STATE_MACHINE_ARTEFACT_TYPE, STATE_MACHINE_SUBCOMPONENT_KEY),
     ):
         gate = require_project_subcomponent_enabled(ARCHITECTURE_MODULE_KEY, subcomponent)
         _add(router, path, artefact_type, gate)

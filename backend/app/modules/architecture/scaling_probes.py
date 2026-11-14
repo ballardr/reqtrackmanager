@@ -1,8 +1,8 @@
 """
 Module: modules.architecture.scaling_probes
 
-The `ScalingProbe`s for the `architecture_element`, `architecture_connection` and `architecture_diagram`
-artefact types: how the scaling-shape guard fills and reads them through the API.
+The `ScalingProbe`s for the `architecture_element`, `architecture_connection`, `architecture_diagram`,
+`architecture_state_machine_diagram` and `architecture_state` artefact types: how the scaling-shape guard fills and reads them through the API.
 
 Responsibilities:
 - Create N elements (children of the first, each with a port), N connections (between elements the
@@ -25,7 +25,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, DIAGRAM_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
+from app.modules.architecture.service import (
+    CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
+    ELEMENT_ARTEFACT_TYPE,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+)
 from app.modules.registry import ScalingProbe
 
 _BASE = "modules/architecture"
@@ -154,8 +160,65 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
     return ids
 
 
+#: The states each probe state machine diagram holds (an initial marker, two nested states and a final marker).
+_PROBE_STATES = 4
+
+
+def _create_state_machines(api: Any, project_id: str, start: int, count: int) -> tuple[list[str], list[str]]:
+    """Creates `count` state machine diagrams describing one element, each with the same few states (one nested in
+    another) and transitions, and returns the diagram ids and the state ids. Every diagram holds the same fixed number
+    of states, so the statements behind the lists, detail, comments and bundle export are compared at two diagram
+    counts. The last `post` adds a transition (the request the creation check runs as another person)."""
+    element_type, _connection_type = _vocabulary_ids(api, project_id)
+    base = f"/projects/{project_id}/{_BASE}"
+    element = api.post(f"{base}/elements", {"name": f"Probe behaviour {start}", "element_type_id": element_type})
+    diagram_ids: list[str] = []
+    state_ids: list[str] = []
+    for i in range(count):
+        diagram = api.post(
+            f"{base}/state-machine-diagrams",
+            {"name": f"Probe state machine {start + i}", "description": "The modes of the probe element.", "element_id": element["id"]},
+        )
+        version = diagram["version"]
+        made: list[dict[str, Any]] = []
+        for name, kind, parent in (
+            ("Start", "initial", None), ("Running", "state", None), ("Idle", "state", 1), ("Stop", "final", None),
+        ):
+            body = {
+                "version": version, "name": f"{name} {start + i}", "kind": kind, "description": "A state of the probe.",
+                "entry_action": "start()" if kind == "state" else "", "x": len(made) * 200.0, "y": 0.0,
+                "parent_state_id": made[parent]["id"] if parent is not None else None,
+            }
+            state = api.post(f"{base}/state-machine-diagrams/{diagram['id']}/states", body)
+            version = state["state_machine_diagram_version"]
+            made.append(state)
+        for source, target, event in ((0, 1, ""), (1, 3, "halt"), (2, 2, "tick")):
+            transition = api.post(
+                f"{base}/state-machine-diagrams/{diagram['id']}/transitions",
+                {"version": version, "source_state_id": made[source]["id"], "target_state_id": made[target]["id"], "event": event},
+            )
+            version = transition["state_machine_diagram_version"]
+        diagram_ids.append(diagram["id"])
+        state_ids.extend(s["id"] for s in made)
+    return diagram_ids, state_ids
+
+
+def _create_machine_ids(api: Any, project_id: str, start: int, count: int) -> list[str]:
+    """Creates `count` state machine diagrams and returns their ids."""
+    return _create_state_machines(api, project_id, start, count)[0]
+
+
+def _create_state_ids(api: Any, project_id: str, start: int, count: int) -> list[str]:
+    """Creates enough state machine diagrams to hold `count` states and returns the state ids (rounded up to whole
+    diagrams, so the list's size is a multiple of `_PROBE_STATES`)."""
+    diagrams = max(1, -(-count // _PROBE_STATES))
+    return _create_state_machines(api, project_id, start, diagrams)[1]
+
+
 SCALING_PROBES = {
     ELEMENT_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/elements", create=_create_elements),
     CONNECTION_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/connections", create=_create_connections),
     DIAGRAM_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/diagrams", create=_create_diagrams),
+    STATE_MACHINE_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/state-machine-diagrams", create=_create_machine_ids),
+    STATE_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/states", create=_create_state_ids, has_comments=False),
 }

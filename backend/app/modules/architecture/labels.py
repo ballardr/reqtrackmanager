@@ -22,6 +22,13 @@ PORT_DIRECTION_LABEL: dict[str, str] = {
     "both": "Both",
 }
 
+STATE_KIND_LABEL: dict[str, str] = {
+    "initial": "Initial state",
+    "state": "State",
+    "final": "Final state",
+    "choice": "Choice",
+}
+
 #: Statuses that mean a record is no longer in force, for "Open only" filters and the inactive style.
 INACTIVE_STATUSES: tuple[str, ...] = ("retired", "rejected")
 

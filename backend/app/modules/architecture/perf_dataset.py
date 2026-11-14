@@ -1,8 +1,9 @@
 """
 Module: modules.architecture.perf_dataset
 
-The dataset generators for the `architecture_element`, `architecture_connection` and `architecture_diagram`
-artefact types: project elements in a tree with ports, connections between them, and diagrams placing them, with
+The dataset generators for the `architecture_element`, `architecture_connection`, `architecture_diagram`,
+`architecture_state_machine_diagram` and `architecture_state` artefact types: project elements in a tree with ports,
+connections between them, diagrams placing them, and state machine diagrams with their states and transitions, with
 tags and places, links to earlier types, and the audit events the application writes.
 
 Responsibilities:
@@ -21,6 +22,9 @@ Design decisions:
   for some (the cap keeps the connection scan bounded at any size).
 - Each kind has its own folder tree (about one folder per twenty records, up to four deep) and about two thirds of its
   records sit in a folder, so the folder paths a list reads are part of what is measured.
+- State machine diagrams are generated after the diagrams, each describing one element; their states come from a
+  second generator (the state is its own type with its own codes), shared out over the diagrams so each has an initial
+  and a final state, some nested states and a few transitions, with the first diagram the largest.
 - Only project-owned records are generated. Organisation-owned elements, collections and grants are not (a
   profile's unit is the project); the visibility resolver's cost is covered by the scaling-shape guard instead.
 
@@ -54,6 +58,9 @@ from app.modules.architecture.models import (
     ArchitectureElementType,
     ArchitectureFolder,
     ArchitecturePort,
+    ArchitectureState,
+    ArchitectureStateMachineDiagram,
+    ArchitectureTransition,
 )
 from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
@@ -62,6 +69,10 @@ from app.modules.architecture.service import (
     DIAGRAM_CODE_PREFIX,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
+    STATE_ARTEFACT_TYPE,
+    STATE_CODE_PREFIX,
+    STATE_MACHINE_ARTEFACT_TYPE,
+    STATE_MACHINE_CODE_PREFIX,
 )
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, PerfProjectContext, insert_rows, uuid_from
@@ -443,4 +454,117 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
     add_tags(ctx, batch)
     _add_record_comments(ctx, batch, DIAGRAM_ARTEFACT_TYPE)
     link_to_earlier(ctx, batch, [("requirement", 0.2)])
+    return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}
+
+
+def generate_state_machines(ctx: PerfProjectContext) -> dict[str, int]:
+    """Writes the project's state machine diagrams, each describing one element `generate_elements` wrote (the states and
+    transitions come from `generate_states`).
+
+    Args:
+        ctx: The project's context.
+
+    Returns:
+        Rows written by table name.
+    """
+    rng = ctx.rng
+    count = ctx.spec.ratios.count_for(STATE_MACHINE_ARTEFACT_TYPE, len(ctx.shared.get("requirement", [])))
+    elements = ctx.shared.get(ELEMENT_ARTEFACT_TYPE, [])
+    if count == 0 or not elements:
+        return {}
+    start = dict(ctx.counts)
+    batch = RecordBatch.start(ctx, STATE_MACHINE_ARTEFACT_TYPE, STATE_MACHINE_CODE_PREFIX, ArchitectureStateMachineDiagram)
+    for _ in range(count):
+        creator, created = rng.choice(ctx.user_ids), created_at(rng)
+        status = pick_weighted(rng, _STATUS_MIX)
+        archived = rng.random() < 0.03
+        name = textgen.title(rng)
+        batch.add(
+            {
+                "name": name, "description": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
+                "element_id": rng.choice(elements), "status": status.value, "version": 1, "is_archived": archived,
+                "archived_at": created if archived else None, "archived_by": creator if archived else None,
+            },
+            creator=creator, at=created, title=name, detail={"status": status.value},
+        )
+    batch.write()
+    add_tags(ctx, batch)
+    _add_record_comments(ctx, batch, STATE_MACHINE_ARTEFACT_TYPE)
+    link_to_earlier(ctx, batch, [("requirement", 0.3), ("risk", 0.05)])
+    return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}
+
+
+_STATE_NAMES = ("Idle", "Starting", "Running", "Degraded", "Stopping", "Fault", "Updating", "Standby", "Calibrating", "Recovering")
+_EVENTS = ("start", "stop", "timeout", "fault", "reset", "ready", "")
+#: The most states one generated state machine diagram gets (the first diagram is the largest).
+_MAX_STATES = 60
+
+
+def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
+    """Writes the states and transitions of the state machine diagrams `generate_state_machines` wrote, sharing the
+    type's count out over them: each diagram gets an initial state, a final state and ordinary states (some nested in an
+    earlier one, a share with entry, exit and activity text, an occasional choice), chained by transitions plus a few
+    extra, a self transition among them, so the checks have sound and unsound diagrams to read.
+
+    Args:
+        ctx: The project's context.
+
+    Returns:
+        Rows written by table name.
+    """
+    rng = ctx.rng
+    machines = ctx.shared.get(STATE_MACHINE_ARTEFACT_TYPE, [])
+    total = ctx.spec.ratios.count_for(STATE_ARTEFACT_TYPE, len(ctx.shared.get("requirement", [])))
+    if total == 0 or not machines:
+        return {}
+    start = dict(ctx.counts)
+    batch = RecordBatch.start(ctx, STATE_ARTEFACT_TYPE, STATE_CODE_PREFIX, ArchitectureState)
+    per_machine = max(3, min(_MAX_STATES, total // len(machines)))
+    for index, machine_id in enumerate(machines):
+        size = min(_MAX_STATES, per_machine * 3 if index == 0 else per_machine)
+        stamp = ctx.created_times[STATE_MACHINE_ARTEFACT_TYPE][index]
+        made: list[tuple[uuid.UUID, str]] = []
+        for slot in range(size):
+            kind = "initial" if slot == 0 else "final" if slot == size - 1 else "choice" if rng.random() < 0.05 else "state"
+            parent = None
+            ordinary = [state_id for state_id, state_kind in made if state_kind == "state"]
+            if kind != "initial" and ordinary and rng.random() < 0.25:
+                parent = rng.choice(ordinary)
+            record_id = batch.new_id()
+            name = "Start" if kind == "initial" else "End" if kind == "final" else f"{rng.choice(_STATE_NAMES)} {slot}"
+            detail = kind == "state" and rng.random() < 0.5
+            batch.add(
+                {
+                    "id": record_id, "state_machine_diagram_id": machine_id, "name": name,
+                    "description": textgen.paragraphs(rng, empty_chance=0.5, short_max=1), "kind": kind,
+                    "parent_state_id": parent, "entry_action": f"enter_{slot}()" if detail else "",
+                    "exit_action": f"leave_{slot}()" if detail and rng.random() < 0.5 else "",
+                    "activity": "monitor()" if detail and rng.random() < 0.4 else "",
+                    "x": float(slot % 6 * 220), "y": float(slot // 6 * 120), "width": 160.0, "height": 64.0,
+                    "collapsed": rng.random() < 0.05,
+                },
+                creator=rng.choice(ctx.user_ids), at=at_between(rng, stamp), title=name, detail={"kind": kind},
+            )
+            made.append((record_id, kind))
+        for order, ((source, _source_kind), (target, _target_kind)) in enumerate(zip(made, made[1:], strict=False)):
+            if made[order][1] == "final":
+                continue
+            batch.satellite(ArchitectureTransition, {
+                "id": batch.new_id(), "state_machine_diagram_id": machine_id, "source_state_id": source,
+                "target_state_id": target, "event": rng.choice(_EVENTS), "guard": "ready" if rng.random() < 0.2 else "",
+                "action": f"do_{order}()" if rng.random() < 0.3 else "", "description": "", "sort_order": order,
+                "source_point": rng.choice(_ATTACH_POINTS) if rng.random() < 0.1 else None,
+                "target_point": None, "created_at": stamp, "updated_at": stamp,
+            })
+        ordinary_ids = [state_id for state_id, state_kind in made if state_kind == "state"]
+        for extra in range(min(len(ordinary_ids), 3)):
+            batch.satellite(ArchitectureTransition, {
+                "id": batch.new_id(), "state_machine_diagram_id": machine_id, "source_state_id": ordinary_ids[extra],
+                "target_state_id": ordinary_ids[extra] if extra == 0 else rng.choice(ordinary_ids), "event": rng.choice(_EVENTS),
+                "guard": "", "action": "", "description": "", "sort_order": size + extra, "source_point": None,
+                "target_point": None, "created_at": stamp, "updated_at": stamp,
+            })
+    batch.write()
+    add_tags(ctx, batch)
+    link_to_earlier(ctx, batch, [("requirement", 0.1)])
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}

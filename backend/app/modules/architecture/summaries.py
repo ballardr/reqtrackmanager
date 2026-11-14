@@ -2,8 +2,9 @@
 Module: modules.architecture.summaries
 
 The `ArtefactSummaryProvider`s for the `architecture_element`, `architecture_connection` and
-`architecture_diagram` artefact types, so core (the link graph, the "Add a link" finder) and other modules can label, status-badge
-and visibility-check an element or a connection without importing its models.
+`architecture_diagram`, `architecture_state_machine_diagram` and `architecture_state` artefact types, so core (the link
+graph, the "Add a link" finder) and other modules can label, status-badge and visibility-check a record without
+importing its models.
 
 Responsibilities:
 - Build an `ArtefactSummary` (`ELM-001 name`, `CON-001 name (ELM-001 → ELM-002)`, status, archived
@@ -34,7 +35,13 @@ from sqlalchemy.orm import Session, aliased
 
 from app.models.project import Project
 from app.modules.architecture.labels import INACTIVE_STATUSES, RECORD_STATUS_LABEL
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureDiagram, ArchitectureElement
+from app.modules.architecture.models import (
+    ArchitectureConnection,
+    ArchitectureDiagram,
+    ArchitectureElement,
+    ArchitectureState,
+    ArchitectureStateMachineDiagram,
+)
 from app.modules.architecture.visibility import Viewer, granted_element_ids, visible_element_ids
 from app.modules.registry import ArtefactSummary, ArtefactSummaryProvider, BrowseLevel
 from app.services.summary_facets import status_facet
@@ -170,4 +177,86 @@ def _get_many_diagrams(db: Session, project_id: UUID, ids: Sequence[UUID]) -> li
 
 DIAGRAM_SUMMARY_PROVIDER = ArtefactSummaryProvider(
     get=_get_diagram, list_for_project=_list_diagrams, get_many_in_project=_get_many_diagrams, browse_levels=BROWSE_LEVELS,
+)
+
+
+def _readable_machines(db: Session, project_id: UUID, rows: Sequence[ArchitectureStateMachineDiagram]) -> list[ArchitectureStateMachineDiagram]:
+    """The diagrams whose element the project may read, so a summary never names a diagram of a hidden element."""
+    readable = visible_element_ids(db, _viewer(db, project_id), {r.element_id for r in rows})
+    return [r for r in rows if r.element_id in readable]
+
+
+def _machine_summaries(rows: Sequence[ArchitectureStateMachineDiagram]) -> list[ArtefactSummary]:
+    return [
+        ArtefactSummary(
+            id=d.id, project_id=d.project_id, label=f"{d.unique_code} {d.name}", status=d.status, is_archived=d.is_archived,
+            facets=_facets(d.status),
+        )
+        for d in rows
+    ]
+
+
+def _get_machine(db: Session, machine_id: UUID) -> ArtefactSummary | None:
+    row = db.get(ArchitectureStateMachineDiagram, machine_id)
+    if row is None or not _readable_machines(db, row.project_id, [row]):
+        return None
+    return _machine_summaries([row])[0]
+
+
+def _list_machines(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+    rows = db.scalars(select(ArchitectureStateMachineDiagram).where(
+        ArchitectureStateMachineDiagram.project_id == project_id, ArchitectureStateMachineDiagram.is_archived.is_(False),
+    )).all()
+    return sorted(_machine_summaries(_readable_machines(db, project_id, rows)), key=lambda s: s.label)
+
+
+def _get_many_machines(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
+    rows = db.scalars(select(ArchitectureStateMachineDiagram).where(
+        ArchitectureStateMachineDiagram.id.in_(ids), ArchitectureStateMachineDiagram.project_id == project_id,
+    )).all()
+    return _machine_summaries(_readable_machines(db, project_id, rows))
+
+
+STATE_MACHINE_SUMMARY_PROVIDER = ArtefactSummaryProvider(
+    get=_get_machine, list_for_project=_list_machines, get_many_in_project=_get_many_machines, browse_levels=BROWSE_LEVELS,
+)
+
+
+def _state_summaries(db: Session, project_id: UUID, rows: Sequence[ArchitectureState]) -> list[ArtefactSummary]:
+    """A state follows its diagram: it is named only when the diagram's element is readable, and carries its status."""
+    diagram_ids = {r.state_machine_diagram_id for r in rows}
+    if not diagram_ids:
+        return []
+    machines = {
+        d.id: d for d in _readable_machines(db, project_id, db.scalars(
+            select(ArchitectureStateMachineDiagram).where(ArchitectureStateMachineDiagram.id.in_(diagram_ids))
+        ).all())
+    }
+    return [
+        ArtefactSummary(
+            id=s.id, project_id=s.project_id, label=f"{s.unique_code} {s.name}", status=machines[s.state_machine_diagram_id].status,
+            is_archived=machines[s.state_machine_diagram_id].is_archived, facets=_facets(machines[s.state_machine_diagram_id].status),
+        )
+        for s in rows if s.state_machine_diagram_id in machines
+    ]
+
+
+def _get_state(db: Session, state_id: UUID) -> ArtefactSummary | None:
+    row = db.get(ArchitectureState, state_id)
+    found = [] if row is None else _state_summaries(db, row.project_id, [row])
+    return found[0] if found else None
+
+
+def _list_states(db: Session, project_id: UUID) -> list[ArtefactSummary]:
+    rows = db.scalars(select(ArchitectureState).where(ArchitectureState.project_id == project_id)).all()
+    return sorted((s for s in _state_summaries(db, project_id, rows) if not s.is_archived), key=lambda s: s.label)
+
+
+def _get_many_states(db: Session, project_id: UUID, ids: Sequence[UUID]) -> list[ArtefactSummary]:
+    rows = db.scalars(select(ArchitectureState).where(ArchitectureState.id.in_(ids), ArchitectureState.project_id == project_id)).all()
+    return _state_summaries(db, project_id, rows)
+
+
+STATE_SUMMARY_PROVIDER = ArtefactSummaryProvider(
+    get=_get_state, list_for_project=_list_states, get_many_in_project=_get_many_states, browse_levels=BROWSE_LEVELS,
 )

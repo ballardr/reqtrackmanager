@@ -2476,7 +2476,8 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     through a collection, a diagram of the airframe with a boundary box for that link and a toggle that hides its sensors, and
     folders that organise the three lists (Hardware with Boards and Sensors, Software, Buses, Overviews, and the organisation's Shared services).
     The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
-    drone with a symbol uploaded to the project's own library. Returns the number of elements, connections and diagrams created."""
+    drone with a symbol uploaded to the project's own library. and a state machine diagram of the flight controller's modes (with a nested Flying state).
+    Returns the number of elements, connections, diagrams and state machine diagrams created."""
     enable_module(headers, org_id, "architecture")
     base = f"{BASE}/projects/{project_id}/modules/architecture"
 
@@ -2674,7 +2675,58 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         f"{comments}/architecture_element/{gps['id']}/comments", headers=headers, timeout=30,
         json={"body": "Confirm the receiver supports the 10 Hz update rate."},
     ).raise_for_status()
-    return {"elements": 8, "connections": 6, "diagrams": 1}
+
+    # The flight controller's operating modes as a state machine diagram: a startup self-test, a composite Flying state
+    # (Armed, Hovering, Returning home) and a Failsafe state, with a self transition and a guarded exit. It is sound (no
+    # error finding), so it is activated.
+    machine = httpx.post(
+        f"{base}/state-machine-diagrams", headers=headers, timeout=30,
+        json={"name": "Flight controller modes", "description": "The modes the flight controller moves between in flight.",
+              "element_id": fc["id"]},
+    )
+    machine.raise_for_status()
+    machine_id, version = machine.json()["id"], machine.json()["version"]
+    states: dict[str, str] = {}
+    for name, kind, parent, extra in (
+        ("Start", "initial", None, {"x": 0, "y": 120}),
+        ("Self-test", "state", None, {"x": 200, "y": 100, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"}),
+        ("Flying", "state", None, {"x": 460, "y": 40, "width": 520, "height": 300}),
+        ("Flight start", "initial", "Flying", {"x": 490, "y": 140}),
+        ("Armed", "state", "Flying", {"x": 560, "y": 120, "entry_action": "spin_up_motors()"}),
+        ("Hovering", "state", "Flying", {"x": 780, "y": 120, "activity": "hold_position()"}),
+        ("Returning home", "state", "Flying", {"x": 670, "y": 240, "activity": "navigate_to_home()"}),
+        ("Failsafe", "state", None, {"x": 460, "y": 400, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."}),
+        ("Landed", "final", None, {"x": 1060, "y": 160}),
+    ):
+        response = httpx.post(
+            f"{base}/state-machine-diagrams/{machine_id}/states", headers=headers, timeout=30,
+            json={"version": version, "name": name, "kind": kind, "parent_state_id": states[parent] if parent else None, **extra},
+        )
+        response.raise_for_status()
+        states[name] = response.json()["id"]
+        version = response.json()["state_machine_diagram_version"]
+    for source, target, fields in (
+        ("Start", "Self-test", {}),
+        ("Self-test", "Flying", {"event": "checks passed", "guard": "gps fix"}),
+        ("Flight start", "Armed", {}),
+        ("Armed", "Hovering", {"event": "takeoff", "action": "climb(2 m)"}),
+        ("Hovering", "Hovering", {"event": "position drift", "action": "correct()"}),
+        ("Hovering", "Returning home", {"event": "battery low"}),
+        ("Flying", "Failsafe", {"event": "sensor fault", "action": "alert()"}),
+        ("Returning home", "Landed", {"event": "touchdown"}),
+        ("Failsafe", "Landed", {"event": "motors stopped"}),
+    ):
+        response = httpx.post(
+            f"{base}/state-machine-diagrams/{machine_id}/transitions", headers=headers, timeout=30,
+            json={"version": version, "source_state_id": states[source], "target_state_id": states[target], **fields},
+        )
+        response.raise_for_status()
+        version = response.json()["state_machine_diagram_version"]
+    httpx.post(
+        f"{base}/state-machine-diagrams/{machine_id}/status", headers=headers, timeout=30,
+        json={"version": version, "status": "active"},
+    ).raise_for_status()
+    return {"elements": 8, "connections": 6, "diagrams": 1, "state_machine_diagrams": 1}
 
 
 def main() -> None:
@@ -4622,7 +4674,8 @@ def main() -> None:
     print(f"  System Architecture (enabled org-wide): {architecture_counts['elements']} elements on Falcon-3 in a tree"
           f" (a System, a Subsystem, boards, sensors and a ground-station service, each with ports) and"
           f" {architecture_counts['connections']} typed connections between them, and {architecture_counts['diagrams']}"
-          f" diagram of the airframe with a toggle that hides its sensors")
+          f" diagram of the airframe with a toggle that hides its sensors, and a state machine diagram of the flight controller's"
+          f" modes ({architecture_counts['state_machine_diagrams']})")
     if repo_counts:
         print(f"  {seed_repo_demo.PROJECT_NAME}: " + ", ".join(f"{count} {name}" for name, count in repo_counts.items())
               + " — loaded from this repository's documents (docs/decisions.md, docs/requirements.md, docs/soc2/)")

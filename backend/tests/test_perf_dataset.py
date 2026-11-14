@@ -44,7 +44,7 @@ SMALL = {
             "guiding_principle": 0.2, "open_question": 0.2, "persona": 0.2, "stakeholder": 0.3, "stakeholder_need": 0.3,
             "stakeholder_group": 0.2, "engagement": 0.3, "research_finding": 0.4, "compliance_evidence": 0.2,
             "enhancement_request": 0.3, "architecture_element": 0.3, "architecture_connection": 0.4,
-            "architecture_diagram": 0.3,
+            "architecture_diagram": 0.3, "architecture_state_machine_diagram": 0.3, "architecture_state": 0.9,
         },
     },
     "compliance": {"standards_per_org": 2, "requirements_per_standard": 6, "required_action_fraction": 0.5, "standards_per_project": 1},

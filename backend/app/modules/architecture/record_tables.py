@@ -1,9 +1,9 @@
 """
 Module: modules.architecture.record_tables
 
-The `RecordTableProvider`s of the module's three record types, the element, the connection and the diagram: each
+The `RecordTableProvider`s of the module's five record types, the element, the connection, the diagram, the state machine diagram and the state: each
 list as a table, so it exports to CSV, PDF and Word and (element and connection) imports from the same CSV (a row
-with a code updates that record, a blank code creates one). A diagram exports only (`NOT_IMPORTABLE` says why).
+with a code updates that record, a blank code creates one). A diagram, a state machine diagram and a state export only (`NOT_IMPORTABLE` says why).
 
 Responsibilities:
 - Declare the columns (name, type, symbol, parent, owner, status, ports; or type, ends, ports, protocol) and
@@ -50,21 +50,25 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.architecture import diagrams, folders, records
+from app.modules.architecture import state_machines as machines
 from app.modules.architecture._shared import (
     CONNECTION_MANAGE_PERMISSION,
     DIAGRAM_MANAGE_PERMISSION,
     ELEMENT_MANAGE_PERMISSION,
+    STATE_MACHINE_MANAGE_PERMISSION,
     require_architect,
 )
 from app.modules.architecture.connection_tree import closure_of
 from app.modules.architecture.diagram_routes import filter_diagrams
-from app.modules.architecture.enums import PortDirection, RecordStatus
-from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL
+from app.modules.architecture.enums import PortDirection, RecordStatus, StateKind
+from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL, STATE_KIND_LABEL
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureDiagram,
     ArchitectureElement,
     ArchitecturePort,
+    ArchitectureState,
+    ArchitectureStateMachineDiagram,
     ArchitectureSymbol,
 )
 from app.modules.architecture.record_routes import filter_connections, filter_elements
@@ -87,8 +91,12 @@ from app.modules.architecture.service import (
     ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
     ELEMENT_TYPES,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+    STATE_MACHINE_SUBCOMPONENT_KEY,
     SYMBOLS,
 )
+from app.modules.architecture.state_machine_routes import filter_states
 from app.modules.architecture.symbols import visible_symbol_ids
 from app.modules.architecture.visibility import Viewer, is_architecture_org_admin, visible_element_ids
 from app.modules.registry import (
@@ -117,6 +125,8 @@ from app.services.record_tables_core import (
 ELEMENT_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search", "roots_only", "folder", "subfolders"})
 CONNECTION_FILTERS = frozenset({"include_archived", "status", "type", "open_only", "search", "folder", "subfolders"})
 DIAGRAM_FILTERS = frozenset({"include_archived", "status", "open_only", "search", "folder", "subfolders"})
+STATE_MACHINE_FILTERS = frozenset({"include_archived", "status", "open_only", "search", "element_id"})
+STATE_FILTERS = frozenset({"include_archived", "kind", "search", "state_machine_diagram_id"})
 
 _STATUS_TONES = {"Draft": "info", "Active": "accent", "Retired": "muted"}
 _DIRECTION_BY_LABEL = {label.casefold(): value for value, label in PORT_DIRECTION_LABEL.items()}
@@ -712,8 +722,173 @@ DIAGRAM_TABLE = RecordTableProvider(
     count=lambda db, user, project_id: count_rows(db, ArchitectureDiagram, project_id, live_only=True),
 )
 
+# --- State machine diagram and state ---------------------------------------
+
+
+def _count_visible(db: Session, user: User, project_id: uuid.UUID, *, states: bool) -> int:
+    """How many state machine diagrams (or states) of the project's live diagrams the user may read: grouped by the
+    element described and filtered through the visibility rules in one bulk call, so a hidden element is never counted."""
+    diagram = ArchitectureStateMachineDiagram
+    query = select(diagram.element_id, func.count()).select_from(diagram)
+    if states:
+        query = query.join(ArchitectureState, ArchitectureState.state_machine_diagram_id == diagram.id)
+    per_element = dict(db.execute(
+        query.where(diagram.project_id == project_id, diagram.is_archived.is_(False)).group_by(diagram.element_id)
+    ).tuples().all())
+    readable = visible_element_ids(db, Viewer.of_user(user, project_or_404(db, project_id)), per_element)
+    return sum(count for element_id, count in per_element.items() if element_id in readable)
+
+
+class _MachinePrepared:
+    """Lookups handed to every state machine diagram column's `get`: tags and the counted `StateMachineDiagramOut`s."""
+
+    def __init__(self, db: Session, project: Project, records_: Sequence[ArchitectureStateMachineDiagram]) -> None:
+        ids = [r.id for r in records_]
+        self.tags = tag_service.tag_names_for_records(db, STATE_MACHINE_ARTEFACT_TYPE, ids) if ids else {}
+        viewer = Viewer.of_project(project.id, project.organization_id)
+        self.outs = {d.id: d for d in machines.state_machine_outs(db, list(records_), viewer)}
+
+
+def _prepare_machines(db: Session, project: Project, records_: list[ArchitectureStateMachineDiagram]) -> _MachinePrepared:
+    return _MachinePrepared(db, project, records_)
+
+
+def _list_machines(
+    db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters,
+) -> list[ArchitectureStateMachineDiagram]:
+    status = enum_filter(filters, "status", RecordStatus)
+    project = project_or_404(db, project_id)
+    element = filters.one("element_id")
+    try:
+        element_id = uuid.UUID(element) if element else None
+    except ValueError:
+        raise HTTPException(422, "element_id is not a valid value.") from None
+    return machines.filter_state_machines(
+        machines.list_state_machines(
+            db, Viewer.of_user(user, project), project_id, include_archived=bool(filters.flag("include_archived")),
+        ),
+        status_=status.value if status else None, open_only=bool(filters.flag("open_only")),
+        search=filters.one("search"), element_id=element_id,
+    )
+
+
+def _machine_columns(db: Session, project: Project) -> list[RecordColumn]:
+    return [
+        RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("element", "Element", lambda t, r: t.outs[r.id].element_code or "", text_parser),
+        RecordColumn("states", "States", lambda t, r: str(t.outs[r.id].state_count), text_parser),
+        RecordColumn("transitions", "Transitions", lambda t, r: str(t.outs[r.id].transition_count), text_parser),
+        RecordColumn("errors", "Errors", lambda t, r: str(t.outs[r.id].error_count), text_parser),
+        RecordColumn("warnings", "Warnings", lambda t, r: str(t.outs[r.id].warning_count), text_parser),
+        replace(_status_column(), editable=False),
+        _tags_column(),
+    ]
+
+
+def _find_machine(db: Session, project: Project, code: str) -> ArchitectureStateMachineDiagram | None:
+    return db.scalar(select(ArchitectureStateMachineDiagram).where(
+        ArchitectureStateMachineDiagram.project_id == project.id, ArchitectureStateMachineDiagram.unique_code == code.upper(),
+    ))
+
+
+class _StatePrepared:
+    """Lookups handed to every state column's `get`: tags and the `StateOut`s (diagram, element and parent codes)."""
+
+    def __init__(self, db: Session, project: Project, records_: Sequence[ArchitectureState]) -> None:
+        ids = [r.id for r in records_]
+        self.tags = tag_service.tag_names_for_records(db, STATE_ARTEFACT_TYPE, ids) if ids else {}
+        viewer = Viewer.of_project(project.id, project.organization_id)
+        self.outs = {s.id: s for s in machines.state_outs(db, list(records_), viewer)}
+
+
+def _prepare_states(db: Session, project: Project, records_: list[ArchitectureState]) -> _StatePrepared:
+    return _StatePrepared(db, project, records_)
+
+
+def _list_states(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ArchitectureState]:
+    kind = enum_filter(filters, "kind", StateKind)
+    diagram = filters.one("state_machine_diagram_id")
+    try:
+        diagram_id = uuid.UUID(diagram) if diagram else None
+    except ValueError:
+        raise HTTPException(422, "state_machine_diagram_id is not a valid value.") from None
+    diagrams_ = machines.list_state_machines(
+        db, Viewer.of_user(user, project_or_404(db, project_id)), project_id,
+        include_archived=bool(filters.flag("include_archived")),
+    )
+    states = machines.states_of_many(db, (d.id for d in diagrams_))
+    return filter_states(
+        states, {d.id: d.unique_code for d in diagrams_}, kind=kind.value if kind else None, search=filters.one("search"),
+        state_machine_diagram_id=diagram_id,
+    )
+
+
+def _state_columns(db: Session, project: Project) -> list[RecordColumn]:
+    return [
+        RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn(
+            "kind", "Kind", lambda t, r: STATE_KIND_LABEL[r.kind], text_parser, kind="enum",
+            choices=tuple(STATE_KIND_LABEL.values()),
+        ),
+        RecordColumn("diagram", "State machine diagram", lambda t, r: t.outs[r.id].state_machine_diagram_code, text_parser),
+        RecordColumn("element", "Element", lambda t, r: t.outs[r.id].element_code or "", text_parser),
+        RecordColumn("parent", "Parent state", lambda t, r: t.outs[r.id].parent_state_code or "", text_parser),
+        RecordColumn("entry_action", "Entry action", lambda t, r: r.entry_action, text_parser),
+        RecordColumn("exit_action", "Exit action", lambda t, r: r.exit_action, text_parser),
+        RecordColumn("activity", "Activity", lambda t, r: r.activity, text_parser),
+        _tags_column(),
+    ]
+
+
+def _find_state(db: Session, project: Project, code: str) -> ArchitectureState | None:
+    return db.scalar(select(ArchitectureState).where(
+        ArchitectureState.project_id == project.id, ArchitectureState.unique_code == code.upper(),
+    ))
+
+
+NOT_IMPORTABLE.update({
+    STATE_MACHINE_ARTEFACT_TYPE: (
+        "A state machine diagram is meaningful only with its states and transitions, which a row of cells cannot "
+        "describe; its list exports, and the project bundle carries the diagram itself."
+    ),
+    STATE_ARTEFACT_TYPE: (
+        "A state exists only inside its state machine diagram and is drawn and connected in the editor; its list "
+        "exports, and the project bundle carries the states with their diagram."
+    ),
+})
+
+STATE_MACHINE_TABLE = RecordTableProvider(
+    label="State machine diagrams",
+    columns=_machine_columns,
+    list_records=_list_machines,
+    find=_find_machine,
+    find_many=find_many_by_code(ArchitectureStateMachineDiagram, "project_id"),
+    prepare=_prepare_machines,
+    filter_params=STATE_MACHINE_FILTERS,
+    gate=(ARCHITECTURE_MODULE_KEY, STATE_MACHINE_SUBCOMPONENT_KEY),
+    can_create=lambda db, user, project_id: _allowed(db, user, project_id, STATE_MACHINE_MANAGE_PERMISSION),
+    count=lambda db, user, project_id: _count_visible(db, user, project_id, states=False),
+)
+
+STATE_TABLE = RecordTableProvider(
+    label="States",
+    columns=_state_columns,
+    list_records=_list_states,
+    find=_find_state,
+    find_many=find_many_by_code(ArchitectureState, "project_id"),
+    prepare=_prepare_states,
+    filter_params=STATE_FILTERS,
+    gate=(ARCHITECTURE_MODULE_KEY, STATE_MACHINE_SUBCOMPONENT_KEY),
+    can_create=lambda db, user, project_id: _allowed(db, user, project_id, STATE_MACHINE_MANAGE_PERMISSION),
+    count=lambda db, user, project_id: _count_visible(db, user, project_id, states=True),
+)
+
 RECORD_TABLES: dict[str, RecordTableProvider] = {
     ELEMENT_ARTEFACT_TYPE: ELEMENT_TABLE,
     CONNECTION_ARTEFACT_TYPE: CONNECTION_TABLE,
     DIAGRAM_ARTEFACT_TYPE: DIAGRAM_TABLE,
+    STATE_MACHINE_ARTEFACT_TYPE: STATE_MACHINE_TABLE,
+    STATE_ARTEFACT_TYPE: STATE_TABLE,
 }

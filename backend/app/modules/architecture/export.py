@@ -35,6 +35,9 @@ Design decisions:
   names vocabulary rows by name (never an id) and its manual members by code, so a bundle holds no ids; an import
   numbers the diagram afresh and drops, with a warning, a box, member, anchor or scope it cannot resolve. A diagram is a
   template record, reset to a fresh draft that places only the template's own elements.
+- State machine diagrams: a diagram travels with its states and transitions (`state_machine_export`); a state names its parent
+  and a transition its two states by the state's name, and the codes are information only. A template keeps only the
+  diagrams of elements it carries, as fresh drafts.
 - Realisations and boundary boxes: a connection lists the codes of the outer connections it realises (`realises`) and a
   diagram its boundary boxes (the outer connection's code and the box); both name connections of the same bundle only.
   An import re-applies each realisation through the same rule as the editor and drops, with a warning, one that no
@@ -68,6 +71,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
+from app.modules.architecture import state_machine_export
 from app.modules.architecture.diagrams import effective_leader_kind
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
@@ -105,6 +109,8 @@ from app.modules.architecture.service import (
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_TYPES,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
     SYMBOLS,
     ArchitectureVocabulary,
 )
@@ -137,6 +143,7 @@ _VOCABULARIES: tuple[tuple[ArchitectureVocabulary, str, str, str], ...] = (
 ELEMENTS_KEY = "architecture_elements"
 CONNECTIONS_KEY = "architecture_connections"
 DIAGRAMS_KEY = "architecture_diagrams"
+STATE_MACHINES_KEY = "architecture_state_machine_diagrams"
 LINKS_KEY = "architecture_links"
 COLLECTIONS_KEY = "architecture_collections"
 FOLDERS_KEY = "architecture_folders"
@@ -152,7 +159,7 @@ PROJECT_KEYS = frozenset(
     key for _v, _o, project_key, hidden_key in _VOCABULARIES for key in (project_key, hidden_key)
 ) | {PROJECT_SYMBOLS_KEY, HIDDEN_SYMBOLS_KEY, FOLDERS_KEY}
 #: Project bundle keys of the records, for the template classification (records).
-RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY, LINKS_KEY, COLLECTIONS_KEY})
+RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY, STATE_MACHINES_KEY, LINKS_KEY, COLLECTIONS_KEY})
 
 
 #: The comment keys of a record with no comments, so every row has the same shape.
@@ -651,6 +658,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         select(ArchitectureConnection).where(ArchitectureConnection.project_id == project.id)
         .order_by(ArchitectureConnection.unique_code)
     ))
+    machines = state_machine_export.load_machines(db, project)
     element_ids = [e.id for e in elements]
     connection_ids = [c.id for c in connections]
     codes = {e.id: e.unique_code for e in elements}
@@ -683,7 +691,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         {e.creator_id for e in elements} | {e.archived_by for e in elements}
         | {c.creator_id for c in connections} | {c.archived_by for c in connections}
         | set(db.scalars(select(ArchitectureDiagram.creator_id).where(ArchitectureDiagram.project_id == project.id)))
-        | set(db.scalars(select(ArchitectureDiagram.archived_by).where(ArchitectureDiagram.project_id == project.id))),
+        | set(db.scalars(select(ArchitectureDiagram.archived_by).where(ArchitectureDiagram.project_id == project.id)))
+        | {m.creator_id for m in machines} | {m.archived_by for m in machines},
     )
 
     data[ELEMENTS_KEY] = [
@@ -710,7 +719,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     ]
     foreign = _foreign_refs(db, {
         end for c in connections for end in (c.source_element_id, c.target_element_id) if end not in codes
-    })
+    } | {m.element_id for m in machines if m.element_id not in codes})
     connection_codes = {c.id: c.unique_code for c in connections}
     realises: dict[UUID, list[str]] = {}
     for row in project_realisations(db, project.id):
@@ -737,6 +746,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     data[DIAGRAMS_KEY], diagrams = _diagrams_json(
         db, project, codes, {c.id: c.unique_code for c in connections}, type_names, emails,
     )
+    data[STATE_MACHINES_KEY], states = state_machine_export.export_state_machines(
+        db, machines, lambda element_id: _element_ref(codes, foreign, element_id), lambda user_id: _email(emails, user_id),
+    )
     data[COLLECTIONS_KEY] = _collections_json(
         db, ArchitectureCollection.project_id == project.id, lambda element_id: codes.get(element_id),
     )
@@ -744,6 +756,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         ELEMENT_ARTEFACT_TYPE: {e.id: e.unique_code for e in elements},
         CONNECTION_ARTEFACT_TYPE: {c.id: c.unique_code for c in connections},
         DIAGRAM_ARTEFACT_TYPE: {d.id: d.unique_code for d in diagrams},
+        STATE_MACHINE_ARTEFACT_TYPE: {m.id: m.unique_code for m in machines},
+        STATE_ARTEFACT_TYPE: {s.id: s.unique_code for s in states},
     })
     return data, assets
 
@@ -928,9 +942,12 @@ def reset_for_template(data: dict[str, Any]) -> None:
             toggle["connection_codes"] = [c for c in toggle.get("connection_codes", []) if c in kept_connections]
     for collection in data.get(COLLECTIONS_KEY, []):
         collection["members"] = [code for code in collection.get("members", []) if code in kept]
+    data[STATE_MACHINES_KEY] = state_machine_export.reset_for_template(data.get(STATE_MACHINES_KEY, []), kept)
     surviving = {
         ELEMENT_ARTEFACT_TYPE: kept, CONNECTION_ARTEFACT_TYPE: kept_connections,
         DIAGRAM_ARTEFACT_TYPE: {d["unique_code"] for d in data.get(DIAGRAMS_KEY, [])},
+        STATE_MACHINE_ARTEFACT_TYPE: {m["unique_code"] for m in data[STATE_MACHINES_KEY]},
+        STATE_ARTEFACT_TYPE: {s["unique_code"] for m in data[STATE_MACHINES_KEY] for s in m.get("states", [])},
     }
     data[LINKS_KEY] = [
         link for link in data.get(LINKS_KEY, [])
@@ -1347,6 +1364,10 @@ def import_project_data(
         db, project, data.get(DIAGRAMS_KEY, []), elements, connections, current_user, users, warnings, folder_importer,
     )
     _import_comments(db, project, data, elements, connections, diagram_ids, users, warnings)
+    machine_ids, state_ids = state_machine_export.import_state_machines(
+        db, project, data.get(STATE_MACHINES_KEY, []), lambda ref: _resolve_ref(db, project, current_user, elements, ref),
+        current_user.id, users, warnings,
+    )
     _import_collections(
         db, data.get(COLLECTIONS_KEY, []), owner={"project_id": project.id},
         owner_filter=ArchitectureCollection.project_id == project.id, elements=elements, creator_id=current_user.id,
@@ -1354,7 +1375,10 @@ def import_project_data(
     )
     import_artefact_links(
         db, project, data.get(LINKS_KEY, []),
-        {ELEMENT_ARTEFACT_TYPE: elements, CONNECTION_ARTEFACT_TYPE: connections, DIAGRAM_ARTEFACT_TYPE: diagram_ids},
+        {
+            ELEMENT_ARTEFACT_TYPE: elements, CONNECTION_ARTEFACT_TYPE: connections, DIAGRAM_ARTEFACT_TYPE: diagram_ids,
+            STATE_MACHINE_ARTEFACT_TYPE: machine_ids, STATE_ARTEFACT_TYPE: state_ids,
+        },
         current_user, users, warnings, context="System Architecture",
     )
     db.flush()

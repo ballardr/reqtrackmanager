@@ -26,12 +26,14 @@ from app.modules.architecture.enums import (
     AttachPoint,
     Domain,
     ElementShape,
+    FindingSeverity,
     FolderKind,
     LeaderKind,
     LineStyle,
     NoteTone,
     PortDirection,
     RecordStatus,
+    StateKind,
 )
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
@@ -861,3 +863,209 @@ class DiagramModel(BaseModel):
     connection_types: list[ModelConnectionType]
     toggle_members: list[ModelToggleMembers]
     realisations: list[ModelRealisation] = Field(default_factory=list)
+
+
+# --- State machine diagrams ---------------------------------------------------------------
+
+
+class StateMachineDiagramCreate(BaseModel):
+    """Create payload for a state machine diagram.
+
+    Attributes:
+        element_id: The element whose behaviour is drawn (one the person may read).
+        activate: Create it `active` instead of `draft` (Save and activate); refused, and nothing stored, while the
+            checks find an error (a new diagram has no initial state, so it is refused).
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+    element_id: UUID
+    activate: bool = False
+
+
+class StateMachineDiagramUpdate(BaseModel):
+    """Edit of a state machine diagram's own fields. `version` is required; a field left out is kept."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+    element_id: UUID | None = None
+
+
+class FindingOut(BaseModel):
+    """One modelling finding (`state_machine_checks`): `code` is a stable key, `subject` the code of the state or
+    transition it concerns (empty for the diagram as a whole), and `message` the sentence shown."""
+
+    severity: FindingSeverity
+    code: str
+    subject: str
+    message: str
+
+
+class StateMachineDiagramOut(ProjectScopedRow):
+    """A state machine diagram with its counts and finding counts. `element_code` / `element_name` are filled for an
+    element the viewer may read (the name is blank for one they may not)."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    name: str
+    description: str
+    element_id: UUID
+    element_code: str | None = None
+    element_name: str | None = None
+    status: str
+    allowed_status_moves: list[str]
+    version: int
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    state_count: int
+    transition_count: int
+    error_count: int
+    warning_count: int
+
+
+class StateCreate(BaseModel):
+    """A new state in a state machine diagram. `version` is the diagram's (the optimistic lock)."""
+
+    version: int
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+    kind: StateKind = StateKind.STATE
+    parent_state_id: UUID | None = None
+    entry_action: str = Field(default="", max_length=2000)
+    exit_action: str = Field(default="", max_length=2000)
+    activity: str = Field(default="", max_length=2000)
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 64.0
+    collapsed: bool = False
+
+
+class StateUpdate(BaseModel):
+    """Edit of a state. `version` is the diagram's; a field left out is kept, and `parent_state_id` set to `null` moves
+    the state to the top level."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+    kind: StateKind | None = None
+    parent_state_id: UUID | None = None
+    entry_action: str | None = Field(default=None, max_length=2000)
+    exit_action: str | None = Field(default=None, max_length=2000)
+    activity: str | None = Field(default=None, max_length=2000)
+    x: Coordinate | None = None
+    y: Coordinate | None = None
+    width: Extent | None = None
+    height: Extent | None = None
+    collapsed: bool | None = None
+
+
+class StateOut(ProjectScopedRow):
+    """A state with the state machine diagram and element it belongs to. `element_name` is blank for an element the
+    viewer may not read."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    state_machine_diagram_id: UUID
+    state_machine_diagram_code: str
+    state_machine_diagram_name: str
+    state_machine_diagram_version: int
+    element_id: UUID
+    element_code: str | None = None
+    element_name: str | None = None
+    name: str
+    description: str
+    kind: str
+    parent_state_id: UUID | None
+    parent_state_code: str | None = None
+    entry_action: str
+    exit_action: str
+    activity: str
+    x: float
+    y: float
+    width: float
+    height: float
+    collapsed: bool
+    status: str
+    is_archived: bool
+    creator_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransitionIn(BaseModel):
+    """A transition. `version` is the diagram's (the optimistic lock); on an update a field left out is kept."""
+
+    version: int
+    source_state_id: UUID | None = None
+    target_state_id: UUID | None = None
+    event: str | None = Field(default=None, max_length=200)
+    guard: str | None = Field(default=None, max_length=500)
+    action: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=20000)
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+
+
+class TransitionOut(BaseModel):
+    """A transition with the codes of its two states and the diagram's version after the change."""
+
+    id: UUID
+    state_machine_diagram_id: UUID
+    state_machine_diagram_version: int
+    source_state_id: UUID
+    source_state_code: str
+    target_state_id: UUID
+    target_state_code: str
+    event: str
+    guard: str
+    action: str
+    description: str
+    sort_order: int
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+
+
+class StateLayoutIn(BaseModel):
+    """One state's box and nesting in a layout save."""
+
+    id: UUID
+    x: Coordinate
+    y: Coordinate
+    width: Extent
+    height: Extent
+    collapsed: bool = False
+    parent_state_id: UUID | None = None
+
+
+class TransitionPointsIn(BaseModel):
+    """One transition's attach points in a layout save (`null` is automatic)."""
+
+    id: UUID
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+
+
+class StateMachineLayoutSave(BaseModel):
+    """The editor's save of the drawing: every state's box and nesting, and the attach points of the transitions named.
+    A state or transition left out is kept as it is; one that does not belong to the diagram is refused. 409 when the
+    `version` is stale."""
+
+    version: int
+    states: list[StateLayoutIn] = Field(default_factory=list, max_length=2000)
+    transitions: list[TransitionPointsIn] = Field(default_factory=list, max_length=5000)
+
+
+class StateMachineModel(BaseModel):
+    """A state machine diagram with everything it holds, as the editor and the outline read it."""
+
+    diagram: StateMachineDiagramOut
+    states: list[StateOut]
+    transitions: list[TransitionOut]
+    findings: list[FindingOut]

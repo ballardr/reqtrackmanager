@@ -12,16 +12,18 @@ views with placements, notes and view toggles, resolved by one rule into nodes a
 Registered contributions:
 - Roles (not additions to `ProjectRole`): `architect` (project; carries the
   Fine-Grained Access Control `(architecture_element, manage)`,
-  `(architecture_connection, manage)` and `(architecture_diagram, manage)` atoms) creates and changes elements, ports,
+  `(architecture_connection, manage)`, `(architecture_diagram, manage)` and `(architecture_state_machine_diagram, manage)`
+  atoms) creates and changes elements, ports,
   connections, diagrams and collections; `architecture_admin` (project) changes a project's vocabularies and
   `architecture_org_admin` (organisation) changes the organisation's defaults (types and symbols), its own elements and its
   collections, and reads every organisation-owned element. `architecture_admin` also manages the project's symbols.
 - Sub-components `architecture_type` (the types and the symbol library), `architecture_element`,
-  `architecture_connection` and `architecture_diagram`.
-- `artefact_types` for the element, the connection and the diagram, with their summary providers,
+  `architecture_connection`, `architecture_diagram` and `architecture_state_machine` (state machine diagrams and
+  their states: the behaviour of one element).
+- `artefact_types` for the element, the connection, the diagram, the state machine diagram and the state, with their summary providers,
   search, report fields, record tables (export; import for the element and connection, `NOT_IMPORTABLE` for the
   diagram), scaling probes, dataset generators and the link types the module adds (`LINK_TYPE_SEEDS`). All are
-  placeable and taggable through the shared tables, so they declare nothing for either.
+  taggable through the shared tables, and placeable except the state (`not_placeable`).
 - `principal_references` for an element's owner and for the group a collection grant names.
 - `on_org_created` seeds each new organisation's default types; the migration
   backfills existing organisations so a module switched on later has them.
@@ -54,6 +56,7 @@ from app.modules.architecture._shared import (
     CONNECTION_MANAGE_PERMISSION,
     DIAGRAM_MANAGE_PERMISSION,
     ELEMENT_MANAGE_PERMISSION,
+    STATE_MACHINE_MANAGE_PERMISSION,
 )
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
 from app.modules.architecture.comments import RECORD_COMMENTS
@@ -62,8 +65,16 @@ from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureDiagram,
     ArchitectureElement,
+    ArchitectureState,
+    ArchitectureStateMachineDiagram,
 )
-from app.modules.architecture.perf_dataset import generate_connections, generate_diagrams, generate_elements
+from app.modules.architecture.perf_dataset import (
+    generate_connections,
+    generate_diagrams,
+    generate_elements,
+    generate_state_machines,
+    generate_states,
+)
 from app.modules.architecture.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.architecture.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.architecture.report_fields import REPORT_FIELDS
@@ -78,6 +89,9 @@ from app.modules.architecture.service import (
     DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_SUBCOMPONENT_KEY,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+    STATE_MACHINE_SUBCOMPONENT_KEY,
     TYPE_SUBCOMPONENT_KEY,
     seed_org_defaults,
 )
@@ -85,6 +99,8 @@ from app.modules.architecture.summaries import (
     CONNECTION_SUMMARY_PROVIDER,
     DIAGRAM_SUMMARY_PROVIDER,
     ELEMENT_SUMMARY_PROVIDER,
+    STATE_MACHINE_SUMMARY_PROVIDER,
+    STATE_SUMMARY_PROVIDER,
 )
 from app.modules.registry import (
     LinkTypeSeed,
@@ -100,7 +116,7 @@ from app.modules.registry import (
 from app.services.report_framework import report_mcp_tools
 
 _BOTH = (ELEMENT_ARTEFACT_TYPE, CONNECTION_ARTEFACT_TYPE)
-_ALL = (*_BOTH, DIAGRAM_ARTEFACT_TYPE)
+_ALL = (*_BOTH, DIAGRAM_ARTEFACT_TYPE, STATE_MACHINE_ARTEFACT_TYPE, STATE_ARTEFACT_TYPE)
 
 records.register_usage_checks()
 
@@ -154,6 +170,8 @@ def _artefact_ids_in_organization(db: Session, organization_id):
         | set(db.scalars(select(ArchitectureElement.id).where(ArchitectureElement.organization_id == organization_id)))
         | set(db.scalars(select(ArchitectureConnection.id).where(ArchitectureConnection.project_id.in_(project_ids))))
         | set(db.scalars(select(ArchitectureDiagram.id).where(ArchitectureDiagram.project_id.in_(project_ids))))
+        | set(db.scalars(select(ArchitectureStateMachineDiagram.id).where(ArchitectureStateMachineDiagram.project_id.in_(project_ids))))
+        | set(db.scalars(select(ArchitectureState.id).where(ArchitectureState.project_id.in_(project_ids))))
     )
 
 
@@ -182,11 +200,13 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_types=_ALL,
     artefact_type_labels={
         ELEMENT_ARTEFACT_TYPE: "Element", CONNECTION_ARTEFACT_TYPE: "Connection", DIAGRAM_ARTEFACT_TYPE: "Diagram",
+        STATE_MACHINE_ARTEFACT_TYPE: "State machine diagram", STATE_ARTEFACT_TYPE: "State",
     },
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={
         ELEMENT_ARTEFACT_TYPE: ELEMENT_SUMMARY_PROVIDER, CONNECTION_ARTEFACT_TYPE: CONNECTION_SUMMARY_PROVIDER,
-        DIAGRAM_ARTEFACT_TYPE: DIAGRAM_SUMMARY_PROVIDER,
+        DIAGRAM_ARTEFACT_TYPE: DIAGRAM_SUMMARY_PROVIDER, STATE_MACHINE_ARTEFACT_TYPE: STATE_MACHINE_SUMMARY_PROVIDER,
+        STATE_ARTEFACT_TYPE: STATE_SUMMARY_PROVIDER,
     },
     search_providers=SEARCH_PROVIDERS,
     reports=REPORT_DEFINITIONS,
@@ -203,6 +223,8 @@ MODULE_DEFINITION = ModuleDefinition(
         ELEMENT_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_elements, order=190),
         CONNECTION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_connections, order=195),
         DIAGRAM_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_diagrams, order=197),
+        STATE_MACHINE_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_state_machines, order=198),
+        STATE_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_states, order=199),
     },
     link_type_seeds=LINK_TYPE_SEEDS,
     principal_references=(
@@ -221,16 +243,29 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_path=f"/projects/{{project_id}}/modules/{ARCHITECTURE_MODULE_KEY}",
         nav_icon="network",
         # One page with the tabs Elements, Connections and Diagrams: it is offered while any of the three is on.
-        nav_sub_components_any=(ELEMENT_SUBCOMPONENT_KEY, CONNECTION_SUBCOMPONENT_KEY, DIAGRAM_SUBCOMPONENT_KEY),
+        nav_sub_components_any=(
+            ELEMENT_SUBCOMPONENT_KEY, CONNECTION_SUBCOMPONENT_KEY, DIAGRAM_SUBCOMPONENT_KEY, STATE_MACHINE_SUBCOMPONENT_KEY,
+        ),
     ),
     not_creatable_from_links={
         CONNECTION_ARTEFACT_TYPE: "A connection needs two elements, so it is created from the Architecture screens.",
+        STATE_MACHINE_ARTEFACT_TYPE: (
+            "A state machine diagram describes one element and is drawn in its editor, so it is created from the "
+            "Architecture screens."
+        ),
+        STATE_ARTEFACT_TYPE: "A state exists only inside its state machine diagram, so it is created in that diagram's editor.",
+    },
+    not_placeable={
+        STATE_ARTEFACT_TYPE: "A state exists only inside its state machine diagram, which is itself placed in the component tree.",
     },
     sub_components=(
         ModuleSubComponentDefinition(key=TYPE_SUBCOMPONENT_KEY, name="Types and symbols", default_enabled=True),
         ModuleSubComponentDefinition(key=ELEMENT_SUBCOMPONENT_KEY, name="Elements", default_enabled=True),
         ModuleSubComponentDefinition(key=CONNECTION_SUBCOMPONENT_KEY, name="Connections", default_enabled=True),
         ModuleSubComponentDefinition(key=DIAGRAM_SUBCOMPONENT_KEY, name="Diagrams", default_enabled=True),
+        ModuleSubComponentDefinition(
+            key=STATE_MACHINE_SUBCOMPONENT_KEY, name="State machine diagrams", default_enabled=True,
+        ),
     ),
     org_bundle_hooks=ModuleOrgBundleHooks(
         export=architecture_export.export_org_data, import_=architecture_export.import_org_data,
@@ -245,9 +280,15 @@ MODULE_DEFINITION = ModuleDefinition(
     roles=(
         ModuleRoleDefinition(
             role_key=ARCHITECT_ROLE, name="Architect",
-            description="Creates and changes the project's elements, ports, connections and diagrams, and their status.",
+            description=(
+                "Creates and changes the project's elements, ports, connections, diagrams and state machine diagrams, "
+                "and their status."
+            ),
             scope="project",
-            permissions=(ELEMENT_MANAGE_PERMISSION, CONNECTION_MANAGE_PERMISSION, DIAGRAM_MANAGE_PERMISSION),
+            permissions=(
+                ELEMENT_MANAGE_PERMISSION, CONNECTION_MANAGE_PERMISSION, DIAGRAM_MANAGE_PERMISSION,
+                STATE_MACHINE_MANAGE_PERMISSION,
+            ),
         ),
         ModuleRoleDefinition(
             role_key=ARCHITECTURE_ADMIN_ROLE, name="Architecture Admin",

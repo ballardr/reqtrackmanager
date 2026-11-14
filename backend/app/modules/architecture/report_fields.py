@@ -18,7 +18,13 @@ from __future__ import annotations
 
 from app.modules.architecture.models import ArchitectureElement
 from app.modules.architecture.search import SEARCH_PROVIDERS
-from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, DIAGRAM_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
+from app.modules.architecture.service import (
+    CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
+    ELEMENT_ARTEFACT_TYPE,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+)
 from app.modules.registry import ReportFieldProvider
 from app.services.report_fields import from_search, principal_field
 
@@ -32,4 +38,8 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         SEARCH_PROVIDERS[CONNECTION_ARTEFACT_TYPE], core_fields=("description", "protocol"),
     ),
     DIAGRAM_ARTEFACT_TYPE: from_search(SEARCH_PROVIDERS[DIAGRAM_ARTEFACT_TYPE], core_fields=("description",)),
+    STATE_MACHINE_ARTEFACT_TYPE: from_search(SEARCH_PROVIDERS[STATE_MACHINE_ARTEFACT_TYPE], core_fields=("description",)),
+    STATE_ARTEFACT_TYPE: from_search(
+        SEARCH_PROVIDERS[STATE_ARTEFACT_TYPE], core_fields=("description", "entry_action", "exit_action", "activity"),
+    ),
 }

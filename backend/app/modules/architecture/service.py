@@ -66,14 +66,20 @@ TYPE_SUBCOMPONENT_KEY = "architecture_type"
 ELEMENT_SUBCOMPONENT_KEY = "architecture_element"
 CONNECTION_SUBCOMPONENT_KEY = "architecture_connection"
 DIAGRAM_SUBCOMPONENT_KEY = "architecture_diagram"
+#: One sub-component serves both state machine diagram types (a state exists only inside its state machine diagram).
+STATE_MACHINE_SUBCOMPONENT_KEY = "architecture_state_machine"
 
 #: The registered artefact types and the prefix of their human-readable codes.
 ELEMENT_ARTEFACT_TYPE = "architecture_element"
 CONNECTION_ARTEFACT_TYPE = "architecture_connection"
 DIAGRAM_ARTEFACT_TYPE = "architecture_diagram"
+STATE_MACHINE_ARTEFACT_TYPE = "architecture_state_machine_diagram"
+STATE_ARTEFACT_TYPE = "architecture_state"
 ELEMENT_CODE_PREFIX = "ELM"
 CONNECTION_CODE_PREFIX = "CON"
 DIAGRAM_CODE_PREFIX = "DGM"
+STATE_MACHINE_CODE_PREFIX = "SMD"
+STATE_CODE_PREFIX = "STE"
 
 ELEMENT_TYPE_KIND = "architecture_element_type"
 CONNECTION_TYPE_KIND = "architecture_connection_type"

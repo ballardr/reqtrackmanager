@@ -67,6 +67,7 @@ from app.modules.architecture.models import (
     ArchitectureElement,
     ArchitectureElementType,
     ArchitecturePort,
+    ArchitectureStateMachineDiagram,
 )
 from app.modules.architecture.realisations import prune_for_elements, prune_realisations, realisations_of
 from app.modules.architecture.schemas import (
@@ -316,7 +317,9 @@ def _clean_note(value: str) -> str:
     return value.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
-def _check_version(record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram, version: int) -> None:
+def _check_version(
+    record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram | ArchitectureStateMachineDiagram, version: int,
+) -> None:
     """Raises `VersionConflict` unless `version` is the record's current one."""
     if record.version != version:
         raise VersionConflict()
@@ -333,7 +336,10 @@ def _validate_owner(db: Session, owner: ElementOwner, principal: PrincipalRef | 
         raise RuleError(str(exc.detail), 400) from exc
 
 
-def _touch(record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram, **changes: Any) -> None:
+def _touch(
+    record: ArchitectureElement | ArchitectureConnection | ArchitectureDiagram | ArchitectureStateMachineDiagram,
+    **changes: Any,
+) -> None:
     """Applies `changes` and advances the version."""
     for key, value in changes.items():
         setattr(record, key, value)
@@ -663,6 +669,8 @@ def delete_element(db: Session, owner: ElementOwner, actor: User, element_id: uu
         or_(ArchitectureConnection.source_element_id == element.id, ArchitectureConnection.target_element_id == element.id)
     )):
         raise RuleError("A connection ends at this element; delete the connection first.", 409)
+    if db.scalar(select(ArchitectureStateMachineDiagram.id).where(ArchitectureStateMachineDiagram.element_id == element.id).limit(1)):
+        raise RuleError("A state machine diagram describes this element; delete the state machine diagram first.", 409)
     if is_shared_out(db, element.id):
         raise RuleError("This element is shared with other projects or groups; revoke the sharing first, or retire it instead.", 409)
     if _linked_from_elsewhere(db, element):

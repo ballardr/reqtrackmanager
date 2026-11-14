@@ -116,3 +116,21 @@ class FolderKind(str, enum.Enum):
     ELEMENT = "element"
     CONNECTION = "connection"
     DIAGRAM = "diagram"
+
+
+class StateKind(str, enum.Enum):
+    """What a state of a state machine diagram is: the single `INITIAL` start marker of a level, an ordinary `STATE`, a
+    `FINAL` end marker or a `CHOICE` (a diamond whose outgoing transitions are chosen by their guards). A composite state
+    is an ordinary state that has child states, not a kind of its own."""
+
+    INITIAL = "initial"
+    STATE = "state"
+    FINAL = "final"
+    CHOICE = "choice"
+
+
+class FindingSeverity(str, enum.Enum):
+    """How serious a modelling finding on a state machine diagram is: an `ERROR` blocks activation, a `WARNING` never does."""
+
+    ERROR = "error"
+    WARNING = "warning"

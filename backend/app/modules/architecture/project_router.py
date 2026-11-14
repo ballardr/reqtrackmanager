@@ -47,6 +47,7 @@ from app.modules.architecture.service import (
     SYMBOLS,
     TYPE_SUBCOMPONENT_KEY,
 )
+from app.modules.architecture.state_machine_routes import add_state_machine_routes
 from app.services.rbac import require_project_subcomponent_enabled
 
 router = APIRouter(
@@ -87,6 +88,7 @@ def get_capabilities(project_id: UUID, current_user: User = Depends(_require_vie
 
 add_record_routes(router)
 add_diagram_routes(router)
+add_state_machine_routes(router)
 add_comment_routes(router)
 router.include_router(REPORT_ROUTERS.project)
 add_project_collection_routes(router)

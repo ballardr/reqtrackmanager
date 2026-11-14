@@ -774,6 +774,9 @@ _REVIEWED_LINK_READERS = {
     "modules/architecture/records.py": (
         "deliberately includes cross-level links: an element another project's record links to cannot be deleted"
     ),
+    "modules/architecture/state_machines.py": (
+        "deliberately includes cross-level links: it counts the links a deleted state takes with it, as `records._forget` removes them"
+    ),
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
     "modules/product_feedback/demand.py": "same-project requester links only (source_project_id is null)",
     "modules/product_feedback/export.py": "same-project links only (source_project_id is null); a cross-level link is not exported",

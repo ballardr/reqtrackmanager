@@ -2,7 +2,8 @@
 Module: modules.architecture.search
 
 The `ArtefactSearchProvider`s for the `architecture_element`, `architecture_connection` and
-`architecture_diagram` artefact types, so the global search finds them by code, name, tags and descriptive text.
+`architecture_diagram`, `architecture_state_machine_diagram` and `architecture_state` artefact types, so the global search
+finds them by code, name, tags and descriptive text.
 
 Responsibilities:
 - Declare the columns the search reads and the opt-in free-text fields it may match.
@@ -23,12 +24,25 @@ Dependencies: this module's models and labels; `modules.registry` (provider type
 
 from __future__ import annotations
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, exists, func, select
 
 from app.models.record_comment import RecordComment
 from app.modules.architecture.labels import RECORD_STATUS_LABEL
-from app.modules.architecture.models import ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ArchitecturePort
-from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, DIAGRAM_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
+from app.modules.architecture.models import (
+    ArchitectureConnection,
+    ArchitectureDiagram,
+    ArchitectureElement,
+    ArchitecturePort,
+    ArchitectureState,
+    ArchitectureStateMachineDiagram,
+)
+from app.modules.architecture.service import (
+    CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
+    ELEMENT_ARTEFACT_TYPE,
+    STATE_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+)
 from app.modules.registry import ArtefactSearchProvider, SearchColumns, SearchComments, SearchField
 
 
@@ -39,6 +53,15 @@ def _comments(artefact_type: str) -> SearchComments:
         where=(RecordComment.artefact_type == artefact_type,),
     )
 
+
+#: A state machine diagram (and so its states) is found by the global search only when it describes an element of its own
+#: project: the search has no person, so it cannot apply the sharing rules that decide whether another owner's element is
+#: readable, and a diagram of an element the person cannot read must not be disclosed. One of a shared element is reached
+#: through the project's lists and the link finder, which do apply them.
+_OWN_ELEMENT = exists().where(
+    ArchitectureElement.id == ArchitectureStateMachineDiagram.element_id,
+    ArchitectureElement.project_id == ArchitectureStateMachineDiagram.project_id,
+)
 
 SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
     ELEMENT_ARTEFACT_TYPE: ArtefactSearchProvider(
@@ -86,5 +109,41 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         fields=(SearchField("description", "Description", ArchitectureDiagram.purpose),),
         status_labels=RECORD_STATUS_LABEL,
         comments=_comments(DIAGRAM_ARTEFACT_TYPE),
+    ),
+    STATE_MACHINE_ARTEFACT_TYPE: ArtefactSearchProvider(
+        from_clause=ArchitectureStateMachineDiagram.__table__,
+        columns=SearchColumns(
+            id=ArchitectureStateMachineDiagram.id, project_id=ArchitectureStateMachineDiagram.project_id,
+            code=ArchitectureStateMachineDiagram.unique_code, title=ArchitectureStateMachineDiagram.name,
+            status=ArchitectureStateMachineDiagram.status, is_archived=ArchitectureStateMachineDiagram.is_archived,
+            updated_at=ArchitectureStateMachineDiagram.updated_at, version=ArchitectureStateMachineDiagram.version,
+        ),
+        fields=(SearchField("description", "Description", ArchitectureStateMachineDiagram.description),),
+        where=(_OWN_ELEMENT,),
+        status_labels=RECORD_STATUS_LABEL,
+        comments=_comments(STATE_MACHINE_ARTEFACT_TYPE),
+    ),
+    # A state has no status or archive flag of its own: it follows its diagram, which a subquery reads, and a result opens
+    # the diagram with the state selected.
+    STATE_ARTEFACT_TYPE: ArtefactSearchProvider(
+        from_clause=ArchitectureState.__table__.join(
+            ArchitectureStateMachineDiagram.__table__,
+            ArchitectureStateMachineDiagram.id == ArchitectureState.state_machine_diagram_id,
+        ),
+        columns=SearchColumns(
+            id=ArchitectureState.id, project_id=ArchitectureState.project_id, code=ArchitectureState.unique_code,
+            title=ArchitectureState.name, status=ArchitectureStateMachineDiagram.status,
+            is_archived=ArchitectureStateMachineDiagram.is_archived, updated_at=ArchitectureState.updated_at,
+            owner_id=ArchitectureState.state_machine_diagram_id,
+        ),
+        fields=(
+            SearchField("description", "Description", ArchitectureState.description),
+            SearchField("entry_action", "Entry action", ArchitectureState.entry_action),
+            SearchField("exit_action", "Exit action", ArchitectureState.exit_action),
+            SearchField("activity", "Activity", ArchitectureState.activity),
+        ),
+        where=(_OWN_ELEMENT,),
+        status_labels=RECORD_STATUS_LABEL,
+        open_owner_type=STATE_MACHINE_ARTEFACT_TYPE,
     ),
 }
