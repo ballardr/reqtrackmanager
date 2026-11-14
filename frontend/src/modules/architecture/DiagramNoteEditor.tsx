@@ -24,6 +24,8 @@ import { labelOptions } from "../../utils/labelOptions";
 import { LEADER_SPOT_OPTION, leaderOf, leaderOptionValue, type EditorBox, type EditorNote, type NoteLeaderTarget } from "./diagramEditorModel";
 import { boxName } from "./diagramOutlineModel";
 import { ARCHITECTURE_HELP } from "./help";
+import { selectionAction } from "./selectionAction";
+import { SelectionActions } from "./SelectionActions";
 import { NOTE_TONE_LABEL, type ArchitectureConnection, type NoteTone } from "./types";
 
 /**
@@ -102,7 +104,7 @@ export function DiagramNoteEditor({
       {target.kind !== "none" && !drawn && (
         <p className="text-muted" role="status">The line points at something that is not drawn on this diagram, so it is hidden. It returns with that item.</p>
       )}
-      {editable && <button type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={onRemove}>Remove note</button>}
+      <SelectionActions actions={[editable && selectionAction.clear("Remove note", onRemove)]} />
     </div>
   );
 }

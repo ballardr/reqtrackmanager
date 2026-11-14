@@ -355,7 +355,7 @@ export const TheOutlineListsStatesAsATreeAndTransitionsAsATable: Story = {
     const table = outline.getByRole("table", { name: "Transitions" });
     await expect(within(table).getByText("ready")).toBeInTheDocument();
     await userEvent.click(within(table).getByRole("button", { name: /Transition from STE-001 Idle to STE-002 Running/ }));
-    await expect(within(canvas.getByRole("region", { name: "Selection" })).getByText("Edit transition", { selector: "button" })).toBeInTheDocument();
+    await expect(within(canvas.getByRole("region", { name: "Selection" })).getByRole("button", { name: "Edit transition" })).toBeInTheDocument();
   },
 };
 
@@ -486,5 +486,34 @@ export const AFailedExportShowsAMessageAndDownloadsNothing: Story = {
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`${MACHINE}/svg`));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeEnabled());
     expect(names).toEqual([]);
+  },
+};
+
+/** The names of the actions a Selection card offers, in order. */
+function actionNames(panel: ReturnType<typeof within>): string[] {
+  const group = panel.getByRole("group", { name: "Actions" });
+  return [...group.querySelectorAll("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent ?? "");
+}
+
+/** A state's card offers Edit, Comment and Delete as icon buttons (the same set and icons as the block diagram's card). */
+export const AStateSelectionOffersItsActionsAsIconButtons: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(actionNames(panel)).toEqual(["Edit state", "Comment on this box", "Delete state…"]);
+    for (const control of panel.getByRole("group", { name: "Actions" }).querySelectorAll("button")) await expect(control.textContent?.trim()).toBe("");
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** A transition's card offers the same three actions. */
+export const ATransitionSelectionOffersItsActionsAsIconButtons: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
+    await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(actionNames(panel)).toEqual(["Edit transition", "Comment on this connection", "Delete transition…"]);
   },
 };

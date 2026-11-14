@@ -11,6 +11,7 @@
  * - Nothing selected: a short prompt.
  *
  * Design decisions:
+ * - The actions are icon buttons from the shared `SelectionActions`, the same set the block diagram's card uses.
  * - The card stores nothing: every action is a callback onto the page, which stores content at once and the drawing on Save.
  */
 import { ActivityNote } from "../../components/ActivityNote";
@@ -22,6 +23,8 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { ARCHITECTURE_HELP } from "./help";
+import { selectionAction } from "./selectionAction";
+import { SelectionActions } from "./SelectionActions";
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import {
@@ -101,11 +104,13 @@ export function StateMachineSelectionPanel({
           </dl>
         )}
         <FindingList findings={findings} />
-        <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
-          {editable && <button type="button" className="btn btn-sm" onClick={() => onEditState(state)}>Edit state</button>}
-          <button type="button" className="btn btn-sm" onClick={() => onComment({ kind: "node", id: state.id })}>{commentText.commentOnBox}</button>
-          {editable && <button type="button" className="btn btn-sm btn-danger" onClick={() => onDeleteState(state)}>Delete state…</button>}
-        </div>
+        <SelectionActions
+          actions={[
+            editable && selectionAction.edit("Edit state", () => onEditState(state)),
+            selectionAction.comment(commentText.commentOnBox, () => onComment({ kind: "node", id: state.id })),
+            editable && selectionAction.delete("Delete state…", () => onDeleteState(state)),
+          ]}
+        />
         {editable && (
           <LabeledSelect
             label="Inside" help={ARCHITECTURE_HELP.stateParent} value={own?.parent_state_id ?? ""} placeholder="Top level"
@@ -146,11 +151,13 @@ export function StateMachineSelectionPanel({
         </dl>
         {transition.description && <ActivityNote text={transition.description} />}
         <FindingList findings={findings} />
-        <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
-          {editable && <button type="button" className="btn btn-sm" onClick={() => onEditTransition(transition)}>Edit transition</button>}
-          <button type="button" className="btn btn-sm" onClick={() => onComment({ kind: "edge", id: transition.id })}>{commentText.commentOnLine}</button>
-          {editable && <button type="button" className="btn btn-sm btn-danger" onClick={() => onDeleteTransition(transition)}>Delete transition…</button>}
-        </div>
+        <SelectionActions
+          actions={[
+            editable && selectionAction.edit("Edit transition", () => onEditTransition(transition)),
+            selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: transition.id })),
+            editable && selectionAction.delete("Delete transition…", () => onDeleteTransition(transition)),
+          ]}
+        />
         {editable && from && to && !loop && (
           <EndPoints
             from={from} to={to} layout={layout} sourcePoint={points?.source_point ?? null} targetPoint={points?.target_point ?? null}

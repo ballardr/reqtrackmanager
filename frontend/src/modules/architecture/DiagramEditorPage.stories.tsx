@@ -1282,3 +1282,64 @@ export const AnArchivedDiagramStillTakesComments: Story = {
     await expect(await canvas.findByRole("textbox", { name: "Add a comment" })).toBeEnabled();
   },
 };
+
+/** The names of the actions a Selection card offers, in order (a link or a button of its "Actions" group). */
+function actionNames(panel: ReturnType<typeof within>): string[] {
+  const group = panel.getByRole("group", { name: "Actions" });
+  return [...group.querySelectorAll("a, button")].map((el) => el.getAttribute("aria-label") ?? el.textContent ?? "");
+}
+
+/** A box's Selection card offers every action as an icon button with the same name as before, none as a text button. */
+export const ABoxSelectionOffersEveryActionAsAnIconButton: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(actionNames(panel)).toEqual([
+      "Open element", "Open inside as diagram", "Edit element", "Comment on this box", "Remove from diagram", "Delete element…",
+    ]);
+    const group = panel.getByRole("group", { name: "Actions" });
+    for (const control of group.querySelectorAll("a, button")) await expect(control.textContent?.trim()).toBe("");
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** The tooltip of "Open inside as diagram" keeps the explanation the text button used to carry. */
+export const TheOpenInsideIconExplainsItselfInItsTooltip: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    const inside = panel.getByRole("button", { name: "Open inside as diagram" });
+    await userEvent.hover(inside);
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent(/own sub-elements/);
+  },
+};
+
+/** A line's Selection card offers Comment as an icon and Edit per connection as an icon in its table. */
+export const ALineSelectionOffersItsActionsAsIconButtons: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(actionNames(panel)).toEqual(["Comment on this connection"]);
+    const edit = panel.getByRole("button", { name: "Edit CON-001" });
+    await expect(edit.textContent?.trim()).toBe("");
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** A box shared from another owner offers no Edit or Delete, only reading, commenting and taking it off the diagram. */
+export const ASharedBoxSelectionOffersNoEditOrDelete: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({ nodes: buildDiagramView().nodes.map((n) => (n.element_id === "el-2" ? { ...n, shared: true } : n)) }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(actionNames(panel)).toEqual(["Open element", "Open inside as diagram", "Comment on this box", "Remove from diagram"]);
+  },
+};

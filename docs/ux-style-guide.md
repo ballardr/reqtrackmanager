@@ -958,6 +958,17 @@ Where a list of rows each carries a few actions (the comments of a thread), the 
 - **Thread level actions are not revealed.** An action on the whole group (a thread's Resolve or Reopen and Delete) stays visible, as icons beside the one text button that adds to it (Reply).
 - **A confirmation answered from a pop-over does not close it.** A press inside a dialog that the pop-over's own content opened is not a press outside it (`Popover`).
 
+## Pattern: selection actions
+
+A card that shows the selected item of a canvas (the diagram editors' Selection card) offers its actions as one row of icon buttons, never a row of text buttons.
+
+- **One component.** `SelectionActions` (`modules/architecture/SelectionActions.tsx`) draws the row from a list of actions; `selectionAction` (`selectionAction.tsx`) fixes each common action's icon so Edit is a pencil, Comment a speech bubble with a plus, Remove from diagram a minus circle, Delete a bin and a destination a link, in every card. A new action is added there, so both editors get it.
+- **Icon buttons** are `IconAction` (`components/IconAction.tsx`): `btn btn-sm btn-icon`, the label as both `aria-label` and `Tooltip`, with an optional `help` shown under the name when the name alone does not say what happens ([Pattern: help on interactive elements](#pattern-help-on-interactive-elements)). A destination is a real link, not a button that navigates.
+- **A rare or hard-to-picture action** (`menu: true`) joins one overflow menu ("More actions", a kebab `ActionMenu`) with a labelled list; it never becomes a second row of text buttons.
+- **Destructive actions** carry the danger outline and keep their confirmation tier (the page asks before deleting).
+- **Not part of the row:** the card's own lists and fields (ports, attach points, components, a note's fields) keep their controls; a per-row action inside a table (Edit one connection) is an `IconAction` too.
+- **Every action stays reachable.** Each icon is a focusable control with an accessible name, and every pointer action keeps its keyboard route ([Pattern: graph canvas](#pattern-graph-canvas-nodes-and-connections)).
+
 ## Pattern: pills
 
 *(New 2026-10-18 — from user review: pills wrapped onto two lines and varied in height across pages; 149 hand-written `<span className="badge">` sites had no shared contract.)*

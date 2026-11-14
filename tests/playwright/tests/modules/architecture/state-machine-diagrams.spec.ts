@@ -153,6 +153,19 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(page.getByLabel(/poll, connection from Idle to Idle/)).toBeVisible();
     });
 
+    await test.step("the Selection card's actions are icon buttons: named, one height, and reached by keyboard", async () => {
+      await selectNode(page, "Idle");
+      const actions = selectionCard(page).getByRole("group", { name: "Actions" });
+      for (const name of ["Edit state", "Delete state…"]) {
+        const button = actions.getByRole("button", { name });
+        await expect(button).toBeVisible();
+        expect((await button.textContent())?.trim()).toBe("");
+      }
+      expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
+      await actions.getByRole("button", { name: "Edit state" }).focus();
+      await expect(page.getByRole("tooltip")).toContainText("Edit state");
+    });
+
     await test.step("a sound diagram is activated", async () => {
       await page.getByRole("button", { name: "Change status", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move from Draft to Active" }).click();

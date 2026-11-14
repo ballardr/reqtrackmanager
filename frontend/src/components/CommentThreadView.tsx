@@ -18,14 +18,14 @@
  *   Resolve and Delete stay visible beside Reply. Save and Cancel keep their text: they commit or discard an edit.
  */
 import { Check, Pencil, Trash2, Undo2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import type { RecordComment, RecordCommentPin } from "../api/recordComments";
 import { useStrings } from "../context/TerminologyContext";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { IconAction } from "./IconAction";
 import { ItemRow } from "./ItemRow";
-import { Tooltip } from "./Tooltip";
 
 /**
  * @param pin The thread's pin (its resolved state and what the viewer may do with it).
@@ -163,21 +163,5 @@ export function CommentThreadView({
         />
       )}
     </div>
-  );
-}
-
-/**
- * A small icon-only button named by its label, which is also its tooltip (style guide "Pattern: help on interactive elements").
- *
- * @param label The action's name: the button's `aria-label` and the tooltip text.
- * @param onClick Called when the button is pressed.
- * @param disabled Whether the button is unavailable.
- * @param children The icon.
- */
-function IconAction({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
-  return (
-    <Tooltip label={label}>
-      <button type="button" className="btn btn-sm btn-icon" aria-label={label} disabled={disabled} onClick={onClick}>{children}</button>
-    </Tooltip>
   );
 }

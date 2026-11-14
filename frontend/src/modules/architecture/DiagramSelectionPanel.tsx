@@ -23,7 +23,10 @@
  * - A line that stands for one connection also offers "Realises": the outer connections (the boundary boxes on this diagram)
  *   it is marked as realising, each removable, and a list to add another; the change is stored at once.
  * A box the viewer cannot read shows its code only and offers no actions beyond removing it from the diagram.
+ * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set); a table row's
+ * Edit and a realised connection's Remove are the same `IconAction`.
  */
+import { Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -32,9 +35,9 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { FieldCaption } from "../../components/FieldHelp";
+import { IconAction } from "../../components/IconAction";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordPlacements } from "../../components/RecordPlacements";
-import { Tooltip } from "../../components/Tooltip";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
@@ -47,6 +50,8 @@ import { boxName } from "./diagramOutlineModel";
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
 import { PortList } from "./PortList";
+import { selectionAction } from "./selectionAction";
+import { SelectionActions } from "./SelectionActions";
 import type {
   ArchitectureConnection, ArchitectureElement, ConnectionRef, ConnectionType, DiagramAnchor, DiagramViewEdge, NoteTone, PortValues,
 } from "./types";
@@ -163,22 +168,16 @@ export function DiagramSelectionPanel({
             <ActivityNote text={element.description} />
           </div>
         )}
-        <div className="row" style={{ gap: "var(--space-2)" }}>
-          {!box.locked && <Link className="btn btn-sm" to={`${base}/elements/${box.elementId}`}>Open element</Link>}
-          {!box.locked && (
-            <Tooltip label={ARCHITECTURE_HELP.openInside} wrap>
-              <button type="button" className="btn btn-sm" onClick={() => onOpenInside(box)}>Open inside as diagram</button>
-            </Tooltip>
-          )}
-          {editable && !box.locked && !box.shared && <button type="button" className="btn btn-sm" onClick={() => onEditElement(box)}>Edit element</button>}
-          {onComment && !box.locked && (
-            <button type="button" className="btn btn-sm" onClick={() => onComment({ kind: "node", id: box.elementId })}>{commentText.commentOnBox}</button>
-          )}
-          {editable && <button type="button" className="btn btn-sm" onClick={() => onRemoveBox(box)}>Remove from diagram</button>}
-          {editable && !box.locked && !box.shared && (
-            <button type="button" className="btn btn-sm btn-danger" onClick={() => setDeleting(box)}>Delete element…</button>
-          )}
-        </div>
+        <SelectionActions
+          actions={[
+            !box.locked && selectionAction.open("Open element", `${base}/elements/${box.elementId}`),
+            !box.locked && { ...selectionAction.inside("Open inside as diagram", () => onOpenInside(box)), help: ARCHITECTURE_HELP.openInside },
+            editable && !box.locked && !box.shared && selectionAction.edit("Edit element", () => onEditElement(box)),
+            onComment && !box.locked && selectionAction.comment(commentText.commentOnBox, () => onComment({ kind: "node", id: box.elementId })),
+            editable && selectionAction.remove("Remove from diagram", () => onRemoveBox(box)),
+            editable && !box.locked && !box.shared && selectionAction.delete("Delete element…", () => setDeleting(box)),
+          ]}
+        />
         {element && !box.locked && (
           <div className="stack" style={{ gap: "var(--space-1)" }}>
             <FieldCaption label="Ports" help={ARCHITECTURE_HELP.elementPorts} />
@@ -226,10 +225,12 @@ export function DiagramSelectionPanel({
             ))}
           </ul>
         )}
-        <div className="row" style={{ gap: "var(--space-2)" }}>
-          <Link className="btn btn-sm" to={`${base}/connections/${boundary.connectionId}`}>Open connection</Link>
-          {editable && <button type="button" className="btn btn-sm" onClick={() => onRemoveBoundary(boundary)}>Remove from diagram</button>}
-        </div>
+        <SelectionActions
+          actions={[
+            selectionAction.open("Open connection", `${base}/connections/${boundary.connectionId}`),
+            editable && selectionAction.remove("Remove from diagram", () => onRemoveBoundary(boundary)),
+          ]}
+        />
         {editable && !boundary.locked && (
           <LabeledSelect
             label="Connect to" help={ARCHITECTURE_HELP.diagramBoundaryConnectTo} value="" placeholder="Choose an element…"
@@ -276,7 +277,7 @@ export function DiagramSelectionPanel({
                 {editable && (
                   <td>
                     {c.project_id === projectId && (
-                      <button type="button" className="btn btn-sm" aria-label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}>Edit</button>
+                      <IconAction label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}><Pencil /></IconAction>
                     )}
                   </td>
                 )}
@@ -284,11 +285,7 @@ export function DiagramSelectionPanel({
             ))}
           </tbody>
         </table>
-        {onComment && (
-          <div className="row">
-            <button type="button" className="btn btn-sm" onClick={() => onComment({ kind: "edge", id: edge.id })}>{commentText.commentOnLine}</button>
-          </div>
-        )}
+        <SelectionActions actions={[onComment && selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: edge.id }))]} />
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
           <LineEnds edge={edge} boxes={boxes} anchors={anchors} onChange={(change) => onAnchorChange(edge, change)} />
         )}
@@ -347,12 +344,9 @@ function RealisesControl({
           {current.map((c) => (
             <li key={c.id} className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
               <span>{c.unique_code}{c.name ? ` ${c.name}` : ""}</span>
-              <button
-                type="button" className="btn btn-sm" aria-label={`Stop realising ${c.unique_code}`}
-                onClick={() => void change(current.filter((x) => x.id !== c.id).map((x) => x.id))}
-              >
-                Remove
-              </button>
+              <IconAction label={`Stop realising ${c.unique_code}`} onClick={() => void change(current.filter((x) => x.id !== c.id).map((x) => x.id))}>
+                <X />
+              </IconAction>
             </li>
           ))}
         </ul>

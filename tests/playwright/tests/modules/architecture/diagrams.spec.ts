@@ -169,6 +169,24 @@ test.describe("System Architecture: diagram editor", () => {
       expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
     });
 
+    await test.step("the Selection card's actions are icon buttons: named, one height, and reached by keyboard", async () => {
+      await selectNode(page, `Gateway ${suffix}`);
+      const actions = page.getByRole("region", { name: "Selection" }).getByRole("group", { name: "Actions" });
+      await expect(actions.getByRole("link", { name: "Open element" })).toBeVisible();
+      for (const name of ["Edit element", "Remove from diagram", "Delete element…"]) {
+        const button = actions.getByRole("button", { name });
+        await expect(button).toBeVisible();
+        expect((await button.textContent())?.trim()).toBe("");
+      }
+      expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
+      await actions.getByRole("button", { name: "Edit element" }).focus();
+      await expect(page.getByRole("tooltip")).toContainText("Edit element");
+      await page.keyboard.press("Tab");
+      await expect(actions.getByRole("button", { name: /^Comment on this box/ })).toBeFocused();
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+    });
+
     await test.step("the toolbar explains the Comment toggle on the button itself, with no (?) beside it", async () => {
       const toolbar = page.getByRole("toolbar", { name: "Diagram editing" });
       await expect(toolbar.getByRole("button", { name: /^Help:/ })).toHaveCount(0);
