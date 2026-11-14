@@ -16,13 +16,15 @@
  * Personas) didn't add a third copy.
  *
  * Attachment upload/remove and edit are each opt-in via their callback; edit
- * is offered only on the current user's own comments.
+ * is offered only on the current user's own comments. `renderMeta` adds a caller-defined line under a comment's header
+ * (a "Pinned" chip and its actions, for comments that also sit on a drawing); `onPost` may resolve to nothing when
+ * the caller reloads its own list and the comment takes no attachments.
  *
  * It is one `DetailCard` ("Comments"), so a detail page places it directly; each comment inside is a
  * flat row (`.comment-row`), not a card, because cards never nest.
  */
 import { Paperclip, Pencil } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
@@ -36,7 +38,7 @@ import { RemovableChip } from "./RemovableChip";
 /** The structural shape of a comment this thread can render. */
 export interface ArtefactComment {
   id: string;
-  author_id: string;
+  author_id: string | null;
   author_display_name: string;
   body: string;
   created_at: string;
@@ -51,13 +53,16 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
   onRemoveAttachment,
   onEdit,
   currentUserId,
+  renderMeta,
 }: {
   comments: T[];
-  onPost: (body: string) => Promise<T>;
+  onPost: (body: string) => Promise<T | void>;
   onUploadAttachment?: (commentId: string, file: File) => Promise<void>;
   onRemoveAttachment?: (commentId: string, fileId: string) => Promise<void>;
   onEdit?: (commentId: string, body: string) => Promise<void>;
   currentUserId?: string;
+  /** Extra content under each comment's header (chips, actions); nothing by default. */
+  renderMeta?: (comment: T) => ReactNode;
 }) {
   const [newComment, setNewComment] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -72,7 +77,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
     try {
       const comment = await onPost(newComment);
       for (const file of pendingFiles) {
-        if (onUploadAttachment) await onUploadAttachment(comment.id, file);
+        if (onUploadAttachment && comment) await onUploadAttachment(comment.id, file);
       }
       setNewComment("");
       setPendingFiles([]);
@@ -112,6 +117,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
                 {c.edited_at && " (edited)"}
               </span>
             </div>
+            {renderMeta?.(c)}
             {isEditing ? (
               <div className="stack" style={{ gap: "var(--space-2)" }}>
                 <AutoGrowTextarea rows={2} value={editBody} onChange={setEditBody} aria-label="Edit comment" />

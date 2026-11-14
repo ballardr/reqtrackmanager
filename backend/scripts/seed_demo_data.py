@@ -2646,6 +2646,34 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
             {"name": "Sensors", "default_on": True, "rule": {"element_type_ids": [element_types["Sensor"]]}},
         ]},
     ).raise_for_status()
+
+    # Review comments (saved apart from the layout): a thread pinned on the flight controller's box with a reply, a resolved
+    # free marker on empty canvas, and an ordinary comment on an element's own page.
+    comments = f"{BASE}/projects/{project_id}/artefacts"
+    pinned = httpx.post(
+        f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
+        json={"body": "Should the flight controller have a second IMU bus for redundancy?",
+              "pin": {"anchor_kind": "node", "anchor_key": fc["id"], "x": 420, "y": 40}},
+    )
+    pinned.raise_for_status()
+    thread_pin = pinned.json()["pins"][0]["id"]
+    httpx.post(
+        f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
+        json={"body": "Yes, tracked as a decision; the second bus is a stretch goal.", "pin_id": thread_pin},
+    ).raise_for_status()
+    free = httpx.post(
+        f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
+        json={"body": "No connection to the battery monitor yet.", "pin": {"anchor_kind": "none", "x": 120, "y": 260}},
+    )
+    free.raise_for_status()
+    httpx.patch(
+        f"{comments}/architecture_diagram/{placed['id']}/comment-pins/{free.json()['pins'][-1]['id']}", headers=headers, timeout=30,
+        json={"resolved": True},
+    ).raise_for_status()
+    httpx.post(
+        f"{comments}/architecture_element/{gps['id']}/comments", headers=headers, timeout=30,
+        json={"body": "Confirm the receiver supports the 10 Hz update rate."},
+    ).raise_for_status()
     return {"elements": 8, "connections": 6, "diagrams": 1}
 
 

@@ -16,12 +16,14 @@ import { Badge } from "../../components/Badge";
 import { DetailCard } from "../../components/DetailCard";
 import { DetailLayout } from "../../components/DetailLayout";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordCommentsCards } from "../../components/RecordCommentsCards";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
 import { Spinner } from "../../components/Spinner";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
+import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { architectureTabPath } from "./architectureTabs";
 import { projectConnectionApi, projectElementApi } from "./api";
@@ -51,6 +53,7 @@ function ConnectionRefs({ refs, base }: { refs: ConnectionRef[]; base: string })
 export function ConnectionDetailPage() {
   const { projectId = "", connectionId = "" } = useParams<{ projectId: string; connectionId: string }>();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const reference = useArchitectureReference(projectId);
   const connectionApi = projectConnectionApi(projectId);
@@ -197,6 +200,8 @@ export function ConnectionDetailPage() {
             </div>
           </DetailCard>
         )}
+
+        <RecordCommentsCards projectId={projectId} artefactType="architecture_connection" recordId={connection.id} currentUserId={user?.id} />
       </div>
 
       {editing && (

@@ -13,6 +13,9 @@
  *   another handle of the same box is reported as an anchor change.
  * - Draw each leader (an annotation's pointer) as a thin line from its node to the target: a node (nearest attach points), the
  *   middle of a line or a free position (a small end handle the person can drag; dropping a dragged end on a node names that node).
+ * - In comment mode report a click (empty canvas, a node or a line) instead of selecting or editing, and draw the consumer's
+ *   pins in a layer above the canvas: each at one screen size, anchored to a node's corner or a line's middle, draggable
+ *   when `movable`, and rendered by the consumer (`renderPin`).
  * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
  *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
  *   Backspace asks the consumer to delete it, each with a spoken name.
@@ -38,6 +41,8 @@ import {
   NodeResizer,
   Position,
   ReactFlow,
+  useReactFlow,
+  useViewport,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -48,13 +53,17 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from "react";
+import {
+  useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode,
+} from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { useLatest } from "../hooks/useLatest";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import {
-  GRAPH_DROP_MIME, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphNodeOutline, type GraphNodeTone,
+  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphNodeOutline,
+  type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
 } from "./GraphCanvas";
 import { ATTACH_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint } from "./graphAttachPoints";
 
@@ -189,6 +198,98 @@ function LeaderEndNode({ data }: NodeProps<Node<{ free: boolean }, "leaderEnd">>
 
 const NODE_TYPES = { graph: GraphNodeBox, leaderEnd: LeaderEndNode };
 
+type Box = { x: number; y: number; width: number; height: number };
+
+/** The middle of each drawn line, by edge id, from the attach points the line joins. */
+function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"]): Map<string, { x: number; y: number }> {
+  const middles = new Map<string, { x: number; y: number }>();
+  for (const e of edges) {
+    const from = boxes.get(e.source);
+    const to = boxes.get(e.target);
+    if (!from || !to) continue;
+    const [a, b] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
+    const pa = pointXY(from, a);
+    const pb = pointXY(to, b);
+    middles.set(e.id, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 });
+  }
+  return middles;
+}
+
+/** How far a pointer must travel before a press on a pin is a drag and not a click. */
+const PIN_DRAG_THRESHOLD = 4;
+
+type PinPlace = { pin: GraphCanvasPin; x: number; y: number; detached: boolean };
+
+/** One pin at its screen position (the canvas position scaled by the zoom, so the marker keeps its size); draggable if movable. */
+function PinItem({
+  place, renderPin, onMove,
+}: {
+  place: PinPlace;
+  renderPin: (pin: GraphCanvasPin, context: GraphPinContext) => ReactNode;
+  onMove?: (pinId: string, at: { x: number; y: number }) => void;
+}) {
+  const { x: vx, y: vy, zoom } = useViewport();
+  const { screenToFlowPosition } = useReactFlow();
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const press = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const justDragged = useRef(false);
+  const draggable = place.pin.movable === true && onMove !== undefined;
+  const at = drag ?? place;
+  const down = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // A portalled pop-over's events bubble through React to here; only a press on the marker itself starts a drag.
+    if (!draggable || event.button !== 0 || !event.currentTarget.contains(event.target as globalThis.Node)) return;
+    press.current = { x: event.clientX, y: event.clientY, moved: false };
+  };
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = press.current;
+    if (!start) return;
+    if (!start.moved) {
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < PIN_DRAG_THRESHOLD) return;
+      start.moved = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setDrag(screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+  };
+  const up = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = press.current;
+    press.current = null;
+    if (!start?.moved) return;
+    justDragged.current = true;
+    setDrag(null);
+    onMove?.(place.pin.id, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+  };
+  return (
+    <div
+      className={draggable ? "graph-pin graph-pin-movable" : "graph-pin"}
+      style={{ left: at.x * zoom + vx, top: at.y * zoom + vy }}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setDrag(null); }}
+      onClickCapture={(event) => {
+        if (!justDragged.current) return;
+        justDragged.current = false;
+        event.stopPropagation();
+        event.preventDefault();
+      }}
+    >
+      {renderPin(place.pin, { detached: place.detached })}
+    </div>
+  );
+}
+
+/** The layer of pins above the canvas; it takes no pointer events itself, only its pins do. */
+function PinLayer({
+  places, renderPin, onMove,
+}: {
+  places: PinPlace[];
+  renderPin: (pin: GraphCanvasPin, context: GraphPinContext) => ReactNode;
+  onMove?: (pinId: string, at: { x: number; y: number }) => void;
+}) {
+  return (
+    <div className="graph-pin-layer">
+      {places.map((place) => <PinItem key={place.pin.id} place={place} renderPin={renderPin} onMove={onMove} />)}
+    </div>
+  );
+}
+
 type Moved = Record<string, { x: number; y: number; baseX: number; baseY: number }>;
 type Sized = Record<string, { width: number; height: number; baseWidth: number; baseHeight: number }>;
 
@@ -216,10 +317,17 @@ export function GraphCanvasView({
   onNodeOpen,
   onLeaderTargetChange,
   onCanvasClick,
+  mode = "select",
+  onCanvasPoint,
+  pins = [],
+  renderPin,
+  onPinMove,
+  centerOn,
   height = 480,
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
   const helpId = useId();
+  const commenting = mode === "comment" && onCanvasPoint !== undefined;
   const [moved, setMoved] = useState<Moved>({});
   const [sized, setSized] = useState<Sized>({});
   /** A free leader end while it is dragged (and until the consumer's leader reaches it), keyed by leader id. */
@@ -296,16 +404,7 @@ export function GraphCanvasView({
   /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
   const flowLeaders = useMemo(() => {
     const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
-    const middles = new Map<string, { x: number; y: number }>();
-    for (const e of edges) {
-      const from = boxes.get(e.source);
-      const to = boxes.get(e.target);
-      if (!from || !to) continue;
-      const [a, b] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
-      const pa = pointXY(from, a);
-      const pb = pointXY(to, b);
-      middles.set(e.id, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 });
-    }
+    const middles = edgeMiddles(boxes, edges);
     const ends: Node<{ free: boolean }, "leaderEnd">[] = [];
     const lines: Edge[] = [];
     for (const l of leaders) {
@@ -341,6 +440,40 @@ export function GraphCanvasView({
     }
     return { ends, lines };
   }, [leaders, flowNodes, edges, endMoved, selection, readOnly, onLeaderTargetChange]);
+
+  /** Where each pin is drawn: on its node's top-right corner or its line's middle, else at its own place. */
+  const pinPlaces = useMemo<PinPlace[]>(() => {
+    if (pins.length === 0) return [];
+    const boxes = new Map(flowNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT }]));
+    const middles = edgeMiddles(boxes, edges);
+    return pins.map((pin) => {
+      const anchor = pin.anchor;
+      if (anchor?.kind === "node") {
+        const box = boxes.get(anchor.id);
+        if (box) return { pin, x: box.x + box.width, y: box.y, detached: false };
+      } else if (anchor?.kind === "edge") {
+        const middle = middles.get(anchor.id);
+        if (middle) return { pin, ...middle, detached: false };
+      }
+      return { pin, x: pin.x, y: pin.y, detached: anchor !== undefined };
+    });
+  }, [pins, flowNodes, edges]);
+
+  /** The topmost node holding a canvas position (a pin dropped on it is anchored to it), else empty canvas. */
+  const anchorAt = useCallback(
+    (point: { x: number; y: number }): GraphPointAnchor => {
+      for (let i = flowNodes.length - 1; i >= 0; i--) {
+        const n = flowNodes[i];
+        const width = n.width ?? DEFAULT_WIDTH;
+        const height = n.height ?? DEFAULT_HEIGHT;
+        if (point.x >= n.position.x && point.x <= n.position.x + width && point.y >= n.position.y && point.y <= n.position.y + height) {
+          return { kind: "node", id: n.id };
+        }
+      }
+      return { kind: "none" };
+    },
+    [flowNodes],
+  );
 
   const choose = useCallback(
     (next: GraphCanvasSelection | null) => {
@@ -385,7 +518,7 @@ export function GraphCanvasView({
         }
       }
       const changes = allChanges.filter((c) => !isLeaderEnd(c)) as NodeChange<GraphFlowNode>[];
-      applySelect("node", changes);
+      if (!commenting) applySelect("node", changes);
       const base = new Map(nodes.map((n) => [n.id, n]));
       const resizingIds = new Set<string>();
       for (const c of changes) if (c.type === "dimensions" && c.resizing === true) resizingIds.add(c.id);
@@ -429,10 +562,10 @@ export function GraphCanvasView({
       if (finished.length > 0) onNodesMove?.(finished);
       if (resized.length > 0) onNodesResize?.(resized);
     },
-    [applySelect, nodes, leaders, readOnly, onNodesMove, onNodesResize, onLeaderTargetChange],
+    [applySelect, commenting, nodes, leaders, readOnly, onNodesMove, onNodesResize, onLeaderTargetChange],
   );
 
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => applySelect("edge", changes), [applySelect]);
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => { if (!commenting) applySelect("edge", changes); }, [applySelect, commenting]);
 
   const handleConnect = useCallback(
     (c: Connection) => {
@@ -490,6 +623,15 @@ export function GraphCanvasView({
   const allNodes = useMemo<FlowNode[]>(() => [...flowNodes, ...flowLeaders.ends], [flowNodes, flowLeaders]);
   const allEdges = useMemo<Edge[]>(() => [...flowEdges, ...flowLeaders.lines], [flowEdges, flowLeaders]);
 
+  // A change of `centerOn.key` moves the view to the position, keeping the zoom unless it is too small to read.
+  const centerKey = centerOn?.key;
+  const latestCenter = useLatest(centerOn);
+  useEffect(() => {
+    const target = latestCenter.current;
+    if (centerKey === undefined || target === undefined || !flow.current) return;
+    void flow.current.setCenter(target.x, target.y, { zoom: Math.max(flow.current.getZoom(), 0.75), duration: 200 });
+  }, [centerKey, latestCenter]);
+
   const keyResize = resizable && !readOnly && onNodesResize !== undefined;
   const keyDelete = !readOnly && onDelete !== undefined;
 
@@ -545,7 +687,7 @@ export function GraphCanvasView({
         {keyDelete ? ` ${text.keyboardDeleteHelp}` : ""}
       </span>
       <ReactFlow
-        className={readOnly ? "graph-canvas graph-canvas-readonly" : "graph-canvas"}
+        className={["graph-canvas", readOnly ? "graph-canvas-readonly" : "", commenting ? "graph-canvas-comment" : ""].filter(Boolean).join(" ")}
         nodes={allNodes}
         edges={allEdges}
         nodeTypes={NODE_TYPES}
@@ -555,14 +697,24 @@ export function GraphCanvasView({
         onReconnect={handleReconnect}
         onReconnectEnd={handleReconnectEnd}
         onPaneClick={(event) => {
-          if (readOnly || !onCanvasClick || !flow.current) return;
-          onCanvasClick(flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+          if (!flow.current) return;
+          const at = flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+          if (commenting) onCanvasPoint?.(at, { kind: "none" });
+          else if (!readOnly) onCanvasClick?.(at);
         }}
-        edgesReconnectable={!readOnly && (onEdgeAnchorChange !== undefined || onLeaderTargetChange !== undefined)}
+        onNodeClick={(event, node) => {
+          if (!commenting || !flow.current || node.type !== "graph") return;
+          onCanvasPoint?.(flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }), { kind: "node", id: node.id });
+        }}
+        onEdgeClick={(event, edge) => {
+          if (!commenting || !flow.current || edge.id.startsWith(LEADER_EDGE_PREFIX)) return;
+          onCanvasPoint?.(flow.current.screenToFlowPosition({ x: event.clientX, y: event.clientY }), { kind: "edge", id: edge.id });
+        }}
+        edgesReconnectable={!readOnly && !commenting && (onEdgeAnchorChange !== undefined || onLeaderTargetChange !== undefined)}
         onNodeDoubleClick={(_event, node) => onNodeOpen?.(node.id)}
         onInit={(instance) => { flow.current = instance; }}
-        nodesDraggable={!readOnly}
-        nodesConnectable={!readOnly}
+        nodesDraggable={!readOnly && !commenting}
+        nodesConnectable={!readOnly && !commenting}
         nodesFocusable
         edgesFocusable
         elementsSelectable
@@ -576,6 +728,12 @@ export function GraphCanvasView({
       >
         <Background />
         <Controls showInteractive={false} />
+        {renderPin && pinPlaces.length > 0 && (
+          <PinLayer
+            places={pinPlaces} renderPin={renderPin}
+            onMove={onPinMove ? (pinId, at) => onPinMove(pinId, at, anchorAt(at)) : undefined}
+          />
+        )}
       </ReactFlow>
     </div>
   );

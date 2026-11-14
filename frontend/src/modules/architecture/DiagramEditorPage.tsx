@@ -24,8 +24,8 @@
  * `diagramLines`, so an added box or a flipped switch redraws at once; the server's resolved view (`GET .../view`) gives
  * the boxes, notes and switches on load and stays the authority for the SVG and documents.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { downloadBlob } from "../../utils/download";
 import { svgToPngBlob } from "../../utils/svgToPng";
@@ -34,6 +34,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Badge } from "../../components/Badge";
 import { MenuButton } from "../../components/MenuButton";
 import { DetailLayout } from "../../components/DetailLayout";
+import { useCanvasComments } from "../../components/CanvasCommentLayer";
 import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
@@ -44,6 +45,8 @@ import { RecordTags } from "../../components/RecordTags";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
+import { useAuth } from "../../context/AuthContext";
+import { useStrings } from "../../context/TerminologyContext";
 import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useUrlChoice, useUrlFlag, useUrlList } from "../../hooks/useUrlFilter";
@@ -63,6 +66,8 @@ import {
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
 import { exportFileName, toggleStates, type DiagramExportKind } from "./diagramExport";
+import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
+import { pinAnchorOf, pinPlaceOf } from "./diagramComments";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { DiagramAddMenu } from "./DiagramAddMenu";
 import { DiagramOutline } from "./DiagramOutline";
@@ -80,7 +85,7 @@ import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type ConnectionFieldValues, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
+  type ArchitectureRecordStatus, type ConnectionFieldValues, type DiagramViewEdge, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
 } from "./types";
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
@@ -92,9 +97,15 @@ const SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architec
 const EDITOR_TABS = [
   { key: "drawing", label: "Drawing" },
   { key: "outline", label: "Outline" },
+  { key: "comments", label: "Comments" },
   { key: "configuration", label: "Configuration" },
 ] as const;
 type EditorTab = (typeof EDITOR_TABS)[number]["key"];
+
+/** The resolved lines the canvas actually draws (a pin follows a drawn line, not one a switch has removed). */
+function drawnLines(lines: readonly DiagramViewEdge[], drawn: ReadonlySet<string>): DiagramViewEdge[] {
+  return lines.filter((line) => drawn.has(line.id));
+}
 
 const NO_LINES: ResolvedDiagram = { edges: [], hidden: new Set(), internal: new Map() };
 
@@ -112,7 +123,7 @@ export function DiagramEditorPage() {
   const [toggleOff, setToggleOff] = useUrlList("toggle_off");
   // The Drawing tab is the default and so leaves the address unmarked; the pending layout, selection and undo history live
   // in this page, so they survive a change of tab.
-  const [tabChoice, setTabChoice] = useUrlChoice("tab", ["outline", "configuration"] as const);
+  const [tabChoice, setTabChoice] = useUrlChoice("tab", ["outline", "comments", "configuration"] as const);
   const tab: EditorTab = tabChoice || "drawing";
   const editor = useDiagramEditor(projectId, diagramId);
   const { diagram, view, model, layout, dirty } = editor;
@@ -288,6 +299,29 @@ export function DiagramEditorPage() {
   );
   const drawnEdgeIds = useMemo(() => new Set(edges.map((e) => e.id)), [edges]);
   const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds), [layout, resolved, drawnEdgeIds]);
+
+  // Comments are stored at once and apart from the layout, so they never make the drawing look unsaved; a link to a thread
+  // (`?pin=`) opens the Drawing with that thread selected and centred.
+  const { user: currentUser } = useAuth();
+  const commentText = useStrings().canvasComments;
+  const [searchParams] = useSearchParams();
+  const linkedPin = searchParams.get("pin");
+  const anchorOfPin = useCallback((place: Parameters<typeof pinAnchorOf>[0]) => pinAnchorOf(place, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)), [layout.boxes, resolved.edges, drawnEdgeIds]);
+  const placeOfClick = useCallback(
+    (position: { x: number; y: number }, anchor: Parameters<typeof pinPlaceOf>[1]) => pinPlaceOf(position, anchor, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)),
+    [layout.boxes, resolved.edges, drawnEdgeIds],
+  );
+  const commentLayer = useCanvasComments({
+    projectId, artefactType: "architecture_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick, initialPin: linkedPin,
+  });
+  const linkedPinThread = commentLayer.comments.thread;
+  const focusedLinkedPin = useRef(false);
+  useEffect(() => {
+    if (linkedPin && linkedPinThread && !focusedLinkedPin.current) {
+      focusedLinkedPin.current = true;
+      commentLayer.focusPin(linkedPin);
+    }
+  }, [linkedPin, linkedPinThread, commentLayer]);
 
   const archive = useArchiveAction({
     noun: "Diagram",
@@ -584,10 +618,23 @@ export function DiagramEditorPage() {
           { label: "Copy Mermaid text", key: "copy-mermaid", group: "Text", onSelect: () => void exportDiagram("copy-mermaid") },
         ]}
       />
+      {tab === "drawing" && (
+        <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
+          <button
+            type="button" className={commentLayer.commentMode ? "btn btn-sm btn-primary" : "btn btn-sm"} aria-pressed={commentLayer.commentMode}
+            onClick={() => commentLayer.setCommentMode(!commentLayer.commentMode)}
+          >
+            {commentText.modeLabel}
+          </button>
+          <FieldHelp label={commentText.modeLabel} help={commentText.modeHelp} />
+        </span>
+      )}
       <DiagramSettingsButton
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
         showNotes={showNotes} onShowNotesChange={setShowNotes}
+        showComments={commentLayer.showComments} onShowCommentsChange={commentLayer.setShowComments}
+        showResolved={commentLayer.showResolved} onShowResolvedChange={commentLayer.setShowResolved}
       />
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
@@ -600,6 +647,16 @@ export function DiagramEditorPage() {
         onRemoveBoundary={(box) => { editor.edit((l) => removeBoundary(l, box.connectionId)); setSelection(null); }}
         onConnectBoundary={(box, elementId) => void startBoundaryConnection(box.connectionId, elementId)}
         onSetRealises={setRealises}
+        onComment={(target) => {
+          // A line has no position of its own here, so the comment starts at the middle of the boxes it joins.
+          const line = target.kind === "edge" ? resolved.edges.find((e) => e.id === target.id) : undefined;
+          const from = layout.boxes.find((b) => b.elementId === line?.source_element_id);
+          const to = layout.boxes.find((b) => b.elementId === line?.target_element_id);
+          const at = from && to ? { x: (from.x + from.width / 2 + to.x + to.width / 2) / 2, y: (from.y + from.height / 2 + to.y + to.height / 2) / 2 } : { x: 0, y: 0 };
+          setTabChoice("");
+          commentLayer.setCommentMode(true);
+          commentLayer.startAt(pinPlaceOf(at, target, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)));
+        }}
         elements={elements} connectionTypes={reference.connectionTypes}
         onEditElement={(box) => { setElementFormError(null); setEditingElement(elements.find((e) => e.id === box.elementId) ?? null); }}
         onEditConnection={(connection) => { setConnectionFormError(null); setEditingConnection(connection); }}
@@ -674,7 +731,7 @@ export function DiagramEditorPage() {
             <div ref={setCanvasBox}>
             <GraphCanvas
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
-              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection}
+              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps}
               // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
               onSelect={(next) => { if (next !== null || pickingSpot === null) setSelection(next); }}
               onCanvasClick={(at) => {
@@ -713,6 +770,15 @@ export function DiagramEditorPage() {
             />
           </div>
           {selectionColumn}
+        </div>
+      )}
+
+      {tab === "comments" && (
+        <div className="stack" {...tabPanelProps("diagram-editor", "comments")}>
+          <DiagramCommentsPanel
+            layer={commentLayer} boxes={layout.boxes} edges={drawnLines(resolved.edges, drawnEdgeIds)} currentUserId={currentUser?.id}
+            onShow={() => setTabChoice("")}
+          />
         </div>
       )}
 

@@ -10,7 +10,7 @@ Responsibilities:
   endpoints, and name the list endpoints.
 
 Design decisions:
-- No type has a comment thread, so `has_comments` is off.
+- Every type takes comments through the generic record comments, so each is read at its own `/comments` route.
 - Diagrams are of the inside of one scope element and each draws its outer connection as a boundary box, realised by an
   inner connection, so the box reads are part of the measurement.
 - Every record goes in a two-level folder, so the folder paths read for a list, a detail and a bundle are measured.
@@ -155,7 +155,7 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
 
 
 SCALING_PROBES = {
-    ELEMENT_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/elements", create=_create_elements, has_comments=False),
-    CONNECTION_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/connections", create=_create_connections, has_comments=False),
-    DIAGRAM_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/diagrams", create=_create_diagrams, has_comments=False),
+    ELEMENT_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/elements", create=_create_elements),
+    CONNECTION_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/connections", create=_create_connections),
+    DIAGRAM_ARTEFACT_TYPE: ScalingProbe(list_path=f"{_BASE}/diagrams", create=_create_diagrams),
 }

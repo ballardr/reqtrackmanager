@@ -216,3 +216,29 @@
 .graph-canvas-readonly .graph-leader-end-free {
   cursor: default;
 }
+
+/* Comment mode: a click places a comment, so the cursor says so and nothing looks draggable. */
+.graph-canvas-comment .react-flow__pane,
+.graph-canvas-comment .react-flow__node,
+.graph-canvas-comment .react-flow__edge {
+  cursor: crosshair;
+}
+
+/* The pins sit above the canvas at a fixed screen size; the layer passes pointer events through to the canvas. */
+.graph-pin-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.graph-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.graph-pin-movable {
+  touch-action: none;
+}

@@ -111,6 +111,7 @@ from app.modules.architecture.service import (
 from app.modules.architecture.symbols import BUILTIN_SVG, clean_symbol_svg
 from app.modules.architecture.visibility import Viewer, ancestor_parents, visible_element_ids
 from app.services import definition_suppression, report_images
+from app.services.bundle_comments import export_comments, import_comments, strip_comments
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
@@ -152,6 +153,15 @@ PROJECT_KEYS = frozenset(
 ) | {PROJECT_SYMBOLS_KEY, HIDDEN_SYMBOLS_KEY, FOLDERS_KEY}
 #: Project bundle keys of the records, for the template classification (records).
 RECORD_KEYS = frozenset({ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY, LINKS_KEY, COLLECTIONS_KEY})
+
+
+#: The comment keys of a record with no comments, so every row has the same shape.
+_NO_COMMENTS: dict[str, list[dict[str, Any]]] = {"comments": [], "comment_pins": []}
+
+
+def _no_anchor(_kind: str, _key: str) -> str | None:
+    """Elements and connections have no drawing to pin on, so no pin has a portable anchor."""
+    return None
 
 
 def _row_json(
@@ -319,7 +329,7 @@ def _symbol_lookup(
 
 
 def _org_element_json(db: Session, org: Organization) -> list[dict[str, Any]]:
-    """The organisation-owned elements in bundle form (ports included; no tags or places)."""
+    """The organisation-owned elements in bundle form (ports and comments included; no tags or places)."""
     elements = list(db.scalars(
         select(ArchitectureElement).where(ArchitectureElement.organization_id == org.id).order_by(ArchitectureElement.unique_code)
     ))
@@ -338,11 +348,13 @@ def _org_element_json(db: Session, org: Organization) -> list[dict[str, Any]]:
     emails = _emails(db, {*(e.creator_id for e in elements), *(e.archived_by for e in elements)})
     symbol_refs = _symbol_refs(db, (e.symbol_id for e in elements))
     folder_paths = folder_rules.paths_for(db, (e.folder_id for e in elements))
+    element_comments = export_comments(db, ELEMENT_ARTEFACT_TYPE, list(codes), _no_anchor)
     return [
         {
             "unique_code": e.unique_code, "name": e.name, "description": e.description, "display_note": e.display_note,
             "type_name": type_names.get(e.element_type_id), "parent_code": codes.get(e.parent_id) if e.parent_id else None,
             "symbol": symbol_refs.get(e.symbol_id) if e.symbol_id else None, "folder": folder_paths.get(e.folder_id) if e.folder_id else None,
+            **element_comments.get(e.id, _NO_COMMENTS),
             "owner": principal_to_bundle(db, e.owner_type, e.owner_id), "status": e.status,
             "ports": [
                 {
@@ -484,6 +496,13 @@ def import_org_data(
                 element_id=element.id, name=port["name"], direction=port.get("direction", PortDirection.BOTH.value),
                 connection_type_id=connection_type.id if connection_type else None, sort_order=port.get("sort_order", order),
             ))
+    for entry in data.get(ORG_ELEMENTS_KEY, []):
+        imported = created.get(entry.get("unique_code", ""))
+        if imported is not None:
+            import_comments(
+                db, organization=org, artefact_type=ELEMENT_ARTEFACT_TYPE, record_id=imported.id, entry=entry, users=users,
+                warnings=warnings, context=f"Element {entry.get('unique_code')}", resolve_anchor=_no_anchor,
+            )
     for entry in data.get(ORG_ELEMENTS_KEY, []):
         parent_code = entry.get("parent_code")
         if parent_code and entry.get("unique_code") in created:
@@ -657,6 +676,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_record_tag_names(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
     prime_record_placements(db, ELEMENT_ARTEFACT_TYPE, element_ids)
     prime_record_placements(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
+    element_comments = export_comments(db, ELEMENT_ARTEFACT_TYPE, element_ids, _no_anchor)
+    connection_comments = export_comments(db, CONNECTION_ARTEFACT_TYPE, connection_ids, _no_anchor)
     emails = _emails(
         db,
         {e.creator_id for e in elements} | {e.archived_by for e in elements}
@@ -683,6 +704,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": e.is_archived, "archived_at": _stamp(e.archived_at), "archived_by_email": _email(emails, e.archived_by),
             "tags": record_tag_names(db, ELEMENT_ARTEFACT_TYPE, e.id),
             "placements": record_placements(db, ELEMENT_ARTEFACT_TYPE, e.id),
+            **element_comments.get(e.id, _NO_COMMENTS),
         }
         for e in elements
     ]
@@ -708,6 +730,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": c.is_archived, "archived_at": _stamp(c.archived_at), "archived_by_email": _email(emails, c.archived_by),
             "tags": record_tag_names(db, CONNECTION_ARTEFACT_TYPE, c.id),
             "placements": record_placements(db, CONNECTION_ARTEFACT_TYPE, c.id),
+            **connection_comments.get(c.id, _NO_COMMENTS),
         }
         for c in connections
     ]
@@ -795,6 +818,16 @@ def _diagrams_json(
     foreign = _foreign_refs(db, {e for e in wanted if e not in codes})
     prime_record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, ids)
     prime_record_placements(db, DIAGRAM_ARTEFACT_TYPE, ids)
+
+    def anchor_code(kind: str, key: str) -> str | None:
+        """The code of a pin's box (an element) or line (a connection), or `None` when it is not in this bundle."""
+        try:
+            target = UUID(key)
+        except ValueError:
+            return None
+        return (codes if kind == "node" else connection_codes).get(target)
+
+    diagram_comments = export_comments(db, DIAGRAM_ARTEFACT_TYPE, ids, anchor_code)
     by_diagram_boxes: dict[UUID, list[ArchitectureDiagramPlacement]] = {}
     for box in boxes:
         by_diagram_boxes.setdefault(box.diagram_id, []).append(box)
@@ -859,6 +892,7 @@ def _diagrams_json(
             "is_archived": d.is_archived, "archived_at": _stamp(d.archived_at), "archived_by_email": _email(emails, d.archived_by),
             "tags": record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, d.id),
             "placements": record_placements(db, DIAGRAM_ARTEFACT_TYPE, d.id),
+            **diagram_comments.get(d.id, _NO_COMMENTS),
         }
         for d in rows
     ], rows
@@ -872,6 +906,8 @@ def reset_for_template(data: dict[str, Any]) -> None:
     fresh_drafts(data.get(ELEMENTS_KEY, []), status=RecordStatus.DRAFT.value)
     fresh_drafts(data.get(CONNECTIONS_KEY, []), status=RecordStatus.DRAFT.value)
     fresh_drafts(data.get(DIAGRAMS_KEY, []), status=RecordStatus.DRAFT.value)
+    for key in (ELEMENTS_KEY, CONNECTIONS_KEY, DIAGRAMS_KEY):
+        strip_comments(data.get(key, []))
     kept = {e["unique_code"] for e in data.get(ELEMENTS_KEY, [])}
     data[CONNECTIONS_KEY] = [
         c for c in data.get(CONNECTIONS_KEY, []) if c.get("source_code") in kept and c.get("target_code") in kept
@@ -1144,6 +1180,31 @@ def _import_diagrams(
     return created
 
 
+def _import_comments(
+    db: Session, project: Project, data: dict[str, Any], elements: dict[str, UUID], connections: dict[str, UUID],
+    diagram_ids: dict[str, UUID], users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """Recreates the comments of every imported element, connection and diagram once all of them exist (a pin on a box
+    or line needs the new ids). A pin whose box or line did not import stays as a free marker."""
+
+    def resolve(kind: str, code: str) -> str | None:
+        found = (elements if kind == "node" else connections).get(code)
+        return str(found) if found else None
+
+    for key, artefact_type, created, label in (
+        (ELEMENTS_KEY, ELEMENT_ARTEFACT_TYPE, elements, "Element"),
+        (CONNECTIONS_KEY, CONNECTION_ARTEFACT_TYPE, connections, "Connection"),
+        (DIAGRAMS_KEY, DIAGRAM_ARTEFACT_TYPE, diagram_ids, "Diagram"),
+    ):
+        for entry in data.get(key, []):
+            record_id = created.get(entry.get("unique_code", ""))
+            if record_id is not None:
+                import_comments(
+                    db, project=project, artefact_type=artefact_type, record_id=record_id, entry=entry, users=users,
+                    warnings=warnings, context=f"{label} {entry.get('unique_code')}", resolve_anchor=resolve,
+                )
+
+
 def import_project_data(
     db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes], current_user: User,
     users: UserResolver, warnings: BundleImportWarnings,
@@ -1285,6 +1346,7 @@ def import_project_data(
     diagram_ids = _import_diagrams(
         db, project, data.get(DIAGRAMS_KEY, []), elements, connections, current_user, users, warnings, folder_importer,
     )
+    _import_comments(db, project, data, elements, connections, diagram_ids, users, warnings)
     _import_collections(
         db, data.get(COLLECTIONS_KEY, []), owner={"project_id": project.id},
         owner_filter=ArchitectureCollection.project_id == project.id, elements=elements, creator_id=current_user.id,

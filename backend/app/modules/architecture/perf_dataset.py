@@ -36,6 +36,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.models.record_comment import RecordComment, RecordCommentPin
 from app.modules.architecture.diagram_resolver import outer_side
 from app.modules.architecture.enums import DISPLAY_NOTE_MAX, AttachPoint, NoteTone, PortDirection, RecordStatus
 from app.modules.architecture.models import (
@@ -64,7 +65,15 @@ from app.modules.architecture.service import (
 )
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, PerfProjectContext, insert_rows, uuid_from
-from app.services.perf_dataset.records import RecordBatch, add_tags, created_at, link_to_earlier, pick_weighted
+from app.services.perf_dataset.records import (
+    RecordBatch,
+    add_comments,
+    add_tags,
+    at_between,
+    created_at,
+    link_to_earlier,
+    pick_weighted,
+)
 
 #: Deepest generated tree level (a root is 1); the application allows more.
 _GENERATED_DEPTH = 4
@@ -199,6 +208,7 @@ def generate_elements(ctx: PerfProjectContext) -> dict[str, int]:
             })
     batch.write()
     add_tags(ctx, batch)
+    _add_record_comments(ctx, batch, ELEMENT_ARTEFACT_TYPE)
     link_to_earlier(ctx, batch, [("requirement", 0.4), ("risk", 0.1), ("decision", 0.1)])
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}
 
@@ -245,6 +255,7 @@ def generate_connections(ctx: PerfProjectContext) -> dict[str, int]:
         )
     batch.write()
     add_tags(ctx, batch)
+    _add_record_comments(ctx, batch, CONNECTION_ARTEFACT_TYPE)
     link_to_earlier(ctx, batch, [("requirement", 0.3), ("risk", 0.05)])
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}
 
@@ -292,6 +303,53 @@ def _scoped_boundaries(
             rows.append((connection_id, side, realising))
         return scope, rows
     return None
+
+
+def _add_pinned_threads(
+    rng: random.Random, ctx: PerfProjectContext, batch: RecordBatch, record_id: uuid.UUID, created: Any,
+    placed: list[uuid.UUID], connections: list[uuid.UUID], *, first: bool,
+) -> None:
+    """Writes a diagram's pinned comment threads: free spots, boxes it places and lines of the project, some resolved,
+    each with one to three comments. The first diagram always has one of each kind and a resolved thread."""
+    wanted = ["none", "node", "edge", "node", "none", "edge", "node", "none"] if first else [
+        rng.choice(("none", "node", "edge")) for _ in range(rng.choice((0, 0, 1, 2)))
+    ]
+    for slot, kind in enumerate(wanted):
+        key = None
+        if kind == "node" and placed:
+            key = str(rng.choice(placed))
+        elif kind == "edge" and connections:
+            key = str(rng.choice(connections))
+        else:
+            kind = "none"
+        pinned_at = at_between(rng, created)
+        resolved = first and slot == 4 or rng.random() < 0.2
+        author = rng.choice(ctx.user_ids)
+        pin_id = batch.new_id()
+        batch.satellite(RecordCommentPin, {
+            "id": pin_id, "project_id": ctx.project_uuid, "organization_id": None, "artefact_type": DIAGRAM_ARTEFACT_TYPE,
+            "record_id": record_id, "anchor_kind": kind, "anchor_key": key, "x": float(rng.randint(-200, 800)),
+            "y": float(rng.randint(-200, 600)), "resolved_at": pinned_at if resolved else None,
+            "resolved_by": rng.choice(ctx.user_ids) if resolved else None, "created_by": author, "created_at": pinned_at,
+        })
+        for position in range(rng.randint(1, 3) if not first else 3):
+            at = at_between(rng, pinned_at)
+            batch.satellite(RecordComment, {
+                "id": batch.new_id(), "project_id": ctx.project_uuid, "organization_id": None,
+                "artefact_type": DIAGRAM_ARTEFACT_TYPE, "record_id": record_id, "pin_id": pin_id,
+                "author_id": author if position == 0 else rng.choice(ctx.user_ids),
+                "body": textgen.sentences(rng, rng.randint(1, 3)), "edited_at": None, "created_at": at, "updated_at": at,
+            })
+
+
+def _add_record_comments(ctx: PerfProjectContext, batch: RecordBatch, artefact_type: str) -> None:
+    """Writes ordinary (unpinned) comments on a batch's records at the requirements' comment ratio."""
+    add_comments(
+        ctx, batch, RecordComment, "record_id",
+        extra={
+            "project_id": ctx.project_uuid, "organization_id": None, "artefact_type": artefact_type, "pin_id": None,
+        },
+    )
 
 
 def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
@@ -370,6 +428,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
                 "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "tone": rng.choice(_NOTE_TONES),
                 "leader_arrow": rng.random() < 0.8, "created_at": created, "updated_at": created, **leader,
             })
+        _add_pinned_threads(rng, ctx, batch, record_id, created, placed, project_connections, first=index == 0)
         if index == 0 or rng.random() < 0.4:
             toggle_id = batch.new_id()
             batch.satellite(ArchitectureDiagramToggle, {
@@ -382,5 +441,6 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
             })
     batch.write()
     add_tags(ctx, batch)
+    _add_record_comments(ctx, batch, DIAGRAM_ARTEFACT_TYPE)
     link_to_earlier(ctx, batch, [("requirement", 0.2)])
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}

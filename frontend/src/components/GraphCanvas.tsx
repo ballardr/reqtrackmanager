@@ -6,9 +6,11 @@
  * lazy loader for the drawing itself (`GraphCanvasView`, the only file that imports `@xyflow/react`).
  *
  * Responsibilities:
- * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`, `GraphCanvasLeader`) and the events it
- *   gets back. A box has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
+ * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`, `GraphCanvasLeader`, `GraphCanvasPin`)
+ *   and the events it gets back. A box has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
  *   A leader is a thin line from a node (an annotation) to another node, to the middle of a line or to a free point.
+ * - Offer a comment mode (a click reports what it landed on instead of selecting) and draw consumer-supplied pins at one
+ *   screen size at any zoom, each rendered by the consumer (`renderPin`); a pin anchored to a node or line follows it.
  * - Load the canvas on first use, so React Flow stays out of the main bundle, and show the list view while it
  *   loads, if it fails to load, or when the person (or consumer) asks for the list.
  *
@@ -82,6 +84,28 @@ export interface GraphCanvasLeader {
   to: GraphLeaderTarget;
   /** Draws an arrowhead at the target end; defaults to true. */
   arrow?: boolean;
+}
+
+/** What a click in comment mode landed on: empty canvas, a node or a line. */
+export type GraphPointAnchor = { kind: "none" } | { kind: "node"; id: string } | { kind: "edge"; id: string };
+
+/**
+ * A marker the consumer pins on the canvas (a comment). It is drawn at one screen size at any zoom. Anchored to a node it
+ * sits on the node's top-right corner, anchored to a line on the line's middle (so it moves with them); otherwise, and
+ * when its anchor is not on the canvas, it sits at `x`, `y` in canvas units.
+ */
+export interface GraphCanvasPin {
+  id: string;
+  x: number;
+  y: number;
+  anchor?: { kind: "node" | "edge"; id: string };
+  /** Whether a person may drag it (and `onPinMove` is called). */
+  movable?: boolean;
+}
+
+/** What `renderPin` is told besides the pin: whether its anchor is missing from the canvas (the pin sits at its last place). */
+export interface GraphPinContext {
+  detached: boolean;
 }
 
 /** The data-transfer type a consumer's draggable palette item sets, so a drop on the canvas reaches `onDropItem`. */
@@ -162,6 +186,24 @@ export interface GraphCanvasProps {
   onLeaderTargetChange?: (leaderId: string, target: GraphLeaderTarget) => void;
   /** Called when empty canvas is clicked (not in read-only mode), with the position in canvas units, before the selection is cleared. */
   onCanvasClick?: (position: { x: number; y: number }) => void;
+  /**
+   * `select` (default) or `comment`. In comment mode nothing is moved, connected, selected or resized: a click on empty
+   * canvas, a node or a line calls `onCanvasPoint` instead, and the canvas shows a crosshair.
+   */
+  mode?: "select" | "comment";
+  /** Called by a click in comment mode with the position in canvas units and what the click landed on. */
+  onCanvasPoint?: (position: { x: number; y: number }, anchor: GraphPointAnchor) => void;
+  /** The pins to draw; none by default. */
+  pins?: GraphCanvasPin[];
+  /** Draws one pin's marker (and whatever opens from it); the canvas places it. Required to show pins. */
+  renderPin?: (pin: GraphCanvasPin, context: GraphPinContext) => ReactNode;
+  /**
+   * Called once when a person drags a movable pin and drops it: on empty canvas (`none`) or on a node. The canvas stores
+   * nothing: the consumer keeps the pin's place and passes it back in `pins`.
+   */
+  onPinMove?: (pinId: string, position: { x: number; y: number }, anchor: GraphPointAnchor) => void;
+  /** Centres the canvas on a position when `key` changes (a link to a pin); the canvas keeps its zoom if it is already readable. */
+  centerOn?: { x: number; y: number; key: number };
   /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */

@@ -2054,6 +2054,26 @@ class ScalingProbe:
     has_detail: bool = True
 
 
+@dataclass(frozen=True)
+class RecordCommentProvider:
+    """How a module opts one of its `artefact_types` into the generic record comments (`services.record_comments`).
+
+    Reading and commenting follow the record's own visibility (`ArtefactResolver`, as the Links panel does) and the
+    project view right, so a provider declares only where a comment may be pinned on the record's drawing. A type
+    with an empty `anchor_kinds` takes ordinary comments and no pins.
+
+    Attributes:
+        anchor_kinds: The pin anchors the record's drawing offers: `node` (a box), `edge` (a line); a free spot
+            (`none`) is always allowed where the type allows any pin.
+        validate_anchor: `validate_anchor(db, project_id, record_id, kind, key)` is true when `key` names a box or
+            line that exists for the record in that project; called for every new or moved pin with a `node` or
+            `edge` anchor. Required when `anchor_kinds` is not empty.
+    """
+
+    anchor_kinds: tuple[str, ...] = ()
+    validate_anchor: Callable[[Session, uuid.UUID, uuid.UUID, str, str], bool] | None = None
+
+
 class ScalingProbeApi:
     """The calls a `ScalingProbe.create` makes: `post(path, body)`, `put(path, body)` and `get(path)` return the decoded
     JSON and raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation. A
@@ -2981,6 +3001,10 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        record_comments: Maps one of this module's own `artefact_types` to a `RecordCommentProvider`, giving its records
+            the generic comments (ordinary and, where the provider allows anchors, pinned threads on a drawing) with
+            no table or route of its own. Read via `get_record_comment_providers`. Existing module-local comment
+            tables are unchanged.
         not_placeable: `{artefact type: reason}` for a type that cannot be placed in the project's component/category
             tree (a record that exists only as part of a structure of its own). Every other registered type is placed
             through the shared `artefact_placements` table with no module code. Read via `get_not_placeable_types`.
@@ -3119,6 +3143,7 @@ class ModuleDefinition:
     not_importable: dict[str, str] = field(default_factory=dict)
     not_creatable_from_links: dict[str, str] = field(default_factory=dict)
     not_placeable: dict[str, str] = field(default_factory=dict)
+    record_comments: dict[str, RecordCommentProvider] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
@@ -4970,6 +4995,15 @@ def get_not_placeable_types() -> dict[str, str]:
     for definition in get_module_registry().values():
         reasons.update(definition.not_placeable)
     return reasons
+
+
+def get_record_comment_providers() -> dict[str, RecordCommentProvider]:
+    """`{artefact type: RecordCommentProvider}` for every type a module opted into the generic record comments
+    (no core type is among them: their comments are their own tables)."""
+    providers: dict[str, RecordCommentProvider] = {}
+    for definition in get_module_registry().values():
+        providers.update(definition.record_comments)
+    return providers
 
 
 def get_not_creatable_from_links_types() -> dict[str, str]:

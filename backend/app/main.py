@@ -54,6 +54,7 @@ from app.routers import (
     policies,
     project_link_types,
     projects,
+    record_comments,
     record_list_report,
     record_tables,
     report_catalogue,
@@ -386,6 +387,7 @@ app.include_router(custom_reports.project_router)
 app.include_router(custom_reports.runs_router)
 app.include_router(search.router)
 app.include_router(record_tables.router)
+app.include_router(record_comments.router)
 app.include_router(org_record_tables.router)
 app.include_router(record_list_report.router)
 app.include_router(files.router)

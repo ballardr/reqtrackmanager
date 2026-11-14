@@ -734,3 +734,83 @@ export const AClickOnEmptyCanvasReportsItsPosition: Story = {
     expect(Number.isFinite(position.x) && Number.isFinite(position.y)).toBe(true);
   },
 };
+
+/** Comment mode reports a click on empty canvas, on a node and on a line, and selects and moves nothing. */
+export const CommentModeReportsWhatAClickLandedOn: Story = {
+  args: { onCanvasPoint: fn(), onSelect: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={NODES} edges={EDGES} ariaLabel="Comment mode" showViewToggle={false} mode="comment"
+      onCanvasPoint={args.onCanvasPoint} onSelect={args.onSelect}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const report = args.onCanvasPoint as ReturnType<typeof fn>;
+    await userEvent.click(await canvas.findByLabelText("Gateway, node"));
+    await waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    expect(report.mock.calls[0][1]).toEqual({ kind: "node", id: "gateway" });
+    await userEvent.click(canvasElement.querySelector(".react-flow__pane") as HTMLElement);
+    await waitFor(() => expect(report).toHaveBeenCalledTimes(2));
+    expect(report.mock.calls[1][1]).toEqual({ kind: "none" });
+    expect(args.onSelect).not.toHaveBeenCalled();
+    expect(canvasElement.querySelector(".graph-canvas-comment")).not.toBeNull();
+  },
+};
+
+/** A pin is drawn by the consumer's render function at its place, anchored pins follow their node, and a pin whose node is not drawn is detached. */
+export const PinsAreDrawnAtOneSizeAndFollowTheirNode: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={NODES} edges={EDGES} ariaLabel="Pins" showViewToggle={false}
+      pins={[
+        { id: "free", x: 100, y: 100 },
+        { id: "boxed", x: 0, y: 0, anchor: { kind: "node", id: "gateway" } },
+        { id: "lined", x: 0, y: 0, anchor: { kind: "edge", id: "e1" } },
+        { id: "gone", x: 300, y: 300, anchor: { kind: "node", id: "missing" } },
+      ]}
+      renderPin={(pin, context) => <button type="button" aria-label={`Pin ${pin.id}${context.detached ? " detached" : ""}`}>{pin.id}</button>}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(await canvas.findByRole("button", { name: "Pin free" })).toBeInTheDocument();
+    expect(canvas.getByRole("button", { name: "Pin boxed" })).toBeInTheDocument();
+    expect(canvas.getByRole("button", { name: "Pin lined" })).toBeInTheDocument();
+    expect(canvas.getByRole("button", { name: "Pin gone detached" })).toBeInTheDocument();
+    // The pins are in the layer above the canvas, and the anchored ones are not at their stored (0, 0).
+    const left = (name: string) => (canvas.getByRole("button", { name }).closest(".graph-pin") as HTMLElement).style.left;
+    expect(left("Pin boxed")).not.toBe(left("Pin free"));
+  },
+};
+
+/** A movable pin dragged and dropped reports its new place and what it landed on; an unmovable pin reports nothing. */
+export const ADraggedPinReportsItsDropPlace: Story = {
+  args: { onPinMove: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={NODES} edges={[]} ariaLabel="Move pins" showViewToggle={false} onPinMove={args.onPinMove}
+      pins={[{ id: "move", x: 100, y: 200, movable: true }, { id: "fixed", x: 150, y: 200 }]}
+      renderPin={(pin) => <button type="button" aria-label={`Pin ${pin.id}`}>{pin.id}</button>}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const move = await canvas.findByRole("button", { name: "Pin move" });
+    const box = move.getBoundingClientRect();
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const wrapper = move.closest(".graph-pin") as HTMLElement;
+    const fire = (type: string, x: number, y: number) =>
+      wrapper.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 1, button: 0 }));
+    fire("pointerdown", from.x, from.y);
+    fire("pointermove", from.x + 40, from.y + 40);
+    fire("pointerup", from.x + 40, from.y + 40);
+    await waitFor(() => expect(args.onPinMove).toHaveBeenCalledTimes(1));
+    const [id, position, anchor] = (args.onPinMove as ReturnType<typeof fn>).mock.calls[0];
+    expect(id).toBe("move");
+    expect(Number.isFinite(position.x)).toBe(true);
+    expect(anchor).toHaveProperty("kind");
+    const fixed = canvas.getByRole("button", { name: "Pin fixed" }).closest(".graph-pin") as HTMLElement;
+    expect(fixed.className).not.toContain("graph-pin-movable");
+  },
+};

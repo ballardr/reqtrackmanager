@@ -20,6 +20,7 @@ import { DetailCard } from "../../components/DetailCard";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { RecordActivity } from "../../components/RecordActivity";
+import { RecordCommentsCards } from "../../components/RecordCommentsCards";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordField, RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RecordHeader } from "../../components/RecordHeader";
@@ -27,6 +28,7 @@ import { RecordTags } from "../../components/RecordTags";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
+import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { architectureTabPath } from "./architectureTabs";
@@ -50,6 +52,7 @@ import {
 export function ElementDetailPage() {
   const { projectId = "", elementId = "" } = useParams<{ projectId: string; elementId: string }>();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const reference = useArchitectureReference(projectId);
   const elementApi = projectElementApi(projectId);
   const navigate = useNavigate();
@@ -242,6 +245,8 @@ export function ElementDetailPage() {
         </DetailCard>
 
         <ElementSharingCard projectId={projectId} element={element} />
+
+        <RecordCommentsCards projectId={projectId} artefactType="architecture_element" recordId={element.id} currentUserId={user?.id} />
       </div>
 
       {editing && (

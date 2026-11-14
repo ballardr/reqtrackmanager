@@ -1342,6 +1342,60 @@ a.figure-projects-link:hover {
   border-top: 1px solid var(--color-border);
 }
 
+/* The round pin a comment thread leaves on a canvas (components/CommentMarker): the accent colour with the author's initials. */
+.comment-marker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.comment-marker:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+/* A resolved thread is outlined and muted; a detached one is dashed (its box or line has left the drawing). */
+.comment-marker-resolved {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+.comment-marker-detached {
+  border-style: dashed;
+}
+
+.comment-marker-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: var(--radius-lg);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 0.65rem;
+  line-height: 16px;
+  text-align: center;
+}
+
 .detail-card__title,
 .detail-layout__aside-title {
   margin: 0;

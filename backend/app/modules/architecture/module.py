@@ -56,6 +56,7 @@ from app.modules.architecture._shared import (
     ELEMENT_MANAGE_PERMISSION,
 )
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
+from app.modules.architecture.comments import RECORD_COMMENTS
 from app.modules.architecture.models import (
     ArchitectureCollectionGrant,
     ArchitectureConnection,
@@ -195,6 +196,7 @@ MODULE_DEFINITION = ModuleDefinition(
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,
+    record_comments=RECORD_COMMENTS,
     not_importable=NOT_IMPORTABLE,
     scaling_probes=SCALING_PROBES,
     perf_generators={

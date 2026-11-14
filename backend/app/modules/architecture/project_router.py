@@ -24,6 +24,7 @@ from app.models.user import User
 from app.modules.architecture import _shared as sh
 from app.modules.architecture import symbol_routes, vocabulary_routes
 from app.modules.architecture.collection_routes import add_project_collection_routes
+from app.modules.architecture.comments import add_comment_routes
 from app.modules.architecture.diagram_routes import add_diagram_routes
 from app.modules.architecture.folder_routes import add_project_folder_routes
 from app.modules.architecture.record_routes import add_record_routes
@@ -86,6 +87,7 @@ def get_capabilities(project_id: UUID, current_user: User = Depends(_require_vie
 
 add_record_routes(router)
 add_diagram_routes(router)
+add_comment_routes(router)
 router.include_router(REPORT_ROUTERS.project)
 add_project_collection_routes(router)
 add_project_folder_routes(router)

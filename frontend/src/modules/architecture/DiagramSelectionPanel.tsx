@@ -35,6 +35,7 @@ import { FieldCaption } from "../../components/FieldHelp";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordPlacements } from "../../components/RecordPlacements";
 import { Tooltip } from "../../components/Tooltip";
+import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, lineAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
@@ -85,11 +86,12 @@ import type {
  * @param onRemoveBoundary Takes a boundary box off the diagram (the connection is not changed).
  * @param onConnectBoundary Starts a connection between an inner element and the element outside a boundary box.
  * @param onSetRealises Sets the outer connections a connection realises (stored at once; may reject).
+ * @param onComment Starts a comment on the selected box or line (the keyboard route to what a click in comment mode does); when absent no button is shown.
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
   onAnchorChange, drawnEdgeIds, pickingSpot, onEditNote, onNoteTone, onNoteArrow, onNotePointAt, onPickSpot, onRemoveNote, elements, connectionTypes, onEditElement, onEditConnection, onAddPort, onChangePort, onRemovePort,
-  boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises,
+  boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment,
 }: {
   projectId: string;
   selection: GraphCanvasSelection | null;
@@ -101,6 +103,7 @@ export function DiagramSelectionPanel({
   onRemoveBoundary: (box: EditorBoundary) => void;
   onConnectBoundary: (box: EditorBoundary, elementId: string) => void;
   onSetRealises: (connection: ArchitectureConnection, outerIds: string[]) => Promise<void>;
+  onComment?: (target: { kind: "node" | "edge"; id: string }) => void;
   edges: DiagramViewEdge[];
   anchors: DiagramAnchor[];
   hidden: ReadonlySet<string>;
@@ -127,6 +130,7 @@ export function DiagramSelectionPanel({
   onRemovePort: (elementId: string, portId: string) => Promise<void>;
 }) {
   const formatCode = useRecordCode();
+  const commentText = useStrings().canvasComments;
   const [deleting, setDeleting] = useState<EditorBox | null>(null);
   const base = `/projects/${projectId}/modules/architecture`;
 
@@ -167,6 +171,9 @@ export function DiagramSelectionPanel({
             </Tooltip>
           )}
           {editable && !box.locked && !box.shared && <button type="button" className="btn btn-sm" onClick={() => onEditElement(box)}>Edit element</button>}
+          {onComment && !box.locked && (
+            <button type="button" className="btn btn-sm" onClick={() => onComment({ kind: "node", id: box.elementId })}>{commentText.commentOnBox}</button>
+          )}
           {editable && <button type="button" className="btn btn-sm" onClick={() => onRemoveBox(box)}>Remove from diagram</button>}
           {editable && !box.locked && !box.shared && (
             <button type="button" className="btn btn-sm btn-danger" onClick={() => setDeleting(box)}>Delete element…</button>
@@ -277,6 +284,11 @@ export function DiagramSelectionPanel({
             ))}
           </tbody>
         </table>
+        {onComment && (
+          <div className="row">
+            <button type="button" className="btn btn-sm" onClick={() => onComment({ kind: "edge", id: edge.id })}>{commentText.commentOnLine}</button>
+          </div>
+        )}
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
           <LineEnds edge={edge} boxes={boxes} anchors={anchors} onChange={(change) => onAnchorChange(edge, change)} />
         )}

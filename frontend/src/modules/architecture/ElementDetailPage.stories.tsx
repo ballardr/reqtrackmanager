@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildConnection, buildElement, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ElementDetailPage } from "./ElementDetailPage";
@@ -144,5 +145,30 @@ export const MissingElementShowsNotFound: Story = {
   },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText(/Element not found|could not be found/)).toBeInTheDocument();
+  },
+};
+
+
+/** The element's own comments are listed, and the threads pinned to it on diagrams link to those diagrams with the thread open. */
+export const ShowsItsCommentsAndTheThreadsPinnedToItOnDiagrams: Story = {
+  beforeEach: () => {
+    const get = mockArchitectureReads({
+      elements: [PARENT, ELEMENT, CHILD], element: ELEMENT, connections: [],
+      comments: { comments: [buildComment({ id: "c-1", body: "Check the TLS settings." })] },
+      anchoredComments: [{
+        record_type: "architecture_diagram", record_id: "dgm-1", record_label: "DGM-001 Platform overview",
+        pin: buildPin({ id: "p-9", anchor_kind: "node", anchor_key: "el-1", comment_count: 1, resolved: true }),
+        comments: [buildComment({ id: "c-9", pin_id: "p-9", body: "Move this behind the proxy." })],
+      }],
+    });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Check the TLS settings.")).toBeInTheDocument();
+    const link = await canvas.findByRole("link", { name: "Open DGM-001 Platform overview" });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/diagrams/dgm-1?pin=p-9`);
+    await expect(canvas.getByText("Move this behind the proxy.")).toBeInTheDocument();
+    await expect(canvas.getByText("Resolved")).toBeInTheDocument();
   },
 };

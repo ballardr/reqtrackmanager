@@ -9,6 +9,7 @@ import { spyOn } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Placement } from "../../api/placements";
+import type { AnchoredThread, RecordThread } from "../../api/recordComments";
 import type { OrgUser } from "../../api/types";
 import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
@@ -283,6 +284,10 @@ export interface ArchitectureReads {
   canManageTypes?: boolean;
   /** `{element id: places}`; when given, the project has the shared component tree and the elements' places are readable and editable. */
   placements?: Record<string, Placement[]>;
+  /** The record comments the generic API answers with (a diagram's, element's or connection's); empty by default. */
+  comments?: Partial<RecordThread>;
+  /** The pinned threads anchored to a box or line (`anchored-comments`); none by default. */
+  anchoredComments?: AnchoredThread[];
 }
 
 /**
@@ -300,6 +305,8 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.endsWith("/enabled-modules")) {
       return [{ module_key: "architecture", name: "System Architecture", frontend_manifest: null, disabled_sub_components: reads.disabledSubComponents ?? [] }];
     }
+    if (base.endsWith("/anchored-comments")) return { threads: reads.anchoredComments ?? [] };
+    if (base.endsWith("/comments")) return { comments: [], pins: [], can_pin: base.includes("/architecture_diagram/"), can_manage: true, ...reads.comments };
     if (path.endsWith("/records/architecture_element/columns")) return buildRecordColumns({ label: "Elements" });
     if (path.endsWith("/records/architecture_connection/columns")) return buildRecordColumns({ label: "Connections" });
     const folderKind = /\/modules\/architecture\/(element|connection|diagram)-folders$/.exec(base);

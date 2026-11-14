@@ -3,6 +3,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buildPlace, openPlacementPicker } from "../../testing/placementsFixtures";
+import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement, buildNote,
@@ -44,7 +45,7 @@ async function select(canvas: ReturnType<typeof within>, name: string) {
 }
 
 /** Chooses an editor tab (the Drawing tab is the default). */
-async function openTab(canvas: ReturnType<typeof within>, name: "Drawing" | "Outline" | "Configuration") {
+async function openTab(canvas: ReturnType<typeof within>, name: "Drawing" | "Outline" | "Comments" | "Configuration") {
   await userEvent.click(await canvas.findByRole("tab", { name }));
 }
 
@@ -1145,5 +1146,119 @@ export const TheOutlineListsTheOuterConnectionsWithTheirDirectionAndCoverage: St
     await expect(within(table).getByRole("button", { name: "CON-009" })).toBeInTheDocument();
     await expect(within(table).getByText("Output")).toBeInTheDocument();
     await expect(within(table).getByText("Covered")).toBeInTheDocument();
+  },
+};
+
+
+/** A pinned thread shows as a marker on the Drawing, and opening it or reading the Comments tab never marks the layout unsaved. */
+export const PinnedCommentsShowAsMarkersAndNeverMakeTheLayoutDirty: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      comments: {
+        pins: [buildPin({ id: "p-1", anchor_kind: "node", anchor_key: "el-1", comment_count: 2 })],
+        comments: [
+          buildComment({ id: "c-1", pin_id: "p-1", body: "Needs rate limiting." }),
+          buildComment({ id: "c-2", pin_id: "p-1", author_display_name: "Sam Owner", body: "Added to the backlog.", can_edit: false, can_delete: false }),
+          buildComment({ id: "c-3", pin_id: null, body: "General question about scope." }),
+        ],
+      },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const marker = await canvas.findByRole("button", { name: /Comment thread by Alex Reviewer, 2 comments/ });
+    await userEvent.click(marker);
+    const thread = within(await within(document.body).findByRole("dialog", { name: "Comment thread" }));
+    await expect(thread.getByText("Needs rate limiting.")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.queryByText("Unsaved changes.")).toBeNull();
+  },
+};
+
+/** Comment mode is a toolbar toggle with help; the settings gear carries the viewer's Show comments and Show resolved switches. */
+export const CommentModeAndTheDisplaySwitches: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      comments: { pins: [buildPin({ id: "p-1" })], comments: [buildComment({ id: "c-1", pin_id: "p-1" })] },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("button", { name: "Comment" });
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const body = within(document.body);
+    await userEvent.click(await body.findByRole("switch", { name: "Show comments" }));
+    await waitFor(() => expect(canvas.queryByRole("button", { name: /Comment thread/ })).toBeNull());
+    await expect(body.getByRole("switch", { name: "Show resolved" })).toBeDisabled();
+  },
+};
+
+/** The Comments tab lists every comment, marks the pinned ones with what they are anchored to, and filters by state. */
+export const TheCommentsTabListsEveryCommentAndFiltersByState: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      comments: {
+        pins: [
+          buildPin({ id: "p-1", anchor_kind: "node", anchor_key: "el-1" }),
+          buildPin({ id: "p-2", anchor_kind: "node", anchor_key: "gone-box", resolved: true, resolved_by_display_name: "Sam Owner" }),
+        ],
+        comments: [
+          buildComment({ id: "c-1", pin_id: "p-1", body: "Open thread on the gateway." }),
+          buildComment({ id: "c-2", pin_id: "p-2", body: "Resolved thread on a removed box." }),
+          buildComment({ id: "c-3", pin_id: null, body: "An ordinary comment." }),
+        ],
+      },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Comments");
+    await expect(await canvas.findByText("Open thread on the gateway.")).toBeInTheDocument();
+    await expect(canvas.getByText("On ELM-001 Gateway")).toBeInTheDocument();
+    await expect(canvas.getByText("Its box or line was removed")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Pinned")).toHaveLength(2);
+    await expect(canvas.getByRole("button", { name: "Pin to diagram" })).toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Show"), "resolved");
+    await expect(canvas.queryByText("Open thread on the gateway.")).toBeNull();
+    await expect(canvas.getByText("Resolved thread on a removed box.")).toBeInTheDocument();
+    await expect(canvas.getByText("An ordinary comment.")).toBeInTheDocument();
+  },
+};
+
+/** Show on drawing returns to the Drawing tab with the thread open. */
+export const ShowOnDrawingOpensTheThreadOnTheCanvas: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      comments: { pins: [buildPin({ id: "p-1", anchor_kind: "node", anchor_key: "el-1" })], comments: [buildComment({ id: "c-1", pin_id: "p-1", body: "Look at this box." })] },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Comments");
+    await userEvent.click(await canvas.findByRole("button", { name: "Show on drawing" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Comment thread" })).toBeInTheDocument();
+    await expect(await canvas.findByLabelText("Gateway, node")).toBeInTheDocument();
+  },
+};
+
+/** An archived diagram still takes comments: they are not part of the layout. */
+export const AnArchivedDiagramStillTakesComments: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: ELEMENTS, diagramView: buildDiagramView({ diagram: buildDiagram({ is_archived: true }) }) });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("button", { name: "Comment" });
+    await expect(toggle).toBeEnabled();
+    await openTab(canvas, "Comments");
+    await expect(await canvas.findByRole("textbox", { name: "Add a comment" })).toBeEnabled();
   },
 };

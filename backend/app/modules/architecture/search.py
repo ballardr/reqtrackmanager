@@ -9,8 +9,9 @@ Responsibilities:
 
 Design decisions:
 - Opt-in fields: the description (a diagram's purpose, under the shared `description` key), an element's port
-  names and a connection's protocol. No record holds personal data, a Restricted-classified value or comments.
-  A diagram's notes are not searched (free text on a drawing, not a described property).
+  names and a connection's protocol. No record holds personal data or a Restricted-classified value. Comments
+  (the shared record comments, pinned or not) are matched only when a person asks for them. A diagram's notes are
+  not searched (free text on a drawing, not a described property).
 - A connection with no name is titled by its code, so a result is never blank.
 - An element may be organisation-owned (`organization_owned`): the search finds it only through a project the
   owning module's `get_many_in_project` rule (`summaries`, collection grants to the project) allows. A
@@ -24,10 +25,20 @@ from __future__ import annotations
 
 from sqlalchemy import case, func, select
 
+from app.models.record_comment import RecordComment
 from app.modules.architecture.labels import RECORD_STATUS_LABEL
 from app.modules.architecture.models import ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ArchitecturePort
 from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, DIAGRAM_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
-from app.modules.registry import ArtefactSearchProvider, SearchColumns, SearchField
+from app.modules.registry import ArtefactSearchProvider, SearchColumns, SearchComments, SearchField
+
+
+def _comments(artefact_type: str) -> SearchComments:
+    """The shared record comments of one architecture type, matched only when a person asks for comments."""
+    return SearchComments(
+        RecordComment, RecordComment.record_id, RecordComment.body, RecordComment.created_at,
+        where=(RecordComment.artefact_type == artefact_type,),
+    )
+
 
 SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
     ELEMENT_ARTEFACT_TYPE: ArtefactSearchProvider(
@@ -47,6 +58,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         ),
         status_labels=RECORD_STATUS_LABEL,
         organization_owned=True,
+        comments=_comments(ELEMENT_ARTEFACT_TYPE),
     ),
     CONNECTION_ARTEFACT_TYPE: ArtefactSearchProvider(
         from_clause=ArchitectureConnection.__table__,
@@ -62,6 +74,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             SearchField("protocol", "Protocol", ArchitectureConnection.protocol),
         ),
         status_labels=RECORD_STATUS_LABEL,
+        comments=_comments(CONNECTION_ARTEFACT_TYPE),
     ),
     DIAGRAM_ARTEFACT_TYPE: ArtefactSearchProvider(
         from_clause=ArchitectureDiagram.__table__,
@@ -72,5 +85,6 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         ),
         fields=(SearchField("description", "Description", ArchitectureDiagram.purpose),),
         status_labels=RECORD_STATUS_LABEL,
+        comments=_comments(DIAGRAM_ARTEFACT_TYPE),
     ),
 }

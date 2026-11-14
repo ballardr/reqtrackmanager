@@ -1428,6 +1428,24 @@ flowchart LR
 
 The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
 
+### 4l8. Record comments and pinned threads
+
+A module gives its records comments, and optionally pinned threads on a drawing, by declaring `ModuleDefinition.record_comments[type] = RecordCommentProvider(anchor_kinds, validate_anchor)`; it writes no table, route or core code. The two core tables `record_comments` and `record_comment_pins` are keyed by the registered artefact type and the record id, as tags and placements are. A comment with no `pin_id` is an ordinary comment on the record; comments sharing a `pin_id` are one pinned thread, and resolving belongs to the pin.
+
+```mermaid
+flowchart LR
+    P["RecordCommentProvider<br/>anchor kinds, validate_anchor"] --> S["services.record_comments<br/>rules, audit"]
+    S --> R["/projects/id/artefacts/type/id/comments<br/>comment-pins, anchored-comments"]
+    R --> H["useRecordComments"]
+    H --> L["useCanvasComments + GraphCanvas pins"]
+    H --> C["RecordCommentsCards"]
+```
+
+- **Read and write rule.** Reading and commenting follow the record's own visibility (`ArtefactResolver`, so a hidden record answers 404 and a module that is off answers 404) and the project view right; a provider cannot loosen it. Editing is the author only; deleting another person's comment and moving their pin need `manage` on the type. Every change is audited by id and count, never text, and comment text is searchable only when a person asks (`SearchComments` over the shared table with a `where` on the type).
+- **Anchors.** A pin is anchored to a record key (`node`, `edge`: for the architecture diagram an element id placed on it and a connection id), never a canvas id, validated by `validate_anchor`. A pin keeps its last position, so one whose anchor leaves the drawing stays where it was and is flagged.
+- **What the module still does.** Opt each type in; if its list endpoint is probed, serve `GET`/`POST <kind>/{id}/comments` under its own path (the architecture module's `comments.add_comment_routes` does); call `record_comments.forget_record_comments` where a record is deleted; carry `comments` and `comment_pins` in its bundle rows with `services.bundle_comments` (`export_comments`, `import_comments`) and remove them in its template reset (`strip_comments`); add the shared comment table to the type's `SearchComments`; and generate threads in its perf generator.
+- **Not built.** File attachments on these comments, notifications, unread markers, mentions and a live channel; the older module-local comment tables are unchanged.
+
 ### 4l7. Activity kinds and the History Type list
 
 The project History page filters events by **kind** (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, `deleted`, `other`), a fixed vocabulary over the open-ended `AuditEvent.action` strings (`services/activity_kinds.py`). Core actions are classified there once; a module classifies the actions **it** writes through `ModuleDefinition.activity_action_kinds = {"superseded": "status"}`, never an edit to the core map. An action nobody classified is `other`, so a filter by kind never hides an event. A test fails for a module value that is not a kind. The **kind of an event is decided by its entity type first**: every event of a link, tag, role or group entity has that group's kind (*Links and files*, *Tags and places*, *Access*) whatever its action, so a generic link's `created` is never *Created*; the action decides only for a record's own events and for structure and settings. The filter panel offers only the four record-change kinds as **Change**; the others are reached through the **Type** list, which is two levels (`activity_kinds.entity_groups`): **Records** (a registered artefact type under its owning module, `Core` for a core type, so a new module's types appear under its own heading) and **Metadata** (`links`, `tags`, `access`, `structure`, `other`). A non-record event entity type takes its metadata group from the core map, from `ModuleDefinition.activity_metadata_types = {"project_pain_point_type": "structure"}`, or from its name (`*_link`, `*_definition`); one in none of them is listed under Other. `backend/tests/test_history_filters.py` fails for a logged `entity_type="..."` that lands in Other and for a classified action with no wording in the frontend label map. The API takes `entity_type` (repeatable) and `group` (`records:<module key>`, `records:core`, `metadata:<group>`; an unknown value is ignored). A record of a module's type is named on the page by its `artefact_summary_providers` label and linked through `TierAModuleDefinition.artefactPaths`, with no further registration.
