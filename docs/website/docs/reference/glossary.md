@@ -154,6 +154,10 @@ The part of a requirement that never changes once created: its project, componen
 
 The filled dot where a state machine diagram starts. An Active diagram needs exactly one initial state at the top level. It can carry a symbol label, text drawn inside the dot. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
+#### Leader
+
+A line from a note on a block diagram to what the note describes: a box, a drawn connection line or a free spot on the drawing. A note can have several. A leader can start at any attach point of the note, pass through vertices, be straight or smooth, and have an arrowhead or a dot at either end. Drag from an attach point of a note to draw one; select it to change where it ends, where it starts and how its ends look. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+
 #### Lifecycle (requirement lifecycle)
 
 The fixed sequence a requirement moves through: Draft → Reviewed → Approved → Completed, with Archived available as an exit from Draft or Reviewed. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).

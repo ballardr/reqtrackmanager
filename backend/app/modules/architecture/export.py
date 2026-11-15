@@ -60,7 +60,7 @@ import math
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -73,11 +73,12 @@ from app.modules.architecture import allocation_export, state_machine_export
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
 from app.modules.architecture.diagram_line_path import clean_waypoints
-from app.modules.architecture.diagrams import effective_leader_kind
+from app.modules.architecture.diagrams import leaders_of
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
     AttachPoint,
     LeaderKind,
+    LineEnd,
     NoteTone,
     PortDirection,
     RecordStatus,
@@ -96,6 +97,7 @@ from app.modules.architecture.models import (
     ArchitectureDiagramToggle,
     ArchitectureDiagramToggleMember,
     ArchitectureElement,
+    ArchitectureNoteLeader,
     ArchitecturePort,
     ArchitectureSymbol,
 )
@@ -774,26 +776,35 @@ def _element_ref(codes: dict[UUID, str], foreign: dict[UUID, dict[str, str]], el
     return {"code": codes[element_id]} if element_id in codes else {"ref": foreign.get(element_id)}
 
 
-def _note_json(
-    note: ArchitectureDiagramNote, codes: dict[UUID, str], foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
-) -> dict[str, Any]:
-    """An annotation note for the bundle: its block, tone and leader, the target named by code (an element by code or
-    foreign reference, a connection by code) or as a position. A leader whose target is gone is written as none."""
-    kind = effective_leader_kind(note)
+def _leader_json(
+    leader: ArchitectureNoteLeader, codes: dict[UUID, str], foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
+) -> dict[str, Any] | None:
+    """A leader for the bundle: its line (start point, vertices, curve, ends) and the target named by code (an element by
+    code or foreign reference, a connection by code) or as a position; `None` for a connection that is not in the bundle."""
     row: dict[str, Any] = {
-        "text": note.text, "x": note.x, "y": note.y, "width": note.width, "height": note.height, "tone": note.tone,
-        "leader": {"kind": kind.value, "arrow": note.leader_arrow},
+        "kind": leader.kind, "start_point": leader.start_point, "points": clean_waypoints(leader.points), "smooth": leader.smooth,
+        "start_style": leader.start_style, "end_style": leader.end_style,
     }
-    leader = row["leader"]
-    if kind == LeaderKind.ELEMENT and note.leader_element_id is not None:
-        leader["element"] = _element_ref(codes, foreign, note.leader_element_id)
-    elif kind == LeaderKind.CONNECTION and note.leader_connection_id in connection_codes:
-        leader["connection_code"] = connection_codes[note.leader_connection_id]
-    elif kind == LeaderKind.POINT:
-        leader["x"], leader["y"] = note.leader_x, note.leader_y
-    elif kind != LeaderKind.NONE:
-        leader["kind"] = LeaderKind.NONE.value
+    if leader.kind == LeaderKind.ELEMENT.value and leader.element_id is not None:
+        row["element"] = _element_ref(codes, foreign, leader.element_id)
+    elif leader.kind == LeaderKind.CONNECTION.value and leader.connection_id in connection_codes:
+        row["connection_code"] = connection_codes[leader.connection_id]
+    elif leader.kind == LeaderKind.POINT.value:
+        row["x"], row["y"] = leader.x, leader.y
+    else:
+        return None
     return row
+
+
+def _note_json(
+    note: ArchitectureDiagramNote, leaders: list[ArchitectureNoteLeader], codes: dict[UUID, str],
+    foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
+) -> dict[str, Any]:
+    """An annotation note for the bundle: its block, tone and leaders."""
+    return {
+        "text": note.text, "x": note.x, "y": note.y, "width": note.width, "height": note.height, "tone": note.tone,
+        "leaders": [j for row in leaders if (j := _leader_json(row, codes, foreign, connection_codes)) is not None],
+    }
 
 
 def _diagrams_json(
@@ -817,6 +828,7 @@ def _diagrams_json(
         select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.diagram_id.in_(ids))
         .order_by(ArchitectureDiagramNote.sort_order, ArchitectureDiagramNote.id)
     ))
+    leaders = leaders_of(db, [n.id for n in notes])
     anchors = list(db.scalars(
         select(ArchitectureDiagramAnchor).where(ArchitectureDiagramAnchor.diagram_id.in_(ids))
         .order_by(ArchitectureDiagramAnchor.created_at, ArchitectureDiagramAnchor.id)
@@ -835,6 +847,7 @@ def _diagrams_json(
     wanted = (
         {b.element_id for b in boxes} | {d.scope_element_id for d in rows if d.scope_element_id}
         | {m.element_id for m in members if m.element_id}
+        | {row.element_id for rows in leaders.values() for row in rows if row.element_id}
     )
     foreign = foreign_refs(db, {e for e in wanted if e not in codes})
     prime_record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, ids)
@@ -897,7 +910,7 @@ def _diagrams_json(
                 for b in by_diagram_boxes.get(d.id, ())
             ],
             "notes": [
-                _note_json(n, codes, foreign, connection_codes) for n in by_diagram_notes.get(d.id, ())
+                _note_json(n, leaders.get(n.id, []), codes, foreign, connection_codes) for n in by_diagram_notes.get(d.id, ())
             ],
             "anchors": [
                 {"source": _element_ref(codes, foreign, a.source_element_id), "target": _element_ref(codes, foreign, a.target_element_id),
@@ -1002,40 +1015,56 @@ def _rule_ids(rule: dict[str, Any], key: str, vocabulary: ArchitectureVocabulary
     return [str(by_name[n.casefold()]) for n in rule.get(key, []) if n.casefold() in by_name]
 
 
-def _import_leader(
+def _legacy_leader(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """The leader of a note written before a note could have several (`leader` with a `kind` and `arrow`), as the list of
+    one the bundle now carries; none for a note that had no leader."""
+    old = entry.get("leader") or {}
+    if old.get("kind", LeaderKind.NONE.value) == LeaderKind.NONE.value:
+        return []
+    return [{**old, "end_style": LineEnd.ARROW.value if old.get("arrow", True) else LineEnd.NONE.value}]
+
+
+def _import_leaders(
     db: Session, project: Project, current_user: User, elements: dict[str, UUID], connections: dict[str, UUID],
-    row: ArchitectureDiagramNote, entry: dict[str, Any], placed: set[UUID], code: str, warnings: BundleImportWarnings,
+    note_id: UUID, entry: dict[str, Any], placed: set[UUID], code: str, warnings: BundleImportWarnings,
 ) -> None:
-    """Sets an imported note's tone and leader. An unknown tone is neutral; a leader whose target cannot be resolved (an
-    element not on the imported diagram, a connection that was not imported, a position that is not a number) is dropped
-    with a warning, and the note is kept."""
-    tone = entry.get("tone")
-    row.tone = tone if tone in {t.value for t in NoteTone} else NoteTone.NEUTRAL.value
-    leader = entry.get("leader") or {}
-    kind = leader.get("kind", LeaderKind.NONE.value)
-    row.leader_arrow = bool(leader.get("arrow", True))
-    row.leader_kind = LeaderKind.NONE.value
-    if kind == LeaderKind.NONE.value:
-        return
-    if kind == LeaderKind.ELEMENT.value:
-        element = _resolve_ref(db, project, current_user, elements, leader.get("element") or {})
-        if element is not None and element in placed:
-            row.leader_kind, row.leader_element_id = LeaderKind.ELEMENT.value, element
-            return
-    elif kind == LeaderKind.CONNECTION.value:
-        connection = connections.get(leader.get("connection_code", ""))
-        if connection is not None:
-            row.leader_kind, row.leader_connection_id = LeaderKind.CONNECTION.value, connection
-            return
-    elif kind == LeaderKind.POINT.value:
-        x, y = leader.get("x"), leader.get("y")
-        if (
-            isinstance(x, int | float) and isinstance(y, int | float) and not isinstance(x, bool) and not isinstance(y, bool)
-            and math.isfinite(x) and math.isfinite(y)
-        ):
-            row.leader_kind, row.leader_x, row.leader_y = LeaderKind.POINT.value, float(x), float(y)
-            return
-    warnings.add(f"Diagram {code}: a note's leader could not be restored — left out.")
+    """Recreates a note's leaders. One whose target cannot be resolved (an element not on the imported diagram, a connection
+    that was not imported, a position that is not a number) is dropped with a warning, and the note is kept; an unknown
+    start point or end style reads as automatic or plain; vertices are cleaned as for a line anchor."""
+    valid_points = {p.value for p in AttachPoint}
+    valid_ends = {e.value for e in LineEnd}
+    raw = entry.get("leaders") if "leaders" in entry else _legacy_leader(entry)
+    for order, leader in enumerate(raw if isinstance(raw, list) else []):
+        if not isinstance(leader, dict):
+            continue
+        kind = leader.get("kind")
+        row = ArchitectureNoteLeader(
+            note_id=note_id, sort_order=order, kind=str(kind), points=clean_waypoints(leader.get("points")),
+            smooth=leader.get("smooth") is True,
+            start_point=leader.get("start_point") if leader.get("start_point") in valid_points else None,
+            start_style=leader.get("start_style") if leader.get("start_style") in valid_ends else LineEnd.NONE.value,
+            end_style=leader.get("end_style") if leader.get("end_style") in valid_ends else LineEnd.ARROW.value,
+        )
+        restored = False
+        if kind == LeaderKind.ELEMENT.value:
+            element = _resolve_ref(db, project, current_user, elements, leader.get("element") or {})
+            if element is not None and element in placed:
+                row.element_id, restored = element, True
+        elif kind == LeaderKind.CONNECTION.value:
+            connection = connections.get(leader.get("connection_code", ""))
+            if connection is not None:
+                row.connection_id, restored = connection, True
+        elif kind == LeaderKind.POINT.value:
+            x, y = leader.get("x"), leader.get("y")
+            if (
+                isinstance(x, int | float) and isinstance(y, int | float) and not isinstance(x, bool) and not isinstance(y, bool)
+                and math.isfinite(x) and math.isfinite(y)
+            ):
+                row.x, row.y, restored = float(x), float(y), True
+        if restored:
+            db.add(row)
+        else:
+            warnings.add(f"Diagram {code}: a note's leader could not be restored — left out.")
 
 
 def _import_anchors(
@@ -1159,13 +1188,20 @@ def _import_diagrams(
             ))
         _import_anchors(db, project, current_user, elements, diagram.id, entry.get("anchors", []), seen, code, warnings)
         _import_boundaries(db, diagram, connections, entry.get("boundaries", []), code, warnings)
+        note_rows: list[tuple[ArchitectureDiagramNote, dict[str, Any]]] = []
         for order, note in enumerate(entry.get("notes", [])):
+            tone = note.get("tone")
             note_row = ArchitectureDiagramNote(
-                diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
+                id=uuid4(), diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
                 width=note.get("width", 160.0), height=note.get("height", 60.0), sort_order=order,
+                tone=tone if tone in {t.value for t in NoteTone} else NoteTone.NEUTRAL.value,
             )
-            _import_leader(db, project, current_user, elements, connections, note_row, note, seen, code, warnings)
             db.add(note_row)
+            note_rows.append((note_row, note))
+        if note_rows:
+            db.flush()  # a leader row names its note
+        for note_row, note in note_rows:
+            _import_leaders(db, project, current_user, elements, connections, note_row.id, note, seen, code, warnings)
         names: set[str] = set()
         for order, toggle in enumerate(entry.get("toggles", [])):
             name = toggle.get("name", "")

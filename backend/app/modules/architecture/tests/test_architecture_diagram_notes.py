@@ -1,9 +1,10 @@
-"""Tests for annotation notes on a diagram: a block with a tone and an optional leader line to a box, a connection's line or
-a free point.
+"""Tests for annotation notes on a diagram: a block with a tone and none or several leader lines, each to a box, a
+connection's line or a free point, with a start point, vertices, a smooth curve and a start and an end style.
 
-Covers the layout save (stored, returned by the view, rules a leader must follow), a leader whose target is deleted
-reading as none, the server SVG drawing the leader between the right points (and not drawing one to a hidden box), the
-Mermaid export, and the project bundle round trip. Every test builds its own organisation."""
+Covers the layout save (stored, returned by the view, rules a leader must follow, several per note), a deleted target
+removing its leader and keeping the note, the server SVG drawing the leader between the right points (and not drawing
+one to a hidden box), the Mermaid export, the project bundle round trip (and an older bundle's single leader) and the
+leader table's own constraints. Every test builds its own organisation."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
-from app.modules.architecture.models import ArchitectureDiagramNote
+from app.modules.architecture.models import ArchitectureDiagramNote, ArchitectureNoteLeader
 from app.modules.architecture.tests._helpers import (
     make_connection,
     make_diagram,
@@ -54,38 +55,67 @@ def test_a_note_keeps_its_tone_and_each_kind_of_leader_and_the_view_returns_them
     p = project["id"]
     a, b, link, diagram, boxes = _flow(client, token, p)
     notes = [
-        {"text": "At a box", "tone": "info", "leader_kind": "element", "leader_element_id": a["id"], "leader_arrow": False},
-        {"text": "At a line", "tone": "warning", "leader_kind": "connection", "leader_connection_id": link["id"]},
-        {"text": "At a spot", "tone": "danger", "leader_kind": "point", "leader_x": 12.5, "leader_y": -40},
+        {"text": "At a box", "tone": "info", "leaders": [{"kind": "element", "element_id": a["id"], "end_style": "none"}]},
+        {"text": "At a line", "tone": "warning", "leaders": [{"kind": "connection", "connection_id": link["id"]}]},
+        {"text": "At a spot", "tone": "danger", "leaders": [{
+            "kind": "point", "x": 12.5, "y": -40, "start_point": "top", "points": [{"x": 5, "y": -20}, {"x": 9, "y": -30}],
+            "smooth": True, "start_style": "dot", "end_style": "arrow",
+        }]},
         {"text": "Plain"},
     ]
     saved = _save(client, token, p, diagram, boxes, notes)
     assert saved["version"] == diagram["version"] + 1
     shown = view(client, token, p, diagram["id"])["notes"]
-    assert [(n["tone"], n["leader_kind"], n["leader_arrow"]) for n in shown] == [
-        ("info", "element", False), ("warning", "connection", True), ("danger", "point", True), ("neutral", "none", True),
+    assert [(n["tone"], [l["kind"] for l in n["leaders"]]) for n in shown] == [
+        ("info", ["element"]), ("warning", ["connection"]), ("danger", ["point"]), ("neutral", []),
     ]
-    assert shown[0]["leader_element_id"] == a["id"] and shown[1]["leader_connection_id"] == link["id"]
-    assert (shown[2]["leader_x"], shown[2]["leader_y"]) == (12.5, -40)
-    assert shown[3]["leader_element_id"] is None and shown[3]["leader_x"] is None
+    box, line, spot = (n["leaders"][0] for n in shown[:3])
+    assert (box["element_id"], box["start_style"], box["end_style"], box["start_point"]) == (a["id"], "none", "none", None)
+    assert (line["connection_id"], line["end_style"], line["points"], line["smooth"]) == (link["id"], "arrow", [], False)
+    assert (spot["x"], spot["y"], spot["start_point"], spot["smooth"]) == (12.5, -40, "top", True)
+    assert spot["points"] == [{"x": 5, "y": -20}, {"x": 9, "y": -30}] and (spot["start_style"], spot["end_style"]) == ("dot", "arrow")
+    assert spot["element_id"] is None and spot["connection_id"] is None and box["x"] is None
 
 
-def test_saving_the_same_notes_again_changes_nothing_and_a_new_target_replaces_the_old(client, admin_token):
+def test_a_note_can_have_several_leaders_in_order(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch notes several")
+    p = project["id"]
+    a, b, link, diagram, boxes = _flow(client, token, p)
+    leaders = [
+        {"kind": "element", "element_id": b["id"]},
+        {"kind": "element", "element_id": a["id"]},
+        {"kind": "point", "x": 1, "y": 2},
+    ]
+    _save(client, token, p, diagram, boxes, [{"text": "Both", "leaders": leaders}])
+    (note,) = view(client, token, p, diagram["id"])["notes"]
+    assert [(l["kind"], l["element_id"]) for l in note["leaders"]] == [("element", b["id"]), ("element", a["id"]), ("point", None)]
+    too_many = [{"kind": "point", "x": i, "y": 0} for i in range(11)]
+    _save(client, token, p, diagram, boxes, [{"text": "Many", "leaders": too_many}], expect=422)
+
+
+def test_saving_the_same_notes_again_changes_nothing_and_a_changed_leader_is_updated_in_place(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch notes replace")
     p = project["id"]
     a, b, _link, diagram, boxes = _flow(client, token, p)
-    note = {"text": "Look", "leader_kind": "element", "leader_element_id": a["id"]}
-    saved = _save(client, token, p, diagram, boxes, [note])
+    saved = _save(client, token, p, diagram, boxes, [{"text": "Look", "leaders": [{"kind": "element", "element_id": a["id"]}]}])
     (stored,) = view(client, token, p, diagram["id"])["notes"]
-    same = _save(client, token, p, saved, boxes, [{**note, "id": stored["id"]}])
+    (leader,) = stored["leaders"]
+
+    def note(**change):
+        return {"text": "Look", "id": stored["id"], "leaders": [{**leader, **change}]}
+
+    same = _save(client, token, p, saved, boxes, [note()])
     assert same["version"] == saved["version"]
-    moved = _save(client, token, p, same, boxes, [{**note, "id": stored["id"], "leader_element_id": b["id"]}])
+    moved = _save(client, token, p, same, boxes, [note(element_id=b["id"], end_style="dot")])
     assert moved["version"] == saved["version"] + 1
     (after,) = view(client, token, p, diagram["id"])["notes"]
-    assert after["id"] == stored["id"] and after["leader_element_id"] == b["id"]
-    cleared = _save(client, token, p, moved, boxes, [{"text": "Look", "id": stored["id"]}])
+    assert after["id"] == stored["id"] and after["leaders"][0]["id"] == leader["id"]
+    assert (after["leaders"][0]["element_id"], after["leaders"][0]["end_style"]) == (b["id"], "dot")
+    bent = _save(client, token, p, moved, boxes, [note(element_id=b["id"], end_style="dot", points=[{"x": 3, "y": 4}], smooth=True)])
+    assert bent["version"] == moved["version"] + 1
+    cleared = _save(client, token, p, bent, boxes, [{"text": "Look", "id": stored["id"]}])
     (none,) = view(client, token, p, diagram["id"])["notes"]
-    assert cleared["version"] == moved["version"] + 1 and none["leader_kind"] == "none" and none["leader_element_id"] is None
+    assert cleared["version"] == bent["version"] + 1 and none["leaders"] == []
 
 
 def test_a_leader_must_name_exactly_the_target_of_its_kind(client, admin_token):
@@ -93,16 +123,20 @@ def test_a_leader_must_name_exactly_the_target_of_its_kind(client, admin_token):
     p = project["id"]
     a, _b, link, diagram, boxes = _flow(client, token, p)
     for bad in (
-        {"leader_kind": "element"},
-        {"leader_kind": "connection"},
-        {"leader_kind": "point", "leader_x": 1},
-        {"leader_kind": "element", "leader_element_id": a["id"], "leader_connection_id": link["id"]},
-        {"leader_kind": "none", "leader_element_id": a["id"]},
-        {"leader_kind": "point", "leader_x": 1, "leader_y": 2, "leader_element_id": a["id"]},
-        {"tone": "purple"},
-        {"leader_kind": "point", "leader_x": 1e12, "leader_y": 0},
+        {"kind": "element"},
+        {"kind": "connection"},
+        {"kind": "point", "x": 1},
+        {"kind": "element", "element_id": a["id"], "connection_id": link["id"]},
+        {"kind": "none"},
+        {"kind": "point", "x": 1, "y": 2, "element_id": a["id"]},
+        {"kind": "point", "x": 1e12, "y": 0},
+        {"kind": "point", "x": 1, "y": 0, "start_point": "middle"},
+        {"kind": "point", "x": 1, "y": 0, "end_style": "square"},
+        {"kind": "point", "x": 1, "y": 0, "points": [{"x": 1e12, "y": 0}]},
+        {"kind": "point", "x": 1, "y": 0, "points": [{"x": i, "y": 0} for i in range(17)]},
     ):
-        _save(client, token, p, diagram, boxes, [{"text": "x", **bad}], expect=422)
+        _save(client, token, p, diagram, boxes, [{"text": "x", "leaders": [bad]}], expect=422)
+    _save(client, token, p, diagram, boxes, [{"text": "x", "tone": "purple"}], expect=422)
     assert view(client, token, p, diagram["id"])["notes"] == []
 
 
@@ -111,7 +145,7 @@ def test_a_new_leader_cannot_name_an_element_off_the_diagram_or_a_connection_of_
     p = project["id"]
     a, _b, _link, diagram, boxes = _flow(client, token, p)
     off = make_element(client, token, p, "Not drawn")
-    _save(client, token, p, diagram, boxes, [{"text": "x", "leader_kind": "element", "leader_element_id": off["id"]}], expect=400)
+    _save(client, token, p, diagram, boxes, [{"text": "x", "leaders": [{"kind": "element", "element_id": off["id"]}]}], expect=400)
     from tests.conftest import create_project
 
     other = create_project(client, token, org["id"], "Arch notes scope other")
@@ -119,28 +153,47 @@ def test_a_new_leader_cannot_name_an_element_off_the_diagram_or_a_connection_of_
     foreign = make_connection(client, token, other["id"], x["id"], y["id"])
     _save(
         client, token, p, diagram, boxes,
-        [{"text": "x", "leader_kind": "connection", "leader_connection_id": foreign["id"]}], expect=400,
+        [{"text": "x", "leaders": [{"kind": "connection", "connection_id": foreign["id"]}]}], expect=400,
     )
     missing = "00000000-0000-0000-0000-000000000000"
-    _save(client, token, p, diagram, boxes, [{"text": "x", "leader_kind": "connection", "leader_connection_id": missing}], expect=400)
+    _save(client, token, p, diagram, boxes, [{"text": "x", "leaders": [{"kind": "connection", "connection_id": missing}]}], expect=400)
     assert view(client, token, p, diagram["id"])["notes"] == []
+
+
+def test_a_leader_id_must_be_the_notes_own_and_listed_once(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch notes leader ids")
+    p = project["id"]
+    a, _b, _link, diagram, boxes = _flow(client, token, p)
+    saved = _save(client, token, p, diagram, boxes, [
+        {"text": "One", "leaders": [{"kind": "element", "element_id": a["id"]}]},
+        {"text": "Two", "leaders": [{"kind": "point", "x": 1, "y": 1}]},
+    ])
+    one, two = view(client, token, p, diagram["id"])["notes"]
+    stolen = {**two["leaders"][0]}
+    _save(client, token, p, saved, boxes, [{"text": "One", "id": one["id"], "leaders": [stolen]}], expect=400)
+    mine = one["leaders"][0]
+    _save(client, token, p, saved, boxes, [{"text": "One", "id": one["id"], "leaders": [mine, mine]}], expect=400)
+    _save(client, token, p, saved, boxes, [{"text": "New", "leaders": [mine]}], expect=400)
+    other_leader = {"kind": "point", "x": 1, "y": 1, "id": "00000000-0000-0000-0000-000000000000"}
+    _save(client, token, p, saved, boxes, [{"text": "One", "id": one["id"], "leaders": [other_leader]}], expect=400)
 
 
 def test_a_leader_to_an_element_taken_off_the_diagram_is_kept_and_not_rejected_on_the_next_save(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch notes unplaced")
     p = project["id"]
     a, b, _link, diagram, boxes = _flow(client, token, p)
-    saved = _save(client, token, p, diagram, boxes, [{"text": "Look", "leader_kind": "element", "leader_element_id": b["id"]}])
+    saved = _save(client, token, p, diagram, boxes, [{"text": "Look", "leaders": [{"kind": "element", "element_id": b["id"]}]}])
     (stored,) = view(client, token, p, diagram["id"])["notes"]
     only_a = [boxes[0]]
-    again = _save(client, token, p, saved, only_a, [{"text": "Look", "id": stored["id"], "leader_kind": "element", "leader_element_id": b["id"]}])
+    kept_leader = stored["leaders"][0]
+    again = _save(client, token, p, saved, only_a, [{"text": "Look", "id": stored["id"], "leaders": [kept_leader]}])
     (kept,) = view(client, token, p, diagram["id"])["notes"]
-    assert again["version"] >= saved["version"] and kept["leader_element_id"] == b["id"]
+    assert again["version"] >= saved["version"] and kept["leaders"][0]["element_id"] == b["id"]
     # Placed again, the leader draws again: the SVG joins the note to the box.
     assert "data-note" in _svg(client, token, p, diagram["id"])
 
 
-def test_deleting_the_target_keeps_the_note_and_reads_the_leader_as_none(client, admin_token):
+def test_deleting_the_target_removes_its_leader_and_keeps_the_note_and_its_other_leaders(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch notes deleted")
     p = project["id"]
     a, b, link, diagram, boxes = _flow(client, token, p)
@@ -148,38 +201,40 @@ def test_deleting_the_target_keeps_the_note_and_reads_the_leader_as_none(client,
     diagram = place_all(client, token, p, diagram, spare["id"])
     boxes.append({"element_id": spare["id"], "x": 0, "y": 200})
     _save(client, token, p, diagram, boxes, [
-        {"text": "To the spare", "leader_kind": "element", "leader_element_id": spare["id"]},
-        {"text": "To the line", "leader_kind": "connection", "leader_connection_id": link["id"]},
+        {"text": "To the spare", "leaders": [{"kind": "element", "element_id": spare["id"]}, {"kind": "point", "x": 9, "y": 9}]},
+        {"text": "To the line", "leaders": [{"kind": "connection", "connection_id": link["id"]}]},
     ])
     for path in (f"elements/{spare['id']}", f"connections/{link['id']}"):
         resp = client.delete(f"{project_base(p)}/{path}", headers=auth_headers(token))
-        assert resp.status_code in (200, 204, 409), resp.text
+        assert resp.status_code in (200, 204), resp.text
     shown = view(client, token, p, diagram["id"])["notes"]
     assert [n["text"] for n in shown] == ["To the spare", "To the line"]
-    for n in shown:
-        if n["leader_kind"] != "none":
-            assert n["leader_element_id"] is not None or n["leader_connection_id"] is not None
+    assert [[l["kind"] for l in n["leaders"]] for n in shown] == [["point"], []]
 
 
-def test_the_database_refuses_a_leader_column_that_does_not_match_its_kind(client, admin_token):
+def test_the_database_refuses_a_leader_row_that_does_not_match_its_kind(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch notes constraint")
     p = project["id"]
     a, _b, _link, diagram, boxes = _flow(client, token, p)
-    _save(client, token, p, diagram, boxes, [{"text": "x"}])
+    _save(client, token, p, diagram, boxes, [{"text": "x", "leaders": [{"kind": "point", "x": 1, "y": 2}]}])
     refused = (
-        "SET leader_kind = 'point'",
-        "SET leader_kind = 'element', leader_connection_id = (SELECT id FROM architecture_connections LIMIT 1)",
-        "SET leader_kind = 'none', leader_x = 1, leader_y = 1",
-        "SET leader_kind = 'none', leader_element_id = :element",
-        "SET leader_kind = 'bogus'",
+        "SET kind = 'point', x = NULL",
+        "SET kind = 'element', element_id = NULL",
+        "SET kind = 'element', connection_id = (SELECT id FROM architecture_connections LIMIT 1)",
+        "SET kind = 'none'",
+        "SET kind = 'bogus'",
+        "SET start_style = 'square'",
+        "SET end_style = 'bogus'",
+        "SET x = 1, y = NULL",
+        "SET element_id = :element",
     )
     with SessionLocal() as db:
-        note = db.scalars(select(ArchitectureDiagramNote)).first()
-        assert note is not None
+        leader = db.scalars(select(ArchitectureNoteLeader)).first()
+        assert leader is not None
         for change in refused:
             try:
                 db.execute(
-                    text(f"UPDATE architecture_diagram_notes {change} WHERE id = :id"), {"id": note.id, "element": a["id"]},
+                    text(f"UPDATE architecture_note_leaders {change} WHERE id = :id"), {"id": leader.id, "element": a["id"]},
                 )
                 db.flush()
             except IntegrityError:
@@ -187,6 +242,9 @@ def test_the_database_refuses_a_leader_column_that_does_not_match_its_kind(clien
             else:
                 db.rollback()
                 raise AssertionError(f"accepted: {change}")
+    # The note table has no leader column left to disagree with.
+    with SessionLocal() as db:
+        assert db.scalars(select(ArchitectureDiagramNote)).first() is not None
 
 
 def _leader_line(svg: str) -> tuple[float, float, float, float]:
@@ -202,15 +260,16 @@ def test_the_svg_draws_a_leader_to_a_box_a_line_midpoint_and_a_point_with_the_no
     block = {"x": 0, "y": 200, "width": 160, "height": 60}
     saved = _save(
         client, token, p, diagram, boxes,
-        [{"text": "Box", "tone": "success", "leader_kind": "element", "leader_element_id": a["id"], **block}],
+        [{"text": "Box", "tone": "success", "leaders": [{"kind": "element", "element_id": a["id"]}], **block}],
     )
     svg = _svg(client, token, p, diagram["id"])
-    assert 'fill="#DCFCE7"' in svg and 'marker-end="url(#leader-success)"' in svg and 'id="leader-success"' in svg
+    assert 'fill="#DCFCE7"' in svg and 'marker-end="url(#leader-arrow-success)"' in svg and 'id="leader-arrow-success"' in svg
+    assert "marker-start" not in svg
     # The note sits below Alpha (x 0-160, y 0-80): its top middle (80, 200) meets Alpha's bottom middle (80, 80).
     assert _leader_line(svg) == (80.0, 200.0, 80.0, 80.0)
 
     saved = _save(client, token, p, saved, boxes, [
-        {"text": "Line", "leader_kind": "connection", "leader_connection_id": link["id"], "leader_arrow": False, **block},
+        {"text": "Line", "leaders": [{"kind": "connection", "connection_id": link["id"], "end_style": "none"}], **block},
     ])
     svg = _svg(client, token, p, diagram["id"])
     assert "marker-end=\"url(#leader-" not in svg
@@ -218,9 +277,41 @@ def test_the_svg_draws_a_leader_to_a_box_a_line_midpoint_and_a_point_with_the_no
     assert (x2, y2) == (280.0, 40.0)  # the middle of the line from (160, 40) to (400, 40)
     assert (x1, y1) == (160.0, 200.0)  # the note's top right corner is nearest
 
-    _save(client, token, p, saved, boxes, [{"text": "Spot", "leader_kind": "point", "leader_x": 700, "leader_y": 300, **block}])
+    _save(client, token, p, saved, boxes, [{"text": "Spot", "leaders": [{"kind": "point", "x": 700, "y": 300}], **block}])
     x1, y1, x2, y2 = _leader_line(_svg(client, token, p, diagram["id"]))
     assert (x2, y2) == (700.0, 300.0) and (x1, y1) == (160.0, 260.0)
+
+
+def test_the_svg_draws_a_chosen_start_point_vertices_a_curve_and_the_two_end_styles(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch notes svg routed")
+    p = project["id"]
+    a, b, link, diagram, boxes = _flow(client, token, p)
+    block = {"x": 0, "y": 200, "width": 160, "height": 60}
+    straight = {
+        "kind": "point", "x": 700, "y": 300, "start_point": "right", "points": [{"x": 300, "y": 230}, {"x": 500, "y": 300}],
+        "start_style": "dot", "end_style": "arrow",
+    }
+    saved = _save(client, token, p, diagram, boxes, [{"text": "Routed", "tone": "info", "leaders": [straight], **block}])
+    svg = _svg(client, token, p, diagram["id"])
+    # From the note's right middle (160, 230) through both vertices to the point.
+    assert '<path d="M 160 230 L 300 230 L 500 300 L 700 300" fill="none" stroke="#2563EB" stroke-width="1.5"' in svg
+    assert 'marker-start="url(#leader-dot-info)"' in svg and 'marker-end="url(#leader-arrow-info)"' in svg
+    assert 'id="leader-dot-info"' in svg and 'id="leader-arrow-info"' in svg
+    _save(client, token, p, saved, boxes, [{"text": "Routed", "tone": "info", "leaders": [{**straight, "smooth": True}], **block}])
+    assert re.search(r'<path d="M 160 230 C [^"]+" fill="none" stroke="#2563EB"', _svg(client, token, p, diagram["id"]))
+
+
+def test_an_element_leader_with_vertices_ends_at_the_box_point_nearest_the_last_vertex(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch notes svg vertex")
+    p = project["id"]
+    a, b, _link, diagram, boxes = _flow(client, token, p)
+    block = {"x": 0, "y": 200, "width": 160, "height": 60}
+    leader = {"kind": "element", "element_id": b["id"], "points": [{"x": 500, "y": 200}], "end_style": "none"}
+    _save(client, token, p, diagram, boxes, [{"text": "To Bravo", "leaders": [leader], **block}])
+    svg = _svg(client, token, p, diagram["id"])
+    # Bravo is x 400-560, y 0-80; its bottom middle (480, 80) is nearest the vertex (500, 200); the note's nearest point to the
+    # vertex is its top right corner (160, 200).
+    assert '<path d="M 160 200 L 500 200 L 480 80"' in svg
 
 
 def test_a_note_with_no_tone_is_stored_and_survives_a_bundle_round_trip(client, admin_token):
@@ -248,7 +339,7 @@ def test_the_svg_draws_a_note_with_no_tone_as_text_alone_and_skips_an_empty_one(
     a, _b, _link, diagram, boxes = _flow(client, token, p)
     block = {"x": 0, "y": 200, "width": 160, "height": 60}
     _save(client, token, p, diagram, boxes, [
-        {"text": "Plain label", "tone": "none", "leader_kind": "element", "leader_element_id": a["id"], **block},
+        {"text": "Plain label", "tone": "none", "leaders": [{"kind": "element", "element_id": a["id"]}], **block},
         {"text": "  ", "tone": "none", "x": 400, "y": 400, "width": 160, "height": 60},
         {"text": "", "tone": "neutral", "x": 700, "y": 400, "width": 160, "height": 60},
     ])
@@ -271,7 +362,7 @@ def test_a_leader_to_a_box_a_switch_hides_is_not_drawn_and_a_hidden_box_never_ap
     a, b, _link, diagram, boxes = _flow(client, token, p)
     saved = _save(
         client, token, p, diagram, boxes,
-        [{"text": "Look here", "leader_kind": "element", "leader_element_id": b["id"], "x": 0, "y": 200}],
+        [{"text": "Look here", "leaders": [{"kind": "element", "element_id": b["id"]}], "x": 0, "y": 200}],
     )
     toggles = [{"name": "Hide Bravo", "default_on": False, "element_ids": [b["id"]]}]
     resp = client.put(
@@ -290,14 +381,19 @@ def test_mermaid_links_a_note_to_a_drawn_box_with_a_dotted_line_and_leaves_other
     p = project["id"]
     a, b, link, diagram, boxes = _flow(client, token, p)
     _save(client, token, p, diagram, boxes, [
-        {"text": "Careful <b>\"x\"</b>", "leader_kind": "element", "leader_element_id": a["id"]},
-        {"text": "Open end", "leader_kind": "element", "leader_element_id": b["id"], "leader_arrow": False},
-        {"text": "On the line", "leader_kind": "connection", "leader_connection_id": link["id"]},
+        {"text": "Careful <b>\"x\"</b>", "leaders": [{"kind": "element", "element_id": a["id"]}]},
+        {"text": "Open end", "leaders": [{"kind": "element", "element_id": b["id"], "end_style": "none"}]},
+        {"text": "On the line", "leaders": [{"kind": "connection", "connection_id": link["id"]}]},
+        {"text": "Both ends", "leaders": [{"kind": "element", "element_id": a["id"], "start_style": "arrow"}]},
+        {"text": "Start only", "leaders": [{"kind": "element", "element_id": b["id"], "start_style": "arrow", "end_style": "none"}]},
+        {"text": "Two", "leaders": [{"kind": "element", "element_id": a["id"]}, {"kind": "element", "element_id": b["id"]}]},
         {"text": "   "},
     ])
     out = client.get(f"{project_base(p)}/diagrams/{diagram['id']}/mermaid", headers=auth_headers(token)).text
-    assert out.count(">\"") == 3 and "<b>" not in out and '"x"' not in out
+    assert out.count(">\"") == 6 and "<b>" not in out and '"x"' not in out
     assert "t1 -.-> n1" in out and "t2 -.- n2" in out and "t3 -." not in out
+    assert "t4 <-.-> n1" in out and "n2 -.-> t5" in out
+    assert "t6 -.-> n1" in out and "t6 -.-> n2" in out
 
 
 def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(client, admin_token):
@@ -305,19 +401,29 @@ def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(clien
     p = project["id"]
     a, b, link, diagram, boxes = _flow(client, token, p)
     _save(client, token, p, diagram, boxes, [
-        {"text": "Box", "tone": "info", "leader_kind": "element", "leader_element_id": a["id"], "leader_arrow": False},
-        {"text": "Line", "tone": "warning", "leader_kind": "connection", "leader_connection_id": link["id"]},
-        {"text": "Spot", "leader_kind": "point", "leader_x": 5, "leader_y": 6},
+        {"text": "Box", "tone": "info", "leaders": [
+            {"kind": "element", "element_id": a["id"], "end_style": "none", "start_point": "left"},
+            {"kind": "point", "x": 1, "y": 2},
+        ]},
+        {"text": "Line", "tone": "warning", "leaders": [{"kind": "connection", "connection_id": link["id"], "smooth": True,
+                                                         "points": [{"x": 3, "y": 4}]}]},
+        {"text": "Spot", "leaders": [{"kind": "point", "x": 5, "y": 6, "start_style": "dot", "end_style": "dot"}]},
         {"text": "Plain"},
     ])
     resp = client.get(f"/api/v1/projects/{p}/export", headers=auth_headers(token))
     assert resp.status_code == 200
     exported = json.loads(zipfile.ZipFile(io.BytesIO(resp.content)).read("project.json"))
     entry_notes = exported["architecture_diagrams"][0]["notes"]
-    assert entry_notes[0]["leader"] == {"kind": "element", "arrow": False, "element": {"code": a["unique_code"]}}
-    assert entry_notes[1]["leader"]["connection_code"] == link["unique_code"] and entry_notes[1]["tone"] == "warning"
-    assert entry_notes[2]["leader"] == {"kind": "point", "arrow": True, "x": 5.0, "y": 6.0}
-    assert entry_notes[3]["leader"]["kind"] == "none"
+    box_leader, spot_leader = entry_notes[0]["leaders"]
+    assert box_leader == {
+        "kind": "element", "start_point": "left", "points": [], "smooth": False, "start_style": "none", "end_style": "none",
+        "element": {"code": a["unique_code"]},
+    }
+    assert spot_leader["kind"] == "point" and (spot_leader["x"], spot_leader["y"]) == (1.0, 2.0)
+    line_leader = entry_notes[1]["leaders"][0]
+    assert line_leader["connection_code"] == link["unique_code"] and line_leader["points"] == [{"x": 3.0, "y": 4.0}]
+    assert entry_notes[1]["tone"] == "warning" and entry_notes[3]["leaders"] == []
+    assert "leader" not in entry_notes[0]
 
     imported = client.post(
         "/api/v1/projects/import", data={"organization_id": org["id"], "name": "Arch notes bundle copy"},
@@ -329,28 +435,66 @@ def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(clien
     shown = view(client, token, copy["id"], listing[0]["id"])
     names = {n["unique_code"]: n["element_id"] for n in shown["nodes"]}
     notes = shown["notes"]
-    assert [(n["text"], n["tone"], n["leader_kind"]) for n in notes] == [
-        ("Box", "info", "element"), ("Line", "warning", "connection"), ("Spot", "neutral", "point"), ("Plain", "neutral", "none"),
+    assert [(n["text"], n["tone"], [l["kind"] for l in n["leaders"]]) for n in notes] == [
+        ("Box", "info", ["element", "point"]), ("Line", "warning", ["connection"]), ("Spot", "neutral", ["point"]),
+        ("Plain", "neutral", []),
     ]
-    assert notes[0]["leader_element_id"] == names[a["unique_code"]] and notes[0]["leader_arrow"] is False
-    assert notes[1]["leader_connection_id"] is not None and (notes[2]["leader_x"], notes[2]["leader_y"]) == (5, 6)
+    first = notes[0]["leaders"][0]
+    assert first["element_id"] == names[a["unique_code"]] and first["end_style"] == "none" and first["start_point"] == "left"
+    routed = notes[1]["leaders"][0]
+    assert routed["connection_id"] is not None and routed["smooth"] is True and routed["points"] == [{"x": 3, "y": 4}]
+    spot = notes[2]["leaders"][0]
+    assert (spot["x"], spot["y"], spot["start_style"], spot["end_style"]) == (5, 6, "dot", "dot")
 
 
-def test_an_import_drops_a_leader_it_cannot_resolve_and_keeps_the_note(client, admin_token):
+def test_a_bundle_written_with_the_single_leader_of_a_note_is_still_read(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch notes bundle legacy")
+    p = project["id"]
+    a, _b, link, diagram, boxes = _flow(client, token, p)
+    _save(client, token, p, diagram, boxes, [{"text": "Box"}, {"text": "Line"}, {"text": "Spot"}, {"text": "Plain"}])
+    resp = client.get(f"/api/v1/projects/{p}/export", headers=auth_headers(token))
+    source = zipfile.ZipFile(io.BytesIO(resp.content))
+    data = json.loads(source.read("project.json"))
+    notes = data["architecture_diagrams"][0]["notes"]
+    for note in notes:
+        del note["leaders"]
+    notes[0]["leader"] = {"kind": "element", "arrow": False, "element": {"code": a["unique_code"]}}
+    notes[1]["leader"] = {"kind": "connection", "arrow": True, "connection_code": link["unique_code"]}
+    notes[2]["leader"] = {"kind": "point", "arrow": True, "x": 5.0, "y": 6.0}
+    notes[3]["leader"] = {"kind": "none", "arrow": True}
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as target:
+        for item in source.infolist():
+            target.writestr(item, json.dumps(data) if item.filename == "project.json" else source.read(item.filename))
+    imported = client.post(
+        "/api/v1/projects/import", data={"organization_id": org["id"], "name": "Arch notes bundle legacy copy"},
+        files={"file": ("bundle.zip", out.getvalue(), "application/zip")}, headers=auth_headers(token),
+    )
+    assert imported.status_code == 201, imported.text
+    copy = imported.json()["project"]
+    listing = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
+    shown = view(client, token, copy["id"], listing[0]["id"])["notes"]
+    assert [[(l["kind"], l["end_style"], l["start_style"]) for l in n["leaders"]] for n in shown] == [
+        [("element", "none", "none")], [("connection", "arrow", "none")], [("point", "arrow", "none")], [],
+    ]
+
+
+def test_an_import_drops_a_leader_it_cannot_resolve_and_keeps_the_note_and_its_other_leaders(client, admin_token):
     org, project, token = setup(client, admin_token, "Arch notes bundle bad")
     p = project["id"]
     a, b, link, diagram, boxes = _flow(client, token, p)
     _save(client, token, p, diagram, boxes, [
-        {"text": "Box", "leader_kind": "element", "leader_element_id": a["id"]},
-        {"text": "Spot", "leader_kind": "point", "leader_x": 5, "leader_y": 6},
+        {"text": "Box", "leaders": [{"kind": "element", "element_id": a["id"]}, {"kind": "point", "x": 1, "y": 1}]},
+        {"text": "Spot", "leaders": [{"kind": "point", "x": 5, "y": 6, "points": [{"x": 2, "y": 2}]}]},
     ])
     resp = client.get(f"/api/v1/projects/{p}/export", headers=auth_headers(token))
     source = zipfile.ZipFile(io.BytesIO(resp.content))
     data = json.loads(source.read("project.json"))
     notes = data["architecture_diagrams"][0]["notes"]
-    notes[0]["leader"]["element"] = {"code": "ELM-999"}
-    notes[1]["leader"]["x"] = "far"
+    notes[0]["leaders"][0]["element"] = {"code": "ELM-999"}
+    notes[1]["leaders"][0]["x"] = "far"
     notes[1]["tone"] = "purple"
+    notes[0]["leaders"][1].update(start_point="middle", end_style="square", points=[{"x": "a", "y": 1}, {"x": 7, "y": 8}])
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as target:
         for item in source.infolist():
@@ -363,5 +507,10 @@ def test_an_import_drops_a_leader_it_cannot_resolve_and_keeps_the_note(client, a
     copy = imported.json()["project"]
     listing = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
     shown = view(client, token, copy["id"], listing[0]["id"])["notes"]
-    assert [(n["text"], n["leader_kind"], n["tone"]) for n in shown] == [("Box", "none", "neutral"), ("Spot", "none", "neutral")]
+    assert [(n["text"], [l["kind"] for l in n["leaders"]], n["tone"]) for n in shown] == [
+        ("Box", ["point"], "neutral"), ("Spot", [], "neutral"),
+    ]
+    # An unknown start point reads as automatic, an unknown end style as an arrow and a bad vertex is left out.
+    (kept,) = shown[0]["leaders"]
+    assert (kept["start_point"], kept["end_style"], kept["points"]) == (None, "arrow", [{"x": 7, "y": 8}])
     assert sum("leader could not be restored" in w for w in imported.json().get("warnings", [])) == 2

@@ -8,7 +8,8 @@
  * Responsibilities:
  * - Define the plain data a consumer supplies (`GraphCanvasNode`, `GraphCanvasEdge`, `GraphCanvasLeader`, `GraphCanvasPin`)
  *   and the events it gets back. A box has eight attach points (`graphAttachPoints`); a line meets the nearest unless the consumer fixes an end.
- *   A leader is a thin line from a node (an annotation) to another node, to the middle of a line or to a free point.
+ *   A leader is a line from a node (an annotation) to another node, to the middle of a line or to a free point: selectable,
+ *   shaped by vertices and a curve like any line, with an arrowhead or a dot at either end, and drawn by dragging from the node's attach point.
  * - Offer shapes beyond the plain box with no per-consumer code: a line from a node to itself (a loop), multi-line line labels,
  *   marker nodes (a consumer-supplied drawing, no box) and containers (a rounded frame holding the nodes whose `parentId` names it).
  * - Draw consumer-supplied badges (a button on a node's corner) with no per-consumer code.
@@ -143,18 +144,30 @@ export interface GraphCanvasNode {
 /** What a leader points at: a node, a line (its middle) or a free position in canvas units. */
 export type GraphLeaderTarget = { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "point"; x: number; y: number };
 
+/** How a leader begins or ends: plain, with an arrowhead or with a dot. */
+export type GraphLineEnd = "none" | "arrow" | "dot";
+
 /**
- * A thin line from a node to something it describes (an annotation's pointer). It is not selectable. The canvas skips a
- * leader whose node, target node or target line is not on the canvas, so a consumer can pass every leader and let a hidden
- * target hide its leader.
+ * A line from a node to something it describes (an annotation's pointer). It is selectable (as `{ kind: "leader", id }`), its
+ * vertices can be changed on the canvas (`onLeaderPointsChange`) and a new one is drawn from the node's attach point
+ * (`onConnect`, `onConnectEmpty`). The canvas skips a leader whose node, target node or target line is not on the canvas, so a
+ * consumer can pass every leader and let a hidden target hide its leader.
  */
 export interface GraphCanvasLeader {
   id: string;
-  /** The node the line starts from; it meets the nearest attach point of that node. */
+  /** The node the line starts from. */
   from: string;
   to: GraphLeaderTarget;
-  /** Draws an arrowhead at the target end; defaults to true. */
-  arrow?: boolean;
+  /** The attach point of the starting node the line leaves from; left out, the nearest to the first vertex or to the target. */
+  fromPoint?: AttachPoint;
+  /** The vertices in order from the node to the target, in canvas units. */
+  points?: LinePoint[];
+  /** True to curve through the vertices, false (default) for straight segments. */
+  smooth?: boolean;
+  /** The start decoration; defaults to none. */
+  startEnd?: GraphLineEnd;
+  /** The end decoration; defaults to an arrowhead. */
+  endEnd?: GraphLineEnd;
 }
 
 /** What a click in comment mode landed on: empty canvas, a node or a line. */
@@ -216,9 +229,9 @@ export interface GraphCanvasEdge {
   routable?: boolean;
 }
 
-/** What is selected: one node or one connection. */
+/** What is selected: one node, one connection or one leader. */
 export interface GraphCanvasSelection {
-  kind: "node" | "edge";
+  kind: "node" | "edge" | "leader";
   id: string;
 }
 
@@ -240,8 +253,17 @@ export interface GraphCanvasProps {
   onSelect?: (selection: GraphCanvasSelection | null) => void;
   /** Called once when a drag ends, with every node that moved. */
   onNodesMove?: (moves: { id: string; x: number; y: number }[]) => void;
-  /** Called when a person draws a line from one node to another. */
-  onConnect?: (sourceId: string, targetId: string) => void;
+  /**
+   * Called when a person draws a line from one node to another. `via.sourcePoint` is the attach point the line was drawn from
+   * (a consumer that wants a leader from a node, rather than a connection, starts it there).
+   */
+  onConnect?: (sourceId: string, targetId: string, via?: { sourcePoint?: AttachPoint }) => void;
+  /**
+   * Called when a line drawn from a node is released on something that is not another node's attach point: on a line (`edge`),
+   * on empty canvas (`point`, in canvas units) or on a node's body (`node`). The canvas draws nothing itself; the consumer decides
+   * whether the source may start such a line (an annotation's leader does, a connection does not).
+   */
+  onConnectEmpty?: (sourceId: string, to: GraphLeaderTarget, via: { sourcePoint?: AttachPoint }) => void;
   /** Shows resize handles on the selected node (not in read-only mode). */
   resizable?: boolean;
   /** Called once when a resize ends, with the node's final position and size. */
@@ -263,6 +285,8 @@ export interface GraphCanvasProps {
    * list. The canvas stores nothing: the consumer keeps it and passes it back as the edge's `points`.
    */
   onEdgePointsChange?: (edgeId: string, points: LinePoint[]) => void;
+  /** The same as `onEdgePointsChange`, for a leader's vertices; vertex handles are offered on a selected leader only when it is given. */
+  onLeaderPointsChange?: (leaderId: string, points: LinePoint[]) => void;
   /**
    * Called when a node is opened by a double-click. The canvas opens nothing itself; what "open" means (a detail page, an
    * inner diagram) belongs to the consumer, who must also offer a keyboard route (Enter is left to selecting).

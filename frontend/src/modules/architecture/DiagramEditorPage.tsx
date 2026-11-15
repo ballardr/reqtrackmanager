@@ -42,7 +42,8 @@ import { EditHistoryButtons } from "../../components/EditHistoryButtons";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
 import { useAttachPointVisibility } from "../../hooks/useAttachPointVisibility";
 import { useSnapToGrid } from "../../hooks/useSnapToGrid";
-import { GraphCanvas, type GraphCanvasSelection, type GraphNodeBadge } from "../../components/GraphCanvas";
+import { GraphCanvas, type GraphCanvasSelection, type GraphLeaderTarget, type GraphNodeBadge } from "../../components/GraphCanvas";
+import type { AttachPoint } from "../../components/graphAttachPoints";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
@@ -71,7 +72,8 @@ import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
   addBoundaries, addBoxes, addNote, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
   canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
-  setLineAnchor, setNoteLeader, updateNote, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH, type NoteLeaderTarget,
+  setLineAnchor, updateNote, addLeader, newLeader, newLeaderKey, patchLeader, removeLeader, setLeaderTarget, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT,
+  MAX_NOTE_LEADERS, NOTE_NODE_PREFIX, NOTE_WIDTH, type EditorLeader, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
 import { toggleStates } from "./diagramExport";
@@ -99,6 +101,8 @@ import {
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
 const CANVAS_MIN_HEIGHT = 300;
+/** How far to the right of a note a leader added from its card ends, in canvas units. */
+const LEADER_REACH = 120;
 
 /** The project's Element Types settings. */
 const SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architecture/architecture-element-types`;
@@ -142,8 +146,6 @@ export function DiagramEditorPage() {
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
   const [connections, setConnections] = useState<ArchitectureConnection[]>([]);
   const [picked, setPicked] = useState<GraphCanvasSelection | null>(null);
-  /** The note waiting for a click on the canvas to place the end of its leader. */
-  const [pickingSpot, setPickingSpot] = useState<string | null>(null);
   const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
   const canvasHeight = useFillViewportHeight(canvasBox, CANVAS_MIN_HEIGHT);
   const [editingDiagram, setEditingDiagram] = useState(false);
@@ -572,12 +574,50 @@ export function DiagramEditorPage() {
   }
 
   /**
-   * Points a note's leader at a target. A leader may name only a box of this diagram (never a note or a boundary box, which
-   * have canvas ids of their own), so another node id is ignored.
+   * Whether a leader may end at `target`: a box of this diagram (never a note or a boundary box, which have canvas ids of their
+   * own) or a free spot. A connection is checked where it is chosen (from the drawn lines).
    */
-  function pointNoteAt(key: string, target: NoteLeaderTarget) {
-    if (target.kind === "element" && !layout.boxes.some((b) => b.elementId === target.elementId)) return;
-    editor.edit((l) => setNoteLeader(l, key, target));
+  function leaderTargetAllowed(target: NoteLeaderTarget): boolean {
+    return target.kind !== "element" || layout.boxes.some((b) => b.elementId === target.elementId);
+  }
+
+  /** Adds a leader to a note ending at `target` and selects it (add, then edit). The note keeps at most ten. */
+  function addLeaderTo(noteKey: string, target: NoteLeaderTarget, start: AttachPoint | null = null) {
+    if (!leaderTargetAllowed(target)) return;
+    const note = layout.notes.find((n) => n.key === noteKey);
+    if (!note || note.leaders.length >= MAX_NOTE_LEADERS) return;
+    const key = newLeaderKey(layout);
+    editor.edit((l) => addLeader(l, noteKey, newLeader(key, target, start)));
+    setSelection({ kind: "leader", id: key });
+  }
+
+  /** Adds a leader to a free spot to the right of the note, the keyboard route to drawing one from the note. */
+  function addLeaderFrom(noteKey: string) {
+    const note = layout.notes.find((n) => n.key === noteKey);
+    if (note) addLeaderTo(noteKey, { kind: "point", x: Math.round(note.x + note.width + LEADER_REACH), y: Math.round(note.y + note.height / 2) });
+  }
+
+  /**
+   * What a leader dropped on a canvas line ends at: the first connection of that line, when it is this project's (a leader may
+   * not name another project's connection), else nothing.
+   */
+  function connectionOfLine(lineId: string): NoteLeaderTarget | null {
+    const line = resolved.edges.find((e) => e.id === lineId);
+    const own = line?.connections.find((c) => c.project_id === projectId);
+    return own ? { kind: "connection", connectionId: own.id } : null;
+  }
+
+  /** The target a canvas drop names, as a leader target (a note or boundary box is not one). */
+  function leaderTargetOf(to: GraphLeaderTarget): NoteLeaderTarget | null {
+    if (to.kind === "point") return { kind: "point", x: to.x, y: to.y };
+    if (to.kind === "edge") return connectionOfLine(to.id);
+    return to.id.startsWith(NOTE_NODE_PREFIX) || to.id.startsWith(BOUNDARY_NODE_PREFIX) ? null : { kind: "element", elementId: to.id };
+  }
+
+  /** Points a leader at another target (a drag of its end, or the "Points at" list). */
+  function pointLeaderAt(leaderKey: string, target: NoteLeaderTarget | null) {
+    if (target === null || !leaderTargetAllowed(target)) return;
+    editor.edit((l) => setLeaderTarget(l, leaderKey, target));
   }
 
   /** Opens the diagram of an element's inside; with unsaved changes it first asks, since leaving discards them. */
@@ -615,7 +655,13 @@ export function DiagramEditorPage() {
 
   /** Removes the selected box or note from the diagram (an undoable local edit; the element itself is never touched). */
   function removeSelected(chosen: GraphCanvasSelection) {
-    if (!editable || chosen.kind !== "node") return;
+    if (!editable) return;
+    if (chosen.kind === "leader") {
+      editor.edit((l) => removeLeader(l, chosen.id));
+      setSelection(null);
+      return;
+    }
+    if (chosen.kind !== "node") return;
     if (chosen.id.startsWith(NOTE_NODE_PREFIX)) editor.edit((l) => removeNote(l, chosen.id.slice(NOTE_NODE_PREFIX.length)));
     else if (chosen.id.startsWith(BOUNDARY_NODE_PREFIX)) editor.edit((l) => removeBoundary(l, chosen.id.slice(BOUNDARY_NODE_PREFIX.length)));
     else editor.edit((l) => removeBox(l, chosen.id));
@@ -749,13 +795,16 @@ export function DiagramEditorPage() {
         stateMachinesOf={(elementId) => machinesOf.get(elementId) ?? []} onOpenMachine={openMachine}
         onDeleteElement={(box) => void deleteElement(box.elementId)}
         onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
-        drawnEdgeIds={drawnEdgeIds} pickingSpot={pickingSpot}
+        drawnEdgeIds={drawnEdgeIds}
         onEditNote={(key, text) => editor.edit((l) => updateNote(l, key, { text }))}
         onNoteTone={(key, tone) => editor.edit((l) => updateNote(l, key, { tone }))}
-        onNoteArrow={(key, arrow) => editor.edit((l) => updateNote(l, key, { leader_arrow: arrow }))}
-        onNotePointAt={pointNoteAt}
-        onPickSpot={(key, picking) => setPickingSpot(picking ? key : null)}
-        onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); setPickingSpot(null); }}
+        onAddLeader={addLeaderFrom}
+        onSelectLeader={(key) => setSelection({ kind: "leader", id: key })}
+        onSelectNote={(key) => setSelection({ kind: "node", id: NOTE_NODE_PREFIX + key })}
+        onLeaderTarget={(key, target) => pointLeaderAt(key, target)}
+        onLeaderChange={(key, change: Partial<EditorLeader>) => editor.edit((l) => patchLeader(l, key, change))}
+        onRemoveLeader={(key) => { editor.edit((l) => removeLeader(l, key)); setSelection(null); }}
+        onRemoveNote={(key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); }}
       />
     </div>
   );
@@ -815,21 +864,18 @@ export function DiagramEditorPage() {
             <GraphCanvas
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
               readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
-              // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
-              // The same holds for a note just placed from Note mode, which a click on empty canvas would otherwise deselect.
-              onSelect={(next) => { if (next !== null || (pickingSpot === null && !placingNote)) { setSelection(next); setFocusNew(null); } }}
+              // A note just placed from Note mode must not lose its selection when the same click clears it on the canvas.
+              onSelect={(next) => { if (next !== null || !placingNote) { setSelection(next); setFocusNew(null); } }}
               onCanvasClick={(at) => {
-                if (placingNote) {
-                  addNoteAt({ x: Math.round(at.x - NOTE_WIDTH / 2), y: Math.round(at.y - NOTE_HEIGHT / 2) });
-                  return;
-                }
-                if (pickingSpot === null) return;
-                pointNoteAt(pickingSpot, { kind: "point", x: Math.round(at.x), y: Math.round(at.y) });
-                setPickingSpot(null);
+                if (placingNote) addNoteAt({ x: Math.round(at.x - NOTE_WIDTH / 2), y: Math.round(at.y - NOTE_HEIGHT / 2) });
               }}
-              onLeaderTargetChange={(noteKey, target) => {
-                if (target.kind === "point") pointNoteAt(noteKey, { kind: "point", x: target.x, y: target.y });
-                else if (target.kind === "node") pointNoteAt(noteKey, { kind: "element", elementId: target.id });
+              onLeaderTargetChange={(leaderKey, target) => pointLeaderAt(leaderKey, leaderTargetOf(target))}
+              onLeaderPointsChange={(leaderKey, points) => editor.edit((l) => patchLeader(l, leaderKey, { points }))}
+              onConnectEmpty={(source, to, via) => {
+                // A line drawn from a note and released on a box, a line or empty canvas is a leader; a box starts no such line.
+                if (!source.startsWith(NOTE_NODE_PREFIX)) return;
+                const target = leaderTargetOf(to);
+                if (target) addLeaderTo(source.slice(NOTE_NODE_PREFIX.length), target, via.sourcePoint ?? null);
               }}
               onNodesMove={(moves) => editor.edit((l) => moveItems(l, moves))}
               onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
@@ -841,7 +887,16 @@ export function DiagramEditorPage() {
                 const line = resolved.edges.find((e) => e.id === edgeId);
                 if (line && !line.source_is_boundary && !line.target_is_boundary) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, { points }));
               }}
-              onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected} onNodeOpen={openBoxInside}
+              onConnect={(source, target, via) => {
+                // A line from a note to a box is a leader, not a connection.
+                if (source.startsWith(NOTE_NODE_PREFIX)) {
+                  const to = leaderTargetOf({ kind: "node", id: target });
+                  if (to) addLeaderTo(source.slice(NOTE_NODE_PREFIX.length), to, via?.sourcePoint ?? null);
+                  return;
+                }
+                void startConnection(source, target);
+              }}
+              onDelete={removeSelected} onNodeOpen={openBoxInside}
               onDropItem={(payload, at) => {
                 if (payload.startsWith(PALETTE_TYPE_PREFIX)) void addElementAt(payload.slice(PALETTE_TYPE_PREFIX.length), at);
               }}

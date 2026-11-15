@@ -590,10 +590,13 @@ test.describe("System Architecture: diagram editor", () => {
       await clickMenuRow(page, "Add note");
       await page.getByRole("textbox", { name: "Note text" }).fill("Single point of failure");
       await page.getByRole("combobox", { name: "Tone", exact: true }).selectOption("danger");
+      await page.getByRole("button", { name: "Add leader", exact: true }).click();
       await page.getByRole("combobox", { name: "Points at", exact: true }).selectOption(`element:${gatewayId}`);
       await expect(leaders).toHaveCount(1);
       await saveLayout();
-      expect(await stored()).toMatchObject([{ text: "Single point of failure", tone: "danger", leader_kind: "element", leader_element_id: gatewayId }]);
+      const [note] = await stored();
+      expect(note).toMatchObject({ text: "Single point of failure", tone: "danger" });
+      expect(note.leaders).toMatchObject([{ kind: "element", element_id: gatewayId, end_style: "arrow", start_style: "none" }]);
     });
 
     await test.step("the leader and the tone are still there after a reload", async () => {
@@ -602,28 +605,27 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.locator(".graph-node-tone-danger")).toHaveCount(1);
     });
 
-    await test.step("Point at a spot waits for a click on the canvas, and undo returns to the box", async () => {
+    await test.step("a leader moved to a spot by X and Y, with undo back to the box", async () => {
       await page.getByLabel("Single point of failure, node").focus();
       await page.keyboard.press("Enter");
-      await page.getByRole("button", { name: "Point at a spot" }).click();
-      await expect(page.getByText("Click the canvas to place the end of the line.")).toBeVisible();
-      const pane = page.locator(".react-flow__pane");
-      const box = await pane.boundingBox();
-      await page.mouse.click(box!.x + box!.width - 40, box!.y + box!.height - 40);
-      await expect(page.getByRole("combobox", { name: "Points at", exact: true })).toHaveValue("spot");
+      await page.getByRole("button", { name: "Edit leader 1", exact: true }).click();
+      await page.getByRole("combobox", { name: "Points at", exact: true }).selectOption("spot");
+      await expect(page.getByRole("spinbutton", { name: "Spot X" })).toBeVisible();
       await expect(leaders).toHaveCount(1);
       await page.getByRole("button", { name: "Undo" }).click();
       await expect(page.getByRole("combobox", { name: "Points at", exact: true })).toHaveValue(`element:${gatewayId}`);
       await page.getByRole("button", { name: "Redo" }).click();
       await saveLayout();
-      expect(await stored()).toMatchObject([{ leader_kind: "point", leader_element_id: null }]);
+      expect((await stored())[0].leaders).toMatchObject([{ kind: "point", element_id: null }]);
     });
 
     await test.step("removing the leader keeps the note", async () => {
-      await page.getByRole("combobox", { name: "Points at", exact: true }).selectOption("");
+      await page.getByRole("button", { name: "Remove leader", exact: true }).click();
       await expect(leaders).toHaveCount(0);
       await saveLayout();
-      expect(await stored()).toMatchObject([{ text: "Single point of failure", leader_kind: "none" }]);
+      const [note] = await stored();
+      expect(note.text).toBe("Single point of failure");
+      expect(note.leaders).toEqual([]);
     });
   });
 

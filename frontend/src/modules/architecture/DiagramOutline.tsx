@@ -232,9 +232,7 @@ export function DiagramOutline({
       {notes.length > 0 && (
         <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" help={ARCHITECTURE_HELP.diagramNotes} variant="plain" summary={String(notes.length)}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {notes.map((n) => {
-              const pointsAt = leaderSummary(n, boxes, edges, leaderIsDrawn(n, visibleBoxIds, edges, drawnEdgeIds));
-              return (
+            {notes.map((n) => (
               <li key={n.key}>
                 <button
                   type="button" className={isSelected("node", NOTE_NODE_PREFIX + n.key) ? "btn btn-sm btn-primary" : "btn btn-sm"}
@@ -243,10 +241,27 @@ export function DiagramOutline({
                 >
                   {noteSummary(n.text)}
                 </button>
-                {pointsAt && <span className="text-muted"> · {pointsAt}</span>}
+                {n.leaders.length > 0 && (
+                  <ul style={{ listStyle: "none", margin: 0, paddingLeft: "var(--space-4)" }} aria-label="Leaders">
+                    {n.leaders.map((l, i) => {
+                      const pointsAt = leaderSummary(l, boxes, edges, leaderIsDrawn(l, visibleBoxIds, edges, drawnEdgeIds));
+                      return (
+                        <li key={l.key}>
+                          <button
+                            type="button" className={isSelected("leader", l.key) ? "btn btn-sm btn-primary" : "btn btn-sm"}
+                            aria-current={isSelected("leader", l.key) ? "true" : undefined}
+                            onClick={() => onSelect({ kind: "leader", id: l.key })}
+                          >
+                            Leader {i + 1}
+                          </button>
+                          <span className="text-muted"> · Points at {pointsAt}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
-              );
-            })}
+            ))}
           </ul>
         </CollapsibleSection>
       )}

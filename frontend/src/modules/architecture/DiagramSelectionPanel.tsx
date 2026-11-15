@@ -9,9 +9,10 @@
  *   once, as on the element's page. Its project components (the shared `RecordPlacements`, also saved at once) are set
  *   here too; a box shared from another owner shows none, since a component belongs to one project and its own
  *   project's tree is not disclosed to another.
- * - A note (an annotation): edit its text (applied when the field loses focus, as one undo step), its tone, what its leader
- *   line points at (a box or connection from a list, or a spot on the canvas) and the arrowhead, or remove it
- *   (`DiagramNoteEditor`).
+ * - A note (an annotation): edit its text (applied when the field loses focus, as one undo step) and its tone, list its leader
+ *   lines and add one, or remove it (`DiagramNoteEditor`).
+ * - A leader (a note's line to what it describes): what it points at (a box or connection from a list, or a spot with X and Y),
+ *   where it starts, how its two ends look and its vertices, or remove it; the note stays (`DiagramLeaderEditor`).
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
  *   keyboard route to dragging a line's end. A line that stands for one connection of this project edits it in place
@@ -47,10 +48,11 @@ import { useRecordCode } from "../../hooks/useRecordCode";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, routeAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
 import { suggestWaypoint } from "../../components/graphLinePath";
 import {
-  BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, leaderIsDrawn, type EditorBoundary,
-  type EditorBox, type EditorNote, type NoteLeaderTarget,
+  BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, leaderIsDrawn, leaderSummary,
+  leaderVertexSuggestion, type EditorBoundary, type EditorBox, type EditorLeader, type EditorNote, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { boxName } from "./diagramOutlineModel";
+import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
 import { ConnectionSelectionFields } from "./ConnectionSelectionFields";
@@ -123,12 +125,14 @@ function stateMachineActions(
  * @param onDeleteElement Deletes the element from the model.
  * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic).
  * @param drawnEdgeIds The ids of the lines the canvas draws (a note's leader to a connection needs one of them).
- * @param pickingSpot The key of the note waiting for a click on the canvas to place its leader's end, or null.
  * @param onEditNote Sets a note's text.
  * @param onNoteTone Sets a note's tone.
- * @param onNoteArrow Sets whether a note's leader ends in an arrowhead.
- * @param onNotePointAt Points a note's leader at a box or connection, or removes it.
- * @param onPickSpot Starts (true) or cancels (false) waiting for the canvas click that places a note's leader end.
+ * @param onAddLeader Adds a leader to a note (a line to a free spot beside it, which becomes the selection).
+ * @param onSelectLeader Selects a leader (by key).
+ * @param onSelectNote Selects a note (by key).
+ * @param onLeaderTarget Points a leader at a box, connection or spot.
+ * @param onLeaderChange Changes a leader's start point, vertices, curve or end styles.
+ * @param onRemoveLeader Removes a leader (its note stays).
  * @param onRemoveNote Removes a note.
  * @param onRemoveBoundary Takes a boundary box off the diagram (the connection is not changed).
  * @param onConnectBoundary Starts a connection between an inner element and the element outside a boundary box.
@@ -137,7 +141,7 @@ function stateMachineActions(
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, drawnEdgeIds, pickingSpot, onEditNote, onNoteTone, onNoteArrow, onNotePointAt, onPickSpot, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, drawnEdgeIds, onEditNote, onNoteTone, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
@@ -163,12 +167,14 @@ export function DiagramSelectionPanel({
   onDeleteElement: (box: EditorBox) => void;
   onAnchorChange: (edge: DiagramViewEdge, change: LineRouteChange) => void;
   drawnEdgeIds: ReadonlySet<string>;
-  pickingSpot: string | null;
   onEditNote: (key: string, text: string) => void;
   onNoteTone: (key: string, tone: NoteTone) => void;
-  onNoteArrow: (key: string, arrow: boolean) => void;
-  onNotePointAt: (key: string, target: NoteLeaderTarget) => void;
-  onPickSpot: (key: string, picking: boolean) => void;
+  onAddLeader: (noteKey: string) => void;
+  onSelectLeader: (leaderKey: string) => void;
+  onSelectNote: (noteKey: string) => void;
+  onLeaderTarget: (leaderKey: string, target: NoteLeaderTarget) => void;
+  onLeaderChange: (leaderKey: string, change: Partial<EditorLeader>) => void;
+  onRemoveLeader: (leaderKey: string) => void;
   onRemoveNote: (key: string) => void;
   elements: ArchitectureElement[];
   connectionTypes: ConnectionType[];
@@ -190,6 +196,9 @@ export function DiagramSelectionPanel({
 
   const noteKey = selection?.kind === "node" && selection.id.startsWith(NOTE_NODE_PREFIX) ? selection.id.slice(NOTE_NODE_PREFIX.length) : null;
   const note = noteKey === null ? null : notes.find((n) => n.key === noteKey) ?? null;
+  const found = selection?.kind === "leader"
+    ? notes.flatMap((n) => n.leaders.map((l, i) => ({ note: n, leader: l, index: i + 1 }))).find((x) => x.leader.key === selection.id) ?? null
+    : null;
   const boundaryKey = selection?.kind === "node" && selection.id.startsWith(BOUNDARY_NODE_PREFIX) ? selection.id.slice(BOUNDARY_NODE_PREFIX.length) : null;
   const boundary = boundaryKey === null ? null : boundaries.find((b) => b.connectionId === boundaryKey) ?? null;
   const box = selection?.kind === "node" && noteKey === null && boundaryKey === null ? boxes.find((b) => b.elementId === selection.id) ?? null : null;
@@ -305,20 +314,34 @@ export function DiagramSelectionPanel({
         )}
       </>
     );
-  } else if (note) {
+  } else if (found || note) {
     const drawnBoxes = boxes.filter((b) => !hidden.has(b.elementId));
+    const drawnBoxIds = new Set(drawnBoxes.map((b) => b.elementId));
     const drawnConnections = new Map<string, ArchitectureConnection>();
     for (const e of edges) if (drawnEdgeIds.has(e.id)) for (const c of e.connections) drawnConnections.set(c.id, c);
-    body = (
-      <DiagramNoteEditor
-        key={note.key} note={note} editable={editable} boxes={drawnBoxes} connections={[...drawnConnections.values()]}
-        autoFocusText={focusNew === NOTE_NODE_PREFIX + note.key} onFocused={onFocused}
-        drawn={leaderIsDrawn(note, new Set(drawnBoxes.map((b) => b.elementId)), edges, drawnEdgeIds)} picking={pickingSpot === note.key}
-        onText={(text) => onEditNote(note.key, text)} onTone={(tone) => onNoteTone(note.key, tone)}
-        onArrow={(arrow) => onNoteArrow(note.key, arrow)} onPointAt={(target) => onNotePointAt(note.key, target)}
-        onPickSpot={(picking) => onPickSpot(note.key, picking)} onRemove={() => onRemoveNote(note.key)}
-      />
-    );
+    if (found) {
+      body = (
+        <DiagramLeaderEditor
+          key={found.leader.key} leader={found.leader} index={found.index} editable={editable} boxes={drawnBoxes}
+          connections={[...drawnConnections.values()]} drawn={leaderIsDrawn(found.leader, drawnBoxIds, edges, drawnEdgeIds)}
+          newPoint={leaderVertexSuggestion(found.note, found.leader, boxes)}
+          onTarget={(target) => onLeaderTarget(found.leader.key, target)} onChange={(change) => onLeaderChange(found.leader.key, change)}
+          onOpenNote={() => onSelectNote(found.note.key)} onRemove={() => onRemoveLeader(found.leader.key)}
+        />
+      );
+    } else if (note) {
+      body = (
+        <DiagramNoteEditor
+          key={note.key} note={note} editable={editable} autoFocusText={focusNew === NOTE_NODE_PREFIX + note.key} onFocused={onFocused}
+          leaders={note.leaders.map((l) => ({
+            key: l.key, summary: leaderSummary(l, boxes, edges, true).replace(/ \(not drawn\)$/, ""),
+            drawn: leaderIsDrawn(l, drawnBoxIds, edges, drawnEdgeIds),
+          }))}
+          onText={(text) => onEditNote(note.key, text)} onTone={(tone) => onNoteTone(note.key, tone)}
+          onAddLeader={() => onAddLeader(note.key)} onOpenLeader={onSelectLeader} onRemove={() => onRemoveNote(note.key)}
+        />
+      );
+    }
   } else if (edge) {
     body = (
       <>

@@ -4691,6 +4691,7 @@ const en = {
       "Tab moves between nodes and connections. Enter or Space selects. Arrow keys move the selected node when editing is allowed. Drag a node's edge handle to resize it.",
     keyboardResizeHelp: "Alt with an arrow key resizes the selected node.",
     keyboardDeleteHelp: "Delete or Backspace removes the selected item.",
+    leaderAria: (from: string, label: string) => `Leader line from ${from}${label ? `: ${label}` : ""}`,
     waypointAria: (number: number) => `Vertex ${number}, drag to move, Delete or double-click to remove`,
     keyboardSnapHelp: "Snap to grid is on: arrow keys move the selected node by one grid step.",
     snapLabel: "Snap to grid",

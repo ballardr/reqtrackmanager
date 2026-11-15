@@ -8,7 +8,7 @@ import { requiredCaptions } from "../../testing/requiredMarkers";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
-  buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildModelElement, buildNote,
+  buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildLeader, buildModelElement, buildNote,
   buildViewNode, captureDownloads, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
@@ -632,8 +632,15 @@ export const AnArchivedDiagramCannotPlaceNotes: Story = {
   },
 };
 
-/** The note card's fields (the card is the second "Selection" region once a note is chosen). */
+/** The note card's and the leader card's fields (the card is the second "Selection" region once a note or leader is chosen). */
 const noteField = (canvas: ReturnType<typeof within>, name: string) => canvas.findByRole("combobox", { name });
+
+/** Adds a note from the Add menu and a leader from its card, which becomes the selection (the leader card is then shown). */
+async function addNoteWithLeader(canvas: ReturnType<typeof within>) {
+  await addFromMenu(canvas, "Add note");
+  await userEvent.click(await canvas.findByRole("button", { name: "Add leader" }));
+  await canvas.findByText("Leader 1");
+}
 
 export const ANoteIsGivenAToneAndALeaderToABoxAndBothAreSaved: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never); },
@@ -641,48 +648,55 @@ export const ANoteIsGivenAToneAndALeaderToABoxAndBothAreSaved: Story = {
     const canvas = within(canvasElement);
     await addFromMenu(canvas, "Add note");
     await userEvent.selectOptions(await noteField(canvas, "Tone"), "danger");
+    await userEvent.click(await canvas.findByRole("button", { name: "Add leader" }));
     await userEvent.selectOptions(await noteField(canvas, "Points at"), "element:el-1");
     await waitFor(() => expect(canvasElement.querySelectorAll(".react-flow__edge.graph-leader").length).toBe(1));
-    await expect(canvas.getByRole("checkbox", { name: "Arrowhead" })).toBeChecked();
-    await userEvent.click(canvas.getByRole("checkbox", { name: "Arrowhead" }));
+    await expect(await noteField(canvas, "End style")).toHaveDisplayValue("Arrow");
+    await userEvent.selectOptions(await noteField(canvas, "End style"), "dot");
+    await userEvent.selectOptions(await noteField(canvas, "Starts at"), "right");
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
         notes: [expect.objectContaining({
-          id: null, tone: "danger", leader_kind: "element", leader_element_id: "el-1", leader_connection_id: null,
-          leader_x: null, leader_y: null, leader_arrow: false,
+          id: null, tone: "danger",
+          leaders: [{
+            id: null, kind: "element", element_id: "el-1", connection_id: null, x: null, y: null, start_point: "right", points: [],
+            smooth: false, start_style: "none", end_style: "dot",
+          }],
         })],
       }),
     ));
   },
 };
 
-export const ANoteCanPointAtAConnectionByName: Story = {
+export const ANoteCanPointAtAConnectionByNameAndItsLeaderCanBeRemoved: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await addFromMenu(canvas, "Add note");
+    await addNoteWithLeader(canvas);
     const pointsAt = await noteField(canvas, "Points at");
     const option = within(pointsAt).getByRole("option", { name: /^Connection: CON-001/ });
     await userEvent.selectOptions(pointsAt, option);
     await waitFor(() => expect(canvasElement.querySelectorAll(".react-flow__edge.graph-leader").length).toBe(1));
-    await userEvent.selectOptions(pointsAt, "");
+    await userEvent.click(canvas.getByRole("button", { name: "Remove leader" }));
     await waitFor(() => expect(canvasElement.querySelectorAll(".react-flow__edge.graph-leader").length).toBe(0));
-    await expect(canvas.queryByRole("checkbox", { name: "Arrowhead" })).toBeNull();
   },
 };
 
-export const APointAtASpotWaitsForAClickOnTheCanvas: Story = {
+export const ALeaderAddedFromTheCardEndsAtASpotSetByXAndYAndTheCardReturnsToTheNote: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await addFromMenu(canvas, "Add note");
-    await userEvent.click(await canvas.findByRole("button", { name: "Point at a spot" }));
-    await expect(canvas.getByText("Click the canvas to place the end of the line.")).toBeInTheDocument();
-    await userEvent.click(canvasElement.querySelector(".react-flow__pane") as HTMLElement);
+    await addNoteWithLeader(canvas);
     await waitFor(() => expect(canvasElement.querySelectorAll(".react-flow__edge.graph-leader").length).toBe(1));
-    // The note stays selected, and its list now reads "A spot on the canvas".
     await expect(await noteField(canvas, "Points at")).toHaveDisplayValue("A spot on the canvas");
-    await expect(canvas.queryByRole("button", { name: "Cancel" })).toBeNull();
+    const x = canvas.getByRole("spinbutton", { name: "Spot X" });
+    await userEvent.clear(x);
+    await userEvent.type(x, "640");
+    await userEvent.tab();
+    await waitFor(() => expect(canvas.getByRole("spinbutton", { name: "Spot X" })).toHaveValue(640));
+    await userEvent.click(canvas.getByRole("button", { name: "Select note" }));
+    await expect(await canvas.findByRole("list", { name: "Leaders" })).toBeInTheDocument();
+    await expect(canvas.getByText(/Points at a spot/)).toBeInTheDocument();
   },
 };
 
@@ -692,7 +706,7 @@ export const ALeaderToASwitchedOffBoxIsHiddenAndTheCardSaysSo: Story = {
       elements: ELEMENTS,
       diagramView: buildDiagramView({
         toggles: [{ ...FIREWALL_TOGGLE, default_on: false, on: false }],
-        notes: [buildNote({ leader_kind: "element", leader_element_id: "el-3" })],
+        notes: [buildNote({ leaders: [buildLeader({ kind: "element", element_id: "el-3", x: null, y: null })] })],
       }),
     });
   },
@@ -711,7 +725,7 @@ export const AnArchivedDiagramShowsTheLeaderButOffersNoControls: Story = {
     mockArchitectureReads({
       elements: ELEMENTS,
       diagramView: buildDiagramView({
-        diagram: buildDiagram({ is_archived: true }), notes: [buildNote({ leader_kind: "point", leader_x: 400, leader_y: -200 })],
+        diagram: buildDiagram({ is_archived: true }), notes: [buildNote({ leaders: [buildLeader({ x: 400, y: -200 })] })],
       }),
     });
   },
@@ -719,7 +733,8 @@ export const AnArchivedDiagramShowsTheLeaderButOffersNoControls: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Check with ops");
     await waitFor(() => expect(canvasElement.querySelectorAll(".react-flow__edge.graph-leader").length).toBe(1));
-    await expect(canvas.queryByRole("button", { name: "Point at a spot" })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: "Add leader" })).toBeNull();
+    await userEvent.click(await canvas.findByRole("button", { name: "Edit leader 1" }));
     await expect(await noteField(canvas, "Points at")).toBeDisabled();
   },
 };

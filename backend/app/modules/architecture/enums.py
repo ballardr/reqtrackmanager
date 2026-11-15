@@ -7,7 +7,8 @@ Architecture-owned vocabulary, kept in this package rather than
 `Domain`, `ElementShape` and `LineStyle` are rendering and classification choices
 of a type; `RecordStatus` and `PortDirection` classify a record and its ports;
 `AttachPoint` names the eight places a line can meet a box on a diagram; `NoteTone` and `LeaderKind` describe an
-annotation note and what its leader points at. All are stored as plain strings, so adding a value needs no column change.
+annotation note and what its leader points at; `LineEnd` is how a leader begins or ends. All are stored as plain
+strings, so adding a value needs no column change.
 """
 
 from __future__ import annotations
@@ -106,13 +107,21 @@ class NoteTone(str, enum.Enum):
 
 
 class LeaderKind(str, enum.Enum):
-    """What an annotation note's leader line points at: nothing, a placed element's box, a connection's drawn line (its
-    midpoint) or a free point of the canvas."""
+    """What an annotation note's leader line ends at: a placed element's box, a connection's drawn line (its midpoint) or
+    a free point of the canvas. (`NONE` is a note with no leader: it has no leader row, so a stored leader is never `NONE`.)"""
 
     NONE = "none"
     ELEMENT = "element"
     CONNECTION = "connection"
     POINT = "point"
+
+
+class LineEnd(str, enum.Enum):
+    """How a leader line begins or ends: plain, with an arrowhead or with a dot."""
+
+    NONE = "none"
+    ARROW = "arrow"
+    DOT = "dot"
 
 
 class FolderKind(str, enum.Enum):

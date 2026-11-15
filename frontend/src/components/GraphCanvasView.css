@@ -458,3 +458,13 @@
 .graph-segment-handle:active {
   cursor: grabbing;
 }
+
+/* A leader that belongs to the selected node is drawn in the accent colour, as the selected leader itself is. */
+.graph-canvas .react-flow__edge.graph-leader.graph-leader-of-selected .react-flow__edge-path {
+  stroke: var(--color-primary);
+}
+
+.graph-marker-defs {
+  position: absolute;
+  pointer-events: none;
+}

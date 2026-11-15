@@ -57,6 +57,7 @@ from app.modules.architecture.models import (
     ArchitectureElement,
     ArchitectureElementType,
     ArchitectureFolder,
+    ArchitectureNoteLeader,
     ArchitecturePort,
     ArchitectureState,
     ArchitectureStateMachineDiagram,
@@ -117,23 +118,39 @@ def _route(rng: random.Random, seed: int) -> list[dict[str, float]]:
     ]
 
 
-def _note_leader(
+def _note_leaders(
     rng: random.Random, placed: list[uuid.UUID], connections: list[uuid.UUID], order: int, *, forced: bool,
-) -> dict[str, Any]:
-    """The leader columns of a generated note: none, a box of the diagram, a connection of the project (drawn only when a
-    line of the diagram stands for it) or a free point. With `forced` the kind follows `order` (a box, a connection, a
-    point), so the project's first diagram always has one of each."""
-    none: dict[str, Any] = {
-        "leader_kind": "none", "leader_element_id": None, "leader_connection_id": None, "leader_x": None, "leader_y": None,
-    }
+) -> list[dict[str, Any]]:
+    """The leaders of a generated note, as rows without their id and note: none, or up to two lines to a box of the diagram,
+    a connection of the project (drawn only when a line of the diagram stands for it) or a free point, with a start point,
+    vertices and styles on some. With `forced` the kind follows `order` (a box, a connection, a point), so the project's
+    first diagram always has one of each, the first of them routed and starting at a chosen point."""
+    blank: dict[str, Any] = {"element_id": None, "connection_id": None, "x": None, "y": None}
     roll = (order + 0.5) / 3 * 0.75 if forced else rng.random()
+    kinds: list[str] = []
     if roll < 0.3 and placed:
-        return {**none, "leader_kind": "element", "leader_element_id": rng.choice(placed)}
-    if roll < 0.55 and connections:
-        return {**none, "leader_kind": "connection", "leader_connection_id": rng.choice(connections)}
-    if roll < 0.75:
-        return {**none, "leader_kind": "point", "leader_x": float(order * 180 + 80), "leader_y": -200.0}
-    return none
+        kinds.append("element")
+    elif roll < 0.55 and connections:
+        kinds.append("connection")
+    elif roll < 0.75:
+        kinds.append("point")
+    if kinds and not forced and rng.random() < 0.15:
+        kinds.append("point")
+    rows: list[dict[str, Any]] = []
+    for slot, kind in enumerate(kinds):
+        target = (
+            {"element_id": rng.choice(placed)} if kind == "element"
+            else {"connection_id": rng.choice(connections)} if kind == "connection"
+            else {"x": float(order * 180 + 80 + slot * 40), "y": -200.0}
+        )
+        routed = (forced and order == 0) or rng.random() < _ROUTED_LINES
+        rows.append({
+            **blank, **target, "sort_order": slot, "kind": kind,
+            "start_point": rng.choice(_ATTACH_POINTS) if (forced and order == 0) or rng.random() < 0.3 else None,
+            "points": _route(rng, order) if routed else [], "smooth": rng.random() < 0.3,
+            "start_style": rng.choice(("none", "none", "dot")), "end_style": rng.choice(("arrow", "arrow", "dot", "none")),
+        })
+    return rows
 
 
 def _type_ids(
@@ -445,12 +462,16 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
                     "created_at": created, "updated_at": created,
                 })
         for order in range(3 if index == 0 else rng.choice((0, 1, 1, 2))):
-            leader = _note_leader(rng, placed, project_connections, order, forced=index == 0)
+            note_id = batch.new_id()
             batch.satellite(ArchitectureDiagramNote, {
-                "id": batch.new_id(), "diagram_id": record_id, "text": textgen.title(rng), "x": float(order * 180),
+                "id": note_id, "diagram_id": record_id, "text": textgen.title(rng), "x": float(order * 180),
                 "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "tone": rng.choice(_NOTE_TONES),
-                "leader_arrow": rng.random() < 0.8, "created_at": created, "updated_at": created, **leader,
+                "created_at": created, "updated_at": created,
             })
+            for leader in _note_leaders(rng, placed, project_connections, order, forced=index == 0):
+                batch.satellite(ArchitectureNoteLeader, {
+                    "id": batch.new_id(), "note_id": note_id, "created_at": created, "updated_at": created, **leader,
+                })
         _add_pinned_threads(rng, ctx, batch, record_id, created, placed, project_connections, first=index == 0)
         if index == 0 or rng.random() < 0.4:
             toggle_id = batch.new_id()

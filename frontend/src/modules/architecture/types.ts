@@ -29,17 +29,32 @@ export const NOTE_TONE_LABEL: Record<NoteTone, string> = {
   none: "None", neutral: "Neutral", info: "Information", success: "Positive", warning: "Caution", danger: "Critical",
 };
 
-/** What an annotation's leader line points at. */
-export type LeaderKind = "none" | "element" | "connection" | "point";
+/** What an annotation's leader line ends at. */
+export type LeaderKind = "element" | "connection" | "point";
 
-/** The fields of a note that name what its leader points at, and its arrowhead (mirrors `NoteIn` in `schemas.py`). */
-export interface NoteLeader {
-  leader_kind: LeaderKind;
-  leader_element_id: string | null;
-  leader_connection_id: string | null;
-  leader_x: number | null;
-  leader_y: number | null;
-  leader_arrow: boolean;
+/** How a leader line begins or ends. */
+export type LineEnd = "none" | "arrow" | "dot";
+
+export const LINE_END_LABEL: Record<LineEnd, string> = { none: "None", arrow: "Arrow", dot: "Dot" };
+
+/** A leader line of a note as the view lists it (mirrors `LeaderOut` in `schemas.py`): where it ends, how it runs and how its ends look. */
+export interface DiagramLeader {
+  id: string;
+  kind: LeaderKind;
+  element_id: string | null;
+  connection_id: string | null;
+  x: number | null;
+  y: number | null;
+  start_point: AttachPoint | null;
+  points: LineWaypoint[];
+  smooth: boolean;
+  start_style: LineEnd;
+  end_style: LineEnd;
+}
+
+/** A leader line as saved (mirrors `LeaderIn`; `id` keeps an existing leader of the note, none creates one). */
+export interface LeaderValues extends Omit<DiagramLeader, "id"> {
+  id: string | null;
 }
 
 export const PORT_DIRECTION_LABEL: Record<PortDirection, string> = {
@@ -495,7 +510,7 @@ export interface DiagramViewBoundary {
   height: number;
 }
 
-export interface DiagramNote extends NoteLeader {
+export interface DiagramNote {
   id: string;
   text: string;
   x: number;
@@ -503,6 +518,7 @@ export interface DiagramNote extends NoteLeader {
   width: number;
   height: number;
   tone: NoteTone;
+  leaders: DiagramLeader[];
 }
 
 /** A diagram resolved for drawing. */
@@ -614,7 +630,7 @@ export interface PlacementValues {
 }
 
 /** One note as saved (`id` keeps an existing note; none creates one). */
-export interface NoteValues extends NoteLeader {
+export interface NoteValues {
   id: string | null;
   text: string;
   x: number;
@@ -622,6 +638,7 @@ export interface NoteValues extends NoteLeader {
   width: number;
   height: number;
   tone: NoteTone;
+  leaders: LeaderValues[];
 }
 
 /** One boundary box as saved: the outer connection it stands for and its box. */

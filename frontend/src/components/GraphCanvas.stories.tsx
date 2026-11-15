@@ -666,14 +666,14 @@ const LEADER_NODES: GraphCanvasNode[] = [
 /** The leader lines drawn, by the id the consumer gave them. */
 const leaderIds = (root: HTMLElement) => [...root.querySelectorAll(".react-flow__edge.graph-leader")].map((el) => el.getAttribute("data-id"));
 
-/** A leader to a node, to the middle of a line and to a free position is drawn as its own non-selectable line. */
+/** A leader to a node, to the middle of a line and to a free position is drawn as its own line. */
 export const LeadersPointAtANodeALineAndAPosition: Story = {
   render: () => (
     <GraphCanvas
       nodes={LEADER_NODES} edges={[{ id: "e1", source: "a", target: "b", label: "REST" }]} ariaLabel="Leaders" showViewToggle={false}
       leaders={[
         { id: "n", from: "note", to: { kind: "node", id: "a" } },
-        { id: "l", from: "note", to: { kind: "edge", id: "e1" }, arrow: false },
+        { id: "l", from: "note", to: { kind: "edge", id: "e1" }, endEnd: "none" },
         { id: "p", from: "note", to: { kind: "point", x: 380, y: 200 } },
       ]}
     />
@@ -682,7 +682,7 @@ export const LeadersPointAtANodeALineAndAPosition: Story = {
     const canvas = within(canvasElement);
     await canvas.findByLabelText("Check with ops, node");
     await waitFor(() => expect(leaderIds(canvasElement)).toEqual(["leader:n", "leader:l", "leader:p"]));
-    // Only the arrowed leaders have a head, and a leader is not offered as a connection to select.
+    // Only the arrowed leaders have a head, and a leader is not offered as a connection.
     const heads = (id: string) => canvasElement.querySelector(`[data-id="leader:${id}"] .react-flow__edge-path`)?.getAttribute("marker-end");
     expect(heads("n")).toBeTruthy();
     expect(heads("l")).toBeFalsy();
@@ -1497,5 +1497,220 @@ export const DoubleClickingASegmentHandleOpensTheLine: Story = {
     await userEvent.dblClick(handle);
     await waitFor(() => expect(args.onEdgeOpen).toHaveBeenCalledWith("e1"));
     expect(args.onEdgeOpen).toHaveBeenCalledTimes(1);
+  },
+};
+
+const DRAW_NODES: GraphCanvasNode[] = [
+  { id: "note", label: "Check with ops", x: 0, y: 200, width: 160, height: 60, tone: "warning" },
+  { id: "a", label: "Alpha", x: 0, y: 0 },
+  { id: "b", label: "Bravo", x: 400, y: 0 },
+];
+
+/** The centre of an element on the screen. */
+const centreOf = (el: Element) => {
+  const r = el.getBoundingClientRect();
+  return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+};
+
+/** Presses a handle of `node`, moves to `to` and releases there. */
+async function drawFrom(root: HTMLElement, node: HTMLElement, point: string, to: { clientX: number; clientY: number }, target?: Element) {
+  const handle = handleOf(node, point);
+  const origin = centreOf(handle);
+  const pane = root.querySelector(".react-flow__pane") as HTMLElement;
+  await userEvent.pointer([
+    { keys: "[MouseLeft>]", target: handle, coords: origin },
+    { target: pane, coords: { clientX: (origin.clientX + to.clientX) / 2, clientY: (origin.clientY + to.clientY) / 2 } },
+    { target: target ?? pane, coords: to },
+    { keys: "[/MouseLeft]", target: target ?? pane, coords: to },
+  ]);
+}
+
+/** A leader line is selectable and reports itself as a leader, under the id the consumer gave it, not as a connection. */
+export const ALeaderIsSelectableAndReportsItselfAsALeader: Story = {
+  args: { onSelect: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Selectable leaders" showViewToggle={false} onSelect={args.onSelect}
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 80, y: 100 } }]}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    const line = await waitFor(() => {
+      const found = canvasElement.querySelector('.react-flow__edge[data-id="leader:p"]') as HTMLElement | null;
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(line.getAttribute("aria-label")).toBe("Leader line from Check with ops");
+    await userEvent.click(line.querySelector(".react-flow__edge-interaction") as Element);
+    await waitFor(() => expect(args.onSelect).toHaveBeenCalledWith({ kind: "leader", id: "p" }));
+  },
+};
+
+/** A selected leader is drawn in the accent, and so is each leader of the selected node. */
+export const ASelectedLeaderAndTheLeadersOfASelectedNoteAreHighlighted: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Highlighted" showViewToggle={false} selected={{ kind: "leader", id: "p" }}
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 80, y: 100 } }, { id: "q", from: "note", to: { kind: "point", x: 20, y: 100 } }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    await waitFor(() => expect(canvasElement.querySelector('.react-flow__edge[data-id="leader:p"]')?.classList.contains("selected")).toBe(true));
+    expect(canvasElement.querySelector('.react-flow__edge[data-id="leader:q"]')?.classList.contains("selected")).toBe(false);
+  },
+};
+
+/** Each end of a leader is plain, an arrowhead or a dot; the end defaults to an arrowhead and the start to plain. */
+export const ALeaderDrawsAnArrowheadOrADotAtEitherEnd: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Ends" showViewToggle={false}
+      leaders={[
+        { id: "default", from: "note", to: { kind: "point", x: 80, y: 100 } },
+        { id: "dots", from: "note", to: { kind: "point", x: 20, y: 100 }, startEnd: "dot", endEnd: "dot" },
+        { id: "plain", from: "note", to: { kind: "point", x: 140, y: 100 }, endEnd: "none" },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    const marks = (id: string) => {
+      const path = canvasElement.querySelector(`[data-id="leader:${id}"] .react-flow__edge-path`);
+      return { start: path?.getAttribute("marker-start") ?? null, end: path?.getAttribute("marker-end") ?? null };
+    };
+    await waitFor(() => expect(marks("default").end).toBeTruthy());
+    expect(marks("default").start).toBeNull();
+    expect(marks("dots").start).toContain("graph-dot-");
+    expect(marks("dots").end).toContain("graph-dot-");
+    expect(marks("plain")).toEqual({ start: null, end: null });
+    // The dot is defined once, as a circle, and the markers point at it.
+    const id = /#([^')]+)/.exec(marks("dots").start ?? "")?.[1] ?? "";
+    expect(canvasElement.querySelector(`marker[id="${id}"] circle`)).not.toBeNull();
+  },
+};
+
+/** A leader with vertices is drawn through them; on the selected leader the vertex and segment handles are offered and report the whole list. */
+export const ALeaderWithVerticesIsDrawnThroughThemAndShowsHandlesWhenSelected: Story = {
+  args: { onLeaderPointsChange: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Leader vertices" showViewToggle={false} selected={{ kind: "leader", id: "p" }}
+      onLeaderPointsChange={args.onLeaderPointsChange}
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 300, y: 100 }, points: [{ x: 200, y: 150 }], fromPoint: "right" }]}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-waypoint").length).toBe(1));
+    expect(canvasElement.querySelectorAll(".graph-segment-handle").length).toBe(2);
+    const d = canvasElement.querySelector('[data-id="leader:p"] .react-flow__edge-path')?.getAttribute("d") ?? "";
+    expect(d).toMatch(/ 200 150 /);
+    // Pressing Delete on the vertex removes it: the consumer is told the new, empty list.
+    const vertex = canvasElement.querySelector(".graph-waypoint") as HTMLElement;
+    vertex.focus();
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => expect(args.onLeaderPointsChange).toHaveBeenCalledWith("p", []));
+  },
+};
+
+/** Without `onLeaderPointsChange` a selected leader offers no vertex handles. */
+export const ALeaderOffersNoVertexHandlesUnlessTheConsumerKeepsThem: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="No handles" showViewToggle={false} selected={{ kind: "leader", id: "p" }}
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 300, y: 100 }, points: [{ x: 200, y: 150 }] }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    await waitFor(() => expect(canvasElement.querySelector('[data-id="leader:p"]')).not.toBeNull());
+    expect(canvasElement.querySelectorAll(".graph-waypoint").length).toBe(0);
+  },
+};
+
+/** A line drawn from a note's attach point and released on empty canvas is reported with the point it started from. */
+export const DrawingFromAnAttachPointOntoEmptyCanvasReportsAPosition: Story = {
+  args: { onConnectEmpty: fn(), onConnect: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Draw to canvas" showViewToggle={false} attachPointVisibility="always"
+      onConnect={args.onConnect} onConnectEmpty={args.onConnectEmpty}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const note = await within(canvasElement).findByLabelText("Check with ops, node");
+    await settled(canvasElement);
+    const origin = centreOf(handleOf(note, "right"));
+    await drawFrom(canvasElement, note, "right", { clientX: origin.clientX + 160, clientY: origin.clientY + 20 });
+    await waitFor(() => expect(args.onConnectEmpty).toHaveBeenCalledTimes(1));
+    const [source, to, via] = (args.onConnectEmpty as ReturnType<typeof fn>).mock.calls[0] as [string, { kind: string; x: number; y: number }, { sourcePoint: string }];
+    expect(source).toBe("note");
+    expect(to.kind).toBe("point");
+    expect(Number.isFinite(to.x) && Number.isFinite(to.y)).toBe(true);
+    expect(via).toEqual({ sourcePoint: "right" });
+    expect(args.onConnect).not.toHaveBeenCalled();
+  },
+};
+
+/** A line released on another box's attach point is a connect, with the point it started from. */
+export const DrawingFromAnAttachPointOntoABoxHandleReportsAConnectWithTheStartPoint: Story = {
+  args: { onConnectEmpty: fn(), onConnect: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Draw to box" showViewToggle={false} attachPointVisibility="always"
+      onConnect={args.onConnect} onConnectEmpty={args.onConnectEmpty}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const note = await within(canvasElement).findByLabelText("Check with ops, node");
+    const bravo = await within(canvasElement).findByLabelText("Bravo, node");
+    await settled(canvasElement);
+    const end = handleOf(bravo, "bottom");
+    await drawFrom(canvasElement, note, "top", centreOf(end), end);
+    await waitFor(() => expect(args.onConnect).toHaveBeenCalledWith("note", "b", { sourcePoint: "top" }));
+    expect(args.onConnectEmpty).not.toHaveBeenCalled();
+  },
+};
+
+/** A line released on a drawn line is reported as ending on that line, by its id; a leader is never offered as that target. */
+export const DrawingFromAnAttachPointOntoALineReportsTheLine: Story = {
+  args: { onConnectEmpty: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Draw to line" showViewToggle={false}
+      attachPointVisibility="always" onConnect={() => undefined} onConnectEmpty={args.onConnectEmpty}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const note = await within(canvasElement).findByLabelText("Check with ops, node");
+    await settled(canvasElement);
+    const path = await waitFor(() => {
+      const found = canvasElement.querySelector('.react-flow__edge[data-id="e1"] .react-flow__edge-interaction') as Element | null;
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    await drawFrom(canvasElement, note, "right", centreOf(path), path);
+    await waitFor(() => expect(args.onConnectEmpty).toHaveBeenCalledWith("note", { kind: "edge", id: "e1" }, { sourcePoint: "right" }));
+  },
+};
+
+/** Read-only: no line can be drawn from a note, so nothing is reported. */
+export const ReadOnlyCanvasDrawsNoLeaders: Story = {
+  args: { onConnectEmpty: fn() },
+  render: (args) => (
+    <GraphCanvas nodes={DRAW_NODES} edges={[]} ariaLabel="Read-only draw" showViewToggle={false} readOnly onConnectEmpty={args.onConnectEmpty} />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const note = await within(canvasElement).findByLabelText("Check with ops, node");
+    await settled(canvasElement);
+    const origin = centreOf(note);
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: note, coords: origin },
+      { target: canvasElement.querySelector(".react-flow__pane") as HTMLElement, coords: { clientX: origin.clientX + 200, clientY: origin.clientY + 100 } },
+      { keys: "[/MouseLeft]", target: canvasElement.querySelector(".react-flow__pane") as HTMLElement, coords: { clientX: origin.clientX + 200, clientY: origin.clientY + 100 } },
+    ]);
+    expect(args.onConnectEmpty).not.toHaveBeenCalled();
   },
 };

@@ -15,7 +15,7 @@ import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
-  DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
+  DiagramLeader, DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
   ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, RecordDiagram, StateMachineFinding, StateMachineModel, StateTransition,
   BaselineComparison,
   BaselineItem,
@@ -158,11 +158,18 @@ export function buildViewEdge(overrides: Partial<DiagramViewEdge> = {}): Diagram
   };
 }
 
-/** An annotation as the view lists it: neutral, 160 x 60 at the origin, with no leader. */
+/** An annotation as the view lists it: neutral, 160 x 60 at the origin, with no leader (`buildLeader` makes one). */
 export function buildNote(overrides: Partial<DiagramNote> = {}): DiagramNote {
   return {
-    id: "nt-1", text: "Check with ops", x: 0, y: -120, width: 160, height: 60, tone: "neutral", leader_kind: "none",
-    leader_element_id: null, leader_connection_id: null, leader_x: null, leader_y: null, leader_arrow: true, ...overrides,
+    id: "nt-1", text: "Check with ops", x: 0, y: -120, width: 160, height: 60, tone: "neutral", leaders: [], ...overrides,
+  };
+}
+
+/** A leader line as the view lists it: straight, from the nearest point of its note to a spot, with an arrowhead at the end. */
+export function buildLeader(overrides: Partial<DiagramLeader> = {}): DiagramLeader {
+  return {
+    id: "ld-1", kind: "point", element_id: null, connection_id: null, x: 300, y: -100, start_point: null, points: [], smooth: false,
+    start_style: "none", end_style: "arrow", ...overrides,
   };
 }
 

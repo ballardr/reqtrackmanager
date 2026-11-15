@@ -31,6 +31,7 @@ from app.modules.architecture.enums import (
     FindingSeverity,
     FolderKind,
     LeaderKind,
+    LineEnd,
     LineStyle,
     NoteTone,
     PortDirection,
@@ -549,48 +550,6 @@ class PlacementIn(BaseModel):
     collapsed: bool = False
 
 
-class NoteIn(BaseModel):
-    """An annotation on a diagram: plain text in a block with a tone and an optional leader line (`id` keeps an existing
-    note; none creates one).
-
-    `leader_kind` says what the leader points at and exactly the matching target is given: `leader_element_id` for
-    `element`, `leader_connection_id` for `connection`, `leader_x` and `leader_y` together for `point`; none for `none`.
-    """
-
-    id: UUID | None = None
-    text: str = Field(default="", max_length=2000)
-    x: Coordinate = 0.0
-    y: Coordinate = 0.0
-    width: Extent = 160.0
-    height: Extent = 60.0
-    tone: NoteTone = NoteTone.NEUTRAL
-    leader_kind: LeaderKind = LeaderKind.NONE
-    leader_element_id: UUID | None = None
-    leader_connection_id: UUID | None = None
-    leader_x: Coordinate | None = None
-    leader_y: Coordinate | None = None
-    leader_arrow: bool = True
-
-    @model_validator(mode="after")
-    def _leader_matches_its_kind(self) -> NoteIn:
-        """Rejects a leader whose target does not match its kind (a missing target, or a second one)."""
-        given = {
-            LeaderKind.ELEMENT: self.leader_element_id is not None,
-            LeaderKind.CONNECTION: self.leader_connection_id is not None,
-            LeaderKind.POINT: self.leader_x is not None or self.leader_y is not None,
-        }
-        for kind, present in given.items():
-            if present and self.leader_kind != kind:
-                raise ValueError("A leader names only the target of its own kind.")
-        if self.leader_kind == LeaderKind.ELEMENT and self.leader_element_id is None:
-            raise ValueError("A leader to an element names the element.")
-        if self.leader_kind == LeaderKind.CONNECTION and self.leader_connection_id is None:
-            raise ValueError("A leader to a connection names the connection.")
-        if self.leader_kind == LeaderKind.POINT and (self.leader_x is None or self.leader_y is None):
-            raise ValueError("A leader to a point gives both coordinates.")
-        return self
-
-
 class WaypointIn(BaseModel):
     """A vertex of a drawn line, in canvas units (absolute, whatever box it passes)."""
 
@@ -600,6 +559,82 @@ class WaypointIn(BaseModel):
 
 #: The vertices of a line, in order from its source to its target (at most `diagram_line_path.MAX_WAYPOINTS`).
 Waypoints = Annotated[list[WaypointIn], Field(max_length=MAX_WAYPOINTS)]
+
+#: The most leader lines one note may have.
+MAX_NOTE_LEADERS = 10
+
+
+class LeaderIn(BaseModel):
+    """A line from a note to what it describes (`id` keeps an existing leader of the note; none creates one).
+
+    `kind` says what the line ends at and exactly the matching target is given: `element_id` for `element`,
+    `connection_id` for `connection`, `x` and `y` together for `point`. `start_point` is the attach point of the note's block
+    it leaves from (none: the nearest); `points` are its vertices in order from the note, `smooth` curves through them,
+    and the two styles draw an arrowhead or a dot at an end.
+    """
+
+    id: UUID | None = None
+    kind: LeaderKind
+    element_id: UUID | None = None
+    connection_id: UUID | None = None
+    x: Coordinate | None = None
+    y: Coordinate | None = None
+    start_point: AttachPoint | None = None
+    points: Waypoints = Field(default_factory=list)
+    smooth: bool = False
+    start_style: LineEnd = LineEnd.NONE
+    end_style: LineEnd = LineEnd.ARROW
+
+    @model_validator(mode="after")
+    def _target_matches_its_kind(self) -> LeaderIn:
+        """Rejects a leader whose target does not match its kind (a missing target, or a second one)."""
+        if self.kind == LeaderKind.NONE:
+            raise ValueError("A leader points at an element, a connection or a point.")
+        given = {
+            LeaderKind.ELEMENT: self.element_id is not None,
+            LeaderKind.CONNECTION: self.connection_id is not None,
+            LeaderKind.POINT: self.x is not None or self.y is not None,
+        }
+        for kind, present in given.items():
+            if present and self.kind != kind:
+                raise ValueError("A leader names only the target of its own kind.")
+        if self.kind == LeaderKind.ELEMENT and self.element_id is None:
+            raise ValueError("A leader to an element names the element.")
+        if self.kind == LeaderKind.CONNECTION and self.connection_id is None:
+            raise ValueError("A leader to a connection names the connection.")
+        if self.kind == LeaderKind.POINT and (self.x is None or self.y is None):
+            raise ValueError("A leader to a point gives both coordinates.")
+        return self
+
+
+class LeaderOut(BaseModel):
+    """A stored leader, as `LeaderIn` describes it (it always has an `id`)."""
+
+    id: UUID
+    kind: LeaderKind
+    element_id: UUID | None
+    connection_id: UUID | None
+    x: float | None
+    y: float | None
+    start_point: AttachPoint | None
+    points: list[WaypointIn]
+    smooth: bool
+    start_style: LineEnd
+    end_style: LineEnd
+
+
+class NoteIn(BaseModel):
+    """An annotation on a diagram: plain text in a block with a tone and its leader lines (`id` keeps an existing note;
+    none creates one)."""
+
+    id: UUID | None = None
+    text: str = Field(default="", max_length=2000)
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 60.0
+    tone: NoteTone = NoteTone.NEUTRAL
+    leaders: list[LeaderIn] = Field(default_factory=list, max_length=MAX_NOTE_LEADERS)
 
 
 class AnchorIn(BaseModel):
@@ -689,7 +724,7 @@ class ToggleOut(BaseModel):
 
 
 class NoteOut(BaseModel):
-    """An annotation on a diagram. A leader whose target was deleted is given as `none`."""
+    """An annotation on a diagram with its leaders."""
 
     id: UUID
     text: str
@@ -698,12 +733,7 @@ class NoteOut(BaseModel):
     width: float
     height: float
     tone: NoteTone
-    leader_kind: LeaderKind
-    leader_element_id: UUID | None
-    leader_connection_id: UUID | None
-    leader_x: float | None
-    leader_y: float | None
-    leader_arrow: bool
+    leaders: list[LeaderOut]
 
 
 class ViewPort(BaseModel):

@@ -13,7 +13,8 @@
  *   another handle of the same box is reported as an anchor change.
  * - Show a box's attach points only near the pointer, on the selected box and on a box with focus (`attachPointVisibility`);
  *   the nearness is worked out from the pointer position and set as an attribute on the box's element, never as React state.
- * - Draw each leader (an annotation's pointer) as a thin line from its node to the target: a node (nearest attach points), the
+ * - Draw each leader (an annotation's pointer) as a selectable line (the routed edge: vertices, a curve, an arrowhead or a dot at either
+ *   end) from its node to the target: a node (the chosen or nearest attach points), the
  *   middle of a line or a free position (a small end handle the person can drag; dropping a dragged end on a node names that node).
  * - In comment mode report a click (empty canvas, a node or a line) instead of selecting or editing, and draw the consumer's
  *   pins in a layer above the canvas: each at one screen size, anchored to a node's corner or a line's middle, draggable
@@ -72,11 +73,11 @@ import { useLatest } from "../hooks/useLatest";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import {
-  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphMarkerText, type GraphNodeBadge,
+  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphLineEnd, type GraphMarkerText, type GraphNodeBadge,
   type GraphNodeOutline, type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
 } from "./GraphCanvas";
 import {
-  ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
+  ATTACH_POINTS, SIDE_POINTS, nearestPoint, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
 import { nearBoxIds } from "./graphAttachProximity";
 import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint } from "./graphLinePath";
@@ -495,6 +496,28 @@ function PinLayer({
   );
 }
 
+/**
+ * The marker for one end of a leader: React Flow's own closed arrow, the canvas's dot (defined once in `LeaderMarkerDefs`) or none.
+ * The dot's id is passed as a string, which React Flow uses as it is.
+ */
+function leaderMarker(end: GraphLineEnd, dotId: string): Edge["markerEnd"] {
+  if (end === "arrow") return { type: MarkerType.ArrowClosed };
+  return end === "dot" ? dotId : undefined;
+}
+
+/** The dot marker leaders may end in: a small filled circle in the colour of the line it ends. */
+function LeaderMarkerDefs({ id }: { id: string }) {
+  return (
+    <svg className="graph-marker-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <marker id={id} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <circle cx="5" cy="5" r="4.5" fill="var(--color-text-muted)" style={{ fill: "context-stroke" }} />
+        </marker>
+      </defs>
+    </svg>
+  );
+}
+
 type Moved = Record<string, { x: number; y: number; baseX: number; baseY: number }>;
 type Sized = Record<string, { width: number; height: number; baseWidth: number; baseHeight: number }>;
 
@@ -513,6 +536,7 @@ export function GraphCanvasView({
   onSelect,
   onNodesMove,
   onConnect,
+  onConnectEmpty,
   onEdgeAnchorChange,
   onEdgePointsChange: onEdgePointsChangeProp,
   resizable = false,
@@ -523,6 +547,7 @@ export function GraphCanvasView({
   onNodeOpen,
   onEdgeOpen,
   onLeaderTargetChange,
+  onLeaderPointsChange: onLeaderPointsChangeProp,
   onCanvasClick,
   onBackgroundClick,
   mode = "select",
@@ -539,6 +564,7 @@ export function GraphCanvasView({
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
   const helpId = useId();
+  const dotMarkerId = `graph-dot-${useId().replace(/:/g, "")}`;
   const commenting = mode === "comment" && onCanvasPoint !== undefined;
   const [moved, setMoved] = useState<Moved>({});
   const [sized, setSized] = useState<Sized>({});
@@ -567,6 +593,7 @@ export function GraphCanvasView({
   const snapping = snapGrid !== undefined && snapGrid > 0 && snapApplies(snapOn, invertHeld, gesture);
   const snapRef = useLatest({ size: snapGrid ?? 0, on: snapping });
   const onEdgePointsChange = useLatest(onEdgePointsChangeProp);
+  const onLeaderPointsChange = useLatest(onLeaderPointsChangeProp);
   const onEdgeOpenRef = useLatest(onEdgeOpen);
   const pointsEditable = onEdgePointsChangeProp !== undefined;
   useEffect(() => {
@@ -782,26 +809,38 @@ export function GraphCanvasView({
     });
   }, [edges, boxes, selection, labels, text, readOnly, commenting, onEdgeAnchorChange, pointsEditable, onEdgePointsChange, onEdgeOpenRef, snapRef]);
 
+  /** Tells the consumer a leader's vertices changed, and the grid step a dragged vertex lands on right now (0 for none). */
+  const leaderPointsChanged = useCallback((id: string, next: LinePoint[]) => onLeaderPointsChange.current?.(id, next), [onLeaderPointsChange]);
+  const gridNow = useCallback(() => (snapRef.current.on ? snapRef.current.size : 0), [snapRef]);
+
   /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
   const flowLeaders = useMemo(() => {
     const middles = edgeMiddles(boxes, edges);
-    const ends: Node<{ free: boolean }, "leaderEnd">[] = [];
-    const lines: Edge[] = [];
-    for (const l of leaders) {
+    const built = leaders.flatMap<{ line: Edge; end?: Node<{ free: boolean }, "leaderEnd"> }>((l) => {
       const start = boxes.get(l.from);
-      if (!start) continue;
-      const marker = l.arrow === false ? undefined : { type: MarkerType.ArrowClosed };
+      if (!start) return [];
+      const via = l.points ?? [];
+      const editable = !readOnly && !commenting && onLeaderPointsChangeProp !== undefined;
       const common = {
-        id: LEADER_EDGE_PREFIX + l.id, source: l.from, type: "straight", className: "graph-leader", selectable: false, focusable: false,
-        selected: selection?.kind === "node" && selection.id === l.from, markerEnd: marker,
+        id: LEADER_EDGE_PREFIX + l.id, source: l.from, type: "routed",
+        className: selection?.kind === "node" && selection.id === l.from ? "graph-leader graph-leader-of-selected" : "graph-leader",
+        selected: selection?.kind === "leader" && selection.id === l.id,
+        ariaLabel: text.leaderAria(labels.get(l.from) ?? l.from, ""),
+        markerStart: leaderMarker(l.startEnd ?? "none", dotMarkerId),
+        markerEnd: leaderMarker(l.endEnd ?? "arrow", dotMarkerId),
         reconnectable: !readOnly && onLeaderTargetChange !== undefined ? ("target" as const) : false,
+        data: {
+          points: via, smooth: l.smooth === true, editable,
+          onChange: (next: LinePoint[]) => leaderPointsChanged(l.id, next),
+          grid: gridNow,
+          open: () => undefined,
+        } satisfies RoutedEdgeData,
       };
       if (l.to.kind === "node") {
         const target = boxes.get(l.to.id);
-        if (!target || l.to.id === l.from) continue;
-        const [sourceHandle, targetHandle] = lineAttachPoints(start, target);
-        lines.push({ ...common, target: l.to.id, sourceHandle, targetHandle });
-        continue;
+        if (!target || l.to.id === l.from) return [];
+        const [sourceHandle, targetHandle] = routeAttachPoints(start, target, l.fromPoint, undefined, via);
+        return [{ line: { ...common, target: l.to.id, sourceHandle, targetHandle } }];
       }
       let at: { x: number; y: number } | undefined;
       if (l.to.kind === "edge") at = middles.get(l.to.id);
@@ -809,17 +848,18 @@ export function GraphCanvasView({
         const o = endMoved[l.id];
         at = o && o.baseX === l.to.x && o.baseY === l.to.y ? { x: o.x + LEADER_END_SIZE / 2, y: o.y + LEADER_END_SIZE / 2 } : { x: l.to.x, y: l.to.y };
       }
-      if (!at) continue;
+      if (!at) return [];
       const free = l.to.kind === "point";
-      ends.push({
+      const end: Node<{ free: boolean }, "leaderEnd"> = {
         id: LEADER_END_PREFIX + l.id, type: "leaderEnd", position: { x: at.x - LEADER_END_SIZE / 2, y: at.y - LEADER_END_SIZE / 2 },
         width: LEADER_END_SIZE, height: LEADER_END_SIZE, data: { free }, selectable: false, focusable: false, connectable: false,
         draggable: free && !readOnly && onLeaderTargetChange !== undefined,
-      });
-      lines.push({ ...common, target: LEADER_END_PREFIX + l.id, sourceHandle: nearestPoint(start, at), targetHandle: LEADER_END_HANDLE });
-    }
-    return { ends, lines };
-  }, [leaders, boxes, edges, endMoved, selection, readOnly, onLeaderTargetChange]);
+      };
+      const sourceHandle = l.fromPoint ?? nearestPoint(start, via[0] ?? at);
+      return [{ end, line: { ...common, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE } }];
+    });
+    return { ends: built.flatMap((b) => (b.end ? [b.end] : [])), lines: built.map((b) => b.line) };
+  }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, dotMarkerId, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow]);
 
   /** Where each pin is drawn: on its node's top-right corner or its line's middle, else at its own place. */
   const pinPlaces = useMemo<PinPlace[]>(() => {
@@ -869,10 +909,14 @@ export function GraphCanvasView({
       let changed = false;
       for (const c of changes) {
         if (c.type !== "select" || c.id === undefined) continue;
+        // A leader is an edge to React Flow; the consumer sees it as its own kind, under its own id.
+        const leader = kind === "edge" && c.id.startsWith(LEADER_EDGE_PREFIX);
+        const which = leader ? "leader" : kind;
+        const id = leader ? c.id.slice(LEADER_EDGE_PREFIX.length) : c.id;
         if (c.selected) {
-          next = { kind, id: c.id };
+          next = { kind: which, id };
           changed = true;
-        } else if (next?.kind === kind && next.id === c.id) {
+        } else if (next?.kind === which && next.id === id) {
           next = null;
           changed = true;
         }
@@ -987,9 +1031,42 @@ export function GraphCanvasView({
 
   const handleConnect = useCallback(
     (c: Connection) => {
-      if (c.source && c.target) onConnect?.(c.source, c.target);
+      if (c.source && c.target) onConnect?.(c.source, c.target, { sourcePoint: (c.sourceHandle as AttachPoint | null) ?? undefined });
     },
     [onConnect],
+  );
+
+  /**
+   * A line drawn from a node and released where no handle took it: on a line, on a node's body or on empty canvas. The consumer is
+   * told what it landed on (a leader's end, for an annotation); a connection started from a box ignores it.
+   */
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (state.isValid || !flow.current || !onConnectEmpty || !state.fromNode || !state.fromHandle) return;
+      const via = { sourcePoint: (state.fromHandle.id as AttachPoint | null) ?? undefined };
+      const over = state.toNode?.id;
+      if (over && over !== state.fromNode.id) {
+        onConnectEmpty(state.fromNode.id, { kind: "node", id: over }, via);
+        return;
+      }
+      const point = "changedTouches" in event ? event.changedTouches[0] : event;
+      const line = document.elementsFromPoint(point.clientX, point.clientY)
+        .map((el) => el.closest(".react-flow__edge"))
+        .find((el): el is Element => el !== null && !(el.getAttribute("data-id") ?? "").startsWith(LEADER_EDGE_PREFIX));
+      const lineId = line?.getAttribute("data-id");
+      if (lineId) {
+        onConnectEmpty(state.fromNode.id, { kind: "edge", id: lineId }, via);
+        return;
+      }
+      const at = flow.current.screenToFlowPosition({ x: point.clientX, y: point.clientY });
+      const snap = snapRef.current;
+      onConnectEmpty(
+        state.fromNode.id,
+        { kind: "point", x: snap.on ? snapCoordinate(at.x, snap.size) : Math.round(at.x), y: snap.on ? snapCoordinate(at.y, snap.size) : Math.round(at.y) },
+        via,
+      );
+    },
+    [onConnectEmpty, snapRef],
   );
 
   /**
@@ -1144,6 +1221,7 @@ export function GraphCanvasView({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
+        onConnectEnd={handleConnectEnd}
         onReconnect={handleReconnect}
         onReconnectEnd={handleReconnectEnd}
         onPaneClick={(event) => {
@@ -1187,6 +1265,7 @@ export function GraphCanvasView({
       >
         {snapGrid === undefined ? <Background /> : snapping && <Background gap={snapGrid} />}
         <Controls showInteractive={false} />
+        <LeaderMarkerDefs id={dotMarkerId} />
         {renderPin && pinPlaces.length > 0 && (
           <PinLayer
             places={pinPlaces} renderPin={renderPin}

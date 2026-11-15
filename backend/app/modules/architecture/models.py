@@ -16,7 +16,8 @@ The two vocabularies every architecture record is typed by, and the records:
 - `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
   elements and who it is shared with (a project, optionally with its descendants, or a group).
 - `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s,
-  `ArchitectureDiagramAnchor`s, `ArchitectureDiagramBoundary`s (the outer connections drawn inside a scope) and
+  `ArchitectureNoteLeader`s (the lines from a note to what it describes), `ArchitectureDiagramAnchor`s,
+  `ArchitectureDiagramBoundary`s (the outer connections drawn inside a scope) and
   `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a saved view over the project's
   model; it holds no truth of its own.
 - `ArchitectureStateMachineDiagram`, `ArchitectureState` and `ArchitectureTransition` — the behaviour of one element as
@@ -613,8 +614,8 @@ class ArchitectureDiagramPlacement(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
-    """An annotation on a diagram: a plain-text block with a tone and an optional leader line to what it describes. It is
-    the only shape with no element behind it. Never rendered as markup.
+    """An annotation on a diagram: a plain-text block with a tone. It is the only shape with no element behind it. Never
+    rendered as markup. What it points at is its leaders (`ArchitectureNoteLeader`), none or several.
 
     Attributes:
         diagram_id: The diagram; deleting it removes its notes.
@@ -622,22 +623,9 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
         x / y / width / height: The block in diagram units.
         sort_order: Order among the diagram's notes.
         tone: A `NoteTone` value.
-        leader_kind: A `LeaderKind` value. `leader_element_id` is set only for `element`, `leader_connection_id` only for
-            `connection` and `leader_x`/`leader_y` (both) only for `point`. Deleting the target element or connection
-            empties its column and the leader is read as none, so the note stays and nothing dangles.
-        leader_arrow: Whether the leader ends in an arrowhead at its target.
     """
 
     __tablename__ = "architecture_diagram_notes"
-    __table_args__ = (
-        CheckConstraint("leader_kind IN ('none', 'element', 'connection', 'point')", name="ck_architecture_diagram_notes_leader_kind"),
-        CheckConstraint(
-            "(leader_element_id IS NULL OR leader_kind = 'element') AND (leader_connection_id IS NULL OR leader_kind = 'connection')"
-            " AND ((leader_x IS NULL AND leader_y IS NULL) OR leader_kind = 'point')"
-            " AND (leader_kind <> 'point' OR (leader_x IS NOT NULL AND leader_y IS NOT NULL))",
-            name="ck_architecture_diagram_notes_leader_target",
-        ),
-    )
 
     diagram_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
@@ -649,16 +637,55 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     height: Mapped[float] = mapped_column(Float, default=60.0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     tone: Mapped[str] = mapped_column(String(16), default="neutral", server_default="neutral")
-    leader_kind: Mapped[str] = mapped_column(String(16), default="none", server_default="none")
-    leader_element_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True,
+
+
+class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
+    """A line drawn from an annotation note to what it describes: a placed element's box, a connection's drawn line or a free
+    point. A note has none or several. Deleting the target element or connection deletes its leader (the note stays).
+
+    Attributes:
+        note_id: The note; deleting it removes its leaders.
+        sort_order: Order among the note's leaders.
+        kind: A `LeaderKind` value (never `none`). `element_id` is set only for `element`, `connection_id` only for
+            `connection` and `x`/`y` (both) only for `point`.
+        start_point: An `AttachPoint` value of the note's block the line leaves from, or `None` for the nearest point.
+        points: The line's vertices as `{x, y}` in canvas units, in order from the note to its end.
+        smooth: True to draw a curve through the vertices, false for straight segments.
+        start_style / end_style: A `LineEnd` value for each end of the line.
+    """
+
+    __tablename__ = "architecture_note_leaders"
+    __table_args__ = (
+        CheckConstraint("kind IN ('element', 'connection', 'point')", name="ck_architecture_note_leaders_kind"),
+        CheckConstraint(
+            "(kind = 'element') = (element_id IS NOT NULL) AND (kind = 'connection') = (connection_id IS NOT NULL)"
+            " AND (kind = 'point') = (x IS NOT NULL AND y IS NOT NULL) AND (kind = 'point' OR (x IS NULL AND y IS NULL))",
+            name="ck_architecture_note_leaders_target",
+        ),
+        CheckConstraint(
+            "start_style IN ('none', 'arrow', 'dot') AND end_style IN ('none', 'arrow', 'dot')",
+            name="ck_architecture_note_leaders_style",
+        ),
     )
-    leader_connection_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="SET NULL"), nullable=True, index=True,
+
+    note_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagram_notes.id", ondelete="CASCADE"), index=True
     )
-    leader_x: Mapped[float | None] = mapped_column(Float, nullable=True)
-    leader_y: Mapped[float | None] = mapped_column(Float, nullable=True)
-    leader_arrow: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(16))
+    element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    start_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
+    smooth: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    start_style: Mapped[str] = mapped_column(String(8), default="none", server_default="none")
+    end_style: Mapped[str] = mapped_column(String(8), default="arrow", server_default="arrow")
 
 
 class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):

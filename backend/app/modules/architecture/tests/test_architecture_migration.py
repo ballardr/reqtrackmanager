@@ -294,7 +294,7 @@ def test_the_note_leader_migration_adds_the_columns_with_neutral_defaults_and_re
         f"{project_base(project['id'])}/diagrams/{diagram['id']}/layout", headers=auth_headers(token),
         json={
             "version": diagram["version"], "placements": [{"element_id": a["id"]}, {"element_id": b["id"], "x": 300}],
-            "notes": [{"text": "Kept", "tone": "danger", "leader_kind": "element", "leader_element_id": a["id"]}],
+            "notes": [{"text": "Kept", "tone": "danger", "leaders": [{"kind": "element", "element_id": a["id"]}]}],
         },
     )
     assert saved.status_code == 200, saved.text
@@ -309,5 +309,64 @@ def test_the_note_leader_migration_adds_the_columns_with_neutral_defaults_and_re
     finally:
         command.upgrade(build_alembic_config(), "head")
     with engine.connect() as conn:
-        row = conn.execute(text("SELECT tone, leader_kind, leader_arrow FROM architecture_diagram_notes WHERE text = 'Kept'")).one()
-    assert tuple(row) == ("neutral", "none", True)
+        tone = conn.execute(text("SELECT tone FROM architecture_diagram_notes WHERE text = 'Kept'")).scalar_one()
+        leaders = conn.execute(text(
+            "SELECT count(*) FROM architecture_note_leaders l JOIN architecture_diagram_notes n ON n.id = l.note_id WHERE n.text = 'Kept'"
+        )).scalar_one()
+    assert (tone, leaders) == ("neutral", 0)
+
+
+def test_the_leader_lines_migration_moves_each_leader_into_a_row_and_back(client, admin_token):
+    """Downgrading 0190 puts each note's first leader back into the note's columns (an element, a connection, a point and none
+    each keep their meaning, the arrow flag follows the end style); upgrading moves them into rows again with a start style of
+    none, no start point, no vertices and an end style of arrow or none."""
+    from app.modules.architecture.tests._helpers import make_connection, make_diagram, make_element, place_all, project_base, setup
+    from tests.conftest import auth_headers
+
+    _org, project, token = setup(client, admin_token, "Arch leader rows migration")
+    p = project["id"]
+    a, b = make_element(client, token, p, "Alpha"), make_element(client, token, p, "Bravo")
+    link = make_connection(client, token, p, a["id"], b["id"])
+    diagram = place_all(client, token, p, make_diagram(client, token, p, "Flow"), a["id"], b["id"])
+    notes = [
+        {"text": "Box", "leaders": [{"kind": "element", "element_id": a["id"], "end_style": "none"}, {"kind": "point", "x": 9, "y": 9}]},
+        {"text": "Line", "leaders": [{"kind": "connection", "connection_id": link["id"], "points": [{"x": 1, "y": 1}], "smooth": True}]},
+        {"text": "Spot", "leaders": [{"kind": "point", "x": 5.5, "y": -6, "start_point": "top", "start_style": "dot"}]},
+        {"text": "Plain"},
+    ]
+    saved = client.put(
+        f"{project_base(p)}/diagrams/{diagram['id']}/layout", headers=auth_headers(token),
+        json={"version": diagram["version"], "placements": [{"element_id": a["id"]}, {"element_id": b["id"], "x": 300}], "notes": notes},
+    )
+    assert saved.status_code == 200, saved.text
+    command.downgrade(build_alembic_config(), "0189")
+    try:
+        with engine.connect() as conn:
+            tables = {r[0] for r in conn.execute(text("SELECT table_name FROM information_schema.tables"))}
+            assert "architecture_note_leaders" not in tables
+            rows = {r[0]: tuple(r[1:]) for r in conn.execute(text(
+                "SELECT text, leader_kind, leader_element_id::text, leader_connection_id::text, leader_x, leader_y, leader_arrow "
+                "FROM architecture_diagram_notes WHERE text IN ('Box', 'Line', 'Spot', 'Plain')"
+            ))}
+            assert rows["Box"] == ("element", a["id"], None, None, None, False)
+            assert rows["Line"] == ("connection", None, link["id"], None, None, True)
+            assert rows["Spot"] == ("point", None, None, 5.5, -6.0, True)
+            assert rows["Plain"] == ("none", None, None, None, None, True)
+            conn.execute(text("UPDATE architecture_diagram_notes SET leader_arrow = false WHERE text = 'Spot'"))
+            conn.commit()
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        moved = {r[0]: tuple(r[1:]) for r in conn.execute(text(
+            "SELECT n.text, l.kind, l.element_id::text, l.connection_id::text, l.x, l.y, l.start_point, l.points::text, l.smooth, "
+            "l.start_style, l.end_style FROM architecture_note_leaders l JOIN architecture_diagram_notes n ON n.id = l.note_id "
+            "WHERE n.text IN ('Box', 'Line', 'Spot', 'Plain')"
+        ))}
+        columns = {r[0] for r in conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_diagram_notes'"
+        ))}
+    assert set(moved) == {"Box", "Line", "Spot"}  # a note with no leader has no row
+    assert moved["Box"] == ("element", a["id"], None, None, None, None, "[]", False, "none", "none")
+    assert moved["Line"] == ("connection", None, link["id"], None, None, None, "[]", False, "none", "arrow")
+    assert moved["Spot"] == ("point", None, None, 5.5, -6.0, None, "[]", False, "none", "none")
+    assert columns.isdisjoint({"leader_kind", "leader_element_id", "leader_connection_id", "leader_x", "leader_y", "leader_arrow"})

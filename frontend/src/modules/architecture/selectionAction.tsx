@@ -6,7 +6,7 @@
  * reaches both.
  */
 import {
-  CircleMinus, ExternalLink, Layers, MessageSquarePlus, Pencil, Trash2, Workflow, X,
+  CircleMinus, CornerUpLeft, ExternalLink, Layers, MessageSquarePlus, Pencil, Trash2, Workflow, X,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -46,6 +46,8 @@ export const selectionAction = {
   remove: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <CircleMinus /> }),
   /** Deletes the selection (the caller confirms). */
   delete: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Trash2 />, danger: true }),
+  /** Selects the record that owns the selection (a leader's note). */
+  owner: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <CornerUpLeft /> }),
   /** Removes a note. */
   clear: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <X />, danger: true }),
 };

@@ -154,6 +154,7 @@ def build_view(
     state = state or ToggleState()
     placements = diagrams.placements_of(db, diagram.id)
     notes = diagrams.notes_of(db, diagram.id)
+    leaders = diagrams.leaders_of(db, [n.id for n in notes])
     toggles = diagrams.toggles_of(db, diagram.id)
     members = diagrams.toggle_members(db, [t.id for t in toggles])
 
@@ -224,7 +225,7 @@ def build_view(
             db, viewer, diagram, connections, connection_types, elements, readable, resolution,
             {b[0].id for b in boundary_boxes},
         ),
-        notes=[diagrams.note_out(n) for n in notes],
+        notes=[diagrams.note_out(n, leaders.get(n.id, [])) for n in notes],
         anchors=[
             AnchorOut(
                 source_element_id=a.source_element_id, target_element_id=a.target_element_id,

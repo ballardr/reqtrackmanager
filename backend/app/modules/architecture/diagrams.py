@@ -40,6 +40,7 @@ Dependencies: `records` (the shared rule errors, version lock and audit helpers)
 
 from __future__ import annotations
 
+import enum
 import math
 import uuid
 from collections.abc import Iterable, Sequence
@@ -51,7 +52,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
-from app.modules.architecture.enums import AttachPoint, LeaderKind, NoteTone, RecordStatus
+from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteTone, RecordStatus
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -62,6 +63,7 @@ from app.modules.architecture.models import (
     ArchitectureDiagramToggle,
     ArchitectureDiagramToggleMember,
     ArchitectureElement,
+    ArchitectureNoteLeader,
 )
 from app.modules.architecture.records import (
     ElementOwner,
@@ -80,11 +82,14 @@ from app.modules.architecture.schemas import (
     DiagramOut,
     DiagramUpdate,
     LayoutSave,
+    LeaderIn,
+    LeaderOut,
     NoteIn,
     NoteOut,
     PlacementIn,
     ToggleIn,
     TogglesSave,
+    WaypointIn,
 )
 from app.modules.architecture.service import (
     CONNECTION_TYPES,
@@ -403,95 +408,145 @@ def _sync_anchors(db: Session, diagram_id: uuid.UUID, wanted: Sequence[AnchorIn]
     return changed
 
 
+def leaders_of(db: Session, note_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, list[ArchitectureNoteLeader]]:
+    """The leaders of the given notes in one read, by note, each list in order."""
+    ids = list(note_ids)
+    found: dict[uuid.UUID, list[ArchitectureNoteLeader]] = {}
+    if not ids:
+        return found
+    for row in db.scalars(
+        select(ArchitectureNoteLeader).where(ArchitectureNoteLeader.note_id.in_(ids))
+        .order_by(ArchitectureNoteLeader.sort_order, ArchitectureNoteLeader.id)
+    ):
+        found.setdefault(row.note_id, []).append(row)
+    return found
+
+
 def _note_values(note: ArchitectureDiagramNote | NoteIn, order: int) -> tuple[Any, ...]:
-    """What makes a note what it is, for comparing a stored note with a submitted one at position `order` (a leader that
-    points nowhere compares as none, whichever way it was written)."""
-    kind = effective_leader_kind(note)
+    """What makes a note what it is (its block and tone), for comparing a stored note with a submitted one at position
+    `order`. Its leaders are compared on their own."""
     return (
         note.text, note.x, note.y, note.width, note.height, order,
-        note.tone.value if isinstance(note.tone, NoteTone) else note.tone, kind.value,
-        note.leader_element_id if kind == LeaderKind.ELEMENT else None,
-        note.leader_connection_id if kind == LeaderKind.CONNECTION else None,
-        note.leader_x if kind == LeaderKind.POINT else None, note.leader_y if kind == LeaderKind.POINT else None,
-        note.leader_arrow if kind != LeaderKind.NONE else True,
+        note.tone.value if isinstance(note.tone, NoteTone) else note.tone,
     )
 
 
-def note_out(note: ArchitectureDiagramNote) -> NoteOut:
-    """A stored note as the view gives it: a leader whose target was deleted reads as none."""
-    kind = effective_leader_kind(note)
+def _points_of(points: Iterable[Any]) -> list[dict[str, float]]:
+    """A line's vertices as stored: `{x, y}` floats, from stored dictionaries or submitted `WaypointIn`s."""
+    return [
+        {"x": float(p["x"]), "y": float(p["y"])} if isinstance(p, dict) else {"x": float(p.x), "y": float(p.y)} for p in points
+    ]
+
+
+def _value(member: Any) -> Any:
+    """The plain value of an enum member (a stored column already is one)."""
+    return member.value if isinstance(member, enum.Enum) else member
+
+
+def _leader_values(leader: ArchitectureNoteLeader | LeaderIn, order: int) -> tuple[Any, ...]:
+    """What makes a leader what it is, for comparing a stored one with a submitted one at position `order`."""
+    return (
+        _value(leader.kind), leader.element_id, leader.connection_id, leader.x, leader.y, _value(leader.start_point),
+        _points_of(leader.points), leader.smooth, _value(leader.start_style), _value(leader.end_style), order,
+    )
+
+
+def leader_out(leader: ArchitectureNoteLeader) -> LeaderOut:
+    """A stored leader as the view gives it."""
+    return LeaderOut(
+        id=leader.id, kind=LeaderKind(leader.kind), element_id=leader.element_id, connection_id=leader.connection_id,
+        x=leader.x, y=leader.y, start_point=AttachPoint(leader.start_point) if leader.start_point else None,
+        points=[WaypointIn(x=p["x"], y=p["y"]) for p in leader.points], smooth=leader.smooth,
+        start_style=LineEnd(leader.start_style), end_style=LineEnd(leader.end_style),
+    )
+
+
+def note_out(note: ArchitectureDiagramNote, leaders: Sequence[ArchitectureNoteLeader] = ()) -> NoteOut:
+    """A stored note with its leaders (read them with `leaders_of`) as the view gives it."""
     return NoteOut(
         id=note.id, text=note.text, x=note.x, y=note.y, width=note.width, height=note.height, tone=NoteTone(note.tone),
-        leader_kind=kind, leader_element_id=note.leader_element_id if kind == LeaderKind.ELEMENT else None,
-        leader_connection_id=note.leader_connection_id if kind == LeaderKind.CONNECTION else None,
-        leader_x=note.leader_x if kind == LeaderKind.POINT else None, leader_y=note.leader_y if kind == LeaderKind.POINT else None,
-        leader_arrow=note.leader_arrow,
+        leaders=[leader_out(row) for row in leaders],
     )
 
 
 def _write_note(row: ArchitectureDiagramNote, note: NoteIn, order: int) -> None:
-    """Copies a submitted note onto its row; the columns of the other leader kinds are emptied, as the table requires."""
-    kind = note.leader_kind
+    """Copies a submitted note's block and tone onto its row."""
     row.text, row.x, row.y, row.width, row.height, row.sort_order = note.text, note.x, note.y, note.width, note.height, order
     row.tone = note.tone.value
-    row.leader_kind = kind.value
-    row.leader_element_id = note.leader_element_id if kind == LeaderKind.ELEMENT else None
-    row.leader_connection_id = note.leader_connection_id if kind == LeaderKind.CONNECTION else None
-    row.leader_x = note.leader_x if kind == LeaderKind.POINT else None
-    row.leader_y = note.leader_y if kind == LeaderKind.POINT else None
-    row.leader_arrow = note.leader_arrow if kind != LeaderKind.NONE else True
 
 
-def effective_leader_kind(note: ArchitectureDiagramNote | NoteIn) -> LeaderKind:
-    """What a note's leader points at, reading a leader whose target was deleted (its column emptied) as none.
-
-    Args:
-        note: A stored or submitted note.
-
-    Returns:
-        The kind to draw.
-    """
-    kind = LeaderKind(note.leader_kind)
-    if kind == LeaderKind.ELEMENT and note.leader_element_id is None:
-        return LeaderKind.NONE
-    if kind == LeaderKind.CONNECTION and note.leader_connection_id is None:
-        return LeaderKind.NONE
-    if kind == LeaderKind.POINT and (note.leader_x is None or note.leader_y is None):
-        return LeaderKind.NONE
-    return kind
+def _write_leader(row: ArchitectureNoteLeader, leader: LeaderIn, order: int) -> None:
+    """Copies a submitted leader onto its row; the columns of the other target kinds are emptied, as the table requires."""
+    kind = leader.kind
+    row.sort_order, row.kind = order, kind.value
+    row.element_id = leader.element_id if kind == LeaderKind.ELEMENT else None
+    row.connection_id = leader.connection_id if kind == LeaderKind.CONNECTION else None
+    row.x = leader.x if kind == LeaderKind.POINT else None
+    row.y = leader.y if kind == LeaderKind.POINT else None
+    row.start_point = leader.start_point.value if leader.start_point else None
+    row.points = _points_of(leader.points)
+    row.smooth = leader.smooth
+    row.start_style, row.end_style = leader.start_style.value, leader.end_style.value
 
 
 def _check_leaders(
-    db: Session, project_id: uuid.UUID, notes: Sequence[NoteIn], stored: dict[uuid.UUID, ArchitectureDiagramNote],
+    db: Session, project_id: uuid.UUID, notes: Sequence[NoteIn], stored: dict[uuid.UUID, list[ArchitectureNoteLeader]],
     placed: set[uuid.UUID],
 ) -> None:
     """Checks what the notes' leaders point at. A new target element must be placed on the diagram and a new target
-    connection must belong to its project, so a leader cannot name another owner's record; a target the note already had
-    is kept as it is (an element taken off the diagram, or retired, leaves the leader hidden, not rejected).
+    connection must belong to its project, so a leader cannot name another owner's record; a target the leader already had
+    is kept as it is (an element taken off the diagram, or retired, leaves the leader hidden, not rejected). A leader id
+    must be one of its own note's, and listed once.
 
     Raises:
-        RuleError: 400 for a leader to an element not on the diagram, a connection of another project, or a point that
-            is not finite.
+        RuleError: 400 for a leader to an element not on the diagram, a connection of another project, or a leader that is
+            not the note's own or is listed twice.
     """
     new_connections: set[uuid.UUID] = set()
     for note in notes:
-        before = stored.get(note.id) if note.id is not None else None
-        if note.leader_kind == LeaderKind.ELEMENT and note.leader_element_id is not None:
-            kept = before is not None and before.leader_element_id == note.leader_element_id
-            if not kept and note.leader_element_id not in placed:
-                raise RuleError("A note can point at an element that is on the diagram.", 400)
-        elif note.leader_kind == LeaderKind.CONNECTION and note.leader_connection_id is not None:
-            if not (before is not None and before.leader_connection_id == note.leader_connection_id):
-                new_connections.add(note.leader_connection_id)
-        elif note.leader_kind == LeaderKind.POINT:
-            if not all(v is not None and math.isfinite(v) for v in (note.leader_x, note.leader_y)):
-                raise RuleError("A note's leader must point at a finite position.", 400)
+        before = {row.id: row for row in stored.get(note.id, [])} if note.id is not None else {}
+        seen: set[uuid.UUID] = set()
+        for leader in note.leaders:
+            old = None
+            if leader.id is not None:
+                old = before.get(leader.id)
+                if old is None or leader.id in seen:
+                    raise RuleError("A leader does not belong to this note, or is listed twice.", 400)
+                seen.add(leader.id)
+            if leader.kind == LeaderKind.ELEMENT and leader.element_id is not None:
+                if not (old is not None and old.element_id == leader.element_id) and leader.element_id not in placed:
+                    raise RuleError("A note can point at an element that is on the diagram.", 400)
+            elif leader.kind == LeaderKind.CONNECTION and leader.connection_id is not None:
+                if not (old is not None and old.connection_id == leader.connection_id):
+                    new_connections.add(leader.connection_id)
     if new_connections:
         own = set(db.scalars(select(ArchitectureConnection.id).where(
             ArchitectureConnection.id.in_(new_connections), ArchitectureConnection.project_id == project_id,
         )))
         if own != new_connections:
             raise RuleError("A note can point at a connection of this project.", 400)
+
+
+def _sync_leaders(db: Session, note_id: uuid.UUID, wanted: Sequence[LeaderIn], stored: Sequence[ArchitectureNoteLeader]) -> int:
+    """Makes the note's stored leaders match `wanted`; returns how many rows were added, removed or changed."""
+    changed = 0
+    existing = {row.id: row for row in stored}
+    keep = {leader.id for leader in wanted if leader.id is not None}
+    for leader_id, row in existing.items():
+        if leader_id not in keep:
+            db.delete(row)
+            changed += 1
+    for order, leader in enumerate(wanted):
+        stored_row = existing.get(leader.id) if leader.id is not None else None
+        if stored_row is None:
+            created = ArchitectureNoteLeader(note_id=note_id)
+            _write_leader(created, leader, order)
+            db.add(created)
+            changed += 1
+        elif _leader_values(stored_row, stored_row.sort_order) != _leader_values(leader, order):
+            _write_leader(stored_row, leader, order)
+            changed += 1
+    return changed
 
 
 def _box(row: ArchitectureDiagramPlacement | ArchitectureDiagramNote) -> tuple[float, float, float, float]:
@@ -559,22 +614,28 @@ def save_layout(
     note_ids = {n.id for n in payload.notes if n.id is not None}
     if len(note_ids) != len([n for n in payload.notes if n.id is not None]):
         raise RuleError("A note can be listed once.", 400)
-    _check_leaders(db, project.id, payload.notes, kept_notes, set(wanted_ids))
+    stored_leaders = leaders_of(db, kept_notes)
+    _check_leaders(db, project.id, payload.notes, stored_leaders, set(wanted_ids))
     notes_changed = 0
     for note_id, old_note in kept_notes.items():
         if note_id not in note_ids:
             db.delete(old_note)
             notes_changed += 1
+    rows: list[ArchitectureDiagramNote] = []
     for order, note in enumerate(payload.notes):
         note_row = kept_notes.get(note.id) if note.id is not None else None
         if note_row is None:
-            note_row = ArchitectureDiagramNote(diagram_id=diagram.id)
+            note_row = ArchitectureDiagramNote(id=uuid.uuid4(), diagram_id=diagram.id)
             _write_note(note_row, note, order)
             db.add(note_row)
             notes_changed += 1
         elif _note_values(note_row, note_row.sort_order) != _note_values(note, order):
             _write_note(note_row, note, order)
             notes_changed += 1
+        rows.append(note_row)
+    db.flush()  # a leader row names its note, so the notes are written first
+    for note_row, note in zip(rows, payload.notes, strict=True):
+        notes_changed += _sync_leaders(db, note_row.id, note.leaders, stored_leaders.get(note_row.id, []))
 
     anchors_changed = _sync_anchors(db, diagram.id, payload.anchors, set(wanted_ids))
     boundaries_changed = boundary_rules.sync_boundaries(db, diagram.id, payload.boundaries)

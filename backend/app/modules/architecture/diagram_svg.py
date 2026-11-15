@@ -12,8 +12,9 @@ Responsibilities:
 - Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with the
   connection's code, the element outside and a covered or not covered marker.
 - Draw annotation notes as plain text in a block of their tone (no block at all for the tone None, which draws the text alone,
-  and nothing for an empty note of that tone), with the leader line (and arrowhead) to the box, the line's
-  midpoint or the free point they point at; a leader whose target is not drawn is not drawn.
+  and nothing for an empty note of that tone), with each leader line from the note's attach point through its vertices
+  (straight or smooth) to the box, the line's midpoint or the free point it ends at, with an arrowhead or a dot at either
+  end; a leader whose target is not drawn is not drawn.
 
 Design decisions:
 - **Everything user-supplied is text.** Names, codes, notes and labels are XML-escaped and stripped of control
@@ -42,10 +43,10 @@ from sqlalchemy.orm import Session
 
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy, route_points
-from app.modules.architecture.enums import AttachPoint, LeaderKind, NoteTone
+from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
-from app.modules.architecture.schemas import AnchorOut, DiagramView, NoteOut, ViewBoundary, ViewEdge, ViewNode
+from app.modules.architecture.schemas import AnchorOut, DiagramView, LeaderOut, NoteOut, ViewBoundary, ViewEdge, ViewNode
 from app.modules.architecture.symbols import symbol_svg
 
 _DEFAULT_COLOR = "#475569"
@@ -336,64 +337,94 @@ def _drawn_notes(notes: list[NoteOut]) -> list[NoteOut]:
     return [n for n in notes if n.tone != NoteTone.NONE or n.text.strip()]
 
 
-def _leader_end(
-    note: NoteOut, boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
+def _leader_run(
+    note: NoteOut, leader: LeaderOut, boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
     edges: list[ViewEdge],
-) -> tuple[tuple[float, float], tuple[float, float]] | None:
-    """Where a note's leader runs, as `(start, end)`, or `None` when it has none or its target is not drawn.
+) -> tuple[Point, list[Point], Point] | None:
+    """Where a leader runs, as `(start, vertices, end)`, or `None` when its target is not drawn.
 
-    An element target is the nearest pair of attach points of the note's block and the box; a line's midpoint or a free
-    point is met at the note's attach point nearest to it (the same rule the browser uses).
+    The end is an element's attach point, a drawn line's middle or the free point. A box end and the start choose their
+    attach points by one rule, held equal to the browser's: a point a person chose wins; otherwise an open end is the point
+    of its box nearest the vertex next to it, and with no vertices the nearest pair of attach points (a box target) or the
+    note's point nearest the end (a line or a free point).
     """
-    kind = note.leader_kind
+    kind = leader.kind
     block = (note.x, note.y, note.width, note.height)
-    end: tuple[float, float]
-    if kind == LeaderKind.ELEMENT and note.leader_element_id is not None:
-        target = boxes.get(note.leader_element_id)
+    vertices = [(p.x, p.y) for p in leader.points]
+    end: Point
+    to_point: AttachPoint | None = None
+    target_box: tuple[float, float, float, float] | None = None
+    if kind == LeaderKind.ELEMENT and leader.element_id is not None:
+        target = boxes.get(leader.element_id)
         if target is None:
             return None
         target_box = (target.x, target.y, target.width, target.height)
-        from_point, to_point = line_points(block, target_box)
-        return point_xy(block, from_point), point_xy(target_box, to_point)
-    if kind == LeaderKind.CONNECTION and note.leader_connection_id is not None:
-        drawn = next((e for e in edges if e.id in middles and any(c.id == note.leader_connection_id for c in e.connections)), None)
+        if vertices:
+            to_point = nearest_point(target_box, vertices[-1])
+        else:
+            from_point, to_point = line_points(block, target_box, leader.start_point, None)
+            return point_xy(block, from_point), [], point_xy(target_box, to_point)
+        end = point_xy(target_box, to_point)
+    elif kind == LeaderKind.CONNECTION and leader.connection_id is not None:
+        drawn = next((e for e in edges if e.id in middles and any(c.id == leader.connection_id for c in e.connections)), None)
         if drawn is None:
             return None
         end = middles[drawn.id]
-    elif kind == LeaderKind.POINT and note.leader_x is not None and note.leader_y is not None:
-        end = (note.leader_x, note.leader_y)
+    elif kind == LeaderKind.POINT and leader.x is not None and leader.y is not None:
+        end = (leader.x, leader.y)
     else:
         return None
-    return point_xy(block, nearest_point(block, end)), end
+    start_point = leader.start_point or nearest_point(block, vertices[0] if vertices else end)
+    return point_xy(block, start_point), vertices, end
+
+
+def _leader_marker(tone: str, style: LineEnd, stroke: str, defs: dict[str, str]) -> str:
+    """The `url(#…)` of the marker that draws `style` in the tone's colour, registering its definition in `defs` once; the
+    empty string for a plain end."""
+    if style == LineEnd.NONE:
+        return ""
+    name = f"leader-{style.value}-{tone}"
+    if name not in defs:
+        shape = (
+            f'<path d="M0,0 L10,5 L0,10 z" fill="{stroke}"/>' if style == LineEnd.ARROW else f'<circle cx="5" cy="5" r="4" fill="{stroke}"/>'
+        )
+        ref = 9 if style == LineEnd.ARROW else 5
+        defs[name] = (
+            f'<marker id="{name}" viewBox="0 0 10 10" refX="{ref}" refY="5" markerWidth="8" markerHeight="8" '
+            f'orient="auto-start-reverse">{shape}</marker>'
+        )
+    return f"url(#{name})"
 
 
 def _notes(
     notes: list[NoteOut], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
     edges: list[ViewEdge],
 ) -> tuple[str, str, str]:
-    """The `<defs>` (a leader arrowhead per tone used), the leaders (drawn under everything) and the note blocks (over it)."""
-    defs: list[str] = []
+    """The `<defs>` (a start and an end marker per tone and style used), the leaders (drawn under everything) and the note
+    blocks (over it)."""
+    defs: dict[str, str] = {}
     leaders: list[str] = []
     blocks: list[str] = []
-    seen: set[str] = set()
     for n in _drawn_notes(notes):
         tone = n.tone.value if n.tone.value in _TONES else "neutral"
         fill, stroke = _TONES[tone]
-        run = _leader_end(n, boxes, middles, edges)
-        if run is not None:
-            arrow = ""
-            if n.leader_arrow:
-                if tone not in seen:
-                    seen.add(tone)
-                    defs.append(
-                        f'<marker id="leader-{tone}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" '
-                        f'orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="{stroke}"/></marker>'
-                    )
-                arrow = f' marker-end="url(#leader-{tone})"'
-            (x1, y1), (x2, y2) = run
-            leaders.append(
-                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{stroke}" stroke-width="1.5"{arrow}/>'
-            )
+        for leader in n.leaders:
+            run = _leader_run(n, leader, boxes, middles, edges)
+            if run is None:
+                continue
+            start, vertices, end = run
+            start_marker = _leader_marker(tone, leader.start_style, stroke, defs)
+            end_marker = _leader_marker(tone, leader.end_style, stroke, defs)
+            marks = (f' marker-start="{start_marker}"' if start_marker else "") + (f' marker-end="{end_marker}"' if end_marker else "")
+            if vertices:
+                leaders.append(
+                    f'<path d="{line_path(start, vertices, end, leader.smooth)}" fill="none" stroke="{stroke}" stroke-width="1.5"{marks}/>'
+                )
+            else:
+                leaders.append(
+                    f'<line x1="{start[0]:.1f}" y1="{start[1]:.1f}" x2="{end[0]:.1f}" y2="{end[1]:.1f}" stroke="{stroke}" '
+                    f'stroke-width="1.5"{marks}/>'
+                )
         box = (
             "" if tone == "none"
             else f'<rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" fill="{fill}" stroke="{stroke}"/>'
@@ -405,7 +436,7 @@ def _notes(
                 for i, line in enumerate(_wrap(n.text, max(int(n.width / 6.5), 6), max(int((n.height - 8) / 13), 1)))
             ) + "</g>"
         )
-    return "".join(defs), "".join(leaders), "".join(blocks)
+    return "".join(defs.values()), "".join(leaders), "".join(blocks)
 
 
 def render_diagram(db: Session, view: DiagramView) -> str:
@@ -432,12 +463,14 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     drawn_edges = [e for e in view.edges if e.source_element_id in boxes and e.target_element_id in boxes]
     drawn_boxes: list[ViewNode | ViewBoundary] = [*visible, *view.boundaries]
     drawn_notes = _drawn_notes(view.notes)
-    points = [(n.leader_x, n.leader_y) for n in drawn_notes if n.leader_kind == LeaderKind.POINT]
+    leader_points = [
+        (p.x, p.y) for n in drawn_notes for leader in n.leaders for p in leader.points
+    ] + [(leader.x, leader.y) for n in drawn_notes for leader in n.leaders if leader.x is not None and leader.y is not None]
     xs = [v for n in drawn_boxes for v in (n.x, n.x + n.width)] + [v for n in drawn_notes for v in (n.x, n.x + n.width)]
-    xs += [px for px, _ in points if px is not None]
+    xs += [px for px, _ in leader_points if px is not None]
     xs += [p.x for a in view.anchors for p in a.points]
     ys = [v for n in drawn_boxes for v in (n.y - 6, n.y + n.height + 6)] + [v for n in drawn_notes for v in (n.y, n.y + n.height)]
-    ys += [py for _, py in points if py is not None]
+    ys += [py for _, py in leader_points if py is not None]
     ys += [p.y for a in view.anchors for p in a.points]
     if not xs:
         min_x, min_y, width, height = 0.0, 0.0, 320.0, 120.0

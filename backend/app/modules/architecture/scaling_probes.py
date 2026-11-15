@@ -147,9 +147,18 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
             "placements": [{"element_id": end["id"], "x": order * 200, "y": 0} for order, end in enumerate(ends[:-1])],
             "boundaries": [{"connection_id": outer["id"], "x": -240, "y": 0}],
             "notes": [
-                {"text": "Probe note", "x": 0, "y": -120, "tone": "info", "leader_kind": "element", "leader_element_id": ends[0]["id"]},
-                {"text": "Probe line note", "x": 200, "y": -120, "leader_kind": "connection", "leader_connection_id": outer["id"]},
-                {"text": "Probe spot note", "x": 400, "y": -120, "leader_kind": "point", "leader_x": 440, "leader_y": -220},
+                {
+                    "text": "Probe note", "x": 0, "y": -120, "tone": "info",
+                    "leaders": [{"kind": "element", "element_id": ends[0]["id"], "start_point": "bottom"}],
+                },
+                {"text": "Probe line note", "x": 200, "y": -120, "leaders": [{"kind": "connection", "connection_id": outer["id"]}]},
+                {
+                    "text": "Probe spot note", "x": 400, "y": -120,
+                    "leaders": [{
+                        "kind": "point", "x": 440, "y": -220, "points": [{"x": 420, "y": -180}], "smooth": True,
+                        "start_style": "dot", "end_style": "arrow",
+                    }],
+                },
             ],
         })
         diagram = api.post(

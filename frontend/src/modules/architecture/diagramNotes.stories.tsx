@@ -1,14 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { buildConnection, buildDiagramView, buildNote, buildViewEdge } from "./architectureFixtures";
+import { buildConnection, buildDiagramView, buildLeader, buildNote, buildViewEdge } from "./architectureFixtures";
 import {
-  canvasEdges, canvasLeaders, canvasNodes, layoutFromView, layoutToSave, leaderIsDrawn, leaderOf, leaderSummary, newNote, setNoteLeader,
-  updateNote, commit, isDirty, startHistory, type EditorLayout,
+  addLeader, canvasEdges, canvasLeaders, canvasNodes, commit, findLeader, isDirty, layoutFromView, layoutToSave, leaderIsDrawn, leaderOf,
+  leaderSummary, leaderTargetFields, newLeader, newNote, noteLeadersSummary, patchLeader, removeLeader, setLeaderTarget, startHistory,
+  updateNote, type EditorLayout,
 } from "./diagramEditorModel";
 
 function Host() {
-  return <p>Annotation notes: tone, leader line and what it points at, as the editor keeps them.</p>;
+  return <p>Annotation notes: tone and their leader lines (what each ends at, its route and its ends), as the editor keeps them.</p>;
 }
 
 const meta: Meta<typeof Host> = { title: "Modules/Architecture/DiagramNotes", component: Host };
@@ -29,13 +30,16 @@ const CTX = {
   showNotes: true, hidden: new Set<string>(), covered: new Set<string>(), coverageLabel: () => "", badges: () => [],
 };
 
-export const ANoteKeepsItsToneAndLeaderFromTheView: Story = {
+export const ANoteKeepsItsToneAndItsLeadersFromTheView: Story = {
   play: async () => {
-    const layout = layoutWith(buildNote({ tone: "danger", leader_kind: "element", leader_element_id: "el-1", leader_arrow: false }));
+    const layout = layoutWith(buildNote({
+      tone: "danger", leaders: [buildLeader({ kind: "element", element_id: "el-1", x: null, y: null, end_style: "none", start_point: "top" })],
+    }));
     const [note] = layout.notes;
     expect(note.tone).toBe("danger");
-    expect(leaderOf(note)).toEqual({ kind: "element", elementId: "el-1" });
-    expect(note.leader_arrow).toBe(false);
+    const [leader] = note.leaders;
+    expect(leaderOf(leader)).toEqual({ kind: "element", elementId: "el-1" });
+    expect(leader).toMatchObject({ key: "ld-1", end_style: "none", start_point: "top" });
     const node = canvasNodes(layout, CTX).find((n) => n.id === `note:${note.key}`);
     expect(node?.tone).toBe("danger");
   },
@@ -43,80 +47,135 @@ export const ANoteKeepsItsToneAndLeaderFromTheView: Story = {
 
 export const ALeaderIsSavedWithOnlyTheColumnsOfItsKind: Story = {
   play: async () => {
+    let layout = layoutWith(buildNote({ leaders: [buildLeader()] }));
+    layout = setLeaderTarget(layout, "ld-1", { kind: "element", elementId: "el-2" });
+    expect(layoutToSave(layout).notes[0].leaders[0]).toMatchObject({
+      id: "ld-1", kind: "element", element_id: "el-2", connection_id: null, x: null, y: null, end_style: "arrow",
+    });
+    layout = setLeaderTarget(layout, "ld-1", { kind: "point", x: 5, y: 6 });
+    expect(layoutToSave(layout).notes[0].leaders[0]).toMatchObject({ kind: "point", element_id: null, connection_id: null, x: 5, y: 6 });
+    layout = setLeaderTarget(layout, "ld-1", { kind: "connection", connectionId: LINK.id });
+    expect(layoutToSave(layout).notes[0].leaders[0]).toMatchObject({ kind: "connection", connection_id: LINK.id, x: null, y: null });
+  },
+};
+
+export const RetargetingALeaderKeepsItsRouteAndItsEnds: Story = {
+  play: async () => {
+    let layout = layoutWith(buildNote({
+      leaders: [buildLeader({ points: [{ x: 1, y: 2 }], smooth: true, start_style: "dot", end_style: "none", start_point: "left" })],
+    }));
+    layout = setLeaderTarget(layout, "ld-1", { kind: "element", elementId: "el-1" });
+    expect(layout.notes[0].leaders[0]).toMatchObject({
+      points: [{ x: 1, y: 2 }], smooth: true, start_style: "dot", end_style: "none", start_point: "left", kind: "element",
+    });
+  },
+};
+
+export const ANoteCanHaveSeveralLeadersAndEachIsFoundByKey: Story = {
+  play: async () => {
     let layout = layoutWith(buildNote());
-    layout = setNoteLeader(layout, "nt-1", { kind: "element", elementId: "el-2" });
-    expect(layoutToSave(layout).notes[0]).toMatchObject({
-      leader_kind: "element", leader_element_id: "el-2", leader_connection_id: null, leader_x: null, leader_y: null, leader_arrow: true,
-    });
-    layout = setNoteLeader(layout, "nt-1", { kind: "point", x: 5, y: 6 });
-    expect(layoutToSave(layout).notes[0]).toMatchObject({
-      leader_kind: "point", leader_element_id: null, leader_connection_id: null, leader_x: 5, leader_y: 6,
-    });
-    layout = setNoteLeader(layout, "nt-1", { kind: "none" });
-    expect(layoutToSave(layout).notes[0]).toMatchObject({ leader_kind: "none", leader_x: null, leader_y: null });
+    layout = addLeader(layout, "nt-1", newLeader("new-leader-1", { kind: "element", elementId: "el-1" }, "right"));
+    layout = addLeader(layout, "nt-1", newLeader("new-leader-2", { kind: "point", x: 1, y: 2 }));
+    expect(layout.notes[0].leaders.map((l) => l.key)).toEqual(["new-leader-1", "new-leader-2"]);
+    expect(findLeader(layout, "new-leader-2")?.note.key).toBe("nt-1");
+    expect(findLeader(layout, "none")).toBeUndefined();
+    expect(layoutToSave(layout).notes[0].leaders.map((l) => [l.id, l.kind, l.start_point])).toEqual([
+      [null, "element", "right"], [null, "point", null],
+    ]);
+    layout = removeLeader(layout, "new-leader-1");
+    expect(layout.notes[0].leaders.map((l) => l.key)).toEqual(["new-leader-2"]);
   },
 };
 
-export const ChangingTheArrowheadKeepsTheTargetAndRetargetingKeepsTheArrowhead: Story = {
+export const ANoteKeepsAtMostTenLeaders: Story = {
   play: async () => {
-    let layout = layoutWith(buildNote({ leader_kind: "point", leader_x: 1, leader_y: 2 }));
-    layout = updateNote(layout, "nt-1", { leader_arrow: false });
-    expect(leaderOf(layout.notes[0])).toEqual({ kind: "point", x: 1, y: 2 });
-    layout = setNoteLeader(layout, "nt-1", { kind: "element", elementId: "el-1" });
-    expect(layout.notes[0].leader_arrow).toBe(false);
+    let layout = layoutWith(buildNote());
+    for (let i = 0; i < 12; i += 1) layout = addLeader(layout, "nt-1", newLeader(`new-leader-${i}`, { kind: "point", x: i, y: 0 }));
+    expect(layout.notes[0].leaders.length).toBe(10);
   },
 };
 
-export const EditingATonePointingOrTheArrowheadMakesTheLayoutDirty: Story = {
+export const ALeaderIsDrawnWithItsRouteStartAndEndsOnTheCanvas: Story = {
   play: async () => {
-    const layout = layoutWith(buildNote());
+    const layout = layoutWith(buildNote({
+      leaders: [buildLeader({ points: [{ x: 5, y: 6 }], smooth: true, start_point: "bottom", start_style: "dot", end_style: "arrow" })],
+    }));
+    expect(canvasLeaders(layout, [LINE], new Set())).toEqual([{
+      id: "ld-1", from: "note:nt-1", fromPoint: "bottom", points: [{ x: 5, y: 6 }], smooth: true, startEnd: "dot", endEnd: "arrow",
+      to: { kind: "point", x: 300, y: -100 },
+    }]);
+  },
+};
+
+export const EditingATonePointingOrAnyPartOfALeaderMakesTheLayoutDirty: Story = {
+  play: async () => {
+    const layout = layoutWith(buildNote({ leaders: [buildLeader()] }));
     const history = startHistory(layout);
     expect(isDirty(history)).toBe(false);
     expect(isDirty(commit(history, updateNote(layout, "nt-1", { tone: "info" })))).toBe(true);
-    expect(isDirty(commit(history, setNoteLeader(layout, "nt-1", { kind: "point", x: 1, y: 1 })))).toBe(true);
-    expect(isDirty(commit(history, updateNote(layout, "nt-1", { leader_arrow: false })))).toBe(true);
+    expect(isDirty(commit(history, setLeaderTarget(layout, "ld-1", { kind: "point", x: 1, y: 1 })))).toBe(true);
+    for (const change of [
+      { points: [{ x: 1, y: 1 }] }, { smooth: true }, { start_style: "dot" as const }, { end_style: "none" as const }, { start_point: "top" as const },
+    ]) {
+      expect(isDirty(commit(history, patchLeader(layout, "ld-1", change)))).toBe(true);
+    }
     expect(isDirty(commit(history, updateNote(layout, "nt-1", { tone: "neutral" })))).toBe(false);
+    expect(isDirty(commit(history, patchLeader(layout, "ld-1", { end_style: "arrow" })))).toBe(false);
   },
 };
 
 export const ALeaderToAConnectionGoesToTheDrawnLineThatStandsForIt: Story = {
   play: async () => {
-    const layout = layoutWith(buildNote({ leader_kind: "connection", leader_connection_id: LINK.id }));
+    const layout = layoutWith(buildNote({ leaders: [buildLeader({ kind: "connection", connection_id: LINK.id, x: null, y: null })] }));
     const drawn = new Set(canvasEdges([LINE], layout, new Set(), "light").map((e) => e.id));
-    expect(canvasLeaders(layout, [LINE], drawn)).toEqual([
-      { id: "nt-1", from: "note:nt-1", to: { kind: "edge", id: LINE.id }, arrow: true },
-    ]);
+    expect(canvasLeaders(layout, [LINE], drawn)).toMatchObject([{ id: "ld-1", from: "note:nt-1", to: { kind: "edge", id: LINE.id }, endEnd: "arrow" }]);
     // With the line not drawn (an end switched off) the leader is left out and reported as not drawn.
     expect(canvasLeaders(layout, [LINE], new Set())).toEqual([]);
-    expect(leaderIsDrawn(layout.notes[0], new Set(["el-1", "el-2"]), [LINE], drawn)).toBe(true);
-    expect(leaderIsDrawn(layout.notes[0], new Set(["el-1", "el-2"]), [LINE], new Set())).toBe(false);
+    const [leader] = layout.notes[0].leaders;
+    expect(leaderIsDrawn(leader, new Set(["el-1", "el-2"]), [LINE], drawn)).toBe(true);
+    expect(leaderIsDrawn(leader, new Set(["el-1", "el-2"]), [LINE], new Set())).toBe(false);
   },
 };
 
 export const ALeaderToABoxIsNotDrawnWhileTheBoxIsSwitchedOff: Story = {
   play: async () => {
-    const layout = layoutWith(buildNote({ leader_kind: "element", leader_element_id: "el-3" }));
-    expect(leaderIsDrawn(layout.notes[0], new Set(["el-1", "el-2", "el-3"]), [LINE], new Set())).toBe(true);
-    expect(leaderIsDrawn(layout.notes[0], new Set(["el-1", "el-2"]), [LINE], new Set())).toBe(false);
-    expect(leaderSummary(layout.notes[0], layout.boxes, [LINE], true)).toBe("Points at ELM-003 Firewall");
-    expect(leaderSummary(layout.notes[0], layout.boxes, [LINE], false)).toBe("Points at ELM-003 Firewall (not drawn)");
+    const layout = layoutWith(buildNote({ leaders: [buildLeader({ kind: "element", element_id: "el-3", x: null, y: null })] }));
+    const [leader] = layout.notes[0].leaders;
+    expect(leaderIsDrawn(leader, new Set(["el-1", "el-2", "el-3"]), [LINE], new Set())).toBe(true);
+    expect(leaderIsDrawn(leader, new Set(["el-1", "el-2"]), [LINE], new Set())).toBe(false);
+    expect(leaderSummary(leader, layout.boxes, [LINE], true)).toBe("ELM-003 Firewall");
+    expect(leaderSummary(leader, layout.boxes, [LINE], false)).toBe("ELM-003 Firewall (not drawn)");
   },
 };
 
-export const TheSummaryNamesWhatEachKindOfLeaderPointsAt: Story = {
+export const TheSummaryNamesWhatEachKindOfLeaderEndsAt: Story = {
   play: async () => {
     const layout = layoutWith();
-    const summary = (overrides: Parameters<typeof buildNote>[0]) =>
-      leaderSummary(layoutWith(buildNote(overrides)).notes[0], layout.boxes, [LINE], true);
-    expect(summary({})).toBeNull();
-    expect(summary({ leader_kind: "point", leader_x: 1, leader_y: 2 })).toBe("Points at a spot");
-    expect(summary({ leader_kind: "connection", leader_connection_id: LINK.id })).toBe(`Points at ${LINK.unique_code} ${LINK.name}`);
+    const summary = (overrides: Parameters<typeof buildLeader>[0]) =>
+      leaderSummary(layoutWith(buildNote({ leaders: [buildLeader(overrides)] })).notes[0].leaders[0], layout.boxes, [LINE], true);
+    expect(summary({})).toBe("a spot");
+    expect(summary({ kind: "connection", connection_id: LINK.id, x: null, y: null })).toBe(`${LINK.unique_code} ${LINK.name}`);
+  },
+};
+
+export const ANoteWithSeveralLeadersListsEachInTheOutlineSummary: Story = {
+  play: async () => {
+    const layout = layoutWith(buildNote({
+      leaders: [buildLeader({ id: "a" }), buildLeader({ id: "b", kind: "element", element_id: "el-1", x: null, y: null })],
+    }));
+    const visible = new Set(["el-1", "el-2"]);
+    expect(noteLeadersSummary(layout.notes[0], layout.boxes, [LINE], visible, new Set())).toBe("Points at a spot; Points at ELM-001 Gateway");
+    expect(noteLeadersSummary(layoutWith(buildNote()).notes[0], layout.boxes, [LINE], visible, new Set())).toBeNull();
   },
 };
 
 export const ANewNoteIsNeutralWithNoLeader: Story = {
   play: async () => {
     const note = newNote("new-1", { x: 10, y: 20 });
-    expect(note).toMatchObject({ id: null, tone: "neutral", leader_kind: "none", leader_arrow: true, x: 10, y: 20 });
+    expect(note).toMatchObject({ id: null, tone: "neutral", leaders: [], x: 10, y: 20 });
+    expect(newLeader("new-leader-1", { kind: "point", x: 1, y: 2 })).toMatchObject({
+      id: null, kind: "point", x: 1, y: 2, start_point: null, points: [], smooth: false, start_style: "none", end_style: "arrow",
+    });
+    expect(leaderTargetFields({ kind: "element", elementId: "el-1" })).toEqual({ kind: "element", element_id: "el-1", connection_id: null, x: null, y: null });
   },
 };
