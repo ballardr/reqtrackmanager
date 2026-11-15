@@ -261,6 +261,20 @@ export function boxFromElement(element: ArchitectureElement, type: ElementType |
   };
 }
 
+/**
+ * The box with its element's current name, note, type and symbol, keeping the box's position, size and collapsed state (an
+ * element edited in the Selection card is shown renamed without waiting for the layout to be saved).
+ *
+ * @param box The box on the diagram.
+ * @param element The element as just stored.
+ * @param type The element's type, for its colours.
+ */
+export function boxWithElement(box: EditorBox, element: ArchitectureElement, type: ElementType | undefined): EditorBox {
+  return {
+    ...boxFromElement(element, type, box), width: box.width, height: box.height, collapsed: box.collapsed, shared: box.shared,
+  };
+}
+
 /** @param layout The layout to save. @returns The request bodies of the layout save. */
 export function layoutToSave(
   layout: EditorLayout,

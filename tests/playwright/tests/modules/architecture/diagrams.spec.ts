@@ -84,12 +84,17 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
     });
 
-    await test.step("create an element from the Add menu and place it", async () => {
+    await test.step("an element chosen in the Add menu is created at once, selected with its name focused, and renamed in the Selection card", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
       await page.getByRole("menuitem", { name: "Component", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "New Component" });
-      await dialog.getByLabel("Name", { exact: true }).fill(queue);
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      const card = page.getByRole("region", { name: "Selection" });
+      const name = card.getByRole("textbox", { name: "Name", exact: true });
+      await expect(name).toBeFocused();
+      await expect(name).toHaveValue(/^Component \d+$/);
+      await name.fill(queue);
+      await card.getByRole("button", { name: "Save element" }).click();
+      await expect(page.getByText("Element updated.")).toBeVisible();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
@@ -173,14 +178,14 @@ test.describe("System Architecture: diagram editor", () => {
       await selectNode(page, `Gateway ${suffix}`);
       const actions = page.getByRole("region", { name: "Selection" }).getByRole("group", { name: "Actions" });
       await expect(actions.getByRole("link", { name: "Open element" })).toBeVisible();
-      for (const name of ["Edit element", "Remove from diagram", "Delete element…"]) {
+      for (const name of ["Remove from diagram", "Delete element…"]) {
         const button = actions.getByRole("button", { name });
         await expect(button).toBeVisible();
         expect((await button.textContent())?.trim()).toBe("");
       }
       expect((await page.evaluate(buttonHeightGeometry, undefined)).violations).toEqual([]);
-      await actions.getByRole("button", { name: "Edit element" }).focus();
-      await expect(page.getByRole("tooltip")).toContainText("Edit element");
+      await actions.getByRole("button", { name: "Open inside as diagram" }).focus();
+      await expect(page.getByRole("tooltip")).toContainText("Open inside as diagram");
       await page.keyboard.press("Tab");
       await expect(actions.getByRole("button", { name: /^Comment on this box/ })).toBeFocused();
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -345,15 +350,17 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(outline.getByRole("button", { name: new RegExp(`^ELM-\\d+ ${gateway}`) })).toBeVisible();
     });
 
-    await test.step("Connect to starts a connection without dragging", async () => {
+    await test.step("Connect to creates a connection at once, without dragging or a dialog", async () => {
       await page.getByRole("tab", { name: "Drawing" }).click();
       await selectNode(page, gateway);
       const choose = page.getByRole("region", { name: "Selection" }).getByRole("combobox", { name: /Connect to/ });
       await choose.selectOption(await choose.locator("option", { hasText: orders }).getAttribute("value") ?? "");
-      const dialog = page.getByRole("dialog", { name: "New connection" });
-      await expect(dialog).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0);
+      await expect(page.getByText("Connection created.")).toBeVisible();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      // The new line is selected, with its fields in the card and the cursor in the name.
+      const details = page.getByRole("group", { name: "Connection details" });
+      await expect(details).toBeVisible();
+      await expect(details.getByRole("textbox", { name: "Name", exact: true })).toBeFocused();
     });
 
     await test.step("Alt+arrow resizes, Delete takes the box off the diagram and Undo brings it back", async () => {
@@ -481,13 +488,13 @@ test.describe("System Architecture: diagram editor", () => {
     const diagram = await created.json();
     await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
 
-    await test.step("Edit element opens the element form over the diagram and the box is renamed", async () => {
+    await test.step("the Selection card edits the element in place and the box is renamed", async () => {
       await selectNode(page, gateway);
-      await page.getByRole("button", { name: "Edit element" }).click();
-      const dialog = page.getByRole("dialog", { name: `Edit ${gateway}` });
+      const card = page.getByRole("region", { name: "Selection" });
+      await expect(card.getByRole("button", { name: "Edit element" })).toHaveCount(0);
       const renamed = `Edge ${suffix}`;
-      await dialog.getByLabel("Name", { exact: true }).fill(renamed);
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await card.getByRole("textbox", { name: "Name", exact: true }).fill(renamed);
+      await card.getByRole("button", { name: "Save element" }).click();
       await expect(page.getByText("Element updated.")).toBeVisible();
       await expect(page.getByLabel(`${renamed}, node`, { exact: true })).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`/diagrams/${diagram.id}`));
@@ -525,24 +532,23 @@ test.describe("System Architecture: diagram editor", () => {
     await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
     const note = `Entry point ${suffix}`;
 
-    await test.step("the note is typed in the element form, apart from the description, and drawn in the box", async () => {
+    await test.step("the note is typed in the element fields, apart from the description, and drawn in the box", async () => {
       await selectNode(page, gateway);
-      await page.getByRole("button", { name: "Edit element" }).click();
-      const dialog = page.getByRole("dialog", { name: `Edit ${gateway}` });
-      await dialog.getByLabel("Description", { exact: true }).fill("Long text that a diagram never draws.");
-      await dialog.getByLabel("Display note", { exact: true }).fill(note);
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      const card = page.getByRole("region", { name: "Selection" });
+      await card.getByLabel("Description", { exact: true }).fill("Long text that a diagram never draws.");
+      await card.getByLabel("Display note", { exact: true }).fill(note);
+      await card.getByRole("button", { name: "Save element" }).click();
       await expect(page.getByText("Element updated.")).toBeVisible();
       const box = page.getByLabel(`${gateway}, node`, { exact: true });
       await expect(box.getByText(note)).toBeVisible();
       await expect(box.getByText("Long text that a diagram never draws.")).toHaveCount(0);
     });
 
-    await test.step("the Selection card shows the note and the description in full", async () => {
+    await test.step("the Selection card holds the note and the description in full", async () => {
       await selectNode(page, gateway);
       const card = page.getByRole("region", { name: "Selection" });
-      await expect(card.getByText(note)).toBeVisible();
-      await expect(card.getByText("Long text that a diagram never draws.")).toBeVisible();
+      await expect(card.getByLabel("Display note", { exact: true })).toHaveValue(note);
+      await expect(card.getByLabel("Description", { exact: true })).toHaveValue("Long text that a diagram never draws.");
     });
 
     await test.step("Show notes in the gear hides the note on this screen only, and the choice is in the address", async () => {
@@ -620,7 +626,7 @@ test.describe("System Architecture: diagram editor", () => {
     });
   });
 
-  test("an architect edits a connection from the diagram and the line is redrawn", async ({ page }) => {
+  test("an architect edits a connection in the Selection card and the line is redrawn", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchConEdit", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
     const gateway = `Gateway ${suffix}`;
@@ -647,15 +653,14 @@ test.describe("System Architecture: diagram editor", () => {
     await page.keyboard.press("Enter");
     const card = page.getByRole("region", { name: "Selection" });
 
-    await test.step("Edit opens the connection form over the diagram and the protocol is stored", async () => {
-      await card.getByRole("button", { name: `Edit ${connection.unique_code}` }).click();
-      const dialog = page.getByRole("dialog", { name: /^Edit / });
-      await dialog.getByLabel("Protocol", { exact: true }).fill("MQTT");
+    await test.step("the Selection card edits the connection in place and the protocol is stored", async () => {
+      await expect(card.getByRole("button", { name: `Edit ${connection.unique_code}` })).toHaveCount(0);
+      await card.getByLabel("Protocol", { exact: true }).fill("MQTT");
       const stored = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes(`/connections/${connection.id}`) && r.ok());
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await card.getByRole("button", { name: "Save connection" }).click();
       await stored;
       await expect(page.getByText("Connection updated.")).toBeVisible();
-      await expect(dialog).toBeHidden();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(page).toHaveURL(new RegExp(`/diagrams/${diagram.id}`));
     });
 
@@ -693,9 +698,9 @@ test.describe("System Architecture: diagram editor", () => {
     await test.step("a new element created there is a child of the box", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
       await page.getByRole("menuitem", { name: "Component", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "New Component" });
-      await dialog.getByLabel("Name", { exact: true }).fill(filter);
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      const card = page.getByRole("region", { name: "Selection" });
+      await card.getByRole("textbox", { name: "Name", exact: true }).fill(filter);
+      await card.getByRole("button", { name: "Save element" }).click();
       await expect(page.getByLabel(`${filter}, node`, { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
@@ -757,16 +762,17 @@ test.describe("System Architecture: diagram editor", () => {
       await page.getByRole("tab", { name: "Drawing" }).click();
     });
 
-    await test.step("choosing the box lists what realises it and offers a connection to an inner element", async () => {
+    await test.step("choosing the box lists what realises it, and Connect to creates a connection that realises it at once", async () => {
       await selectNode(page, outer.unique_code);
       const panel = page.getByRole("region", { name: "Selection" });
       await expect(panel.getByText("Not covered.")).toBeVisible();
       const choose = panel.getByRole("combobox", { name: /Connect to/ });
+      const realised = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/realisations") && r.ok());
       await choose.selectOption(await choose.locator("option", { hasText: encoder }).getAttribute("value") ?? "");
-      const dialog = page.getByRole("dialog", { name: "New connection" });
-      await expect(dialog).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0);
+      await realised;
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(box).toContainText("Covered");
+      await expect(box).not.toContainText("Not covered");
     });
 
     await test.step("a line between inner elements is marked as realising the outer connection and the box reads covered", async () => {
@@ -778,9 +784,11 @@ test.describe("System Architecture: diagram editor", () => {
       const panel = page.getByRole("region", { name: "Selection" });
       await expect(panel.getByText("No outer connection.")).toBeVisible();
       const choose = panel.getByRole("combobox", { name: "Add outer connection" });
+      const realisedAgain = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/realisations") && r.ok());
       await choose.selectOption(await choose.locator("option", { hasText: outer.unique_code }).getAttribute("value") ?? "");
+      await realisedAgain;
+      await expect(panel.getByText(new RegExp(outer.unique_code))).toBeVisible();
       await expect(box).toContainText("Covered");
-      await expect(box).not.toContainText("Not covered");
     });
 
     await test.step("the connection page lists both sides of the realisation", async () => {

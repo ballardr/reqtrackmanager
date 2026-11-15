@@ -2,9 +2,10 @@
  * Module: modules/architecture/DiagramSelectionPanel
  *
  * The editor's "Selection" card: what the selected box, note or line is and what can be done with it.
- * - A box: open the element, edit it in the shared element form (`onEditElement`), open its inside as a diagram of its
- *   own, take it off this diagram (the element is not changed), or delete the element from the model (a separate,
- *   confirmed action that needs the code typed). Its ports are listed with the shared `PortList`; each change is stored at
+ * - A box: open the element, edit it in place (`ElementSelectionFields`, the shared element field group), open its inside as a
+ *   diagram of its own, take it off this diagram (the element is not changed), or delete the element from the model (a separate,
+ *   confirmed action that needs the code typed). A box that is shared, locked or on a read-only diagram shows its description
+ *   and display note as text instead. Its ports are listed with the shared `PortList`; each change is stored at
  *   once, as on the element's page. Its project components (the shared `RecordPlacements`, also saved at once) are set
  *   here too; a box shared from another owner shows none, since a component belongs to one project and its own
  *   project's tree is not disclosed to another.
@@ -13,8 +14,9 @@
  *   (`DiagramNoteEditor`).
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
- *   keyboard route to dragging a line's end. Each connection of this project has an Edit button that opens the shared
- *   connection form (`onEditConnection`); one shared from another project is listed without it.
+ *   keyboard route to dragging a line's end. A line that stands for one connection of this project edits it in place
+ *   (`ConnectionSelectionFields`, the shared connection field group); each connection of a line that stands for several has an Edit
+ *   button that opens the shared connection form (`onEditConnection`); one shared from another project is listed without it.
  * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
  *   line between two boxes does.
  * - A boundary box (an outer connection of the diagram's element): the connection, the element outside, its direction and
@@ -38,6 +40,7 @@ import { FieldCaption } from "../../components/FieldHelp";
 import { IconAction } from "../../components/IconAction";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordPlacements } from "../../components/RecordPlacements";
+import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
@@ -49,12 +52,25 @@ import {
 import { boxName } from "./diagramOutlineModel";
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
+import { ConnectionSelectionFields } from "./ConnectionSelectionFields";
+import { ElementSelectionFields } from "./ElementSelectionFields";
 import { PortList } from "./PortList";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import type {
-  ArchitectureConnection, ArchitectureElement, ConnectionRef, ConnectionType, DiagramAnchor, DiagramViewEdge, NoteTone, PortValues,
+  ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionFieldValues, ConnectionRef, ConnectionType, DiagramAnchor,
+  DiagramViewEdge, ElementFieldValues, ElementType, NoteTone, PortValues,
 } from "./types";
+import type { OrgUser } from "../../api/types";
+
+/** What an element's in-place fields need beyond the element itself (the owner's vocabularies and people). */
+export interface ElementEditorReference {
+  elementTypes: ElementType[];
+  symbols: ArchitectureSymbol[];
+  symbolUrl: (symbolId: string) => string;
+  orgUsers: OrgUser[];
+  organizationId: string;
+}
 
 /**
  * @param projectId The diagram's project, for the links.
@@ -70,8 +86,13 @@ import type {
  * @param editable False hides every action that changes the diagram or the model.
  * @param elements The elements the editor knows (their ports are listed for a selected box).
  * @param connectionTypes The connection types a port may name.
- * @param onEditElement Opens the element's edit form.
- * @param onEditConnection Opens a connection's edit form.
+ * @param elementEditor What the element's in-place fields need; without it a box is shown as text.
+ * @param elementTypes The project's element types (a connection's type guidance reads them).
+ * @param onSaveElement Stores changed fields of an element (version lock); resolves true when stored.
+ * @param onSaveConnection Stores changed fields of a connection (version lock); resolves true when stored.
+ * @param focusNew The id of the element or connection just added, whose name field takes the focus, or null.
+ * @param onFocused Called once that name has taken the focus.
+ * @param onEditConnection Opens a connection's edit form (a line that stands for several connections).
  * @param onAddPort Adds a port to an element.
  * @param onChangePort Changes one field of an element's port.
  * @param onRemovePort Removes an element's port.
@@ -95,7 +116,7 @@ import type {
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, drawnEdgeIds, pickingSpot, onEditNote, onNoteTone, onNoteArrow, onNotePointAt, onPickSpot, onRemoveNote, elements, connectionTypes, onEditElement, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, drawnEdgeIds, pickingSpot, onEditNote, onNoteTone, onNoteArrow, onNotePointAt, onPickSpot, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment,
 }: {
   projectId: string;
@@ -128,7 +149,12 @@ export function DiagramSelectionPanel({
   onRemoveNote: (key: string) => void;
   elements: ArchitectureElement[];
   connectionTypes: ConnectionType[];
-  onEditElement: (box: EditorBox) => void;
+  elementEditor: ElementEditorReference | null;
+  elementTypes: ElementType[];
+  onSaveElement: (element: ArchitectureElement, changed: Partial<ElementFieldValues>) => Promise<boolean>;
+  onSaveConnection: (connection: ArchitectureConnection, changed: Partial<ConnectionFieldValues>) => Promise<boolean>;
+  focusNew: string | null;
+  onFocused: () => void;
   onEditConnection: (connection: ArchitectureConnection) => void;
   onAddPort: (elementId: string, values: PortValues) => Promise<void>;
   onChangePort: (elementId: string, portId: string, change: Partial<PortValues>) => Promise<void>;
@@ -147,6 +173,10 @@ export function DiagramSelectionPanel({
   const edge = selection?.kind === "edge" ? edges.find((e) => e.id === selection.id) ?? null : null;
 
   const element = box ? elements.find((e) => e.id === box.elementId) ?? null : null;
+  const editorFields = box && editable && !box.locked && !box.shared ? elementEditor : null;
+  // A line that stands for one connection of this project edits it in place; a rolled-up or merged line lists its connections.
+  const ownConnection = edge && editable && edge.connections.length === 1 && edge.connections[0].project_id === projectId
+    ? edge.connections[0] : null;
 
   let body;
   if (box) {
@@ -156,13 +186,13 @@ export function DiagramSelectionPanel({
           <strong>{box.locked ? box.unique_code : `${box.unique_code} ${box.name}`}</strong>
           {!box.locked && <span className="text-muted"> · {box.element_type_name}</span>}
         </p>
-        {!box.locked && box.display_note && (
+        {!(editorFields && element) && !box.locked && box.display_note && (
           <div className="stack" style={{ gap: "var(--space-1)" }}>
             <FieldCaption label="Display note" help={ARCHITECTURE_HELP.elementDisplayNote} />
             <ActivityNote text={box.display_note} />
           </div>
         )}
-        {!box.locked && element?.description && (
+        {!(editorFields && element) && !box.locked && element?.description && (
           <div className="stack" style={{ gap: "var(--space-1)" }}>
             <FieldCaption label="Description" help={ARCHITECTURE_HELP.elementDescription} />
             <ActivityNote text={element.description} />
@@ -172,12 +202,19 @@ export function DiagramSelectionPanel({
           actions={[
             !box.locked && selectionAction.open("Open element", `${base}/elements/${box.elementId}`),
             !box.locked && { ...selectionAction.inside("Open inside as diagram", () => onOpenInside(box)), help: ARCHITECTURE_HELP.openInside },
-            editable && !box.locked && !box.shared && selectionAction.edit("Edit element", () => onEditElement(box)),
             onComment && !box.locked && selectionAction.comment(commentText.commentOnBox, () => onComment({ kind: "node", id: box.elementId })),
             editable && selectionAction.remove("Remove from diagram", () => onRemoveBox(box)),
             editable && !box.locked && !box.shared && selectionAction.delete("Delete element…", () => setDeleting(box)),
           ]}
         />
+        {editorFields && element && (
+          <ElementSelectionFields
+            key={`fields-${element.id}`} element={element} elementTypes={editorFields.elementTypes} symbols={editorFields.symbols}
+            candidates={elements.filter((e) => !e.shared)} symbolUrl={editorFields.symbolUrl} orgUsers={editorFields.orgUsers}
+            organizationId={editorFields.organizationId} projectId={projectId} autoFocusName={focusNew === element.id}
+            onFocused={onFocused} onSave={(changed) => onSaveElement(element, changed)}
+          />
+        )}
         {element && !box.locked && (
           <div className="stack" style={{ gap: "var(--space-1)" }}>
             <FieldCaption label="Ports" help={ARCHITECTURE_HELP.elementPorts} />
@@ -190,9 +227,12 @@ export function DiagramSelectionPanel({
         )}
         {!box.locked && !box.shared && (
           <RecordPlacements
-            key={box.elementId} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId}
+            key={`places-${box.elementId}`} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId}
             captioned
           />
+        )}
+        {!box.locked && !box.shared && (
+          <RecordTags key={`tags-${box.elementId}`} projectId={projectId} artefactType="architecture_element" artefactId={box.elementId} components={false} />
         )}
         {editable && !box.locked && (
           <LabeledSelect
@@ -276,7 +316,7 @@ export function DiagramSelectionPanel({
                 <td>{c.target_element_name || c.target_element_code}</td>
                 {editable && (
                   <td>
-                    {c.project_id === projectId && (
+                    {c.project_id === projectId && ownConnection === null && (
                       <IconAction label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}><Pencil /></IconAction>
                     )}
                   </td>
@@ -286,6 +326,19 @@ export function DiagramSelectionPanel({
           </tbody>
         </table>
         <SelectionActions actions={[onComment && selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: edge.id }))]} />
+        {ownConnection && (
+          <ConnectionSelectionFields
+            key={`fields-${ownConnection.id}`} connection={ownConnection} connectionTypes={connectionTypes} elementTypes={elementTypes}
+            elements={elements} projectId={projectId} autoFocusName={focusNew === ownConnection.id} onFocused={onFocused}
+            onSave={(changed) => onSaveConnection(ownConnection, changed)}
+          />
+        )}
+        {ownConnection && (
+          <RecordTags
+            key={`tags-${ownConnection.id}`} projectId={projectId} artefactType="architecture_connection" artefactId={ownConnection.id}
+            components={false}
+          />
+        )}
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
           <LineEnds edge={edge} boxes={boxes} anchors={anchors} onChange={(change) => onAnchorChange(edge, change)} />
         )}

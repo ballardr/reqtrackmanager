@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { domainFits, guideConnectionTypes, mismatchWarning, suggestedGroup, SUGGESTED_GROUP_ID } from "./connectionGuidance";
+import { defaultConnectionType, domainFits, guideConnectionTypes, mismatchWarning, suggestedGroup, SUGGESTED_GROUP_ID } from "./connectionGuidance";
 import type { ConnectionType, Domain, ElementType } from "./types";
 
 const connection = (id: string, name: string, domain: Domain): ConnectionType => ({
@@ -91,5 +91,22 @@ export const TheSuggestedGroupHoldsEachTypeOnceAndCannotBeChosen: Story = {
     await expect(group.id).toBe(SUGGESTED_GROUP_ID);
     await expect(group.disabled).toBe(true);
     await expect(group.children.map((c) => c.label)).toEqual(["I2C", "REST API"]);
+  },
+};
+
+/** A connection created by drawing a line starts with the type the ends suggest, then the first top-level type that fits. */
+export const ADrawnConnectionStartsWithTheSuggestedTypeElseTheFirstFittingTopLevelType: Story = {
+  play: async () => {
+    await expect(defaultConnectionType(TYPES, [BOARD, BOARD])?.name).toBe("I2C");
+    await expect(defaultConnectionType(TYPES, [SERVICE, BOARD])?.name).toBe("REST API"); // the source's suggestion comes first
+    await expect(defaultConnectionType(TYPES, [SYSTEM, SYSTEM])?.name).toBe("REST API"); // nothing suggested: first fitting top-level
+    const nested: ConnectionType[] = [{ ...connection("child", "Child", "any"), parent_ids: ["rest"] }, ...TYPES];
+    await expect(defaultConnectionType(nested, [SYSTEM, SYSTEM])?.name).toBe("REST API"); // a nested type is not the default
+  },
+};
+
+export const WithNoConnectionTypeThereIsNoDefault: Story = {
+  play: async () => {
+    await expect(defaultConnectionType([], [SERVICE, BOARD])).toBeUndefined();
   },
 };

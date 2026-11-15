@@ -10,9 +10,12 @@
  * Editing model: boxes, notes, line anchors and boundary boxes are edited locally (move, resize, add, remove, drop from the Add menu, drag a line
  * between two boxes, drag a line's end to another attach point or choose it in the Selection card) with undo and redo, and stored together by Save, which quotes the diagram's version; a 409 offers a reload
  * instead of overwriting a newer save. Creating a connection or deleting an element writes to the model at once, so a
- * pending layout is saved first. Taking a box off the diagram never deletes its element; deleting the element is a separate,
- * confirmed action. A line's Selection card edits a connection in the shared connection form (the pending layout is kept and the
- * lines redraw). View switches are stored when changed, but flipping one on the page changes only the address.
+ * pending layout is saved first. An element (a palette type dropped or chosen in the Add menu) and a connection (a line drawn
+ * between two boxes) are created at once with defaults (a numbered name; the connection type the ends suggest), selected, and
+ * edited in the Selection card through the shared field groups; only a project with no connection type opens the connection dialog,
+ * which links to where types are set up. Taking a box off the diagram never deletes its element; deleting the element is a separate,
+ * confirmed action. A line that stands for several connections edits each in the shared connection form (the pending layout is kept
+ * and the lines redraw). View switches are stored when changed, but flipping one on the page changes only the address.
  * An Outline card (elements as a tree, lines as a table) is the text alternative to the canvas and shares its selection; the
  * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram) and the selection card
  * can start a connection from a list. Export (PNG, SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks
@@ -51,13 +54,14 @@ import { architectureTabPath } from "./architectureTabs";
 import { ARCHITECTURE_HELP } from "./help";
 import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
 import {
-  diffConnectionFields, diffDiagramFields, diffElementFields, valuesFromConnection, valuesFromDiagram, valuesFromElement,
+  blankConnectionValues, defaultElementName, diffConnectionFields, diffDiagramFields, valuesFromConnection, valuesFromDiagram,
 } from "./architectureFields";
+import { defaultConnectionType } from "./connectionGuidance";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
-  addBoundaries, addBoxes, addNote, boundaryFromConnection, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
+  addBoundaries, addBoxes, addNote, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
   canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
   setLineAnchor, setNoteLeader, updateNote, BOUNDARY_NODE_PREFIX, NOTE_NODE_PREFIX, type NoteLeaderTarget,
 } from "./diagramEditorModel";
@@ -70,13 +74,11 @@ import { blockPinDescriber, pinAnchorOf, pinPlaceOf } from "./diagramComments";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { DiagramAddMenu } from "./DiagramAddMenu";
 import { DiagramOutline } from "./DiagramOutline";
-import { ElementFormModal } from "./ElementFormModal";
-import { DiagramSelectionPanel } from "./DiagramSelectionPanel";
+import { DiagramSelectionPanel, type ElementEditorReference } from "./DiagramSelectionPanel";
 import { DiagramSettingsButton } from "./DiagramSettingsButton";
 import { DiagramTogglesPanel } from "./DiagramTogglesPanel";
 import { resolveDiagram, type ResolvedDiagram } from "./diagramLines";
 import { PALETTE_TYPE_PREFIX, toggleValues } from "./diagramToggles";
-import { NewElementDialog } from "./NewElementDialog";
 import { ToggleFormModal } from "./ToggleFormModal";
 import { useArchitectureReference } from "./useArchitectureReference";
 import { useCreateConnection } from "./useCreateConnection";
@@ -92,6 +94,8 @@ const CANVAS_MIN_HEIGHT = 300;
 
 /** The project's Element Types settings. */
 const SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architecture/architecture-element-types`;
+/** The project's Connection Types settings. */
+const CONNECTION_SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architecture/architecture-connection-types`;
 
 const EDITOR_TABS = [
   { key: "drawing", label: "Drawing" },
@@ -129,7 +133,7 @@ export function DiagramEditorPage() {
 
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
   const [connections, setConnections] = useState<ArchitectureConnection[]>([]);
-  const [selection, setSelection] = useState<GraphCanvasSelection | null>(null);
+  const [picked, setPicked] = useState<GraphCanvasSelection | null>(null);
   /** The note waiting for a click on the canvas to place the end of its leader. */
   const [pickingSpot, setPickingSpot] = useState<string | null>(null);
   const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
@@ -137,25 +141,32 @@ export function DiagramEditorPage() {
   const [editingDiagram, setEditingDiagram] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [newElement, setNewElement] = useState<{ typeId: string; at: { x: number; y: number } } | null>(null);
-  const [newElementError, setNewElementError] = useState<string | null>(null);
+  /** The element or connection just added, whose name field in the Selection card takes the focus. */
+  const [focusNew, setFocusNew] = useState<string | null>(null);
+  /** The connection just added, which is the selection as soon as its line is drawn (any other selection replaces it). */
+  const [selectConnection, setSelectConnection] = useState<string | null>(null);
+  const setSelection = useCallback((next: GraphCanvasSelection | null) => {
+    setPicked(next);
+    setSelectConnection(null);
+  }, []);
   const [connecting, setConnecting] = useState<{ source: string; target: string; realises?: string } | null>(null);
   const [toggleForm, setToggleForm] = useState<{ initial?: DiagramToggleValues } | null>(null);
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
   const [canManageTypes, setCanManageTypes] = useState(false);
   const [leaveForSetup, setLeaveForSetup] = useState(false);
-  const [editingElement, setEditingElement] = useState<ArchitectureElement | null>(null);
-  const [elementFormError, setElementFormError] = useState<string | null>(null);
   const [editingConnection, setEditingConnection] = useState<ArchitectureConnection | null>(null);
   const [connectionFormError, setConnectionFormError] = useState<string | null>(null);
 
-  const reloadModelLists = useCallback(() => {
-    if (!projectId) return;
+  /** Reads the project's elements and connections again; resolves once both lists are set. */
+  const reloadModelLists = useCallback((): Promise<unknown> => {
+    if (!projectId) return Promise.resolve();
     const elementApi = projectElementApi(projectId);
-    Promise.all([elementApi.list({ open_only: true }), elementApi.listShared({ open_only: true })])
-      .then(([own, shared]) => setElements([...own, ...shared]))
-      .catch(() => setElements([]));
-    projectConnectionApi(projectId).list({ open_only: true }).then(setConnections).catch(() => setConnections([]));
+    return Promise.all([
+      Promise.all([elementApi.list({ open_only: true }), elementApi.listShared({ open_only: true })])
+        .then(([own, shared]) => setElements([...own, ...shared]))
+        .catch(() => setElements([])),
+      projectConnectionApi(projectId).list({ open_only: true }).then(setConnections).catch(() => setConnections([])),
+    ]);
   }, [projectId]);
   useEffect(() => { reloadModelLists(); }, [reloadModelLists]);
   useEffect(() => {
@@ -173,29 +184,46 @@ export function DiagramEditorPage() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  /** Stores the edited element, then redraws from the new data; the pending layout is kept (a merge, not a replace). */
-  async function saveElementEdit(values: ElementFieldValues) {
-    const element = editingElement;
-    if (!element) return;
-    setElementFormError(null);
-    const changed = diffElementFields(valuesFromElement(element), values);
-    if (Object.keys(changed).length === 0) {
-      showToast("Nothing changed.");
-      setEditingElement(null);
-      return;
-    }
+  /**
+   * Stores changed fields of an element from the Selection card, then reads the lists and the diagram again (the pending layout
+   * is kept: a merge, not a replace) so the card quotes the new version.
+   *
+   * @returns True when stored; a refusal is a toast and false, leaving the draft for correction.
+   */
+  async function saveElementFields(element: ArchitectureElement, changed: Partial<ElementFieldValues>): Promise<boolean> {
     try {
-      await projectElementApi(projectId).update(element.id, element.version, changed);
+      const updated = await projectElementApi(projectId).update(element.id, element.version, changed);
       showToast("Element updated.");
-      setEditingElement(null);
-      reloadModelLists();
-      void editor.reload(false);
+      // A box added since the layout was last saved is not in the stored view, so the read below cannot rename it.
+      const type = elementTypes.find((t) => t.id === updated.element_type_id);
+      editor.refreshBoxes((box) => (box.elementId === updated.id ? boxWithElement(box, updated, type) : box));
+      await Promise.all([reloadModelLists(), editor.reload(false)]);
+      return true;
     } catch (err) {
-      setElementFormError(toErrorMessage(err, "Could not update this element."));
+      showToast(toErrorMessage(err, "Could not update this element."), "error");
+      return false;
     }
   }
 
-  /** Stores the edited connection, then redraws from the new data; the pending layout is kept (a merge, not a replace). */
+  /** Stores changed fields of a connection and reads the lists and the diagram again; throws the server's refusal. */
+  async function storeConnectionFields(connection: ArchitectureConnection, changed: Partial<ConnectionFieldValues>) {
+    await projectConnectionApi(projectId).update(connection.id, connection.version, changed);
+    showToast("Connection updated.");
+    await Promise.all([reloadModelLists(), editor.reload(false)]);
+  }
+
+  /** The Selection card's save of a connection: false, with a toast, when the server refuses. */
+  async function saveConnectionFields(connection: ArchitectureConnection, changed: Partial<ConnectionFieldValues>): Promise<boolean> {
+    try {
+      await storeConnectionFields(connection, changed);
+      return true;
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not update this connection."), "error");
+      return false;
+    }
+  }
+
+  /** The dialog's save of one connection of a line that stands for several. */
   async function saveConnectionEdit(values: ConnectionFieldValues) {
     const connection = editingConnection;
     if (!connection) return;
@@ -207,11 +235,8 @@ export function DiagramEditorPage() {
       return;
     }
     try {
-      await projectConnectionApi(projectId).update(connection.id, connection.version, changed);
-      showToast("Connection updated.");
+      await storeConnectionFields(connection, changed);
       setEditingConnection(null);
-      reloadModelLists();
-      void editor.reload(false);
     } catch (err) {
       setConnectionFormError(toErrorMessage(err, "Could not update this connection."));
     }
@@ -227,10 +252,12 @@ export function DiagramEditorPage() {
     };
   }, [projectId, reloadModelLists]);
 
-  const createConnection = useCreateConnection(projectId, (id) => {
-    const outerId = connecting?.realises;
-    setConnecting(null);
-    reloadModelLists();
+  /**
+   * After a connection exists: marks it as realising a boundary box's outer connection when it was drawn to one, reads the model
+   * again and, once its line is drawn, selects it with the cursor in its name.
+   */
+  function connectionCreated(id: string, outerId?: string) {
+    void reloadModelLists();
     void (async () => {
       if (outerId) {
         try {
@@ -242,7 +269,15 @@ export function DiagramEditorPage() {
         }
       }
       await editor.reload(false);
+      setFocusNew(id);
+      setSelectConnection(id);
     })();
+  }
+  // The dialog is reached only by a project with no connection type, which cannot save one; the hook keeps its refusal shown.
+  const createConnection = useCreateConnection(projectId, (id) => {
+    const outerId = connecting?.realises;
+    setConnecting(null);
+    connectionCreated(id, outerId);
   });
 
   // A switch's state on this page: the address overrides the saved default (the choice is never stored).
@@ -306,6 +341,10 @@ export function DiagramEditorPage() {
   );
   const drawnEdgeIds = useMemo(() => new Set(edges.map((e) => e.id)), [edges]);
   const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds), [layout, resolved, drawnEdgeIds]);
+  // A connection just added is the selection once a line for it is drawn (a switch may hide it, which leaves it unselected).
+  const newLine = selectConnection === null ? undefined
+    : resolved.edges.find((e) => drawnEdgeIds.has(e.id) && e.connections.some((c) => c.id === selectConnection));
+  const selection: GraphCanvasSelection | null = newLine ? { kind: "edge", id: newLine.id } : picked;
 
   // Comments are stored at once and apart from the layout, so they never make the drawing look unsaved; a link to a thread
   // (`?pin=`) is opened by `useCanvasComments`, after the drawing is fitted.
@@ -376,7 +415,30 @@ export function DiagramEditorPage() {
     const ends = layout.boxes.filter((b) => b.elementId === source || b.elementId === target);
     if (source.startsWith(NOTE_NODE_PREFIX) || target.startsWith(NOTE_NODE_PREFIX) || ends.some((b) => b.locked)) return;
     if (!(await ensureSaved())) return;
-    setConnecting({ source, target });
+    await addConnection(source, target);
+  }
+
+  /**
+   * Creates a connection between two elements at once, with the type the ends suggest (`defaultConnectionType`) and every other
+   * field empty, to be edited in the Selection card. A project with no connection type cannot create one, so the dialog opens
+   * with a link to where types are set up. A refusal is a toast and nothing is added.
+   *
+   * @param realises The outer connection a boundary box stands for, which the new connection is then marked as realising.
+   */
+  async function addConnection(source: string, target: string, realises?: string) {
+    const endType = (id: string) => elementTypes.find((t) => t.id === elements.find((e) => e.id === id)?.element_type_id);
+    const type = defaultConnectionType(reference.connectionTypes, [endType(source), endType(target)]);
+    if (!type) {
+      setConnecting({ source, target, realises });
+      return;
+    }
+    try {
+      const created = await projectConnectionApi(projectId).create({ ...blankConnectionValues(type.id, source, target), activate: false });
+      showToast("Connection created.");
+      connectionCreated(created.id, realises);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not create the connection."), "error");
+    }
   }
 
   /**
@@ -394,9 +456,7 @@ export function DiagramEditorPage() {
     }
     if (!(await ensureSaved())) return;
     const fromInner = box.shape !== "input";
-    setConnecting({
-      source: fromInner ? elementId : box.outside_element_id, target: fromInner ? box.outside_element_id : elementId, realises: connectionId,
-    });
+    await addConnection(fromInner ? elementId : box.outside_element_id, fromInner ? box.outside_element_id : elementId, connectionId);
   }
 
   function addOuter(connectionId: string) {
@@ -411,23 +471,28 @@ export function DiagramEditorPage() {
     await editor.reload(false);
   }
 
-  async function createElementAt(name: string) {
-    if (!newElement || !diagram) return;
-    setNewElementError(null);
+  /**
+   * Creates an element of a type at once, named for its type with a number, inside the diagram's scope element, places it at
+   * `at` and selects it with the cursor in its name. A refusal is a toast and nothing is added.
+   */
+  async function addElementAt(typeId: string, at: { x: number; y: number }) {
+    if (!diagram) return;
+    const type = elementTypes.find((t) => t.id === typeId);
     try {
       const created = await projectElementApi(projectId).create({
-        name, description: "", display_note: "", element_type_id: newElement.typeId, parent_id: diagram.scope_element_id, owner: null,
-        symbol_id: null, folder_id: null, activate: false, ports: [],
+        name: defaultElementName(type?.name ?? "Element", elements.map((e) => e.name)), description: "", display_note: "",
+        element_type_id: typeId, parent_id: diagram.scope_element_id, owner: null, symbol_id: null, folder_id: null, activate: false,
+        ports: [],
       });
-      const type = elementTypes.find((t) => t.id === created.element_type_id);
-      editor.edit((l) => addBoxes(l, [boxFromElement(created, type, newElement.at)]));
+      editor.edit((l) => addBoxes(l, [boxFromElement(created, type, at)]));
+      setElements((prev) => [...prev, created]);
       setSelection({ kind: "node", id: created.id });
-      setNewElement(null);
-      reloadModelLists();
+      setFocusNew(created.id);
+      void reloadModelLists();
       void editor.reloadModel();
       showToast("Element created.");
     } catch (err) {
-      setNewElementError(toErrorMessage(err, "Could not create the element."));
+      showToast(toErrorMessage(err, "Could not create the element."), "error");
     }
   }
 
@@ -543,6 +608,10 @@ export function DiagramEditorPage() {
     }
   }
 
+  const elementEditor: ElementEditorReference | null = reference.project ? {
+    elementTypes, symbols: reference.symbols, symbolUrl: (id) => projectSymbolUrl(projectId, id), orgUsers: reference.orgUsers,
+    organizationId: reference.project.organization_id,
+  } : null;
   const placed = new Set(layout.boxes.map((b) => b.elementId));
   const candidates = elements.filter((e) => !placed.has(e.id) && !e.is_archived && !isOutOfUse(e.status));
   const scopeLabel = diagram.scope_element_id ? (
@@ -569,7 +638,7 @@ export function DiagramEditorPage() {
       </button>
       <DiagramAddMenu
         elementTypes={elementTypes} disabled={!editable}
-        onAddType={(typeId) => setNewElement({ typeId, at: nextFreePosition(layout) })}
+        onAddType={(typeId) => void addElementAt(typeId, nextFreePosition(layout))}
         onAddExisting={() => setAdding(true)} onAddNote={addNewNote}
         outerConnections={outerChoices.map((c) => ({ id: c.connection.id, label: `${c.connection.unique_code} · ${boundaryOutsideName(c.box)}` }))}
         onAddOuter={addOuter}
@@ -606,7 +675,8 @@ export function DiagramEditorPage() {
           commentLayer.startAt(pinPlaceOf(at, target, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)));
         }}
         elements={elements} connectionTypes={reference.connectionTypes}
-        onEditElement={(box) => { setElementFormError(null); setEditingElement(elements.find((e) => e.id === box.elementId) ?? null); }}
+        elementEditor={elementEditor} elementTypes={elementTypes} onSaveElement={saveElementFields} onSaveConnection={saveConnectionFields}
+        focusNew={focusNew} onFocused={() => setFocusNew(null)}
         onEditConnection={(connection) => { setConnectionFormError(null); setEditingConnection(connection); }}
         onAddPort={portsApi.add} onChangePort={portsApi.change} onRemovePort={portsApi.remove}
         onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
@@ -681,7 +751,7 @@ export function DiagramEditorPage() {
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
               readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps}
               // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
-              onSelect={(next) => { if (next !== null || pickingSpot === null) setSelection(next); }}
+              onSelect={(next) => { if (next !== null || pickingSpot === null) { setSelection(next); setFocusNew(null); } }}
               onCanvasClick={(at) => {
                 if (pickingSpot === null) return;
                 pointNoteAt(pickingSpot, { kind: "point", x: Math.round(at.x), y: Math.round(at.y) });
@@ -699,7 +769,7 @@ export function DiagramEditorPage() {
               }}
               onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected} onNodeOpen={openBoxInside}
               onDropItem={(payload, at) => {
-                if (payload.startsWith(PALETTE_TYPE_PREFIX)) setNewElement({ typeId: payload.slice(PALETTE_TYPE_PREFIX.length), at });
+                if (payload.startsWith(PALETTE_TYPE_PREFIX)) void addElementAt(payload.slice(PALETTE_TYPE_PREFIX.length), at);
               }}
             />
             </div>
@@ -746,14 +816,6 @@ export function DiagramEditorPage() {
           onCancel={() => { setEditingDiagram(false); setFormError(null); }} onSave={saveDiagramFields}
         />
       )}
-      {editingElement && reference.project && (
-        <ElementFormModal
-          initial={editingElement} elementTypes={elementTypes} connectionTypes={reference.connectionTypes}
-          candidates={elements.filter((e) => !e.shared)} symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)}
-          orgUsers={reference.orgUsers} organizationId={reference.project.organization_id} projectId={projectId} error={elementFormError}
-          onCancel={() => { setEditingElement(null); setElementFormError(null); }} onSave={saveElementEdit}
-        />
-      )}
       {editingConnection && (
         <ConnectionFormModal
           initial={editingConnection} connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
@@ -762,16 +824,11 @@ export function DiagramEditorPage() {
         />
       )}
       {adding && <AddElementsDialog projectId={projectId} candidates={candidates} elementTypes={elementTypes} onCancel={() => setAdding(false)} onAdd={addExisting} />}
-      {newElement && (
-        <NewElementDialog
-          typeName={elementTypes.find((t) => t.id === newElement.typeId)?.name ?? "element"} error={newElementError}
-          onCancel={() => { setNewElement(null); setNewElementError(null); }} onCreate={(name) => void createElementAt(name)}
-        />
-      )}
       {connecting && (
         <ConnectionFormModal
           connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
           projectId={projectId} defaultSourceId={connecting.source} defaultTargetId={connecting.target} error={createConnection.error}
+          setupPath={CONNECTION_SETUP_PATH(projectId)}
           onCancel={() => { setConnecting(null); createConnection.clearError(); }} onSave={createConnection.create}
         />
       )}

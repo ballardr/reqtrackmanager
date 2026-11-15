@@ -20,6 +20,20 @@ export function blankElementValues(
   };
 }
 
+/**
+ * The name a newly added element starts with: the type's name and the first number not in use ("Sensor 1", "Sensor 2").
+ *
+ * @param typeName The element type's name.
+ * @param taken The names the project's elements already have.
+ * @returns A name not in `taken` (compared without case).
+ */
+export function defaultElementName(typeName: string, taken: readonly string[]): string {
+  const used = new Set(taken.map((name) => name.trim().toLowerCase()));
+  let n = 1;
+  while (used.has(`${typeName} ${n}`.toLowerCase())) n += 1;
+  return `${typeName} ${n}`;
+}
+
 /** The editable fields of an element, as the form holds them. */
 export function valuesFromElement(element: ArchitectureElement): ElementFieldValues {
   return {

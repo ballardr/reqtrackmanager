@@ -4,6 +4,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api, ApiError } from "../../api/client";
 import { buildPlace, openPlacementPicker } from "../../testing/placementsFixtures";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
@@ -289,8 +290,8 @@ export const SelectingALineListsTheConnectionsBehindIt: Story = {
 };
 
 /** Selects the line between Gateway and Orders and returns the Selection card. */
-async function selectLine(canvas: ReturnType<typeof within>) {
-  const edge = await canvas.findByLabelText("Connection from Gateway to Orders");
+async function selectLine(canvas: ReturnType<typeof within>, label: string | RegExp = "Connection from Gateway to Orders") {
+  const edge = await canvas.findByLabelText(label);
   edge.focus();
   await userEvent.keyboard("{Enter}");
   return within(await canvas.findByRole("region", { name: "Selection" }));
@@ -389,23 +390,53 @@ export const AddingAnElementDrawsItsConnectionsBeforeSaving: Story = {
   },
 };
 
-export const ACreatedElementIsPlacedWhereItWasDropped: Story = {
+/** A type chosen in the Add menu creates the element at once, named for its type, selected with the cursor in its name. */
+export const AnElementIsCreatedAtOnceNamedForItsTypeAndSelected: Story = {
   beforeEach: () => {
-    spyOn(api, "post").mockResolvedValue(buildElement({ id: "el-9", unique_code: "ELM-009", name: "Queue worker" }) as never);
+    const created = buildElement({ id: "el-9", unique_code: "ELM-009", name: "Queue worker" });
+    mockArchitectureReads({ elements: [...ELEMENTS, created] });
+    spyOn(api, "post").mockResolvedValue(created as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await addFromMenu(canvas, "Service");
-    const dialog = within(within(document.body).getByRole("dialog"));
-    await userEvent.type(await dialog.findByLabelText(/^Name/), "Queue worker");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await expect(await canvas.findByLabelText("Queue worker, node")).toBeInTheDocument();
     await expect(api.post).toHaveBeenCalledWith(
-      `${BASE}/elements`, expect.objectContaining({ name: "Queue worker", element_type_id: "et-1", parent_id: null, activate: false }),
+      `${BASE}/elements`, expect.objectContaining({ name: "Service 1", element_type_id: "et-1", parent_id: null, activate: false }),
     );
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    const name = await panel.findByRole("textbox", { name: "Name" });
+    await waitFor(() => expect(name).toHaveFocus());
+    await expect(name).toHaveValue("Queue worker");
+    await expect(requiredCaptions(await canvas.findByRole("group", { name: "Element details" }))).toEqual(["Name", "Element type"]);
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
   },
 };
 
+/** A refused create is an error message and nothing is added to the diagram. */
+export const ARefusedElementCreateAddsNothingAndSaysWhy: Story = {
+  beforeEach: () => { spyOn(api, "post").mockRejectedValue(new ApiError(403, "You may not create elements in this project.")); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await addFromMenu(canvas, "Service");
+    await expect(await within(document.body).findByText("You may not create elements in this project.")).toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Service 1, node")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};
+
+/** The default name is the first number not already in use. */
+export const TheDefaultNameSkipsANumberAlreadyInUse: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: [...ELEMENTS, buildElement({ id: "el-8", unique_code: "ELM-008", name: "Service 1", ports: [] })] });
+    spyOn(api, "post").mockResolvedValue(buildElement({ id: "el-9", unique_code: "ELM-009", name: "Service 2" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    await addFromMenu(within(canvasElement), "Service");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/elements`, expect.objectContaining({ name: "Service 2" })));
+  },
+};
 export const ANoteIsEditedInPlainText: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -695,7 +726,31 @@ export const ABoxAddedBeforeSavingIsInTheOutlineAtOnce: Story = {
   },
 };
 
-export const ConnectToStartsAConnectionWithoutDragging: Story = {
+/** The connection a "Connect to" choice creates: Gateway to Firewall, which no line joins yet. */
+const NEW_CONNECTION = buildConnection({
+  id: "con-8", unique_code: "CON-008", name: "", source_port_id: null, source_port_name: null, target_element_id: "el-3",
+  target_element_code: "ELM-003", target_element_name: "Firewall", protocol: "",
+});
+
+/** Answers the post that creates `created`, and the diagram's model with it once it exists, so its line is drawn. */
+function mockCreatedConnection(created: ReturnType<typeof buildConnection>) {
+  let posted = false;
+  spyOn(api, "post").mockImplementation(async () => { posted = true; return created as never; });
+  const spy = api.get as unknown as { getMockImplementation: () => (...args: unknown[]) => Promise<unknown>; mockImplementation: (fn: unknown) => void };
+  const original = spy.getMockImplementation();
+  spy.mockImplementation(async (...args: unknown[]) => {
+    const result = await original(...args);
+    if (posted && String(args[0]).split("?")[0].endsWith("/diagrams/dgm-1/model")) {
+      const model = result as { connections: unknown[] };
+      return { ...model, connections: [...model.connections, created] };
+    }
+    return result;
+  });
+}
+
+/** "Connect to" creates the connection at once with the suggested type, selects its line and puts the cursor in its name. */
+export const ConnectToCreatesAConnectionAtOnceAndSelectsItsLine: Story = {
+  beforeEach: () => { mockCreatedConnection(NEW_CONNECTION); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
@@ -703,12 +758,42 @@ export const ConnectToStartsAConnectionWithoutDragging: Story = {
     const choose = await panel.findByRole("combobox", { name: /Connect to/ });
     // Only the other visible boxes are offered.
     await expect(within(choose).queryByRole("option", { name: /Gateway/ })).not.toBeInTheDocument();
-    await userEvent.selectOptions(choose, "el-2");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await expect(dialog.getByRole("heading", { name: "New connection" })).toBeInTheDocument();
+    await userEvent.selectOptions(choose, "el-3");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `${BASE}/connections`,
+      expect.objectContaining({ source_element_id: "el-1", target_element_id: "el-3", connection_type_id: "ct-1", activate: false }),
+    ));
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    const group = await canvas.findByRole("group", { name: "Connection details" });
+    const details = within(group);
+    await waitFor(() => expect(details.getByRole("textbox", { name: "Name" })).toHaveFocus());
+    await expect(requiredCaptions(group)).toEqual(["Connection type", "Source element", "Target element"]);
   },
 };
 
+/** A project with no connection type cannot create a connection, so the dialog opens and links to where types are set up. */
+export const AProjectWithNoConnectionTypeOpensTheDialogWithASetupLink: Story = {
+  beforeEach: () => {
+    const get = mockArchitectureReads({ elements: ELEMENTS });
+    const original = get.getMockImplementation() as (...args: unknown[]) => Promise<unknown>;
+    get.mockImplementation((async (...args: unknown[]) => (
+      String(args[0]).split("?")[0].endsWith("/modules/architecture/connection-types") ? [] : original(...args)
+    )) as never);
+    spyOn(api, "post");
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: /Connect to/ }), "el-2");
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByRole("heading", { name: "New connection" })).toBeInTheDocument();
+    await expect(dialog.getByRole("link", { name: "Set up connection types" })).toHaveAttribute(
+      "href", `/projects/${PROJECT_ID}/admin/architecture/architecture-connection-types`,
+    );
+    await expect(api.post).not.toHaveBeenCalled();
+  },
+};
 export const TheDeleteKeyTakesTheSelectedBoxOffTheDiagramOnly: Story = {
   beforeEach: () => { spyOn(api, "delete").mockResolvedValue(undefined as never); },
   play: async ({ canvasElement }) => {
@@ -835,15 +920,15 @@ export const TheAddMenuGroupsTheTypesByDomain: Story = {
   },
 };
 
-export const ChoosingATypeInTheMenuAsksForTheNewElementsName: Story = {
+export const ChoosingATypeInTheMenuOpensNoDialog: Story = {
+  beforeEach: () => { spyOn(api, "post").mockResolvedValue(buildElement({ id: "el-9", unique_code: "ELM-009", name: "Board 1" }) as never); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await addFromMenu(canvas, "Board");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await expect(dialog.getByRole("heading", { name: "New Board" })).toBeInTheDocument();
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/elements`, expect.objectContaining({ name: "Board 1" })));
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
   },
 };
-
 export const TheConfigurationTabHoldsTheSettingsInsteadOfTheDrawing: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -960,29 +1045,48 @@ export const AnEditMadeWhileASaveIsReadBackIsKept: Story = {
   },
 };
 
-export const EditingABoxOpensTheElementFormAndKeepsPendingLayoutEdits: Story = {
+export const EditingABoxInTheSelectionCardStoresTheElementAndKeepsPendingLayoutEdits: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildElement({ version: 2, name: "Edge gateway" }) as never); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
-    await userEvent.click(await canvas.findByRole("button", { name: "Edit element" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    const name = await dialog.findByLabelText(/^Name/);
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(panel.queryByRole("button", { name: "Edit element" })).not.toBeInTheDocument();
+    const name = await panel.findByRole("textbox", { name: "Name" });
     await userEvent.clear(name);
     await userEvent.type(name, "Edge gateway");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await userEvent.click(panel.getByRole("button", { name: "Save element" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
-      `${BASE}/elements/el-1`, expect.objectContaining({ name: "Edge gateway", version: 1 }),
+      `${BASE}/elements/el-1`, { name: "Edge gateway", version: 1 },
     ));
-    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     // The move made before the edit is still waiting to be saved.
     await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
   },
 };
 
-export const EditingALineConnectionOpensTheConnectionFormAndKeepsPendingLayoutEdits: Story = {
+/** The focus leaving the card's fields stores the change, as for a state; a blank name is refused with a message. */
+export const LeavingTheElementFieldsStoresThemAndABlankNameIsRefused: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildElement({ version: 2, description: "Edge." }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    const name = await panel.findByRole("textbox", { name: "Name" });
+    await userEvent.clear(name);
+    await userEvent.click(canvas.getByRole("toolbar", { name: "Diagram editing" }));
+    await expect(await panel.findByRole("alert")).toHaveTextContent("A name is required.");
+    await expect(api.put).not.toHaveBeenCalled();
+    await userEvent.type(name, "Gateway");
+    const description = panel.getByRole("textbox", { name: /^Description/ });
+    await userEvent.type(description, "Edge.");
+    await userEvent.click(canvas.getByRole("toolbar", { name: "Diagram editing" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/elements/el-1`, { description: "Terminates client traffic.Edge.", version: 1 }));
+  },
+};
+export const EditingALinesConnectionInTheSelectionCardStoresItAndKeepsPendingLayoutEdits: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildConnection({ version: 2, protocol: "HTTP/2" }) as never); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -990,6 +1094,31 @@ export const EditingALineConnectionOpensTheConnectionFormAndKeepsPendingLayoutEd
     await userEvent.keyboard("{ArrowRight}");
     await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
     const panel = await selectLine(canvas);
+    await expect(panel.queryByRole("button", { name: "Edit CON-001" })).not.toBeInTheDocument();
+    const protocol = await panel.findByLabelText(/^Protocol/);
+    await userEvent.clear(protocol);
+    await userEvent.type(protocol, "HTTP/2");
+    await userEvent.click(panel.getByRole("button", { name: "Save connection" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/connections/con-1`, { protocol: "HTTP/2", version: 1 }));
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    // The move made before the edit is still waiting to be saved.
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+  },
+};
+
+/** A line that stands for several connections lists them, each with an Edit button that opens the connection form. */
+export const ALineStandingForSeveralConnectionsEditsEachInTheDialog: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramModel: buildDiagramModel({ connections: [buildConnection(), buildConnection({ id: "con-2", unique_code: "CON-002", name: "Admin traffic" })] }),
+    });
+    spyOn(api, "put").mockResolvedValue(buildConnection({ version: 2, protocol: "HTTP/2" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await expect(panel.queryByRole("group", { name: "Connection details" })).not.toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Edit CON-001" }));
     const dialog = within(await within(document.body).findByRole("dialog"));
     await expect(dialog.getByRole("heading", { name: "Edit Client traffic" })).toBeInTheDocument();
@@ -997,15 +1126,10 @@ export const EditingALineConnectionOpensTheConnectionFormAndKeepsPendingLayoutEd
     await userEvent.clear(protocol);
     await userEvent.type(protocol, "HTTP/2");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
-      `${BASE}/connections/con-1`, expect.objectContaining({ protocol: "HTTP/2", version: 1 }),
-    ));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/connections/con-1`, { protocol: "HTTP/2", version: 1 }));
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
-    // The move made before the edit is still waiting to be saved.
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
   },
 };
-
 export const AConnectionSharedFromAnotherProjectHasNoEditButton: Story = {
   beforeEach: () => {
     mockArchitectureReads({
@@ -1123,18 +1247,27 @@ export const TheAddMenuOffersTheOuterConnectionsAndDrawsTheChosenOne: Story = {
   },
 };
 
-export const ConnectToOnABoundaryBoxStartsAConnectionToTheElementOutside: Story = {
-  beforeEach: () => { mockBoundaryScene(); },
+export const ConnectToOnABoundaryBoxCreatesAConnectionToTheElementOutsideThatRealisesIt: Story = {
+  beforeEach: () => {
+    mockBoundaryScene();
+    spyOn(api, "post").mockResolvedValue(buildConnection({ id: "con-12", unique_code: "CON-012" }) as never);
+    spyOn(api, "put").mockResolvedValue(buildConnection({ id: "con-12", version: 2 }) as never);
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "CON-009");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await userEvent.selectOptions(await panel.findByRole("combobox", { name: /Connect to/ }), "el-2");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await expect(dialog.getByRole("heading", { name: "New connection" })).toBeInTheDocument();
+    // The outer connection leaves the scope element, so the new one starts at the inner element and ends outside.
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `${BASE}/connections`, expect.objectContaining({ source_element_id: "el-2", target_element_id: "el-8", activate: false }),
+    ));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/connections/con-12/realisations`, expect.objectContaining({ outer_connection_ids: ["con-9"] }),
+    ));
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
   },
 };
-
 export const ALineSetsWhatItRealisesAndTheServersRefusalIsShown: Story = {
   beforeEach: () => {
     mockBoundaryScene({ realised: false });
@@ -1296,7 +1429,7 @@ export const ABoxSelectionOffersEveryActionAsAnIconButton: Story = {
     await select(canvas, "Orders");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect(actionNames(panel)).toEqual([
-      "Open element", "Open inside as diagram", "Edit element", "Comment on this box", "Remove from diagram", "Delete element…",
+      "Open element", "Open inside as diagram", "Comment on this box", "Remove from diagram", "Delete element…",
     ]);
     const group = panel.getByRole("group", { name: "Actions" });
     for (const control of group.querySelectorAll("a, button")) await expect(control.textContent?.trim()).toBe("");
@@ -1316,11 +1449,17 @@ export const TheOpenInsideIconExplainsItselfInItsTooltip: Story = {
   },
 };
 
-/** A line's Selection card offers Comment as an icon and Edit per connection as an icon in its table. */
+/** A line's Selection card offers Comment as an icon; a line of several connections has Edit as an icon in each table row. */
 export const ALineSelectionOffersItsActionsAsIconButtons: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramModel: buildDiagramModel({ connections: [buildConnection(), buildConnection({ id: "con-2", unique_code: "CON-002", name: "Admin traffic" })] }),
+    });
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const panel = await selectLine(canvas);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
     await expect(actionNames(panel)).toEqual(["Comment on this connection"]);
     const edit = panel.getByRole("button", { name: "Edit CON-001" });
     await expect(edit.textContent?.trim()).toBe("");

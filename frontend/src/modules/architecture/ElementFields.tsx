@@ -28,9 +28,10 @@ import type { ArchitectureElement, ArchitectureSymbol, ElementFieldValues, Eleme
  * @param organizationId The owning organisation, for user search and groups.
  * @param projectId The owning project (omit for an organisation element), for project groups.
  * @param saved The element being edited, so its owner shows by name until changed.
+ * @param autoFocusName True to select the name when the group first appears (an element just added to a diagram).
  */
 export function ElementFields({
-  values, onChange, elementTypes, parents, symbols, symbolUrl, orgUsers, organizationId, projectId, saved,
+  values, onChange, elementTypes, parents, symbols, symbolUrl, orgUsers, organizationId, projectId, saved, autoFocusName = false,
 }: {
   values: ElementFieldValues;
   onChange: <K extends keyof ElementFieldValues>(key: K, value: ElementFieldValues[K]) => void;
@@ -42,12 +43,16 @@ export function ElementFields({
   organizationId: string;
   projectId?: string;
   saved?: ArchitectureElement;
+  autoFocusName?: boolean;
 }) {
   const formatCode = useRecordCode();
   return (
     <>
       <FormGridFull>
-        <TextField helpNotNeeded required label="Name" value={values.name} onChange={(value) => onChange("name", value)} />
+        <TextField
+          helpNotNeeded required label="Name" value={values.name} onChange={(value) => onChange("name", value)}
+          inputProps={autoFocusName ? { autoFocus: true, onFocus: (event) => event.currentTarget.select() } : undefined}
+        />
       </FormGridFull>
       <LabeledSelect
         help={ARCHITECTURE_HELP.elementType} required label="Element type" value={values.element_type_id} placeholder="Choose a type"

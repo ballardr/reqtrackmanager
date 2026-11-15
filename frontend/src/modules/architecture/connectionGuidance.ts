@@ -49,6 +49,21 @@ export function guideConnectionTypes(
   };
 }
 
+/**
+ * The connection type a new connection starts with: the first type its ends' element types suggest, else the first top-level
+ * type that fits both ends by domain, else the first that fits, else the first type there is. `undefined` only when the project
+ * has no connection type at all (a connection cannot exist without one).
+ *
+ * @param connectionTypes Every connection type the project lists.
+ * @param ends The element types at the source and target (`undefined` for one that is not known).
+ */
+export function defaultConnectionType(
+  connectionTypes: ConnectionType[], ends: Array<ElementType | undefined>,
+): ConnectionType | undefined {
+  const { suggested, offered } = guideConnectionTypes(connectionTypes, ends);
+  return suggested[0] ?? offered.find((t) => t.parent_ids.length === 0) ?? offered[0] ?? connectionTypes[0];
+}
+
 /** The "Suggested" group for the top of the picker's tree: each suggested type once, as a leaf. */
 export function suggestedGroup(suggested: ConnectionType[]): TreeSelectNode[] {
   if (suggested.length === 0) return [];

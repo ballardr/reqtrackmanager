@@ -7,30 +7,23 @@
  * a port is offered only when the chosen element has ports, and is cleared when the element changes. A new connection also takes quick
  * links, tags and "Save and activate" (a connection has no approval step).
  *
- * The type picker is guided, never restrictive (`connectionGuidance`): it lists the types whose domain fits both ends,
- * with the types suggested for the ends' element types first, offers every type on "Show all types", and warns when
- * a type that does not fit is chosen.
+ * The fields are the shared `ConnectionFieldGroup` (also the diagram Selection card's), whose type picker is guided, never
+ * restrictive. A diagram adds a connection at once and edits it in its Selection card; this dialog opens there only when the
+ * project has no connection type (`setupPath` then links to where types are set up) and, by a double click, to edit.
  */
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import type { CollectedLink } from "../../api/artefactLinks";
 import { FormActions } from "../../components/FormActions";
-import { TextAreaField, TextField } from "../../components/FormFields";
-import { ToggleField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
-import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
-import { TreeSelectField } from "../../components/TreeSelectField";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
-import { useRecordCode } from "../../hooks/useRecordCode";
 import { blankConnectionValues, valuesFromConnection } from "./architectureFields";
-import { guideConnectionTypes, mismatchWarning, suggestedGroup } from "./connectionGuidance";
-import { connectionTypeNodes } from "./connectionTypeTree";
-import { FolderField } from "./FolderField";
-import { ARCHITECTURE_HELP } from "./help";
+import { ConnectionFieldGroup } from "./ConnectionFieldGroup";
+import { defaultConnectionType } from "./connectionGuidance";
 import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType } from "./types";
-import { isOutOfUse } from "./types";
 
 /** What a new connection takes beyond the shared fields. */
 export interface ConnectionCreateExtras {
@@ -48,12 +41,13 @@ export interface ConnectionCreateExtras {
  * @param projectId The connection's project, for quick links and tags.
  * @param defaultSourceId An element to preselect as the source of a new connection.
  * @param defaultTargetId An element to preselect as the target (a line drawn between two boxes of a diagram).
+ * @param setupPath Where connection types are set up; shown as a link when the project has none.
  * @param error A save error to show.
  * @param onSave Called with the values and, for a new connection, the extras.
  */
 export function ConnectionFormModal({
-  initial, connectionTypes, elementTypes = [], elements, projectId, defaultSourceId = "", defaultTargetId = "", error, onCancel,
-  onSave,
+  initial, connectionTypes, elementTypes = [], elements, projectId, defaultSourceId = "", defaultTargetId = "", setupPath, error,
+  onCancel, onSave,
 }: {
   initial?: ArchitectureConnection;
   connectionTypes: ConnectionType[];
@@ -62,45 +56,29 @@ export function ConnectionFormModal({
   projectId: string;
   defaultSourceId?: string;
   defaultTargetId?: string;
+  setupPath?: string;
   error?: string | null;
   onCancel: () => void;
   onSave: (values: ConnectionFieldValues, extras: ConnectionCreateExtras) => void;
 }) {
-  const formatCode = useRecordCode();
   const [values, setValues] = useState<ConnectionFieldValues>(() =>
     initial ? valuesFromConnection(initial) : blankConnectionValues("", defaultSourceId, defaultTargetId));
-  // A new connection's type follows the guidance until a type is chosen: the first type its ends suggest, else the first
-  // that fits both.
+  // A new connection's type follows the guidance until a type is chosen (`defaultConnectionType`).
   const [typeTouched, setTypeTouched] = useState(false);
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const [showAll, setShowAll] = useState(false);
-  const set = <K extends keyof ConnectionFieldValues>(key: K, value: ConnectionFieldValues[K]) =>
+  const set = <K extends keyof ConnectionFieldValues>(key: K, value: ConnectionFieldValues[K]) => {
+    if (key === "connection_type_id") setTypeTouched(true);
     setValues((prev) => ({ ...prev, [key]: value }));
+  };
 
-  const options = elements.filter((e) => !isOutOfUse(e.status) || e.id === initial?.source_element_id || e.id === initial?.target_element_id);
-  const elementOptions = options.map((e) => ({
-    value: e.id, label: `${formatCode.code(e.unique_code, e.from_project_code)} ${e.name}${e.shared ? " (shared)" : ""}`,
-  }));
-  const portOptions = (elementId: string) =>
-    (elements.find((e) => e.id === elementId)?.ports ?? []).map((p) => ({ value: p.id, label: p.name }));
   const endType = (elementId: string): ElementType | undefined => {
     const typeId = elements.find((e) => e.id === elementId)?.element_type_id;
     return elementTypes.find((t) => t.id === typeId);
   };
-  const ends = [endType(values.source_element_id), endType(values.target_element_id)];
-  const guidance = guideConnectionTypes(connectionTypes, ends);
   const typeId = initial || typeTouched
     ? values.connection_type_id
-    : (guidance.suggested[0] ?? guidance.offered[0] ?? connectionTypes[0])?.id ?? "";
-  const chosen = connectionTypes.find((t) => t.id === typeId);
-  // A chosen type stays in the list even when the domain filter would hide it, so the picker never loses the choice.
-  const stillHidden = guidance.hidden.filter((t) => t.id !== typeId);
-  const listed = showAll || stillHidden.length === 0
-    ? connectionTypes
-    : connectionTypes.filter((t) => guidance.offered.includes(t) || t.id === typeId);
-  const typeNodes = [...suggestedGroup(guidance.suggested), ...connectionTypeNodes(listed)];
-  const warning = mismatchWarning(chosen, ends);
+    : defaultConnectionType(connectionTypes, [endType(values.source_element_id), endType(values.target_element_id)])?.id ?? "";
   const valid = typeId !== "" && values.source_element_id !== "" && values.target_element_id !== ""
     && values.source_element_id !== values.target_element_id;
 
@@ -111,51 +89,17 @@ export function ConnectionFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.name || initial.unique_code}` : "New connection"} onClose={onCancel} size="lg">
       <div className="stack">
+        {connectionTypes.length === 0 && (
+          <p role="status">
+            This project has no connection types, so a connection cannot be saved yet.
+            {setupPath && <> <Link to={setupPath}>Set up connection types</Link>.</>}
+          </p>
+        )}
         <FormGrid minColumn="18rem">
-          <FormGridFull>
-            <TextField helpNotNeeded label="Name" value={values.name} onChange={(value) => set("name", value)} />
-          </FormGridFull>
-          <div className="stack">
-            <TreeSelectField
-              help={ARCHITECTURE_HELP.connectionType} required single searchable label="Connection type"
-              value={typeId ? [typeId] : []} emptyLabel="Choose a type"
-              nodes={typeNodes} onChange={([next]) => { setTypeTouched(true); set("connection_type_id", next ?? ""); }}
-            />
-            {(showAll || stillHidden.length > 0) && (
-              <ToggleField
-                help={ARCHITECTURE_HELP.connectionTypeShowAll} label="Show all types" checked={showAll}
-                onChange={setShowAll} hint={showAll ? undefined : `${stillHidden.length} hidden`}
-              />
-            )}
-            {warning && <p role="status" style={{ margin: 0, color: "var(--color-warning)" }}>{warning}</p>}
-          </div>
-          <TextField help={ARCHITECTURE_HELP.connectionProtocol} label="Protocol" value={values.protocol} onChange={(value) => set("protocol", value)} />
-          <LabeledSelect
-            help={ARCHITECTURE_HELP.connectionSource} required label="Source element" value={values.source_element_id}
-            placeholder="Choose an element" options={elementOptions}
-            onChange={(next) => setValues((prev) => ({ ...prev, source_element_id: next, source_port_id: null }))}
+          <ConnectionFieldGroup
+            values={{ ...values, connection_type_id: typeId }} onChange={set} connectionTypes={connectionTypes}
+            elementTypes={elementTypes} elements={elements} projectId={projectId} saved={initial}
           />
-          {portOptions(values.source_element_id).length > 0 && (
-            <LabeledSelect
-              help={ARCHITECTURE_HELP.connectionPort} label="Source port" value={values.source_port_id ?? ""} placeholder="No port"
-              options={portOptions(values.source_element_id)} onChange={(next) => set("source_port_id", next || null)}
-            />
-          )}
-          <LabeledSelect
-            help={ARCHITECTURE_HELP.connectionTarget} required label="Target element" value={values.target_element_id}
-            placeholder="Choose an element" options={elementOptions}
-            onChange={(next) => setValues((prev) => ({ ...prev, target_element_id: next, target_port_id: null }))}
-          />
-          {portOptions(values.target_element_id).length > 0 && (
-            <LabeledSelect
-              help={ARCHITECTURE_HELP.connectionPort} label="Target port" value={values.target_port_id ?? ""} placeholder="No port"
-              options={portOptions(values.target_element_id)} onChange={(next) => set("target_port_id", next || null)}
-            />
-          )}
-          <FolderField kind="connection" owner={{ projectId }} value={values.folder_id} onChange={(next) => set("folder_id", next)} />
-          <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => set("description", value)} />
-          </FormGridFull>
           {!initial && (
             <FormGridFull>
               <div className="stack">

@@ -25,6 +25,23 @@ from app.modules.architecture.tests._helpers import (
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 
 
+def test_an_element_is_created_with_a_numbered_name_and_every_other_field_empty_as_a_diagram_adds_it(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch element bare")
+    made = client.post(
+        f"{project_base(project['id'])}/elements",
+        json={
+            "name": "Component 1", "description": "", "display_note": "", "element_type_id": element_types(client, token, project["id"])["Component"],
+            "parent_id": None, "owner": None, "symbol_id": None, "folder_id": None, "activate": False, "ports": [],
+        },
+        headers=auth_headers(token),
+    )
+    assert made.status_code == 201, made.text
+    bare = made.json()
+    assert (bare["name"], bare["description"], bare["display_note"], bare["status"], bare["ports"]) == ("Component 1", "", "", "draft", [])
+    renamed = put_element(client, token, project["id"], bare, name="Queue worker")
+    assert renamed["name"] == "Queue worker" and renamed["unique_code"] == bare["unique_code"]
+
+
 def test_an_element_is_numbered_per_project_and_starts_draft_or_active(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch element create")
     first = make_element(client, token, project["id"], "Edge gateway", description="Receives sensor data.")

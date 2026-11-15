@@ -26,7 +26,7 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { projectDiagramApi } from "./api";
 import {
   EMPTY_LAYOUT, commit, isDirty, layoutFromView, layoutToSave, mergeView, redo, refreshPresent, startHistory, undo,
-  type EditorLayout, type History,
+  type EditorBox, type EditorLayout, type History,
 } from "./diagramEditorModel";
 import type { ArchitectureDiagram, DiagramFieldValues, DiagramModel, DiagramToggleValues, DiagramView } from "./types";
 
@@ -57,6 +57,8 @@ export interface DiagramEditor {
   updateFields: (values: Partial<DiagramFieldValues>) => Promise<boolean>;
   /** Reads the diagram again; `discard` also drops unsaved layout changes. */
   reload: (discard?: boolean) => Promise<void>;
+  /** Updates what the boxes show (a name, a type) without an undo step or an unsaved change: it is not an edit of the layout. */
+  refreshBoxes: (change: (box: EditorBox) => EditorBox) => void;
   /** Reads only the model data (after an element or connection was created elsewhere on the page). */
   reloadModel: () => Promise<void>;
   /** Replaces the record (after a status change or archive made outside the editor). */
@@ -178,6 +180,7 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
     undo: () => setHistory(undo),
     redo: () => setHistory(redo),
     save, saveToggles, updateFields,
+    refreshBoxes: (change) => setHistory((h) => refreshPresent(h, { ...h.present, boxes: h.present.boxes.map(change) })),
     reload: (discard = false) => read(discard),
     reloadModel,
     setDiagram: setDiagramState,

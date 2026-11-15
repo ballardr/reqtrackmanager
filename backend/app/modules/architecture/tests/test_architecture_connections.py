@@ -50,6 +50,25 @@ def test_a_connection_joins_two_elements_and_is_numbered(client, admin_token):
     assert (second["unique_code"], second["status"], second["directional"]) == ("CON-002", "active", False)
 
 
+def test_a_connection_is_created_with_every_field_empty_but_its_type_and_ends_as_a_diagram_adds_it(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch connection bare")
+    a, b = _two(client, token, project["id"])
+    made = client.post(
+        f"{project_base(project['id'])}/connections",
+        json={
+            "name": "", "connection_type_id": connection_types(client, token, project["id"])["REST API"],
+            "source_element_id": a["id"], "source_port_id": None, "target_element_id": b["id"], "target_port_id": None,
+            "protocol": "", "description": "", "folder_id": None, "activate": False,
+        },
+        headers=auth_headers(token),
+    )
+    assert made.status_code == 201, made.text
+    bare = made.json()
+    assert (bare["name"], bare["protocol"], bare["description"], bare["status"]) == ("", "", "", "draft")
+    edited = _put(client, token, project["id"], bare, protocol="HTTP/2")
+    assert edited["protocol"] == "HTTP/2" and edited["name"] == ""
+
+
 def test_the_two_ends_must_differ_and_be_elements_the_person_can_read(client, admin_token):
     org, project, token = setup(client, admin_token, "Arch connection ends")
     other = create_project(client, token, org["id"], "Arch connection ends other")

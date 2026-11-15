@@ -1,0 +1,35 @@
+{
+  "description": "Every way a person creates something on the two diagram canvases, and the path each takes: 'at-once' creates it with defaults and edits it in the Selection card; 'dialog' opens a form first and needs a stated reason. backend/tests/test_canvas_creations.py checks each handler exists and that each editor page renders no create/edit dialog that is not listed under 'dialogs', so a new creation cannot skip the decision.",
+  "editors": {
+    "DiagramEditorPage.tsx": {
+      "creations": [
+        { "kind": "element", "path": "at-once", "handler": "addElementAt" },
+        { "kind": "connection", "path": "at-once", "handler": "addConnection" },
+        { "kind": "boundary link", "path": "at-once", "handler": "addOuter" },
+        { "kind": "note", "path": "at-once", "handler": "addNewNote" },
+        { "kind": "existing element", "path": "dialog", "handler": "addExisting", "reason": "Choosing which existing elements to draw is a selection among records, not a creation; there is nothing to default." },
+        { "kind": "view switch", "path": "dialog", "handler": "storeToggle", "reason": "A view switch is configuration of the diagram (a rule and members), not a shape drawn on the canvas, and its rule has no sensible default." }
+      ],
+      "dialogs": {
+        "DiagramFormModal": { "role": "edit", "reason": "Edits the diagram's own fields from its header." },
+        "ConnectionFormModal": { "role": "edit", "reason": "Edits one connection of a line that stands for several; also the creation fallback when the project has no connection type (a connection cannot exist without one), where it links to the setup." },
+        "AddElementsDialog": { "role": "not-creation", "reason": "Picks existing elements to draw." },
+        "ConfirmDialog": { "role": "not-creation", "reason": "Confirms leaving the diagram with unsaved changes." },
+        "ToggleFormModal": { "role": "not-creation", "reason": "Configures a view switch (see the view switch entry)." }
+      }
+    },
+    "StateMachineEditorPage.tsx": {
+      "creations": [
+        { "kind": "state", "path": "at-once", "handler": "addState" },
+        { "kind": "marker", "path": "at-once", "handler": "addState" },
+        { "kind": "transition", "path": "at-once", "handler": "addTransition" }
+      ],
+      "dialogs": {
+        "StateMachineFormModal": { "role": "edit", "reason": "Edits the diagram's own fields from its header." },
+        "StateFormModal": { "role": "edit", "reason": "The double-click edit dialog of a state." },
+        "TransitionFormModal": { "role": "edit", "reason": "The double-click edit dialog of a transition." },
+        "ConfirmDialog": { "role": "not-creation", "reason": "Confirms a delete or leaving with unsaved changes." }
+      }
+    }
+  }
+}
