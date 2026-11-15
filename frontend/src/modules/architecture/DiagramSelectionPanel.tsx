@@ -55,11 +55,11 @@ import { ARCHITECTURE_HELP } from "./help";
 import { ConnectionSelectionFields } from "./ConnectionSelectionFields";
 import { ElementSelectionFields } from "./ElementSelectionFields";
 import { PortList } from "./PortList";
-import { selectionAction } from "./selectionAction";
+import { selectionAction, type SelectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import type {
   ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionFieldValues, ConnectionRef, ConnectionType, DiagramAnchor,
-  DiagramViewEdge, ElementFieldValues, ElementType, NoteTone, PortValues,
+  DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, NoteTone, PortValues,
 } from "./types";
 import type { OrgUser } from "../../api/types";
 
@@ -70,6 +70,22 @@ export interface ElementEditorReference {
   symbolUrl: (symbolId: string) => string;
   orgUsers: OrgUser[];
   organizationId: string;
+}
+
+/**
+ * The Selection card's actions for an element's state machine diagrams.
+ *
+ * @param machines The diagrams that describe the element.
+ * @param open Opens one.
+ * @param formatCode Writes a record code the way the person's settings ask (project-qualified or bare).
+ * @returns Nothing for none; an icon action for one; one overflow menu entry per diagram for several.
+ */
+function stateMachineActions(
+  machines: readonly ModelStateMachine[], open: (machine: ModelStateMachine) => void, formatCode: (code: string) => string,
+): SelectionAction[] {
+  if (machines.length === 0) return [];
+  if (machines.length === 1) return [selectionAction.stateMachine("Open state machine diagram", () => open(machines[0]))];
+  return machines.map((m) => selectionAction.stateMachineChoice(`Open state machine diagram ${formatCode(m.unique_code)} ${m.name}`, () => open(m)));
 }
 
 /**
@@ -99,6 +115,9 @@ export interface ElementEditorReference {
  * @param onRemoveBox Takes an element off the diagram.
  * @param onConnect Starts a connection from a box to the element with the given id.
  * @param onOpenInside Opens (or creates) the diagram of the element's inside.
+ * @param stateMachinesOf The state machine diagrams that describe an element (none for one the person cannot read).
+ * @param onOpenMachine Opens a state machine diagram from this diagram (the page asks before leaving unsaved changes). One diagram is an icon
+ *   action, several are entries of the overflow menu: the keyboard route to the badge on the box.
  * @param onDeleteElement Deletes the element from the model.
  * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic).
  * @param drawnEdgeIds The ids of the lines the canvas draws (a note's leader to a connection needs one of them).
@@ -117,9 +136,11 @@ export interface ElementEditorReference {
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
   onAnchorChange, drawnEdgeIds, pickingSpot, onEditNote, onNoteTone, onNoteArrow, onNotePointAt, onPickSpot, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
-  boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment,
+  boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
+  stateMachinesOf: (elementId: string) => readonly ModelStateMachine[];
+  onOpenMachine: (machine: ModelStateMachine) => void;
   selection: GraphCanvasSelection | null;
   boxes: EditorBox[];
   notes: EditorNote[];
@@ -202,6 +223,7 @@ export function DiagramSelectionPanel({
           actions={[
             !box.locked && selectionAction.open("Open element", `${base}/elements/${box.elementId}`),
             !box.locked && { ...selectionAction.inside("Open inside as diagram", () => onOpenInside(box)), help: ARCHITECTURE_HELP.openInside },
+            ...(box.locked ? [] : stateMachineActions(stateMachinesOf(box.elementId), onOpenMachine, formatCode.code)),
             onComment && !box.locked && selectionAction.comment(commentText.commentOnBox, () => onComment({ kind: "node", id: box.elementId })),
             editable && selectionAction.remove("Remove from diagram", () => onRemoveBox(box)),
             editable && !box.locked && !box.shared && selectionAction.delete("Delete element…", () => setDeleting(box)),

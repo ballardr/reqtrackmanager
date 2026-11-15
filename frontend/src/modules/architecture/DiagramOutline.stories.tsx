@@ -26,6 +26,8 @@ const meta: Meta<typeof DiagramOutline> = {
     edges: [buildViewEdge({ target_element_id: "el-5" })], parents: PARENTS,
     drawnEdgeIds: new Set<string>(), hidden: new Set<string>(), descriptions: new Map([["el-5", "Accepts orders over REST and queues them."]]),
     selection: null, onSelect: fn(),
+    stateMachinesOf: (elementId: string) => (elementId === "el-1" ? [{ id: "smd-1", unique_code: "SMD-001", name: "Gateway modes" }] : []),
+    onOpenMachine: fn(),
   },
 };
 export default meta;
@@ -224,5 +226,22 @@ export const OuterConnectionsAreATableWithDirectionAndCoverageAndNameTheBoxOnALi
     await expect(outline.getByRole("button", { name: "Line from ELM-001 Gateway to CON-009 (ELM-008 Cloud)" })).toBeInTheDocument();
     await userEvent.click(within(table).getByRole("button", { name: "CON-009" }));
     await expect(args.onSelect).toHaveBeenCalledWith({ kind: "node", id: boundaryNodeId("con-9") });
+  },
+};
+
+export const AnElementsStateMachineDiagramsOpenFromTheTableAndTheTree: Story = {
+  play: async ({ canvasElement, args }) => {
+    const outline = within(canvasElement);
+    // In the tree the diagram's button sits beside its element's.
+    await userEvent.click(outline.getByRole("button", { name: "SMD-001 Gateway modes" }));
+    await expect(args.onOpenMachine).toHaveBeenCalledWith({ id: "smd-1", unique_code: "SMD-001", name: "Gateway modes" });
+    // In the table it has its own column, and an element with none shows a dash.
+    await userEvent.click(outline.getByRole("button", { name: "List view" }));
+    const table = await outline.findByRole("table", { name: "Elements" });
+    await expect(within(table).getByRole("columnheader", { name: "State machine diagrams" })).toBeInTheDocument();
+    const gateway = within(within(table).getByRole("button", { name: /^ELM-001 Gateway/ }).closest("tr")!);
+    await expect(gateway.getByRole("button", { name: "SMD-001 Gateway modes" })).toBeInTheDocument();
+    const firewall = within(within(table).getByRole("button", { name: /^ELM-003 Firewall/ }).closest("tr")!);
+    await expect(firewall.queryByRole("button", { name: /SMD-/ })).not.toBeInTheDocument();
   },
 };

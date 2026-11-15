@@ -22,6 +22,7 @@ from app.modules.architecture.tests._helpers import (
     make_connection,
     make_diagram,
     make_element,
+    make_machine,
     place_all,
     project_base,
     save_toggles,
@@ -235,4 +236,101 @@ def test_the_models_statement_count_does_not_grow_with_the_project(client, admin
     with _Counter() as large:
         data = model(client, token, pid, diagram["id"])
     assert len(data["connections"]) == 9
+    assert large.count == small.count
+
+
+def _by_id(data: dict) -> dict[str, dict]:
+    return {e["id"]: e for e in data["elements"]}
+
+
+def test_each_readable_element_lists_the_state_machine_diagrams_that_describe_it(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch model machines")
+    pid = project["id"]
+    described = make_element(client, token, pid, "Engine")
+    plain = make_element(client, token, pid, "Tool")
+    first = make_machine(client, token, pid, described["id"], "Modes")
+    second = make_machine(client, token, pid, described["id"], "Faults")
+    gone = make_machine(client, token, pid, described["id"], "Old")
+    assert client.post(
+        f"{project_base(pid)}/state-machine-diagrams/{gone['id']}/archive", headers=auth_headers(token),
+    ).status_code == 200
+    diagram = place_all(client, token, pid, make_diagram(client, token, pid, "Context"), described["id"], plain["id"])
+
+    elements = _by_id(model(client, token, pid, diagram["id"]))
+    assert elements[described["id"]]["state_machines"] == [
+        {"id": first["id"], "unique_code": first["unique_code"], "name": "Modes"},
+        {"id": second["id"], "unique_code": second["unique_code"], "name": "Faults"},
+    ]
+    assert elements[plain["id"]]["state_machines"] == []
+
+
+def test_state_machine_diagrams_are_absent_when_their_sub_component_is_off(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch model machines gate")
+    pid = project["id"]
+    element = make_element(client, token, pid, "Engine")
+    make_machine(client, token, pid, element["id"], "Modes")
+    diagram = place_all(client, token, pid, make_diagram(client, token, pid, "Context"), element["id"])
+    assert _by_id(model(client, token, pid, diagram["id"]))[element["id"]]["state_machines"]
+
+    def switch(enabled: bool) -> None:
+        resp = client.put(
+            f"/api/v1/projects/{pid}/modules/architecture/subcomponents/architecture_state_machine",
+            json={"enabled": enabled}, headers=auth_headers(token),
+        )
+        assert resp.status_code == 200, resp.text
+
+    switch(False)
+    assert _by_id(model(client, token, pid, diagram["id"]))[element["id"]]["state_machines"] == []
+    switch(True)
+
+
+def test_an_unreadable_element_lists_no_state_machine_diagram_and_another_project_s_are_not_listed(client, admin_token):
+    org, owner, token = setup(client, admin_token, "Arch model machines hidden")
+    consumer = create_project(client, token, org["id"], "Arch model machines hidden consumer")
+    platform = make_element(client, token, owner["id"], "Platform", activate=True)
+    make_machine(client, token, owner["id"], platform["id"], "Platform modes")
+    local = make_element(client, token, consumer["id"], "Local")
+    owner_base = project_base(owner["id"])
+    collection = make_collection(client, token, owner_base, "Shared", members=[platform["id"]])
+    given = grant(client, token, owner_base, collection["id"], project_id=consumer["id"])
+    architect = make_architect(client, token, org["id"], consumer["id"], "arch.model.machines.hidden@example.com")
+    make_connection(client, architect, consumer["id"], local["id"], platform["id"])
+    diagram = place_all(
+        client, architect, consumer["id"], make_diagram(client, architect, consumer["id"], "Ctx"), local["id"], platform["id"],
+    )
+
+    # Shared: readable, but the owner project's state machine diagram is not the consumer's to list.
+    entry = _by_id(model(client, architect, consumer["id"], diagram["id"]))[platform["id"]]
+    assert entry["locked"] is False and entry["state_machines"] == []
+    make_machine(client, architect, consumer["id"], platform["id"], "Consumer view of platform")
+    entry = _by_id(model(client, architect, consumer["id"], diagram["id"]))[platform["id"]]
+    assert [m["name"] for m in entry["state_machines"]] == ["Consumer view of platform"]
+
+    # Revoked: a locked entry that names no state machine diagram.
+    client.delete(f"{owner_base}/collections/{collection['id']}/grants/{given['id']}", headers=auth_headers(token))
+    data = model(client, architect, consumer["id"], diagram["id"])
+    entry = _by_id(data)[platform["id"]]
+    assert entry["locked"] is True and entry["state_machines"] == []
+    assert "Consumer view" not in str(data)
+
+
+def test_the_state_machine_lists_do_not_add_statements_per_element(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch model machines flat")
+    pid = project["id"]
+    first = make_element(client, token, pid, "First")
+    diagram = place_all(client, token, pid, make_diagram(client, token, pid, "Context"), first["id"])
+    make_machine(client, token, pid, first["id"], "One")
+    model(client, token, pid, diagram["id"])
+    with _Counter() as small:
+        model(client, token, pid, diagram["id"])
+    ids = []
+    for index in range(6):
+        element = make_element(client, token, pid, f"Extra {index}")
+        make_machine(client, token, pid, element["id"], f"Modes {index}")
+        make_machine(client, token, pid, element["id"], f"Faults {index}")
+        ids.append(element["id"])
+    place_all(client, token, pid, diagram, *ids)
+    with _Counter() as large:
+        data = model(client, token, pid, diagram["id"])
+    assert sum(len(e["state_machines"]) for e in data["elements"]) == 13
     assert large.count == small.count

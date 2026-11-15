@@ -26,7 +26,7 @@ function layoutWith(...notes: ReturnType<typeof buildNote>[]): EditorLayout {
 
 const CTX = {
   theme: "light" as const, symbolSvg: () => undefined, lockedLabel: (c: string) => c, emptyNote: "Empty note", noteCaption: "Note",
-  showNotes: true, hidden: new Set<string>(), covered: new Set<string>(), coverageLabel: () => "",
+  showNotes: true, hidden: new Set<string>(), covered: new Set<string>(), coverageLabel: () => "", badges: () => [],
 };
 
 export const ANoteKeepsItsToneAndLeaderFromTheView: Story = {

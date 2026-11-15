@@ -524,6 +524,13 @@ export interface DiagramAnchor {
   target_point: AttachPoint | null;
 }
 
+/** A state machine diagram that describes an element, as a block on a block diagram links to it. */
+export interface ModelStateMachine {
+  id: string;
+  unique_code: string;
+  name: string;
+}
+
 /** An element as the editor needs it to draw a box and resolve lines; a `locked` one carries its code only. */
 export interface ModelElement {
   id: string;
@@ -538,6 +545,8 @@ export interface ModelElement {
   color_light: string | null;
   color_dark: string | null;
   symbol_id: string | null;
+  /** The open state machine diagrams describing the element (none for a locked element or when the caller may not read them). */
+  state_machines: ModelStateMachine[];
 }
 
 /** A connection type's drawing attributes. */

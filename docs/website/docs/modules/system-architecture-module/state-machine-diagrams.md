@@ -10,6 +10,18 @@ A state machine diagram belongs to one element and is listed with the block diag
 
 An element's page has a **Diagrams** card directly under its details. It lists the block diagrams that draw the element (**Placed** when it has its own box, **Inside** when only a parent is drawn) and the state machine diagrams that describe it, each linking to its editor, and a connection's page lists the diagrams that draw its line (**Drawn**, or **Rolled up** when the line joins parents of its ends). **New state machine diagram** is on the element's card.
 
+## Moving between a block and its state machine diagram
+
+A block on a block diagram whose element has at least one state machine diagram shows a small **state machine badge** on its top left corner. Pressing it opens the diagram; when the element has several, the badge shows their number and opens a list to choose from. The same action is available without the pointer: the Selection card's **Open state machine diagram** (several diagrams are entries of its **More actions** menu), and a column and buttons in the **Outline**. The badge is reached with Tab straight after its box. If the block diagram has unsaved changes, you are asked before leaving.
+
+On the state machine diagram, **Return to** (the block diagram's code and name) sits beside the **Diagrams** link and goes back to the block diagram with the element's box selected and in view. When the page was opened another way (a list, a pasted address, after a reload that lost the origin), an **Open in diagram** menu lists the block diagrams that draw the element instead, so the way back does not depend on the browser history. A diagram you cannot read is never listed.
+
+```mermaid
+flowchart LR
+    B["Block diagram<br/>block with a badge"] -- "badge, Selection card or Outline" --> S["State machine diagram"]
+    S -- "Return to, or Open in diagram" --> B
+```
+
 ## Notation
 
 The diagrams use UML state machine notation, which is also the SysML state machine notation.

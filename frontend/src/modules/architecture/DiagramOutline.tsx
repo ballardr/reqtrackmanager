@@ -29,6 +29,7 @@ import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
+import { useRecordCode } from "../../hooks/useRecordCode";
 import {
   BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, boundaryNodeId, boundaryOutsideName, leaderIsDrawn, leaderSummary, type EditorBoundary,
   type EditorBox, type EditorNote,
@@ -36,7 +37,7 @@ import {
 import {
   boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
 } from "./diagramOutlineModel";
-import type { DiagramViewEdge } from "./types";
+import type { DiagramViewEdge, ModelStateMachine } from "./types";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
 
@@ -59,9 +60,11 @@ function noteSummary(text: string): string {
  * @param descriptions `{element id: description}` for the elements that have one (the table's Description column).
  * @param selection What is selected on the canvas, or null.
  * @param onSelect Selects an element, note or line.
+ * @param stateMachinesOf The state machine diagrams that describe an element (the table's State machine diagrams column).
+ * @param onOpenMachine Opens a state machine diagram from this diagram (the page asks before leaving unsaved changes).
  */
 export function DiagramOutline({
-  boxes, notes, boundaries, covered, edges, drawnEdgeIds, parents, hidden, descriptions, selection, onSelect,
+  boxes, notes, boundaries, covered, edges, drawnEdgeIds, parents, hidden, descriptions, selection, onSelect, stateMachinesOf, onOpenMachine,
 }: {
   boxes: EditorBox[];
   notes: EditorNote[];
@@ -74,7 +77,24 @@ export function DiagramOutline({
   descriptions: ReadonlyMap<string, string>;
   selection: GraphCanvasSelection | null;
   onSelect: (selection: GraphCanvasSelection) => void;
+  stateMachinesOf: (elementId: string) => readonly ModelStateMachine[];
+  onOpenMachine: (machine: ModelStateMachine) => void;
 }) {
+  const formatCode = useRecordCode();
+  /** The element's state machine diagrams as buttons, or a dash for none. */
+  const machineButtons = (elementId: string) => {
+    const machines = stateMachinesOf(elementId);
+    if (machines.length === 0) return "—";
+    return (
+      <span className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap" }}>
+        {machines.map((m) => (
+          <button key={m.id} type="button" className="btn btn-sm" onClick={() => onOpenMachine(m)}>
+            {formatCode.code(m.unique_code)} {m.name}
+          </button>
+        ))}
+      </span>
+    );
+  };
   const tree = outlineTree(boxes, parents, hidden);
   const rows = connectionRows(edges, boxes, boundaries);
   const [elementView, setElementView] = useViewMode("architecture_outline_elements", "tree");
@@ -118,6 +138,7 @@ export function DiagramOutline({
                     <th scope="col">Parent</th>
                     <th scope="col">Display note</th>
                     <th scope="col">Description</th>
+                    <th scope="col">State machine diagrams</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -135,6 +156,7 @@ export function DiagramOutline({
                       <td>{row.parent ?? "—"}</td>
                       <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : row.box.display_note || "—"}</td>
                       <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : descriptions.get(row.id) || "—"}</td>
+                      <td>{row.box.locked ? "—" : machineButtons(row.id)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -154,13 +176,16 @@ export function DiagramOutline({
               return next;
             })}
             renderNode={(node) => (
-              <button
-                type="button" className={isSelected("node", node.id) ? "btn btn-sm btn-primary" : "btn btn-sm"}
-                aria-current={isSelected("node", node.id) ? "true" : undefined} onClick={() => onSelect({ kind: "node", id: node.id })}
-              >
-                {boxName(node.box)}
-                {!node.box.locked && <span className="text-muted"> · {node.box.element_type_name}</span>}
-              </button>
+              <span className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap" }}>
+                <button
+                  type="button" className={isSelected("node", node.id) ? "btn btn-sm btn-primary" : "btn btn-sm"}
+                  aria-current={isSelected("node", node.id) ? "true" : undefined} onClick={() => onSelect({ kind: "node", id: node.id })}
+                >
+                  {boxName(node.box)}
+                  {!node.box.locked && <span className="text-muted"> · {node.box.element_type_name}</span>}
+                </button>
+                {!node.box.locked && stateMachinesOf(node.id).length > 0 && machineButtons(node.id)}
+              </span>
             )}
           />
         )}

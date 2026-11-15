@@ -11,6 +11,7 @@
  *   A leader is a thin line from a node (an annotation) to another node, to the middle of a line or to a free point.
  * - Offer shapes beyond the plain box with no per-consumer code: a line from a node to itself (a loop), multi-line line labels,
  *   marker nodes (a consumer-supplied drawing, no box) and containers (a rounded frame holding the nodes whose `parentId` names it).
+ * - Draw consumer-supplied badges (a button on a node's corner) with no per-consumer code.
  * - Offer a comment mode (a click reports what it landed on instead of selecting) and draw consumer-supplied pins at one
  *   screen size at any zoom, each rendered by the consumer (`renderPin`); a pin anchored to a node or line follows it.
  * - Load the canvas on first use, so React Flow stays out of the main bundle, and show the list view while it
@@ -53,6 +54,34 @@ export interface GraphMarkerText {
   onFill: boolean;
 }
 
+/** One target of a badge that leads to several (a state machine diagram of a block that has more than one). */
+export interface GraphNodeBadgeItem {
+  id: string;
+  /** The entry's text; never interpreted as markup. */
+  label: string;
+  onSelect: () => void;
+}
+
+/**
+ * A small button on a node's top left corner, inside its frame: a sign that the node has something more elsewhere and one
+ * click to reach it. It is a real button (named by `label`, which is also its tooltip), reached by Tab right after its node,
+ * and it never changes the node's size. The canvas opens nothing itself: `onActivate`, or the chosen item's `onSelect`, belongs
+ * to the consumer, who must offer another route to the same place (a button on a canvas is not the only way in).
+ */
+export interface GraphNodeBadge {
+  id: string;
+  /** The accessible name and tooltip ("Open state machine diagram"). */
+  label: string;
+  /** The icon, drawn at a fixed small size. */
+  icon: ReactNode;
+  /** A count drawn beside the icon when above zero. */
+  count?: number;
+  /** Called when the badge is pressed and `items` is absent. */
+  onActivate?: () => void;
+  /** The targets: one is opened at once, several are offered in a small list. Takes precedence over `onActivate`. */
+  items?: GraphNodeBadgeItem[];
+}
+
 /** A box on the canvas. `x`/`y` are the top-left corner in canvas units. */
 export interface GraphCanvasNode {
   id: string;
@@ -71,6 +100,8 @@ export interface GraphCanvasNode {
   dashed?: boolean;
   /** A short second line under the label (a type name, a code); text only. */
   caption?: string;
+  /** Buttons drawn on the node's top left corner (see `GraphNodeBadge`); ignored for a marker. */
+  badges?: GraphNodeBadge[];
   /**
    * Longer plain text under the caption (a note about what the node is); line breaks are kept, it never takes markup, and
    * it is clipped with an ellipsis to the lines the box has room for, so a resize shows more or less of it.

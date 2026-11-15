@@ -19,7 +19,7 @@
  *   from the layout and the model data, so a box added in the editor has its lines at once. This file only draws the
  *   lines it is given.
  */
-import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
+import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode, GraphNodeBadge } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
@@ -518,6 +518,8 @@ export interface CanvasContext {
   covered: ReadonlySet<string>;
   /** The word for a boundary box that is realised and for one that is not (neutral, never a warning). */
   coverageLabel: (covered: boolean) => string;
+  /** The badges a box carries (a state machine diagram link); none for an element with nothing to open. */
+  badges: (elementId: string) => GraphNodeBadge[];
 }
 
 /** The outline a boundary box is drawn with, from the direction of its connection. */
@@ -536,6 +538,7 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
     symbolSvg: b.symbol_id && !b.locked ? ctx.symbolSvg(b.symbol_id) : undefined,
     accent: pick(b.color_light, b.color_dark, ctx.theme),
     dashed: b.locked || isOutOfUse(b.status),
+    badges: b.locked ? undefined : ctx.badges(b.elementId),
   }));
   const notes = layout.notes.map<GraphCanvasNode>((n) => ({
     id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: ctx.noteCaption,

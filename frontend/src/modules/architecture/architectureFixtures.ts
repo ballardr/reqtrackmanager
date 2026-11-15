@@ -194,7 +194,7 @@ export function buildModelElement(overrides: Partial<ModelElement> = {}): ModelE
   return {
     id: "el-1", unique_code: "ELM-001", name: "Gateway", display_note: "", locked: false, shared: false, status: "active",
     element_type_id: "et-1",
-    element_type_name: "Service", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, ...overrides,
+    element_type_name: "Service", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, state_machines: [], ...overrides,
   };
 }
 
@@ -344,6 +344,8 @@ export interface ArchitectureReads {
   stateMachines?: StateMachineDiagram[];
   /** The diagrams an element's or connection's Diagrams card lists; none by default. */
   recordDiagrams?: RecordDiagram[];
+  /** Block diagram ids the caller cannot read: a read of one answers 404, as for another project's diagram. */
+  unreadableDiagrams?: string[];
   /** Answers the state machine diagram list as refused (403), as for a person with no access to that type. */
   stateMachinesRefused?: boolean;
   /** The state machine diagram's model (the editor's data). */
@@ -421,6 +423,8 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.includes("/modules/architecture/state-machine-diagrams/")) return (reads.stateMachineModel ?? buildStateMachineModel()).diagram;
     if (base.endsWith("/modules/architecture/states")) return reads.states ?? [];
     if (base.includes("/modules/architecture/states/") && base.endsWith("/impact")) return { transitions: 2, links: 1 };
+    const unreadable = (reads.unreadableDiagrams ?? []).find((id) => base.endsWith(`/modules/architecture/diagrams/${id}`));
+    if (unreadable) throw new ApiError(404, "Diagram not found.");
     if (base.endsWith("/modules/architecture/diagrams")) return reads.diagrams ?? [buildDiagram()];
     if (base.includes("/modules/architecture/diagrams/") && base.endsWith("/view")) return reads.diagramView ?? buildDiagramView();
     if (base.includes("/modules/architecture/diagrams/") && base.endsWith("/model")) return reads.diagramModel ?? buildDiagramModel();

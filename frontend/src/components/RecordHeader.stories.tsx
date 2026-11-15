@@ -4,6 +4,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 
 import { Badge } from "./Badge";
 import { RecordHeader } from "./RecordHeader";
+import { ReturnLink } from "./ReturnLink";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 
 const meta: Meta<typeof RecordHeader> = {
@@ -145,5 +146,18 @@ export const StateMenuBesideEdit: Story = {
     const edit = canvas.getByRole("button", { name: "Edit" });
     await expect(state.parentElement).toBe(edit.parentElement);
     await expect(state.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};
+
+/** A return control sits on the back link's line, after it, and leads to where the person came from. */
+export const ReturnLinkBesideTheBackLink: Story = {
+  args: { returnTo: <ReturnLink to="/diagrams/dgm-1" label="DGM-001 Main system" /> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const back = canvas.getByRole("link", { name: "← Personas" });
+    const returning = canvas.getByRole("link", { name: "Return to DGM-001 Main system" });
+    await expect(returning).toHaveAttribute("href", "/diagrams/dgm-1");
+    await expect(back.parentElement).toBe(returning.parentElement);
+    await expect(back.compareDocumentPosition(returning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   },
 };

@@ -52,6 +52,7 @@ import { projectElementApi, projectStateApi, projectStateMachineApi } from "./ap
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { architectureTabPath } from "./architectureTabs";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
+import { ReturnToDiagram } from "./ReturnToDiagram";
 import { StateFormModal } from "./StateFormModal";
 import { blankStateValues, defaultStateName, diffStateFields, valuesFromState } from "./stateFields";
 import { StateMachineAddMenu } from "./StateMachineAddMenu";
@@ -433,6 +434,7 @@ export function StateMachineEditorPage() {
         code={diagram.unique_code}
         tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_state_machine_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
+        returnTo={<ReturnToDiagram projectId={projectId} elementId={diagram.element_id} from={searchParams.get("from")} />}
         badges={
           <>
             {diagram.is_archived && <Badge tone="muted">Archived</Badge>}

@@ -326,3 +326,59 @@
   min-height: 24px;
   justify-content: center;
 }
+
+/* Badges: small buttons inside a node's top left corner, beside (not inside) the clipped box so a resize cannot cut them. They
+   sit clear of the corner attach points and of a comment pin on the top right corner. */
+.graph-node-badges {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  display: flex;
+  gap: 2px;
+  z-index: 1;
+}
+
+.graph-node-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  font: inherit;
+  font-size: 0.6875rem;
+  line-height: 1;
+  color: var(--color-text);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.graph-node-badge:hover {
+  background: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+.graph-node-badge:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.graph-node-badge-icon {
+  display: inline-flex;
+}
+
+.graph-node-badge-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.graph-node-badge-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

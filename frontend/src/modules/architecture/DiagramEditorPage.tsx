@@ -28,7 +28,8 @@
  * the boxes, notes and switches on load and stays the authority for the SVG and documents.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Workflow } from "lucide-react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { CommentModeToggle } from "../../components/CommentModeToggle";
@@ -37,7 +38,7 @@ import { Badge } from "../../components/Badge";
 import { DetailLayout } from "../../components/DetailLayout";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
 import { useSnapToGrid } from "../../hooks/useSnapToGrid";
-import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
+import { GraphCanvas, type GraphCanvasSelection, type GraphNodeBadge } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
@@ -50,8 +51,10 @@ import { useArchiveAction, useConfirmedAction } from "../../components/useConfir
 import { useAuth } from "../../context/AuthContext";
 import { resolveEffectiveTheme, useTheme } from "../../context/ThemeContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useRecordCode } from "../../hooks/useRecordCode";
 import { useUrlChoice, useUrlFlag, useUrlList } from "../../hooks/useUrlFilter";
 import { architectureTabPath } from "./architectureTabs";
+import { stateMachinePath } from "./stateMachineLinks";
 import { ARCHITECTURE_HELP } from "./help";
 import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
 import {
@@ -87,7 +90,7 @@ import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type ConnectionFieldValues, type DiagramViewEdge, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
+  type ArchitectureRecordStatus, type ConnectionFieldValues, type ModelStateMachine, type DiagramViewEdge, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
 } from "./types";
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
@@ -146,13 +149,20 @@ export function DiagramEditorPage() {
   const [focusNew, setFocusNew] = useState<string | null>(null);
   /** The connection just added, which is the selection as soon as its line is drawn (any other selection replaces it). */
   const [selectConnection, setSelectConnection] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectParam = searchParams.get("select");
   const setSelection = useCallback((next: GraphCanvasSelection | null) => {
     setPicked(next);
     setSelectConnection(null);
-  }, []);
+    // Selecting anything (or clearing the selection) ends the link's selection.
+    if (selectParam) setSearchParams((current) => { const params = new URLSearchParams(current); params.delete("select"); return params; }, { replace: true });
+  }, [selectParam, setSearchParams]);
   const [connecting, setConnecting] = useState<{ source: string; target: string; realises?: string } | null>(null);
   const [toggleForm, setToggleForm] = useState<{ initial?: DiagramToggleValues } | null>(null);
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
+  /** The address of a state machine diagram waiting for the person to confirm leaving unsaved changes. */
+  const [leaveForMachine, setLeaveForMachine] = useState<string | null>(null);
+  const formatCode = useRecordCode();
   const [canManageTypes, setCanManageTypes] = useState(false);
   const [leaveForSetup, setLeaveForSetup] = useState(false);
   const [editingConnection, setEditingConnection] = useState<ArchitectureConnection | null>(null);
@@ -325,6 +335,28 @@ export function DiagramEditorPage() {
     });
   }, [model, scopeId, layout.boundaries]);
 
+  /** Each readable element's state machine diagrams, from the model. */
+  const machinesOf = useMemo(
+    () => new Map((model?.elements ?? []).filter((e) => !e.locked && e.state_machines.length > 0).map((e) => [e.id, e.state_machines])),
+    [model],
+  );
+  /** Opens a state machine diagram from this one; with unsaved changes it first asks, since leaving discards them. */
+  const openMachine = useCallback((machine: ModelStateMachine) => {
+    const to = stateMachinePath(projectId, machine.id, diagramId);
+    if (dirty) setLeaveForMachine(to);
+    else navigate(to);
+  }, [projectId, diagramId, dirty, navigate]);
+  const badgesOf = useCallback((elementId: string): GraphNodeBadge[] => {
+    const machines = machinesOf.get(elementId);
+    if (!machines) return [];
+    return [{
+      id: "state-machines",
+      label: machines.length === 1 ? "Open state machine diagram" : `Open a state machine diagram (${machines.length} available)`,
+      icon: <Workflow />, count: machines.length > 1 ? machines.length : undefined,
+      items: machines.map((m) => ({ id: m.id, label: `${formatCode.code(m.unique_code)} ${m.name}`, onSelect: () => openMachine(m) })),
+    }];
+  }, [machinesOf, openMachine, formatCode]);
+
   const descriptions = useMemo(() => new Map(elements.filter((e) => e.description).map((e) => [e.id, e.description])), [elements]);
   const symbolSvg = useSymbolSvgs(projectId, layout.boxes.map((b) => b.symbol_id));
   const effectiveTheme = resolveEffectiveTheme(theme);
@@ -332,9 +364,9 @@ export function DiagramEditorPage() {
     () => canvasNodes(layout, {
       theme: effectiveTheme, symbolSvg, lockedLabel: (code) => `${code} (not visible)`, emptyNote: "Empty note", noteCaption: "Note",
       hidden: resolved.hidden, covered: new Set(realisedBy.keys()), coverageLabel: (isCovered) => (isCovered ? "Covered" : "Not covered"),
-      showNotes,
+      showNotes, badges: badgesOf,
     }),
-    [layout, effectiveTheme, symbolSvg, resolved.hidden, realisedBy, showNotes],
+    [layout, effectiveTheme, symbolSvg, resolved.hidden, realisedBy, showNotes, badgesOf],
   );
   const edges = useMemo(
     () => canvasEdges(resolved.edges, layout, resolved.hidden, effectiveTheme),
@@ -345,7 +377,17 @@ export function DiagramEditorPage() {
   // A connection just added is the selection once a line for it is drawn (a switch may hide it, which leaves it unselected).
   const newLine = selectConnection === null ? undefined
     : resolved.edges.find((e) => drawnEdgeIds.has(e.id) && e.connections.some((c) => c.id === selectConnection));
-  const selection: GraphCanvasSelection | null = newLine ? { kind: "edge", id: newLine.id } : picked;
+  // A link that names an element (`?select=`, the way back from its state machine diagram) selects its box and centres the view
+  // once the layout is loaded. It is the selection until the person selects anything else (which drops the parameter); an
+  // element the diagram does not draw selects nothing.
+  const linkedBox = selectParam && view !== null ? layout.boxes.find((b) => b.elementId === selectParam) : undefined;
+  const selection: GraphCanvasSelection | null = newLine
+    ? { kind: "edge", id: newLine.id }
+    : picked ?? (linkedBox ? { kind: "node", id: linkedBox.elementId } : null);
+  // The canvas moves the view when `key` changes, so the same key while the box is dragged afterwards does not move it again.
+  const selectCenter = linkedBox ? { x: linkedBox.x + linkedBox.width / 2, y: linkedBox.y + linkedBox.height / 2, key: 1 } : undefined;
+
+
 
   // Comments are stored at once and apart from the layout, so they never make the drawing look unsaved; a link to a thread
   // (`?pin=`) is opened by `useCanvasComments`, after the drawing is fitted.
@@ -685,6 +727,7 @@ export function DiagramEditorPage() {
         onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}
         onConnect={(box, targetId) => void startConnection(box.elementId, targetId)}
         onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
+        stateMachinesOf={(elementId) => machinesOf.get(elementId) ?? []} onOpenMachine={openMachine}
         onDeleteElement={(box) => void deleteElement(box.elementId)}
         onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
         drawnEdgeIds={drawnEdgeIds} pickingSpot={pickingSpot}
@@ -752,7 +795,7 @@ export function DiagramEditorPage() {
             <div ref={setCanvasBox}>
             <GraphCanvas
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
-              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps}
+              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
               // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
               onSelect={(next) => { if (next !== null || pickingSpot === null) { setSelection(next); setFocusNew(null); } }}
               onCanvasClick={(at) => {
@@ -788,6 +831,7 @@ export function DiagramEditorPage() {
               boxes={layout.boxes} notes={layout.notes} boundaries={layout.boundaries} covered={new Set(realisedBy.keys())}
               edges={resolved.edges} drawnEdgeIds={drawnEdgeIds} parents={model.parents} hidden={resolved.hidden} descriptions={descriptions}
               selection={selection} onSelect={setSelection}
+              stateMachinesOf={(elementId) => machinesOf.get(elementId) ?? []} onOpenMachine={openMachine}
             />
           </div>
           {selectionColumn}
@@ -839,6 +883,12 @@ export function DiagramEditorPage() {
         <ConfirmDialog
           title="Leave this diagram?" message="Your unsaved changes to this diagram will be lost." confirmLabel="Leave"
           onConfirm={() => { setLeaveForSetup(false); navigate(SETUP_PATH(projectId)); }} onCancel={() => setLeaveForSetup(false)}
+        />
+      )}
+      {leaveForMachine && (
+        <ConfirmDialog
+          title="Leave this diagram?" message="Your unsaved changes to this diagram will be lost." confirmLabel="Leave"
+          onConfirm={() => { const to = leaveForMachine; setLeaveForMachine(null); navigate(to); }} onCancel={() => setLeaveForMachine(null)}
         />
       )}
       {leaveFor && (

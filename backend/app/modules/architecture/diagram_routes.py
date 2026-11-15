@@ -51,9 +51,11 @@ from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     DIAGRAM_ARTEFACT_TYPE,
     DIAGRAM_SUBCOMPONENT_KEY,
+    STATE_MACHINE_SUBCOMPONENT_KEY,
 )
 from app.modules.architecture.symbol_routes import SVG_HEADERS
 from app.modules.architecture.visibility import Viewer
+from app.modules.registry import is_module_subcomponent_enabled
 from app.services import report_images
 from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
@@ -155,7 +157,8 @@ def add_diagram_routes(router: APIRouter) -> None:
         as the caller may read it, so the editor redraws lines while a layout is edited. Nothing is stored."""
         project = project_or_404(db, project_id)
         diagram = as_http(lambda: diagrams.get_diagram(db, project_id, diagram_id))
-        return build_model(db, project_id, Viewer.of_user(current_user, project), diagram)
+        machines = is_module_subcomponent_enabled(db, project.id, ARCHITECTURE_MODULE_KEY, STATE_MACHINE_SUBCOMPONENT_KEY)
+        return build_model(db, project_id, Viewer.of_user(current_user, project), diagram, machines=machines)
 
     @router.get("/diagrams/{diagram_id}/svg")
     def get_diagram_svg(

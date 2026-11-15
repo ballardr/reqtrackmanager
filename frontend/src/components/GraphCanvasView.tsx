@@ -70,14 +70,18 @@ import { useLatest } from "../hooks/useLatest";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import {
-  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphMarkerText, type GraphNodeOutline,
-  type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
+  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphMarkerText, type GraphNodeBadge,
+  type GraphNodeOutline, type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
 } from "./GraphCanvas";
 import {
   ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
+import { GraphNodeBadges } from "./GraphNodeBadges";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
 import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
+
+/** A node with no badges (one shared array, so an unchanged node keeps its data identity). */
+const NO_BADGES: readonly GraphNodeBadge[] = [];
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
@@ -102,6 +106,7 @@ const LEADER_END_HANDLE = "end";
 type NodeData = {
   label: string;
   caption?: string;
+  badges: readonly GraphNodeBadge[];
   body?: string;
   symbol: string | null;
   accent?: string;
@@ -205,6 +210,7 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
   ].filter(Boolean).join(" ");
   return (
+    <>
     <div className={classes} style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}>
       {shaped && <NodeOutline outline={data.outline} />}
       {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
@@ -218,6 +224,8 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
         <Handle key={point} id={point} type="source" position={HANDLE_POSITION[point]} style={HANDLE_STYLE[point]} />
       ))}
     </div>
+    <GraphNodeBadges badges={data.badges} />
+    </>
   );
 }
 
@@ -528,7 +536,7 @@ export function GraphCanvasView({
         selected: selection?.kind === "node" && selection.id === n.id,
         ariaLabel: text.nodeAria(n.label),
         data: {
-          label: n.label, caption: n.caption, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
+          label: n.label, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
           accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone,
           resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, markerText: n.marker ? n.markerText : undefined, container: n.container === true,
         },

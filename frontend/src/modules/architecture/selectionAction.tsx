@@ -6,7 +6,7 @@
  * reaches both.
  */
 import {
-  CircleMinus, ExternalLink, Layers, MessageSquarePlus, Pencil, Trash2, X,
+  CircleMinus, ExternalLink, Layers, MessageSquarePlus, Pencil, Trash2, Workflow, X,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -34,6 +34,10 @@ export const selectionAction = {
   open: (label: string, to: string): SelectionAction => ({ label, to, icon: <ExternalLink /> }),
   /** Opens an element's inside as a diagram. */
   inside: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Layers /> }),
+  /** Opens a state machine diagram of the selected element (the caller asks before leaving unsaved changes). */
+  stateMachine: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Workflow /> }),
+  /** One of several state machine diagrams, offered in the overflow menu. */
+  stateMachineChoice: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Workflow />, menu: true }),
   /** Edits the selected record. */
   edit: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Pencil /> }),
   /** Starts a comment on the selection. */

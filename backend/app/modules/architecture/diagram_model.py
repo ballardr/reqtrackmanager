@@ -45,6 +45,7 @@ from app.modules.architecture.models import (
     ArchitectureDiagramToggleMember,
     ArchitectureElement,
     ArchitectureElementType,
+    ArchitectureStateMachineDiagram,
 )
 from app.modules.architecture.realisations import project_realisations
 from app.modules.architecture.schemas import (
@@ -52,6 +53,7 @@ from app.modules.architecture.schemas import (
     ModelConnectionType,
     ModelElement,
     ModelRealisation,
+    ModelStateMachine,
     ModelToggleMembers,
 )
 from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
@@ -60,7 +62,9 @@ from app.modules.architecture.visibility import Viewer, ancestor_parents, grante
 from app.services import tags as tag_service
 
 
-def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: ArchitectureDiagram) -> DiagramModel:
+def build_model(
+    db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: ArchitectureDiagram, *, machines: bool = False,
+) -> DiagramModel:
     """The data the diagram's lines are resolved from, as `viewer` may read it.
 
     Args:
@@ -68,6 +72,8 @@ def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: Arc
         project_id: The diagram's project.
         viewer: Who is reading (applies the visibility rules).
         diagram: The diagram (its toggles are resolved).
+        machines: Whether the caller may read state machine diagrams (the sub-component is on); each readable element
+            then lists the open ones that describe it, in one bulk read.
 
     Returns:
         The elements, parents, connections, connection types and each toggle's switched-off members.
@@ -104,9 +110,11 @@ def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: Arc
         symbol for i in readable if (symbol := _drawn_symbol(elements[i], element_types)) is not None
     })
 
+    described = _state_machines(db, project_id, readable) if machines else {}
+
     return DiagramModel(
         elements=[
-            _model_element(e, i in readable, element_types, symbols, viewer) for i, e in sorted(
+            _model_element(e, i in readable, element_types, symbols, viewer, described.get(i, [])) for i, e in sorted(
                 elements.items(), key=lambda item: item[1].unique_code,
             )
         ],
@@ -130,6 +138,33 @@ def build_model(db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: Arc
     )
 
 
+def _state_machines(db: Session, project_id: uuid.UUID, element_ids: set[uuid.UUID]) -> dict[uuid.UUID, list[ModelStateMachine]]:
+    """The open state machine diagrams of the project that describe each of `element_ids` (a readable element), by code.
+
+    Args:
+        db: Session.
+        project_id: The diagram's project (a state machine diagram of another project is never listed).
+        element_ids: The elements the viewer can read.
+
+    Returns:
+        `{element id: [state machine diagram, ...]}` for the elements that have one; one query however many elements.
+    """
+    if not element_ids:
+        return {}
+    found: dict[uuid.UUID, list[ModelStateMachine]] = {}
+    for machine in db.scalars(
+        select(ArchitectureStateMachineDiagram).where(
+            ArchitectureStateMachineDiagram.project_id == project_id,
+            ArchitectureStateMachineDiagram.element_id.in_(element_ids),
+            ArchitectureStateMachineDiagram.is_archived.is_(False),
+        ).order_by(ArchitectureStateMachineDiagram.unique_code)
+    ):
+        found.setdefault(machine.element_id, []).append(
+            ModelStateMachine(id=machine.id, unique_code=machine.unique_code, name=machine.name)
+        )
+    return found
+
+
 def _drawn_symbol(element: ArchitectureElement, element_types: dict[uuid.UUID, ArchitectureElementType]) -> uuid.UUID | None:
     """The symbol an element is drawn with: its own, else its type's."""
     kind = element_types.get(element.element_type_id)
@@ -138,7 +173,7 @@ def _drawn_symbol(element: ArchitectureElement, element_types: dict[uuid.UUID, A
 
 def _model_element(
     element: ArchitectureElement, is_readable: bool, element_types: dict[uuid.UUID, ArchitectureElementType],
-    symbols: set[uuid.UUID], viewer: Viewer,
+    symbols: set[uuid.UUID], viewer: Viewer, machines: list[ModelStateMachine],
 ) -> ModelElement:
     """One element as the editor needs it.
 
@@ -148,6 +183,7 @@ def _model_element(
         element_types: The element types of the readable elements.
         symbols: The symbol ids the viewer may read.
         viewer: Who is reading, to tell an element shared from another owner.
+        machines: The state machine diagrams describing the element (ignored for an unreadable one).
 
     Returns:
         The editor's entry for the element.
@@ -165,7 +201,7 @@ def _model_element(
         element_type_name=kind.name if kind is not None else "",
         color_light=kind.color_light if kind is not None else None,
         color_dark=kind.color_dark if kind is not None else None,
-        symbol_id=symbol_id if symbol_id in symbols else None,
+        symbol_id=symbol_id if symbol_id in symbols else None, state_machines=machines,
     )
 
 

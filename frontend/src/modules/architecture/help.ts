@@ -55,6 +55,7 @@ export const ARCHITECTURE_HELP = {
   collectionGrant: "Who may read the collection's elements, place them in diagrams, connect to them and link to them. A recipient never edits them.",
   collectionIncludeDescendants: "Also reaches every project nested under the chosen project, including projects added later.",
   systemContext: "The top level of the model: a diagram of the system context shows the top-level elements (those with no parent) and how they connect. A diagram of an element's inside shows that element's own child elements instead.",
+  openInDiagram: "Opens a block diagram that draws the element this state machine diagram describes, with its box selected.",
   openInside: "Opens the diagram of this element's own sub-elements, creating it the first time. New elements added there become children of this one. Double-clicking the box does the same.",
   diagramScope: "The element whose inside the diagram shows: its child elements are the ones offered and placed. Leave it empty for the system context, which shows the top-level elements.",
   diagramConnectionDetail: "Off draws plain lines; several connections between the same two boxes collapse into one. On draws each connection with its type, protocol and colour.",

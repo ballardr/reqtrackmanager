@@ -807,10 +807,20 @@ class DiagramView(BaseModel):
     boundaries: list[ViewBoundary] = Field(default_factory=list)
 
 
+class ModelStateMachine(BaseModel):
+    """A state machine diagram that describes an element, as a block on a diagram links to it."""
+
+    id: UUID
+    unique_code: str
+    name: str
+
+
 class ModelElement(BaseModel):
     """An element as the editor needs it to draw a box and to resolve lines in the browser.
 
-    A `locked` element is one the viewer cannot read: only its code is given, and its type, name and symbol are blank."""
+    A `locked` element is one the viewer cannot read: only its code is given, and its type, name and symbol are blank.
+    `state_machines` lists the open state machine diagrams describing a readable element (empty when the caller may not
+    read state machine diagrams)."""
 
     id: UUID
     unique_code: str
@@ -824,6 +834,7 @@ class ModelElement(BaseModel):
     color_light: str | None
     color_dark: str | None
     symbol_id: UUID | None
+    state_machines: list[ModelStateMachine] = Field(default_factory=list)
 
 
 class ModelConnectionType(BaseModel):

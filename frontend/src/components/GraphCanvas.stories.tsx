@@ -1034,3 +1034,71 @@ export const APointerResizeEndsOnTheGridWhenSnappingIsOn: Story = {
     expect(last.width).toBeGreaterThan(160);
   },
 };
+
+/** Hosts the canvas with a badge on the gateway (one target) and on the cloud service (three), and prints what was opened. */
+function BadgeHost({ count }: { count?: number }) {
+  const [opened, setOpened] = useState("none");
+  const nodes: GraphCanvasNode[] = NODES.map((n) => {
+    if (n.id === "gateway") {
+      return { ...n, badges: [{ id: "machines", label: "Open state machine diagram", icon: <span>M</span>, onActivate: () => setOpened("gateway"), count }] };
+    }
+    if (n.id === "cloud") {
+      return {
+        ...n,
+        badges: [{
+          id: "machines", label: "Open a state machine diagram", icon: <span>M</span>, count: 3,
+          items: ["Modes", "Faults", "Updates"].map((name) => ({ id: name, label: name, onSelect: () => setOpened(name) })),
+        }],
+      };
+    }
+    return n;
+  });
+  return (
+    <div className="stack">
+      <Host nodes={nodes} />
+      <span data-testid="opened">{opened}</span>
+    </div>
+  );
+}
+
+/** A badge is a real button named by its label; one target opens at once, and pressing it neither selects nor opens the box beneath. */
+export const ABadgeOpensItsTargetWithoutSelectingTheBox: Story = {
+  render: () => <BadgeHost />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const badge = await canvas.findByRole("button", { name: "Open state machine diagram" });
+    await userEvent.click(badge);
+    await waitFor(() => expect(canvas.getByTestId("opened")).toHaveTextContent("gateway"));
+    expect(canvas.getByTestId("selection")).toHaveTextContent("none");
+  },
+};
+
+/** The badge is reached by Tab and pressed with Enter; the node under it does not take the key. */
+export const ABadgeIsOperableFromTheKeyboard: Story = {
+  render: () => <BadgeHost />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const badge = await canvas.findByRole("button", { name: "Open state machine diagram" });
+    badge.focus();
+    expect(badge).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(canvas.getByTestId("opened")).toHaveTextContent("gateway"));
+    expect(canvas.getByTestId("selection")).toHaveTextContent("none");
+  },
+};
+
+/** A badge with several targets opens a list; choosing one calls it and closes the list. */
+export const ABadgeWithSeveralTargetsOpensAList: Story = {
+  render: () => <BadgeHost />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const badge = await canvas.findByRole("button", { name: "Open a state machine diagram" });
+    expect(badge).toHaveTextContent("3");
+    await userEvent.click(badge);
+    const list = await within(document.body).findByRole("list", { name: "Open a state machine diagram" });
+    expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual(["Modes", "Faults", "Updates"]);
+    await userEvent.click(within(list).getByRole("button", { name: "Faults" }));
+    await waitFor(() => expect(canvas.getByTestId("opened")).toHaveTextContent("Faults"));
+    await waitFor(() => expect(within(document.body).queryByRole("list", { name: "Open a state machine diagram" })).toBeNull());
+  },
+};
