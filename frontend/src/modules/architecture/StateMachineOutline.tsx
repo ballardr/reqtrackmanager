@@ -17,11 +17,13 @@ import { useMemo } from "react";
 
 import { CollapsibleSection } from "../../components/CollapsibleSection";
 import { DetailCard } from "../../components/DetailCard";
+import { HelpHeader } from "../../components/HelpHeader";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { actionLines, stateTree, type StateMachineLayout } from "./stateMachineModel";
 import { useStateLabel } from "./useStateLabel";
 import { STATE_KIND_LABEL, type StateMachineModel } from "./types";
+import { ARCHITECTURE_HELP } from "./help";
 
 /**
  * @param model The model as read.
@@ -47,7 +49,7 @@ export function StateMachineOutline({
       <p className="text-muted">
         {stateCount} {stateCount === 1 ? "state" : "states"}, {transitionCount} {transitionCount === 1 ? "transition" : "transitions"}.
       </p>
-      <CollapsibleSection sectionKey="architecture_state_outline_states" title="States" variant="plain" summary={String(stateCount)}>
+      <CollapsibleSection sectionKey="architecture_state_outline_states" title="States" help={ARCHITECTURE_HELP.outlineStates} variant="plain" summary={String(stateCount)}>
         <TreeView
           nodes={tree}
           nodeLabel={(node) => stateName(node.state)}
@@ -67,7 +69,7 @@ export function StateMachineOutline({
           )}
         />
       </CollapsibleSection>
-      <CollapsibleSection sectionKey="architecture_state_outline_transitions" title="Transitions" variant="plain" summary={String(transitionCount)}>
+      <CollapsibleSection sectionKey="architecture_state_outline_transitions" title="Transitions" help={ARCHITECTURE_HELP.stateTransition} variant="plain" summary={String(transitionCount)}>
         {transitionCount === 0 ? (
           <p className="text-muted">This state machine diagram has no transitions yet.</p>
         ) : (
@@ -75,11 +77,11 @@ export function StateMachineOutline({
             <table className="table" aria-label="Transitions">
               <thead>
                 <tr>
-                  <th scope="col">From</th>
-                  <th scope="col">To</th>
-                  <th scope="col">Event</th>
-                  <th scope="col">Condition (guard)</th>
-                  <th scope="col">Action</th>
+                  <HelpHeader label="From" help={ARCHITECTURE_HELP.transitionFrom} />
+                  <HelpHeader label="To" help={ARCHITECTURE_HELP.transitionTo} />
+                  <HelpHeader label="Event" help={ARCHITECTURE_HELP.transitionEvent} />
+                  <HelpHeader label="Condition (guard)" help={ARCHITECTURE_HELP.transitionGuard} />
+                  <HelpHeader label="Action" help={ARCHITECTURE_HELP.transitionAction} />
                 </tr>
               </thead>
               <tbody>

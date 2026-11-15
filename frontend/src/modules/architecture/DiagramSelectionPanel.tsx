@@ -270,6 +270,7 @@ export function DiagramSelectionPanel({
     const realisers = (realisedBy.get(boundary.connectionId) ?? []).map((id) => connectionsById.get(id)).filter((c): c is ArchitectureConnection => c !== undefined);
     body = (
       <>
+        <FieldCaption label="Boundary box" help={ARCHITECTURE_HELP.boundaryBox} muted />
         <p>
           <strong>{boundary.connection_code}</strong>
           {!boundary.locked && boundary.type_name && <span className="text-muted"> · {boundary.type_name}</span>}

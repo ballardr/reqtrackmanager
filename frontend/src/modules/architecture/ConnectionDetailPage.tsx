@@ -183,7 +183,7 @@ export function ConnectionDetailPage() {
               {targetHref ? <Link to={targetHref}><ConnectionEnd connection={connection} end="target" /></Link> : <ConnectionEnd connection={connection} end="target" />}
               {connection.target_shared && <Badge tone="info">Shared</Badge>}
             </RecordFieldGroup>
-            <RecordFieldGroup helpNotNeeded label="Direction">
+            <RecordFieldGroup help={ARCHITECTURE_HELP.outlineDirection} label="Direction">
               <span>{connection.directional ? "One-way, source to target" : "Two-way"}</span>
             </RecordFieldGroup>
           </div>
@@ -191,7 +191,7 @@ export function ConnectionDetailPage() {
         </DetailCard>
         <RecordDiagramsCard projectId={projectId} record={{ kind: "connection", id: connection.id }} />
         {(connection.realises.length > 0 || connection.realised_by.length > 0) && (
-          <DetailCard heading="Realisation">
+          <DetailCard heading="Realisation" help={ARCHITECTURE_HELP.realisation}>
             <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
               <RecordFieldGroup label="Realises" help={ARCHITECTURE_HELP.connectionRealises}>
                 <ConnectionRefs refs={connection.realises} base={`/projects/${projectId}/modules/architecture/connections`} />

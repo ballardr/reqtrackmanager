@@ -10,6 +10,19 @@ A state machine diagram belongs to one element and is listed with the block diag
 
 An element's page has a **Diagrams** card directly under its details. It lists the block diagrams that draw the element (**Placed** when it has its own box, **Inside** when only a parent is drawn) and the state machine diagrams that describe it, each linking to its editor, and a connection's page lists the diagrams that draw its line (**Drawn**, or **Rolled up** when the line joins parents of its ends). **New state machine diagram** is on the element's card.
 
+## Terms used here
+
+| Term | Meaning |
+| --- | --- |
+| [State](../../reference/glossary.md#state) | A mode the element can be in |
+| [Composite state](../../reference/glossary.md#composite-state) | A state that holds other states |
+| [Transition](../../reference/glossary.md#transition) | A line from one state to another |
+| [Event](../../reference/glossary.md#event) | What triggers a transition |
+| [Condition (guard)](../../reference/glossary.md#condition-guard) | What must be true for a transition to be taken |
+| [Action](../../reference/glossary.md#action) | What happens as a transition is taken |
+| [Entry action](../../reference/glossary.md#entry-action), [Exit action](../../reference/glossary.md#exit-action), [Activity](../../reference/glossary.md#activity) | What happens on entering a state, on leaving it, and while it is active |
+| [Initial state](../../reference/glossary.md#initial-state), [Final state](../../reference/glossary.md#final-state), [Choice](../../reference/glossary.md#choice) | The start, the end and a branch |
+
 ## Moving between a block and its state machine diagram
 
 A block on a block diagram whose element has at least one state machine diagram shows a small **state machine badge** on its top left corner. Pressing it opens the diagram; when the element has several, the badge shows their number and opens a list to choose from. The same action is available without the pointer: the Selection card's **Open state machine diagram** (several diagrams are entries of its **More actions** menu), and a column and buttons in the **Outline**. The badge is reached with Tab straight after its box. If the block diagram has unsaved changes, you are asked before leaving.
@@ -38,6 +51,25 @@ The diagrams use UML state machine notation, which is also the SysML state machi
 An initial state, final state or choice can carry a **symbol label**, up to 40 characters of text drawn inside the symbol, so a branch can say what it decides ("Battery low?"). The symbol is drawn larger while it has a label, and a long label wraps over up to three lines and ends with an ellipsis; the full text is in the Selection card and the Outline.
 
 Conditions (guards) and actions are text that a person reads. The module does not simulate a diagram or generate code from it.
+
+## Event, condition and action
+
+A transition is labelled `event [condition] / action`, and every part is optional. The **event** is what triggers it, the **condition** (called a guard in UML) must be true for it to be taken, and the **action** is what happens as it is taken. A transition with no event is taken when the state's activity completes.
+
+A **choice** is a branch: the lines leaving it are told apart by their conditions, so each needs its own. The condition is the label of such a line.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Check: button pressed
+    state Check <<choice>>
+    Check --> Running: [battery ok] / start motor
+    Check --> Fault: [battery low] / sound alarm
+    Running --> Idle: stop
+    Fault --> [*]
+```
+
+Here "button pressed" is an event, "battery ok" and "battery low" are conditions, and "start motor" and "sound alarm" are actions.
 
 ## Adding and editing states
 

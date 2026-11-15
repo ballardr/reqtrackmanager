@@ -7,6 +7,7 @@ import { boundaryFromView, boundaryNodeId, boxFromNode, noteFromView } from "./d
 import { DiagramOutline } from "./DiagramOutline";
 import { connectionRows, outlineSize, outlineTree } from "./diagramOutlineModel";
 import { exportFileName, toggleStates } from "./diagramExport";
+import { ARCHITECTURE_HELP } from "./help";
 
 const GATEWAY = boxFromNode(buildViewNode());
 const API = boxFromNode(buildViewNode({
@@ -238,10 +239,24 @@ export const AnElementsStateMachineDiagramsOpenFromTheTableAndTheTree: Story = {
     // In the table it has its own column, and an element with none shows a dash.
     await userEvent.click(outline.getByRole("button", { name: "List view" }));
     const table = await outline.findByRole("table", { name: "Elements" });
-    await expect(within(table).getByRole("columnheader", { name: "State machine diagrams" })).toBeInTheDocument();
+    await expect(within(table).getByRole("columnheader", { name: /^State machine diagrams/ })).toBeInTheDocument();
     const gateway = within(within(table).getByRole("button", { name: /^ELM-001 Gateway/ }).closest("tr")!);
     await expect(gateway.getByRole("button", { name: "SMD-001 Gateway modes" })).toBeInTheDocument();
     const firewall = within(within(table).getByRole("button", { name: /^ELM-003 Firewall/ }).closest("tr")!);
     await expect(firewall.queryByRole("button", { name: /SMD-/ })).not.toBeInTheDocument();
+  },
+};
+
+/** The notation columns carry help; the Route help says what Direct, Rolled up and Bridged mean, one line each. */
+export const NotationColumnsExplainThemselves: Story = {
+  play: async ({ canvasElement }) => {
+    const outline = within(canvasElement);
+    const table = outline.getByRole("table", { name: "Lines" });
+    await userEvent.hover(within(table).getByRole("button", { name: "Help: Route" }));
+    const tip = await within(document.body).findByRole("tooltip", { hidden: true });
+    await expect(tip).toHaveTextContent(ARCHITECTURE_HELP.outlineRoute.split("\n")[1]);
+    await expect(tip).toHaveTextContent("Bridged");
+    await expect(within(table).getByRole("button", { name: "Help: Direction" })).toBeInTheDocument();
+    await expect(within(table).getByRole("button", { name: "Help: Connections" })).toBeInTheDocument();
   },
 };

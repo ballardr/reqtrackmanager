@@ -12,18 +12,28 @@
  */
 import type { ReactNode } from "react";
 
+import { FieldHelp } from "./FieldHelp";
+
 /**
  * @param heading The card's heading (default "Details").
+ * @param help Plain-language help for a heading that names a domain term; drawn as a `(?)` after the heading.
  * @param action A control on the heading's line, e.g. an `AddPopoverButton`.
  * @param children The card's content.
  */
 export function DetailCard({
-  heading = "Details", action, children,
-}: { heading?: string; action?: ReactNode; children: ReactNode }) {
+  heading = "Details", help, action, children,
+}: { heading?: string; help?: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="card stack" aria-label={heading}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h2 className="detail-card__title">{heading}</h2>
+        {help ? (
+          <div className="field-caption">
+            <h2 className="detail-card__title">{heading}</h2>
+            <FieldHelp label={heading} help={help} />
+          </div>
+        ) : (
+          <h2 className="detail-card__title">{heading}</h2>
+        )}
         {action}
       </div>
       {children}

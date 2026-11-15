@@ -12,6 +12,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import type { DiagramToggle } from "./types";
+import { ARCHITECTURE_HELP } from "./help";
 
 /**
  * @param toggles The diagram's switches with their state in this view.
@@ -35,6 +36,7 @@ export function DiagramTogglesPanel({
   return (
     <DetailCard
       heading="View switches"
+      help={ARCHITECTURE_HELP.viewSwitches}
       action={editable ? <button type="button" className="btn btn-sm" onClick={onAdd}>Add switch</button> : undefined}
     >
       {toggles.length === 0 ? (

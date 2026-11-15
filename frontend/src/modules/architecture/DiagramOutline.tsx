@@ -26,6 +26,7 @@ import { useState } from "react";
 
 import { CollapsibleSection } from "../../components/CollapsibleSection";
 import { DetailCard } from "../../components/DetailCard";
+import { HelpHeader } from "../../components/HelpHeader";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
@@ -38,6 +39,7 @@ import {
   boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
 } from "./diagramOutlineModel";
 import type { DiagramViewEdge, ModelStateMachine } from "./types";
+import { ARCHITECTURE_HELP } from "./help";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
 
@@ -134,11 +136,11 @@ export function DiagramOutline({
                 <thead>
                   <tr>
                     <th scope="col">Element</th>
-                    <th scope="col">Type</th>
-                    <th scope="col">Parent</th>
-                    <th scope="col">Display note</th>
-                    <th scope="col">Description</th>
-                    <th scope="col">State machine diagrams</th>
+                    <HelpHeader label="Type" help={ARCHITECTURE_HELP.elementType} />
+                    <HelpHeader label="Parent" help={ARCHITECTURE_HELP.elementParent} />
+                    <HelpHeader label="Display note" help={ARCHITECTURE_HELP.elementDisplayNote} />
+                    <HelpHeader label="Description" help={ARCHITECTURE_HELP.elementDescription} />
+                    <HelpHeader label="State machine diagrams" help={ARCHITECTURE_HELP.outlineStateMachines} />
                   </tr>
                 </thead>
                 <tbody>
@@ -192,15 +194,15 @@ export function DiagramOutline({
       </CollapsibleSection>
 
       {boundaries.length > 0 && (
-        <CollapsibleSection sectionKey="architecture_outline_outer" title="Outer connections" variant="plain" summary={String(boundaries.length)}>
+        <CollapsibleSection sectionKey="architecture_outline_outer" title="Outer connections" help={ARCHITECTURE_HELP.outerConnections} variant="plain" summary={String(boundaries.length)}>
           <div style={{ overflowX: "auto" }}>
             <table className="table" aria-label="Outer connections">
               <thead>
                 <tr>
                   <th scope="col">Connection</th>
                   <th scope="col">Outside element</th>
-                  <th scope="col">Direction</th>
-                  <th scope="col">Coverage</th>
+                  <HelpHeader label="Direction" help={ARCHITECTURE_HELP.outlineDirection} />
+                  <HelpHeader label="Coverage" help={ARCHITECTURE_HELP.outlineCoverage} />
                 </tr>
               </thead>
               <tbody>
@@ -227,7 +229,7 @@ export function DiagramOutline({
       )}
 
       {notes.length > 0 && (
-        <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" variant="plain" summary={String(notes.length)}>
+        <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" help={ARCHITECTURE_HELP.diagramNotes} variant="plain" summary={String(notes.length)}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {notes.map((n) => {
               const pointsAt = leaderSummary(n, boxes, edges, leaderIsDrawn(n, visibleBoxIds, edges, drawnEdgeIds));
@@ -253,15 +255,15 @@ export function DiagramOutline({
           <p className="text-muted">No lines are shown on this diagram.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table className="table">
+            <table className="table" aria-label="Lines">
               <thead>
                 <tr>
                   <th scope="col">From</th>
                   <th scope="col">To</th>
-                  <th scope="col">Direction</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Connections</th>
-                  <th scope="col">Route</th>
+                  <HelpHeader label="Direction" help={ARCHITECTURE_HELP.outlineDirection} />
+                  <HelpHeader label="Type" help={ARCHITECTURE_HELP.connectionType} />
+                  <HelpHeader label="Connections" help={ARCHITECTURE_HELP.outlineConnections} />
+                  <HelpHeader label="Route" help={ARCHITECTURE_HELP.outlineRoute} />
                 </tr>
               </thead>
               <tbody>

@@ -124,7 +124,7 @@ export function AllocationPanel({
   );
 
   return (
-    <DetailCard heading={heading}>
+    <DetailCard heading={heading} help={ARCHITECTURE_HELP.allocation}>
       {view.allocated.length > 0 && (
         <div className="stack">
           <h3 className="artefact-links__group">Allocated</h3>
@@ -155,7 +155,9 @@ export function AllocationPanel({
       )}
       {view.dismissed.length > 0 && (
         <div className="stack">
-          <h3 className="artefact-links__group">Dismissed</h3>
+          <h3 className="artefact-links__group">
+            Dismissed <FieldHelp label="Dismissed" help={ARCHITECTURE_HELP.allocationDismissed} />
+          </h3>
           <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }} className="stack">
             {view.dismissed.map((pair) => row(pair, manage && (
               <button className="btn" disabled={busy} onClick={() => void restore(pair)}>Restore</button>

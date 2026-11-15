@@ -26,6 +26,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { ARCHITECTURE_HELP } from "./help";
+import { TermCaption } from "./TermCaption";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import { StateSelectionFields } from "./StateSelectionFields";
@@ -118,13 +119,13 @@ export function StateMachineSelectionPanel({
               </div>
             )}
             {isMarkerKind(state.kind) && state.label && (
-              <dl style={{ margin: 0 }}><dt className="text-muted">Symbol label</dt><dd style={{ margin: 0 }}>{state.label}</dd></dl>
+              <dl style={{ margin: 0 }}><dt><TermCaption term="Symbol label" /></dt><dd style={{ margin: 0 }}>{state.label}</dd></dl>
             )}
             {!isMarkerKind(state.kind) && (state.entry_action || state.exit_action || state.activity) && (
               <dl style={{ margin: 0 }}>
-                {state.entry_action && <><dt className="text-muted">Entry action</dt><dd style={{ margin: 0 }}>{state.entry_action}</dd></>}
-                {state.exit_action && <><dt className="text-muted">Exit action</dt><dd style={{ margin: 0 }}>{state.exit_action}</dd></>}
-                {state.activity && <><dt className="text-muted">Activity</dt><dd style={{ margin: 0 }}>{state.activity}</dd></>}
+                {state.entry_action && <><dt><TermCaption term="Entry action" /></dt><dd style={{ margin: 0 }}>{state.entry_action}</dd></>}
+                {state.exit_action && <><dt><TermCaption term="Exit action" /></dt><dd style={{ margin: 0 }}>{state.exit_action}</dd></>}
+                {state.activity && <><dt><TermCaption term="Activity" /></dt><dd style={{ margin: 0 }}>{state.activity}</dd></>}
               </dl>
             )}
           </>
@@ -145,7 +146,7 @@ export function StateMachineSelectionPanel({
         )}
         {editable ? (
           <LabeledSelect
-            label="Add transition to" help={ARCHITECTURE_HELP.transitionEnds} value="" placeholder="Choose a state…"
+            label="Add transition to" help={ARCHITECTURE_HELP.transitionTo} value="" placeholder="Choose a state…"
             options={model.states.map((s) => ({ value: s.id, label: s.id === state.id ? `${stateName(s)} (itself)` : stateName(s) }))}
             onChange={(targetId) => { if (targetId) onConnect(state, targetId); }}
           />
@@ -179,9 +180,9 @@ export function StateMachineSelectionPanel({
         ) : (
           <>
             <dl style={{ margin: 0 }}>
-              {transition.event && <><dt className="text-muted">Event</dt><dd style={{ margin: 0 }}>{transition.event}</dd></>}
-              {transition.guard && <><dt className="text-muted">Condition (guard)</dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
-              {transition.action && <><dt className="text-muted">Action</dt><dd style={{ margin: 0 }}>{transition.action}</dd></>}
+              {transition.event && <><dt><TermCaption term="Event" /></dt><dd style={{ margin: 0 }}>{transition.event}</dd></>}
+              {transition.guard && <><dt><TermCaption term="Condition (guard)" /></dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
+              {transition.action && <><dt><TermCaption term="Action" /></dt><dd style={{ margin: 0 }}>{transition.action}</dd></>}
             </dl>
             {transition.description && <ActivityNote text={transition.description} />}
           </>

@@ -8,8 +8,10 @@
  */
 import { DefinitionList } from "../../components/DefinitionList";
 import { InlineSelect } from "../../components/LabeledSelect";
+import { Tooltip } from "../../components/Tooltip";
 import { labelOptions } from "../../utils/labelOptions";
 import { pathOptions } from "./connectionTypeTree";
+import { ARCHITECTURE_HELP } from "./help";
 import { PORT_DIRECTION_LABEL, type ConnectionType, type Port, type PortDirection, type PortValues } from "./types";
 
 /** A port as the list shows it; `id` is the server's, or a temporary one for a port not saved yet. */
@@ -56,16 +58,20 @@ export function PortList({
       addLabel="Add port"
       renderExtra={(port) => (
         <span key="port-extra" className="row" style={{ gap: "var(--space-2)" }}>
-          <InlineSelect<PortDirection>
-            ariaLabel={`Direction of ${port.name}`} value={port.direction} placeholder={null} autoWidth
-            options={labelOptions(PORT_DIRECTION_LABEL)}
-            onChange={(next) => void onChange(port.id, { direction: next })}
-          />
-          <InlineSelect
-            ariaLabel={`Connection type of ${port.name}`} value={port.connection_type_id ?? ""} placeholder="Any type" autoWidth
-            options={pathOptions(connectionTypes)}
-            onChange={(next) => void onChange(port.id, { connection_type_id: next || null })}
-          />
+          <Tooltip label={ARCHITECTURE_HELP.portDirection} wrap>
+            <InlineSelect<PortDirection>
+              ariaLabel={`Direction of ${port.name}`} value={port.direction} placeholder={null} autoWidth
+              options={labelOptions(PORT_DIRECTION_LABEL)}
+              onChange={(next) => void onChange(port.id, { direction: next })}
+            />
+          </Tooltip>
+          <Tooltip label={ARCHITECTURE_HELP.portConnectionType} wrap>
+            <InlineSelect
+              ariaLabel={`Connection type of ${port.name}`} value={port.connection_type_id ?? ""} placeholder="Any type" autoWidth
+              options={pathOptions(connectionTypes)}
+              onChange={(next) => void onChange(port.id, { connection_type_id: next || null })}
+            />
+          </Tooltip>
         </span>
       )}
     />

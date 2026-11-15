@@ -146,7 +146,7 @@ export const TheOutlineTableHasAStateMachineDiagramsColumn: Story = {
     await userEvent.click(await canvas.findByRole("tab", { name: "Outline" }));
     await userEvent.click(await canvas.findByRole("button", { name: "List view" }));
     const table = await canvas.findByRole("table", { name: "Elements" });
-    await expect(within(table).getByRole("columnheader", { name: "State machine diagrams" })).toBeInTheDocument();
+    await expect(within(table).getByRole("columnheader", { name: /^State machine diagrams/ })).toBeInTheDocument();
     const orders = within(table).getByRole("row", { name: /Orders/ });
     expect(within(orders).getAllByRole("button").map((b) => b.textContent)).toContain("SMD-003 Order faults");
     const firewall = within(table).getByRole("row", { name: /Firewall/ });

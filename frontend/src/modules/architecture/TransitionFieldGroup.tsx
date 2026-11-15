@@ -37,11 +37,11 @@ export function TransitionFieldGroup({
   return (
     <>
       <LabeledSelect
-        required help={ARCHITECTURE_HELP.transitionEnds} label="From" value={values.source_state_id} placeholder="Choose a state"
+        required help={ARCHITECTURE_HELP.transitionFrom} label="From" value={values.source_state_id} placeholder="Choose a state"
         options={options} onChange={(next) => onChange("source_state_id", next)}
       />
       <LabeledSelect
-        required helpNotNeeded label="To" value={values.target_state_id} placeholder="Choose a state"
+        required help={ARCHITECTURE_HELP.transitionTo} label="To" value={values.target_state_id} placeholder="Choose a state"
         options={options} onChange={(next) => onChange("target_state_id", next)}
       />
       <TextField help={ARCHITECTURE_HELP.transitionEvent} label="Event" value={values.event} inputProps={focus("event")} onChange={(value) => onChange("event", value)} />

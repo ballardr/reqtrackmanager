@@ -195,6 +195,8 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'System Architecture module',
           items: [
+            'modules/system-architecture-module/elements-ports-and-connections',
+            'modules/system-architecture-module/block-diagram-editor',
             'modules/system-architecture-module/allocation',
             'modules/system-architecture-module/state-machine-diagrams',
             'modules/system-architecture-module/baselines',

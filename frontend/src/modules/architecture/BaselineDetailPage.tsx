@@ -87,7 +87,7 @@ export function BaselineDetailPage() {
       />
       <div className="stack">
         {byType.map(([type, records]) => <BaselineRecordsCard key={type} itemType={type} records={records} onOpen={setOpen} />)}
-        <DetailCard heading="Comparison">
+        <DetailCard heading="Comparison" help={ARCHITECTURE_HELP.baselineComparison}>
           <LabeledSelect
             label="Compare with" help={ARCHITECTURE_HELP.baselineCompareWith} value={against} onChange={setAgainst}
             options={choices} placeholder="Choose what to compare with…" autoWidth

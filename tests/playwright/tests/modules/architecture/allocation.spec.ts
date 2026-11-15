@@ -58,7 +58,7 @@ test.describe("System Architecture: allocation", () => {
       const dismissed = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/allocation/dismiss") && r.ok());
       await card.getByRole("button", { name: "Dismiss", exact: true }).click();
       await dismissed;
-      await expect(card.getByText("Dismissed", { exact: true })).toBeVisible();
+      await expect(card.getByRole("heading", { name: /^Dismissed/ })).toBeVisible();
       const restored = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/allocation/restore") && r.ok());
       await card.getByRole("button", { name: "Restore", exact: true }).click();
       await restored;

@@ -214,7 +214,7 @@ export function ElementDetailPage() {
           action={element.is_archived ? undefined : <NewStateMachineDiagramButton projectId={projectId} element={element} candidates={[...owned, ...shared]} />}
         />
 
-        <DetailCard heading="Ports">
+        <DetailCard heading="Ports" help={ARCHITECTURE_HELP.elementPorts}>
           <PortList
             ports={element.ports} connectionTypes={reference.connectionTypes} readOnly={readOnly || element.is_archived}
             onAdd={portsApi.add} onChange={portsApi.change} onRemove={portsApi.remove}
