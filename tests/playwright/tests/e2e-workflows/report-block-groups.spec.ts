@@ -6,6 +6,7 @@ import {
   closeDesignerPreview, deleteOrgOnCleanup, designerPreviewPanel, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD,
   selectProjectAdminGroup,
 } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -52,7 +53,7 @@ test.describe("Report layout block form groups", () => {
     await openNewLayout(page, request, "block-groups");
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Table (custom)", exact: true }).click();
+    await clickMenuRow(page, "Table (custom)");
     const inspector = page.getByLabel("Block details");
 
     await test.step("the basic fields are visible and the groups are closed", async () => {
@@ -84,7 +85,7 @@ test.describe("Report layout block form groups", () => {
     await openNewLayout(page, request, "shape-groups");
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Shape", exact: true }).click();
+    await clickMenuRow(page, "Shape");
     const inspector = page.getByLabel("Block details");
 
     await test.step("the kind and fill are in view and the other settings are in closed groups", async () => {

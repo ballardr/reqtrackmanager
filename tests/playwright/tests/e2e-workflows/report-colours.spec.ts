@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { closeDesignerPreview, openDesignerPreview, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -38,7 +39,7 @@ test.describe("Report colours", () => {
     await page.goto(`/projects/${projectId}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -77,7 +78,7 @@ test.describe("Report colours", () => {
 
     await test.step("a shape's fill offers the organisation's colour by name and the preview prints it", async () => {
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Shape", exact: true }).click();
+      await clickMenuRow(page, "Shape");
       const inspector = page.getByLabel("Block details");
       await inspector.getByRole("button", { name: /^Fill:/ }).waitFor();
       await inspector.getByRole("button", { name: /^Fill:/ }).click();
@@ -148,7 +149,7 @@ test.describe("Report colours", () => {
     await inspector.getByRole("combobox", { name: "Start from" }).selectOption({ label: "Cool" });
     await expect(inspector.getByRole("list", { name: "Colours in the scheme" })).toContainText("primary #1d4ed8");
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Shape", exact: true }).click();
+    await clickMenuRow(page, "Shape");
     await page.getByLabel("Block details").getByRole("button", { name: /^Fill:/ }).click();
     await page.getByRole("dialog", { name: "Choose a colour for Fill" }).getByRole("button", { name: /^primary/ }).click();
     await expect(page.getByText("No problems.")).toBeVisible();

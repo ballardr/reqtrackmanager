@@ -2710,16 +2710,89 @@ td:has(> .disclosure-toggle) {
   max-width: calc(100vw - 1rem);
 }
 
-/* A menu item (`ActionMenuList`) is a button whose label may be long: it wraps onto a second line
-   rather than clipping, once the menu has grown to the viewport's width. */
-.menu-item {
-  justify-content: flex-start;
-  text-align: left;
-  white-space: normal;
+/* An action menu's panel (`Popover menu`): tighter than a form popover, with a caret toward the trigger. The caret
+   is a rotated square on the panel's edge; it is clipped away when a tall menu scrolls inside its capped height. */
+.popover-menu {
+  position: fixed;
+  padding: var(--space-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
 }
 
-/* A heading over a run of related menu items (`ActionMenuItem.group`), e.g. the record kind in a list's
-   export and import menu. */
+.popover-menu[data-side="below"]::before,
+.popover-menu[data-side="above"]::before {
+  content: "";
+  position: absolute;
+  left: var(--popover-caret-x, 1rem);
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.popover-menu[data-side="below"]::before {
+  top: -6px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.popover-menu[data-side="above"]::before {
+  bottom: -6px;
+  border-left: 0;
+  border-top: 0;
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 180px;
+}
+
+/* A menu row (`ActionMenuList`) is a plain text row, not a button: nothing drawn at rest, a tint on hover and
+   focus. Its label may be long, so it wraps onto a second line rather than clipping once the menu has grown to
+   the viewport's width. */
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  justify-content: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--color-surface-alt);
+}
+
+.menu-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.menu-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+  background: transparent;
+}
+
+.menu-item-danger {
+  color: var(--color-danger);
+}
+
+/* A heading over a run of related menu items (`ActionMenuItem.group`) that holds only one item, e.g. the record
+   kind in a list's export and import menu. */
 .menu-group-label {
   padding: var(--space-2) var(--space-3) 0;
   color: var(--color-text-muted);
@@ -2727,40 +2800,35 @@ td:has(> .disclosure-toggle) {
   font-weight: 600;
 }
 
-/* A menu row that opens a second list (`ActionMenuItem.children`). The list is placed beside its parent by
-   `ActionMenu` (position: fixed, so the popover's own scrolling never clips it); on a narrow screen it is
-   inline beneath the parent, indented. */
-.menu-submenu-host {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+/* A parent row (an item with `children`, or a group of several items): a chevron that turns down while it is
+   open, and the accent colour on the open entry. Its rows follow in `.menu-tree-group`, indented under a thin
+   guide line. */
+.menu-parent[aria-expanded="true"] {
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
-.menu-submenu-parent {
-  width: 100%;
+.menu-parent-chevron {
+  margin-left: auto;
+  flex: none;
+  transition: transform 0.12s ease;
+}
+
+.menu-parent[aria-expanded="true"] .menu-parent-chevron {
+  transform: rotate(90deg);
+}
+
+.menu-tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: var(--space-4);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border);
 }
 
 .menu-item-hint {
   font-size: 0.8rem;
-}
-
-.menu-submenu-chevron {
-  margin-left: auto;
-  flex: none;
-}
-
-.menu-submenu {
-  z-index: 1160;
-  min-width: 160px;
-  padding: var(--space-1);
-}
-
-/* Same width as NARROW_VIEWPORT_PX in ActionMenu.tsx (which also sets position: static). */
-@media (max-width: 639px) {
-  .menu-submenu {
-    margin: 0.15rem 0 0 var(--space-3);
-    box-shadow: none;
-  }
 }
 
 .menu-footer {

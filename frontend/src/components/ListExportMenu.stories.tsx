@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { ListExportMenu } from "./ListExportMenu";
+import { chooseMenuRow, findMenuRow } from "../testing/menuTree";
 
 const meta: Meta<typeof ListExportMenu> = {
   title: "Components/ListExportMenu",
@@ -16,11 +17,8 @@ type Story = StoryObj<typeof ListExportMenu>;
 export const DownloadShownItems: Story = {
   play: async ({ canvasElement, args }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "List actions" }));
-    const body = within(document.body);
-    await userEvent.click(await body.findByRole("menuitem", { name: "Download shown items" }));
-    const submenu = within(await body.findByRole("menu", { name: "Download shown items" }));
-    for (const name of [/CSV/, /PDF/, /Word/, /ODT/, /ODS/]) await expect(submenu.getByRole("menuitem", { name })).toBeInTheDocument();
-    await userEvent.click(submenu.getByRole("menuitem", { name: /PDF/ }));
+    for (const name of [/CSV/, /PDF/, /Word/, /ODT/, /ODS/]) await expect(await findMenuRow(name)).toBeInTheDocument();
+    await chooseMenuRow(/PDF/);
     await waitFor(() => expect(args.exportFile).toHaveBeenCalledWith("pdf"));
   },
 };

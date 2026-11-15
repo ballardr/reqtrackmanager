@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
+import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -75,7 +76,7 @@ test.describe("System Architecture: from a block to its state machine diagram an
       await page.goto(s.machinePath);
       await expect(page.getByRole("link", { name: /^Return to/ })).toHaveCount(0);
       await page.getByRole("button", { name: "Open in diagram" }).click();
-      await page.getByRole("menuitem", { name: new RegExp(`Plant ${s.suffix}`) }).click();
+      await clickMenuRow(page, new RegExp(`Plant ${s.suffix}`));
       await expect(page).toHaveURL(new RegExp(`${s.blockPath}\\?select=${s.valve.id}`));
       await expect(page.locator(".react-flow__node.selected").getByText(`Valve ${s.suffix}`)).toBeVisible();
     });

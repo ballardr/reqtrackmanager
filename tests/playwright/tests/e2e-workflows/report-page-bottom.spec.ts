@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -38,7 +39,7 @@ test.describe("Report layout page bottom", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -47,9 +48,9 @@ test.describe("Report layout page bottom", () => {
 
     await test.step("the block is added from the menu and a text block goes inside it", async () => {
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "At page bottom", exact: true }).click();
+      await clickMenuRow(page, "At page bottom");
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: /^Text/ }).click();
+      await clickMenuRow(page, /^Text/);
       await page.getByLabel("Block details").getByRole("textbox", { name: "Text" }).fill("Signed off by the project lead");
       await expect(page.getByText("No problems.")).toBeVisible();
     });

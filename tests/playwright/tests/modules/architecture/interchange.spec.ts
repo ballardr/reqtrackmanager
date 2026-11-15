@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
+import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -41,7 +42,7 @@ test.describe("System Architecture: interchange", () => {
     await test.step("the JSON file holds the elements and the connection", async () => {
       await interchange.click();
       const download = page.waitForEvent("download");
-      await page.getByRole("menuitem", { name: "Export JSON file" }).click();
+      await clickMenuRow(page, "Export JSON file");
       jsonPath = await (await download).path();
       const document = JSON.parse(await readFile(jsonPath, "utf8"));
       expect(document.format).toBe("reqtrack-architecture");
@@ -52,7 +53,7 @@ test.describe("System Architecture: interchange", () => {
     await test.step("the Structurizr file is a workspace naming both elements", async () => {
       await interchange.click();
       const download = page.waitForEvent("download");
-      await page.getByRole("menuitem", { name: "Export Structurizr DSL" }).click();
+      await clickMenuRow(page, "Export Structurizr DSL");
       const text = await readFile(await (await download).path(), "utf8");
       expect(text).toContain("workspace");
       expect(text).toContain(`Gateway ${suffix}`);
@@ -61,7 +62,7 @@ test.describe("System Architecture: interchange", () => {
 
     await test.step("importing the file previews it first and then adds copies", async () => {
       await interchange.click();
-      await page.getByRole("menuitem", { name: "Import JSON file…" }).click();
+      await clickMenuRow(page, "Import JSON file…");
       const dialog = page.getByRole("dialog", { name: "Import JSON file" });
       await expect(dialog.getByRole("button", { name: "Import" })).toBeDisabled();
       await dialog.getByLabel("File").setInputFiles(jsonPath);

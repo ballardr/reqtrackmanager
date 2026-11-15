@@ -9,6 +9,7 @@ import {
   buildElement, buildState, buildStateMachine, buildStateMachineModel, buildTransition, captureDownloads, mockArchitectureReads, PROJECT_ID,
 } from "./architectureFixtures";
 import { StateMachineEditorPage } from "./StateMachineEditorPage";
+import { chooseMenuRow } from "../../testing/menuTree";
 
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/architecture`;
 const MACHINE = `${BASE}/state-machine-diagrams/smd-1`;
@@ -699,7 +700,7 @@ function mockExportReads() {
 /** Opens the Export menu and chooses an item (the menu is a popover outside the story's canvas). */
 async function exportAs(canvas: ReturnType<typeof within>, item: string) {
   await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
-  await userEvent.click(await within(document.body).findByRole("menuitem", { name: item }));
+  await chooseMenuRow(item);
 }
 
 export const ExportingSvgAndMermaidAsksTheServerForTheStoredDiagram: Story = {

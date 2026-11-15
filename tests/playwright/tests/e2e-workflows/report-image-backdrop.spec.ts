@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 /** A white-on-transparent 1 x 1 pixel PNG stands in for a white logo. */
@@ -36,7 +37,7 @@ test.describe("Report image backdrop", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const create = page.getByRole("dialog", { name: "New report layout" });
     await create.getByRole("textbox", { name: "Name" }).fill(`Backdrop layout ${suffix}`);
     await create.getByRole("button", { name: "Create" }).click();
@@ -44,7 +45,7 @@ test.describe("Report image backdrop", () => {
 
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+    await clickMenuRow(page, "Image");
     await page.getByLabel("Block details").getByRole("button", { name: "Choose image…" }).click();
     const library = page.getByRole("dialog", { name: "Image library" });
     const fileName = `white-${suffix}.png`;

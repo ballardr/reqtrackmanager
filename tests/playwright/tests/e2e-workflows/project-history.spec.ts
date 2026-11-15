@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { openMenuParent } from "../menuTree";
 
 installCleanupHook();
 
@@ -125,7 +126,7 @@ test.describe("project history / changes-over-time view", () => {
     await openHistory(page);
     await chooseTypes(page, ["Requirement"]);
     await page.getByRole("button", { name: "List actions" }).click();
-    await page.getByRole("menuitem", { name: "Download shown items" }).click();
+    await openMenuParent(page, "Download shown items");
     const [download] = await Promise.all([
       page.waitForEvent("download"),
       page.getByRole("menuitem", { name: /CSV/ }).click(),

@@ -8,6 +8,7 @@ const VIEWPORT_MARGIN_PX = 8;
 const VERTICAL_GAP_PX = 6.4; // 0.4rem
 const HORIZONTAL_GAP_PX = 6.4; // 0.4rem
 const MATCH_ANCHOR_MIN_WIDTH_PX = 280;
+const CARET_INSET_PX = 14;
 
 /**
  * A small anchored panel for a one- or two-field create flow — the other
@@ -43,8 +44,8 @@ const MATCH_ANCHOR_MIN_WIDTH_PX = 280;
  * keeps its buttons in the popover instead of moving them to the dialog behind it.
  *
  * A press inside a dialog the popover's own content opened (a confirmation) is not "outside": that dialog is a portal
- * beside the popover in the DOM, so the check follows the React tree (`onMouseDownCapture` bubbles through portals)
- * and the popover stays open while its confirmation is answered.
+ * beside the popover in the DOM, opened after it, so a press in anything portalled after this popover leaves it open
+ * while its confirmation is answered.
  *
  * `fit` sizes the panel to its content instead of the fixed 280px (up to the
  * viewport width less a margin, `.popover-bubble`'s `max-width`), for a menu
@@ -52,6 +53,9 @@ const MATCH_ANCHOR_MIN_WIDTH_PX = 280;
  *
  * `placement="side"` opens the panel to the right of the anchor with their top edges level, for a small
  * (+) button whose panel should not cover the field it sits beside; it opens below when the width does not fit.
+ *
+ * `menu` gives the panel the look of an action menu (`ActionMenuList`): tighter padding, a soft shadow and a small caret
+ * pointing at the anchor, on the side the panel opened (the caret is hidden while the panel is capped and scrolling).
  *
  * `matchAnchor` makes the panel open like a native select list: its left edge on the anchor's and at least
  * as wide as the anchor (never under 280px), for an anchor that is a form control and not a small button.
@@ -63,6 +67,7 @@ export function Popover({
   fit = false,
   matchAnchor = false,
   placement = "below",
+  menu = false,
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
@@ -71,10 +76,10 @@ export function Popover({
   fit?: boolean;
   matchAnchor?: boolean;
   placement?: "below" | "side";
+  menu?: boolean;
   children: ReactNode;
 }) {
   const bubbleRef = useRef<HTMLDivElement>(null);
-  const pressInsideRef = useRef(false);
   useDialogA11y(bubbleRef, onClose);
 
   useLayoutEffect(() => {
@@ -120,6 +125,12 @@ export function Popover({
 
       bubble.style.top = `${top}px`;
       bubble.style.left = `${left}px`;
+      if (menu) {
+        // The caret sits under the middle of the anchor, kept clear of the panel's rounded corners.
+        const caretX = Math.max(CARET_INSET_PX, Math.min(anchorRect.left + anchorRect.width / 2 - left, bubbleRect.width - CARET_INSET_PX));
+        bubble.style.setProperty("--popover-caret-x", `${caretX}px`);
+        bubble.dataset.side = beside ? "end" : below ? "below" : "above";
+      }
       bubble.style.visibility = "visible";
     }
     measure();
@@ -140,28 +151,39 @@ export function Popover({
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [anchorRef, matchAnchor, placement]);
+  }, [anchorRef, matchAnchor, placement, menu]);
 
   useEffect(() => {
-    function onPointerDown(e: MouseEvent) {
+    // Listens in the capture phase on `pointerdown`: React Flow's pane and nodes (d3-zoom, d3-drag) stop a
+    // `mousedown` before it bubbles to the document, so a bubble-phase `mousedown` listener never saw a click on a
+    // diagram and a popover opened over one could not be dismissed by clicking away. A capture listener on the
+    // document runs before any of them, and `pointerdown` is not suppressed with the compatibility mouse events.
+    function onPointerDown(e: PointerEvent) {
       const target = e.target as Node;
-      const insideTree = pressInsideRef.current;
-      pressInsideRef.current = false;
-      if (insideTree || bubbleRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      if (bubbleRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      // A dialog, panel or popover opened from this one's content (a confirmation) is a portal that follows this
+      // one among the body's children, so a press in it, including on its backdrop, is not "outside".
+      let top: Node | null = target;
+      while (top && top.parentNode !== document.body) top = top.parentNode;
+      if (top && bubbleRef.current && bubbleRef.current.compareDocumentPosition(top) & Node.DOCUMENT_POSITION_FOLLOWING) return;
       onClose();
+      // The press then moves focus to whatever it landed on (the page body when that is not focusable), after the
+      // popover's own unmount has returned it to the anchor; put it back on the anchor unless it landed on a control.
+      window.setTimeout(() => {
+        if (document.activeElement === document.body) anchorRef.current?.focus();
+      }, 0);
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [anchorRef, onClose]);
 
   return createPortal(
     <div
       ref={bubbleRef}
-      className="card stack popover-bubble"
+      className={menu ? "card stack popover-bubble popover-menu" : "card stack popover-bubble"}
       role="dialog"
       aria-label={title}
       tabIndex={-1}
-      onMouseDownCapture={() => { pressInsideRef.current = true; }}
       style={{
         position: "fixed",
         // The same layer as Modal and SidePanel, so whichever opened last is on top (DOM order): a popover opened

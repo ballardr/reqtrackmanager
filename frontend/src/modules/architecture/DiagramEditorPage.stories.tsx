@@ -12,6 +12,7 @@ import {
   buildViewNode, captureDownloads, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
+import { chooseMenuRow } from "../../testing/menuTree";
 
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/architecture`;
 const ELEMENTS = [
@@ -682,7 +683,7 @@ function mockExportReads() {
 /** Opens the Export menu and chooses an item. */
 async function exportAs(canvas: ReturnType<typeof within>, item: string) {
   await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
-  await userEvent.click(await within(document.body).findByRole("menuitem", { name: item }));
+  await chooseMenuRow(item);
 }
 
 export const TheOutlineFollowsTheViewSwitches: Story = {
@@ -910,7 +911,8 @@ export const TheAddMenuGroupsTheTypesByDomain: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
     const menu = within(await within(document.body).findByRole("menu", { name: "Add to diagram" }));
     const labels = menu.getAllByRole("menuitem").map((item) => item.textContent?.trim());
-    await expect(labels).toEqual(["Service", "Board", "Custom block", "Add existing elements", "Add note"]);
+    // A group of one item is a heading over it; "Other" holds two, so it is a row that is open at first.
+    await expect(labels).toEqual(["Service", "Board", "Custom block", "Other", "Add existing elements", "Add note"]);
     for (const heading of ["New software element", "New hardware element", "New element", "Other"]) {
       await expect(menu.getByText(heading)).toBeInTheDocument();
     }

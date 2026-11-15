@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { DiagramExportMenu } from "./DiagramExportMenu";
+import { chooseMenuRow, findMenuRow } from "../../testing/menuTree";
 
 const meta: Meta<typeof DiagramExportMenu> = {
   title: "Modules/Architecture/DiagramExportMenu",
@@ -16,11 +17,12 @@ type Story = StoryObj<typeof DiagramExportMenu>;
 export const OffersFourExports: Story = {
   play: async ({ canvasElement, args }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
-    const menu = within(document.body).getByRole("menu", { name: "Export diagram" });
+    await expect(within(document.body).getByRole("menu", { name: "Export diagram" })).toBeInTheDocument();
+    // The image rows are open at first; the text rows are in a second group that opens on a click.
     for (const name of ["PNG image", "SVG image", "Download Mermaid text", "Copy Mermaid text"]) {
-      await expect(within(menu).getByRole("menuitem", { name })).toBeInTheDocument();
+      await expect(await findMenuRow(name)).toBeInTheDocument();
     }
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "Copy Mermaid text" }));
+    await chooseMenuRow("Copy Mermaid text");
     await expect(args.onExport).toHaveBeenCalledWith("copy-mermaid");
   },
 };

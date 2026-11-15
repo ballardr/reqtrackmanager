@@ -6,6 +6,7 @@ import {
   closeDesignerPreview, deleteOrgOnCleanup, designerPreviewPanel, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD,
   selectProjectAdminGroup,
 } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -46,7 +47,7 @@ test.describe("Report layout heading mark buttons", () => {
     await openSetupReport(page, name);
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Heading 1" }).click();
+    await clickMenuRow(page, "Heading 1");
     const inspector = page.getByLabel("Block details");
     const words = inspector.getByRole("textbox", { name: "Heading", exact: true });
 

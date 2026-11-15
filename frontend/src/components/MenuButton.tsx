@@ -67,7 +67,7 @@ export function MenuButton({
     <>
       {help ? <Tooltip label={help} wrap bubbleId={bubbleId}>{trigger}</Tooltip> : trigger}
       {open && (
-        <Popover anchorRef={triggerRef} fit title={name} onClose={() => setOpen(false)}>
+        <Popover anchorRef={triggerRef} fit menu title={name} onClose={() => setOpen(false)}>
           <ActionMenuList label={name} items={items} onSelect={() => setOpen(false)} />
         </Popover>
       )}

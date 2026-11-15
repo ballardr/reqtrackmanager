@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -36,7 +37,7 @@ test.describe("Report layout spacer", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -45,7 +46,7 @@ test.describe("Report layout spacer", () => {
 
     await test.step("the Add block menu offers a Spacer that starts at 1 cm", async () => {
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Spacer", exact: true }).click();
+      await clickMenuRow(page, "Spacer");
       const inspector = page.getByLabel("Block details");
       await expect(inspector.getByRole("spinbutton", { name: "Height", exact: true })).toHaveValue("1");
       await expect(inspector.getByRole("combobox", { name: "Height unit" }).locator("option:checked")).toHaveText("Default (cm)");

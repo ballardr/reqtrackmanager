@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
 import { installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
+import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -53,7 +54,7 @@ async function settledCanvasTop(page: Page): Promise<number> {
 async function addState(page: Page, item: "State" | "Initial state" | "Final state" | "Choice", name?: string) {
   const created = page.waitForResponse((r) => r.url().endsWith("/states") && r.request().method() === "POST");
   await page.getByRole("button", { name: "Add to diagram" }).click();
-  await page.getByRole("menuitem", { name: item, exact: true }).click();
+  await clickMenuRow(page, item);
   expect((await created).ok()).toBeTruthy();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const nameField = selectionCard(page).getByRole("textbox", { name: /^Name/ });
@@ -172,7 +173,7 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(findingsCard(page).getByText("1 error")).toBeVisible();
       await expect(findingsCard(page).getByText(/no initial state at the top level/)).toBeVisible();
       await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Move from Draft to Active" }).click();
+      await clickMenuRow(page, "Move from Draft to Active");
       await expect(page.getByRole("alert").filter({ hasText: /cannot be activated until its errors are resolved/ })).toBeVisible();
       await expect(page.getByRole("button", { name: "Reload state machine diagram" })).toHaveCount(0);
     });
@@ -234,7 +235,7 @@ test.describe("System Architecture: state machine diagrams", () => {
 
     await test.step("a sound diagram is activated", async () => {
       await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Move from Draft to Active" }).click();
+      await clickMenuRow(page, "Move from Draft to Active");
       await expect(page.getByText("Active", { exact: true }).first()).toBeVisible();
       await expect(page.getByText(/moved to Active/).first()).toBeVisible();
     });
@@ -425,7 +426,7 @@ test.describe("System Architecture: state machine diagrams", () => {
     async function download(item: string): Promise<{ name: string; text: string }> {
       await page.getByRole("button", { name: "Export", exact: true }).click();
       const saved = page.waitForEvent("download");
-      await page.getByRole("menuitem", { name: item, exact: true }).click();
+      await clickMenuRow(page, item);
       const file = await saved;
       const path = await file.path();
       const { readFile } = await import("node:fs/promises");

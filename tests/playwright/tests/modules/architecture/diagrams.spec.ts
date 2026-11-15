@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
 import { installCleanupHook } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
+import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -68,7 +69,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("add existing elements, see their connection before saving, then save", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Add existing elements" }).click();
+      await clickMenuRow(page, "Add existing elements");
       const dialog = page.getByRole("dialog", { name: "Add existing elements" });
       await dialog.getByRole("checkbox", { name: `Add ${gateway}` }).check();
       await dialog.getByRole("checkbox", { name: `Add ${orders}` }).check();
@@ -86,7 +87,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("an element chosen in the Add menu is created at once, selected with its name focused, and renamed in the Selection card", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Component", exact: true }).click();
+      await clickMenuRow(page, "Component");
       await expect(page.getByRole("dialog")).toHaveCount(0);
       const card = page.getByRole("region", { name: "Selection" });
       const name = card.getByRole("textbox", { name: "Name", exact: true });
@@ -270,7 +271,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("the component tree collapses, and the Add menu list narrows to the ticked component", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Add existing elements" }).click();
+      await clickMenuRow(page, "Add existing elements");
       const dialog = page.getByRole("dialog", { name: "Add existing elements" });
       await expect(dialog.getByRole("checkbox", { name: `Add ${cache}` })).toBeVisible();
       await dialog.getByRole("button", { name: "Component and category", exact: true }).click();
@@ -378,11 +379,11 @@ test.describe("System Architecture: diagram editor", () => {
     await test.step("export downloads an SVG and the Mermaid text named after the diagram", async () => {
       await page.getByRole("button", { name: "Export" }).click();
       const svg = page.waitForEvent("download");
-      await page.getByRole("menuitem", { name: "SVG image" }).click();
+      await clickMenuRow(page, "SVG image");
       expect((await svg).suggestedFilename()).toMatch(/^DGM-\d+-keys-.*\.svg$/);
       await page.getByRole("button", { name: "Export" }).click();
       const mermaid = page.waitForEvent("download");
-      await page.getByRole("menuitem", { name: "Download Mermaid text" }).click();
+      await clickMenuRow(page, "Download Mermaid text");
       expect((await mermaid).suggestedFilename()).toMatch(/\.mmd$/);
     });
   });
@@ -514,7 +515,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("the Add menu ends with the setup entry, which opens the Element Types settings", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Set up element types" }).click();
+      await clickMenuRow(page, "Set up element types");
       await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/admin/architecture/architecture-element-types`));
     });
   });
@@ -586,7 +587,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("a note gets text, a tone and a leader to the box", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Add note" }).click();
+      await clickMenuRow(page, "Add note");
       await page.getByRole("textbox", { name: "Note text" }).fill("Single point of failure");
       await page.getByRole("combobox", { name: "Tone", exact: true }).selectOption("danger");
       await page.getByRole("combobox", { name: "Points at", exact: true }).selectOption(`element:${gatewayId}`);
@@ -697,7 +698,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("a new element created there is a child of the box", async () => {
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: "Component", exact: true }).click();
+      await clickMenuRow(page, "Component");
       const card = page.getByRole("region", { name: "Selection" });
       await card.getByRole("textbox", { name: "Name", exact: true }).fill(filter);
       await card.getByRole("button", { name: "Save element" }).click();
@@ -745,7 +746,7 @@ test.describe("System Architecture: diagram editor", () => {
     await test.step("the Add menu lists the connection crossing the boundary and draws it as a box that is not covered yet", async () => {
       await expect(box).toHaveCount(0);
       await page.getByRole("button", { name: "Add to diagram" }).click();
-      await page.getByRole("menuitem", { name: new RegExp(`^${outer.unique_code} · ELM-\\d+ ${cloud}$`) }).click();
+      await clickMenuRow(page, new RegExp(`^${outer.unique_code} · ELM-\\d+ ${cloud}$`));
       await expect(box).toBeVisible();
       await expect(box).toContainText("Not covered");
       await page.getByRole("button", { name: "Save", exact: true }).click();

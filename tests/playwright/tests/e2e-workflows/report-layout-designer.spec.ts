@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, closeDesignerPreview, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion, openDesignerTextView, designerPreviewPanel } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -53,7 +54,7 @@ test.describe("Report layout designer", () => {
     await page.goto(`/projects/${projectId}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -141,14 +142,14 @@ test.describe("Report layout designer", () => {
 
     await test.step("a For each block takes its records from a type and names each record", async () => {
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "For each record" }).click();
+      await clickMenuRow(page, "For each record");
       await inspector.getByRole("combobox", { name: "Record type" }).selectOption({ label: "Requirement" });
       await inspector.getByRole("textbox", { name: "Name", exact: true }).fill("req");
     });
 
     await test.step("a heading inside it shows each requirement's title", async () => {
       await inspector.getByRole("button", { name: "Add to Contents" }).click();
-      await page.getByRole("menuitem", { name: "Heading 2" }).click();
+      await clickMenuRow(page, "Heading 2");
       await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("{{req.title}}");
       await expect(page.getByText("No problems.")).toBeVisible();
       // The block on the workspace shows the same words, read-only: no value is edited on a block.
@@ -160,12 +161,12 @@ test.describe("Report layout designer", () => {
       // The Heading just added inside the For each is selected: a leaf, so the default is after it.
       await expect(where.locator("option:checked")).toHaveText(/^Adding after: Heading/);
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Page break" }).click();
+      await clickMenuRow(page, "Page break");
       await expect(inspector.getByTestId("block-inspector")).toContainText("Page break block");
       // Nothing selected is not offered once a block has been chosen; the end of the layout is always an option.
       await where.selectOption({ label: "Adding at the end of the layout" });
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Page break" }).click();
+      await clickMenuRow(page, "Page break");
       const pageBreaks = page.locator(".blocklyText.rl-block-title", { hasText: "Page break" });
       await expect(pageBreaks).toHaveCount(2);
       // Undo takes the last addition back, like a drag.
@@ -350,7 +351,7 @@ test.describe("Report layout designer", () => {
       await page.locator(".blocklyText.rl-block-title", { hasText: "Group records" }).click();
       await expect(page.getByLabel("Where to add the block").locator("option:checked")).toHaveText(/^Adding inside: /);
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Table (records)" }).click();
+      await clickMenuRow(page, "Table (records)");
       const inspector = page.getByLabel("Block details");
       await expect(inspector.getByRole("combobox", { name: "Records come from" })).toHaveValue("group");
       await expect(inspector.getByRole("combobox", { name: "Records come from" }).locator("option:checked")).toHaveText("Records of the surrounding group");
@@ -363,7 +364,7 @@ test.describe("Report layout designer", () => {
     await test.step("a table added at the end of the layout, outside any group, still starts on all records of a type", async () => {
       await page.getByLabel("Where to add the block").selectOption({ label: "Adding at the end of the layout" });
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Table (records)" }).click();
+      await clickMenuRow(page, "Table (records)");
       const inspector = page.getByLabel("Block details");
       await expect(inspector.getByRole("combobox", { name: "Records come from" }).locator("option:checked")).toHaveText("All records of a type");
     });
@@ -510,7 +511,7 @@ test.describe("Report layout designer", () => {
       await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
       // The page fields come from the cell's [+] menu (the server's catalogue names none), in plain words, written into that cell.
       await dialog.getByRole("button", { name: "Insert field into footer, right cell" }).click();
-      await page.getByRole("menuitem", { name: /^Page X of Y/ }).click();
+      await clickMenuRow(page, /^Page X of Y/);
       await expect(dialog.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
       await expect(dialog.getByText("Prints as: Page 3 of 12")).toBeVisible();
       await expect(editor).toHaveValue(/^@layout document\n@header left "" centre "\{\{report_title\}\}"\n@footer left "" right "Page \{\{page\}\} of \{\{pages\}\}"\n/);
@@ -733,7 +734,7 @@ test.describe("Report layout designer", () => {
     await test.step("hiding it removes it from this project's list and it can be added back", async () => {
       const table = await searchReportSetup(page, name);
       await table.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Hide in this project" }).click();
+      await clickMenuRow(page, "Hide in this project");
       await page.getByRole("dialog", { name: /Hide .* in this project\?/ }).getByRole("button", { name: "Hide" }).click();
       await expect(page.getByText("Layout hidden in this project.")).toBeVisible();
       await expect(table.getByRole("row", { name: new RegExp(`${name}.*Hidden`) })).toBeVisible();
@@ -746,7 +747,7 @@ test.describe("Report layout designer", () => {
     await test.step("a copy is the project's own layout and can be edited", async () => {
       const table = await searchReportSetup(page, name);
       await table.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Duplicate…" }).click();
+      await clickMenuRow(page, "Duplicate…");
       const duplicate = page.getByRole("dialog", { name: "Duplicate layout" });
       await expect(duplicate.getByRole("textbox", { name: "Name" })).toHaveValue(`${name} (copy)`);
       await duplicate.getByRole("button", { name: "Create copy" }).click();
@@ -765,7 +766,7 @@ test.describe("Report layout designer", () => {
     await selectOrgAdminGroup(page, "Reports");
     await ensureExpanded(page, "Report layouts");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("combobox", { name: "Kind of report" }).selectOption("table");
@@ -852,7 +853,7 @@ test.describe("Report layout designer", () => {
 
     const table = await searchReportSetup(page, name);
     await table.getByRole("button", { name: `Actions for ${name}` }).click();
-    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await clickMenuRow(page, "Delete");
     const dialog = page.getByRole("dialog", { name: `Delete ${name}?` });
     await expect(dialog.getByRole("button", { name: "Delete" })).toBeDisabled();
     await dialog.getByRole("textbox").fill(name);

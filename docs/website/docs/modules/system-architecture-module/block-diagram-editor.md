@@ -20,7 +20,7 @@ A **block diagram** draws elements as boxes and their connections as lines. The 
 
 ## Building a diagram
 
-Choose **Add to diagram**, then an element type to create an element at once with a default name, **Add existing elements** to place elements already in the model, or **Add note**. The new box is selected and its name is ready to type over in the **Selection** card, which edits the box in place. Drawing a line from one box to another creates a connection at once, with a type chosen from the elements' suggestions, to adjust in the card.
+Choose **Add to diagram**; its entries are grouped, and a group opens in place when its row is chosen (Right arrow opens it from the keyboard). Clicking elsewhere, pressing Escape or Tab closes the menu. Choose an element type to create an element at once with a default name, **Add existing elements** to place elements already in the model, or **Add note**. The new box is selected and its name is ready to type over in the **Selection** card, which edits the box in place. Drawing a line from one box to another creates a connection at once, with a type chosen from the elements' suggestions, to adjust in the card.
 
 A line meets a box at an **attach point**. Left automatic, the line uses the point nearest its other end; drag the end of a selected line to use another point on the same box. The settings button holds **Connection detail** (lines drawn with type, protocol and colour), **Show notes** (the display note inside each box), the comment layer and **Snap to grid**.
 

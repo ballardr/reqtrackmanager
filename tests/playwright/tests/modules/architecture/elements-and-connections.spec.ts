@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
+import { clickMenuRow } from "../../menuTree";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -132,7 +133,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
     await test.step("a parent cannot retire while a child is in use; retire the child first", async () => {
       const moveTo = async (item: string, toast: string) => {
         await page.getByRole("button", { name: "Change status", exact: true }).click();
-        await page.getByRole("menuitem", { name: item }).click();
+        await clickMenuRow(page, item);
         await expect(page.getByText(toast)).toBeVisible();
       };
       await page.getByRole("link", { name: /ELM-002/ }).click();
@@ -143,7 +144,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await page.goBack();
       await page.getByRole("link", { name: /ELM-001/ }).click();
       await page.getByRole("button", { name: "Change status", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Move from Active to Retired" }).click();
+      await clickMenuRow(page, "Move from Active to Retired");
       await expect(page.getByText(/still has 1 child element\(s\) in use/)).toBeVisible();
 
       await page.goBack();

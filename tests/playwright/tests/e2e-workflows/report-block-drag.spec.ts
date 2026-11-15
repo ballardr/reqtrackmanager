@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerTextView, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -35,7 +36,7 @@ test.describe("Report layout block drag", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -45,7 +46,7 @@ test.describe("Report layout block drag", () => {
     await test.step("three blocks are added, each after the one before", async () => {
       for (const label of ["Page break", "Spacer", "Heading 1"]) {
         await page.getByRole("button", { name: "Add block" }).click();
-        await page.getByRole("menuitem", { name: label, exact: true }).click();
+        await clickMenuRow(page, label);
       }
     });
 
