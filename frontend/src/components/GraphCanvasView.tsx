@@ -77,6 +77,7 @@ import {
   ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
+import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
@@ -398,6 +399,9 @@ export function GraphCanvasView({
   renderPin,
   onPinMove,
   centerOn,
+  snapGrid,
+  snapOn = false,
+  snapInvertKey,
   height = 480,
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
@@ -410,6 +414,8 @@ export function GraphCanvasView({
   const flow = useRef<ReactFlowInstance<FlowNode, Edge> | null>(null);
   /** The geometry a resize last reached, read when it ends (state is not yet committed inside that event). */
   const resizing = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});
+  /** Whether snapping applied while each node was resized; the pointer is released (and the invert key may be too) before the end is reported. */
+  const resizeSnapped = useRef<Record<string, boolean>>({});
   const [localSelection, setLocalSelection] = useState<GraphCanvasSelection | null>(null);
   const selection = selected !== undefined ? selected : localSelection;
   /**
@@ -420,6 +426,32 @@ export function GraphCanvasView({
    */
   const latestSelection = useRef(selection);
   useLayoutEffect(() => { latestSelection.current = selection; }, [selection]);
+
+  // Snap to grid: the person's setting, inverted while the invert key is held during a pointer drag or resize. The key is
+  // tracked on the window (focus may be anywhere) and counts only while a pointer press began on a node or a resize handle.
+  const [invertHeld, setInvertHeld] = useState(false);
+  const [gesture, setGesture] = useState(false);
+  const snapping = snapGrid !== undefined && snapGrid > 0 && snapApplies(snapOn, invertHeld, gesture);
+  const snapRef = useLatest({ size: snapGrid ?? 0, on: snapping });
+  useEffect(() => {
+    if (snapGrid === undefined || snapInvertKey === undefined) return undefined;
+    const press = (event: globalThis.KeyboardEvent) => { if (event.key === snapInvertKey) setInvertHeld(true); };
+    const release = (event: globalThis.KeyboardEvent) => { if (event.key === snapInvertKey) setInvertHeld(false); };
+    const clear = () => { setInvertHeld(false); setGesture(false); };
+    const endGesture = () => setGesture(false);
+    window.addEventListener("keydown", press);
+    window.addEventListener("keyup", release);
+    window.addEventListener("blur", clear);
+    window.addEventListener("pointerup", endGesture);
+    window.addEventListener("pointercancel", endGesture);
+    return () => {
+      window.removeEventListener("keydown", press);
+      window.removeEventListener("keyup", release);
+      window.removeEventListener("blur", clear);
+      window.removeEventListener("pointerup", endGesture);
+      window.removeEventListener("pointercancel", endGesture);
+    };
+  }, [snapGrid, snapInvertKey]);
 
   const labels = useMemo(() => new Map(nodes.map((n) => [n.id, n.label])), [nodes]);
 
@@ -643,9 +675,13 @@ export function GraphCanvasView({
         const leaderId = c.id.slice(LEADER_END_PREFIX.length);
         const leader = leaders.find((l) => l.id === leaderId);
         if (!leader || leader.to.kind !== "point") continue;
-        setEndMoved((m) => ({ ...m, [leaderId]: { x: c.position!.x, y: c.position!.y, baseX: leader.to.kind === "point" ? leader.to.x : 0, baseY: leader.to.kind === "point" ? leader.to.y : 0 } }));
+        // The end is a small node placed by its top-left corner; the point it stands for is its centre, and that is what snaps.
+        const grid = snapRef.current;
+        const centreX = grid.on ? snapCoordinate(c.position.x + LEADER_END_SIZE / 2, grid.size) : c.position.x + LEADER_END_SIZE / 2;
+        const centreY = grid.on ? snapCoordinate(c.position.y + LEADER_END_SIZE / 2, grid.size) : c.position.y + LEADER_END_SIZE / 2;
+        setEndMoved((m) => ({ ...m, [leaderId]: { x: centreX - LEADER_END_SIZE / 2, y: centreY - LEADER_END_SIZE / 2, baseX: leader.to.kind === "point" ? leader.to.x : 0, baseY: leader.to.kind === "point" ? leader.to.y : 0 } }));
         if (c.dragging !== true) {
-          onLeaderTargetChange?.(leaderId, { kind: "point", x: Math.round(c.position.x + LEADER_END_SIZE / 2), y: Math.round(c.position.y + LEADER_END_SIZE / 2) });
+          onLeaderTargetChange?.(leaderId, { kind: "point", x: Math.round(centreX), y: Math.round(centreY) });
         }
       }
       const changes = allChanges.filter((c) => !isLeaderEnd(c)) as NodeChange<GraphFlowNode>[];
@@ -701,15 +737,26 @@ export function GraphCanvasView({
           sizePatch[c.id] = { width, height, baseWidth: n.width ?? DEFAULT_WIDTH, baseHeight: n.height ?? DEFAULT_HEIGHT };
           const last = resizing.current[c.id] ?? { x: n.x, y: n.y, width, height };
           resizing.current[c.id] = { ...last, width, height };
+          resizeSnapped.current[c.id] = snapRef.current.on;
         } else if (c.type === "dimensions" && c.resizing === false) {
           const last = resizing.current[c.id];
           delete resizing.current[c.id];
           if (last) {
-            resized.push({
-              id: c.id, x: Math.round(last.x), y: Math.round(last.y),
+            const reached = {
+              x: Math.round(last.x), y: Math.round(last.y),
               width: Math.round(c.dimensions && c.dimensions.width > 0 ? c.dimensions.width : last.width),
               height: Math.round(c.dimensions && c.dimensions.height > 0 ? c.dimensions.height : last.height),
-            });
+            };
+            // The pointer snaps in grid steps from where the resize began; on release the four edges themselves are put on the grid.
+            const grid = { size: snapRef.current.size, on: resizeSnapped.current[c.id] ?? snapRef.current.on };
+            delete resizeSnapped.current[c.id];
+            const before = { x: n.x, y: n.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT };
+            const final = grid.on ? snapResize(before, reached, grid.size, MIN_WIDTH, MIN_HEIGHT) : reached;
+            if (grid.on) {
+              patch[c.id] = { x: final.x, y: final.y, baseX: n.x, baseY: n.y };
+              sizePatch[c.id] = { width: final.width, height: final.height, baseWidth: n.width ?? DEFAULT_WIDTH, baseHeight: n.height ?? DEFAULT_HEIGHT };
+            }
+            resized.push({ id: c.id, ...final });
           }
         }
       }
@@ -718,7 +765,7 @@ export function GraphCanvasView({
       if (finished.length > 0) onNodesMove?.(finished);
       if (resized.length > 0) onNodesResize?.(resized);
     },
-    [applySelect, commenting, nodes, boxes, parents, depthOf, descendantsOf, leaders, readOnly, onNodesMove, onNodesResize, onLeaderTargetChange],
+    [applySelect, commenting, nodes, boxes, parents, depthOf, descendantsOf, leaders, readOnly, snapRef, onNodesMove, onNodesResize, onLeaderTargetChange],
   );
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => { if (!commenting) applySelect("edge", changes); }, [applySelect, commenting]);
@@ -817,15 +864,25 @@ export function GraphCanvasView({
       if (!node) return;
       event.preventDefault();
       event.stopPropagation();
-      const width = Math.max(MIN_WIDTH, Math.round((node.width ?? DEFAULT_WIDTH) + step.width));
-      const height = Math.max(MIN_HEIGHT, Math.round((node.height ?? DEFAULT_HEIGHT) + step.height));
+      // With snapping on, a key resize steps by the grid and the edge it moves is put on the grid; otherwise the usual small step.
+      const grid = snapGrid !== undefined && snapGrid > 0 && snapOn ? snapGrid : 0;
+      const stepWidth = grid > 0 ? Math.sign(step.width) * grid : step.width;
+      const stepHeight = grid > 0 ? Math.sign(step.height) * grid : step.height;
+      const at = boxes.get(selection.id) ?? node.position;
+      const before = { x: Math.round(at.x), y: Math.round(at.y), width: Math.round(node.width ?? DEFAULT_WIDTH), height: Math.round(node.height ?? DEFAULT_HEIGHT) };
+      const resized = {
+        ...before,
+        width: Math.max(MIN_WIDTH, before.width + stepWidth),
+        height: Math.max(MIN_HEIGHT, before.height + stepHeight),
+      };
+      const { x, y, width, height } = grid > 0 ? snapResize(before, resized, grid, MIN_WIDTH, MIN_HEIGHT) : resized;
       const base = nodes.find((n) => n.id === selection.id);
       setSized((m) => ({
         ...m,
         [selection.id]: { width, height, baseWidth: base?.width ?? DEFAULT_WIDTH, baseHeight: base?.height ?? DEFAULT_HEIGHT },
       }));
-      const at = boxes.get(selection.id) ?? node.position;
-      onNodesResize?.([{ id: selection.id, x: Math.round(at.x), y: Math.round(at.y), width, height }]);
+      if (grid > 0) setMoved((m) => ({ ...m, [selection.id]: { x, y, baseX: base?.x ?? x, baseY: base?.y ?? y } }));
+      onNodesResize?.([{ id: selection.id, x, y, width, height }]);
     } else if (keyDelete && (event.key === "Delete" || event.key === "Backspace")) {
       event.preventDefault();
       onDelete?.(selection);
@@ -850,11 +907,15 @@ export function GraphCanvasView({
     <div
       role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}
       onDragOver={allowDrop} onDrop={dropItem} onKeyDownCapture={handleKey}
+      onPointerDownCapture={(event) => {
+        if (snapGrid !== undefined && (event.target as HTMLElement).closest(".react-flow__node, .react-flow__resize-control")) setGesture(true);
+      }}
     >
       <span id={helpId} className="sr-only">
         {text.keyboardHelp}
         {keyResize ? ` ${text.keyboardResizeHelp}` : ""}
         {keyDelete ? ` ${text.keyboardDeleteHelp}` : ""}
+        {snapGrid !== undefined && snapOn ? ` ${text.keyboardSnapHelp}` : ""}
       </span>
       <ReactFlow
         className={["graph-canvas", readOnly ? "graph-canvas-readonly" : "", commenting ? "graph-canvas-comment" : ""].filter(Boolean).join(" ")}
@@ -894,14 +955,19 @@ export function GraphCanvasView({
         edgesFocusable
         elementsSelectable
         multiSelectionKeyCode={null}
+        // Selection is single, so React Flow's Shift box selection is off: it also turned any press on a node made while Shift
+        // was held into a selection rectangle, which blocked the drag that Shift (the invert key of Snap to grid) is held for.
+        selectionKeyCode={null}
         deleteKeyCode={null}
+        snapToGrid={snapping}
+        snapGrid={snapGrid !== undefined && snapGrid > 0 ? [snapGrid, snapGrid] : undefined}
         connectionMode={ConnectionMode.Loose}
         fitView
         fitViewOptions={{ maxZoom: fitMaxZoom }}
         minZoom={0.1}
         maxZoom={2}
       >
-        <Background />
+        {snapGrid === undefined ? <Background /> : snapping && <Background gap={snapGrid} />}
         <Controls showInteractive={false} />
         {renderPin && pinPlaces.length > 0 && (
           <PinLayer

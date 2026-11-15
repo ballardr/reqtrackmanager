@@ -249,6 +249,19 @@ export interface GraphCanvasProps {
   onPinMove?: (pinId: string, position: { x: number; y: number }, anchor: GraphPointAnchor) => void;
   /** Centres the canvas on a position when `key` changes (a link to a pin); the canvas keeps its zoom if it is already readable. */
   centerOn?: { x: number; y: number; key: number };
+  /**
+   * The grid size in canvas units. Giving it makes snapping available (`graphSnap`): while snapping applies, a dragged box
+   * lands with its edges on the grid, a resized box has its edges on the grid when released, an arrow key moves the selected
+   * box by one grid step, and a dot grid is drawn. Without it the canvas never snaps and draws its plain dotted background.
+   */
+  snapGrid?: number;
+  /** The person's Snap to grid setting; off by default. Switching it on moves no box that is already placed. */
+  snapOn?: boolean;
+  /**
+   * A `KeyboardEvent.key` (for example `Shift`) that, held during a pointer drag or resize, inverts `snapOn` for that move
+   * only. It never changes a key-driven move.
+   */
+  snapInvertKey?: string;
   /** Called when a palette item carrying `GRAPH_DROP_MIME` is dropped, with its text and the canvas position. */
   onDropItem?: (payload: string, position: { x: number; y: number }) => void;
   /** Canvas height (CSS length or pixels); defaults to 480. */

@@ -32,6 +32,21 @@ async function canvasTop(page: Page): Promise<number> {
 }
 
 /**
+ * The canvas's top edge once the page above it has finished loading: the record header, tags and cards arrive after the canvas is
+ * visible, so a first reading taken under load is a still-moving baseline. Waits until two readings a moment apart agree.
+ */
+async function settledCanvasTop(page: Page): Promise<number> {
+  let last = Number.NaN;
+  await expect.poll(async () => {
+    const now = await canvasTop(page);
+    const same = now === last;
+    last = now;
+    return same;
+  }, { intervals: [300] }).toBe(true);
+  return last;
+}
+
+/**
  * Adds a state (or marker) from the Add to diagram menu: it is created at once with no form, selected, and its name field in
  * the Selection card holds the focus. `name`, when given, replaces the default name and is stored when the focus leaves the card.
  */
@@ -232,7 +247,7 @@ test.describe("System Architecture: state machine diagrams", () => {
     const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Fan modes ${suffix}`, [], []);
     await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
     await expect(canvasOf(page)).toBeVisible();
-    const top = await canvasTop(page);
+    const top = await settledCanvasTop(page);
 
     const created = page.waitForResponse((r) => r.url().endsWith("/states") && r.request().method() === "POST");
     // A drag out of a menu is not driven reliably by the browser harness, so the drop is sent as the browser would send it: the

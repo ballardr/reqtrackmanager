@@ -4691,6 +4691,10 @@ const en = {
       "Tab moves between nodes and connections. Enter or Space selects. Arrow keys move the selected node when editing is allowed. Drag a node's edge handle to resize it.",
     keyboardResizeHelp: "Alt with an arrow key resizes the selected node.",
     keyboardDeleteHelp: "Delete or Backspace removes the selected item.",
+    keyboardSnapHelp: "Snap to grid is on: arrow keys move the selected node by one grid step.",
+    snapLabel: "Snap to grid",
+    snapHelp:
+      "On: boxes move and resize in steps of the grid, and their edges land on it.\nOff: boxes move freely.\nHolding Shift while dragging or resizing does the opposite for that move. The choice is kept in this browser; it is not part of the diagram and changes nothing for other people.",
   },
   canvasComments: {
     modeLabel: "Comment",

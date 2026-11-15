@@ -841,3 +841,196 @@ export const ADraggedPinReportsItsDropPlace: Story = {
     expect(fixed.className).not.toContain("graph-pin-movable");
   },
 };
+
+const SNAP = { snapGrid: 20, snapInvertKey: "Shift" } as const;
+
+/**
+ * Drags the node by about `dx`, `dy` canvas units with the pointer, whatever the zoom, and returns the last position reported.
+ * The drag lands a few units short of the request (React Flow starts it after a small threshold), so the callers choose
+ * distances that stay clear of a grid boundary and assert on the grid, not on an exact free position.
+ */
+async function dragBy(canvasElement: HTMLElement, name: string, dx: number, dy: number, onMove: ReturnType<typeof fn>) {
+  const canvas = within(canvasElement);
+  const node = await canvas.findByLabelText(name);
+  const frame = node.closest(".react-flow__node") as HTMLElement;
+  // The drawn width over the node's own width is the zoom.
+  const zoom = frame.getBoundingClientRect().width / 160;
+  const box = node.getBoundingClientRect();
+  const x = box.left + box.width / 2;
+  const y = box.top + box.height / 2;
+  const px = dx * zoom;
+  const py = dy * zoom;
+  const steps = 8;
+  const along = (i: number) => ({ clientX: x + (px * i) / steps, clientY: y + (py * i) / steps });
+  await userEvent.pointer([
+    { keys: "[MouseLeft>]", target: node, coords: along(0) },
+    ...Array.from({ length: steps }, (_, i) => ({ target: node, coords: along(i + 1) })),
+    // A move is applied one event late, so the last position is repeated before the button is released.
+    { target: node, coords: along(steps) },
+    { keys: "[/MouseLeft]", target: node, coords: along(steps) },
+  ]);
+  await waitFor(() => expect(onMove).toHaveBeenCalled());
+  const calls = onMove.mock.calls as { id: string; x: number; y: number }[][][];
+  return calls[calls.length - 1][0][0];
+}
+
+/** The dot grid is drawn only while snapping applies; a canvas given no grid keeps its plain background. */
+export const TheGridIsDrawnOnlyWhileSnappingIsOn: Story = {
+  render: () => (
+    <div className="stack">
+      <div data-testid="off"><GraphCanvas nodes={NODES} edges={[]} ariaLabel="Grid off" showViewToggle={false} {...SNAP} snapOn={false} /></div>
+      <div data-testid="on"><GraphCanvas nodes={NODES} edges={[]} ariaLabel="Grid on" showViewToggle={false} {...SNAP} snapOn /></div>
+      <div data-testid="none"><GraphCanvas nodes={NODES} edges={[]} ariaLabel="No grid" showViewToggle={false} /></div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findAllByLabelText("Sensor, node");
+    await waitFor(() => expect(canvas.getByTestId("on").querySelector(".react-flow__background")).not.toBeNull());
+    expect(canvas.getByTestId("off").querySelector(".react-flow__background")).toBeNull();
+    expect(canvas.getByTestId("none").querySelector(".react-flow__background")).not.toBeNull();
+  },
+};
+
+/** With snapping on, a dragged box ends with its corner on the grid. */
+export const ADragEndsOnTheGridWhenSnappingIsOn: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
+    expect(last).toMatchObject({ id: "cloud", x: 580, y: 60 });
+  },
+};
+
+/** With snapping off a drag lands where it was dropped. */
+export const ADragIsFreeWhenSnappingIsOff: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn={false} onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
+    expect(last.x % 20).not.toBe(0);
+    expect(last.y % 20).not.toBe(0);
+  },
+};
+
+/** Holding the invert key during a drag snaps when the setting is off, and moves freely when it is on. */
+export const TheInvertKeyReversesTheSettingForOneDrag: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn={false} onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    await userEvent.keyboard("{Shift>}");
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
+    await userEvent.keyboard("{/Shift}");
+    expect(last).toMatchObject({ id: "cloud", x: 580, y: 60 });
+    // The key held for a move over a box does not start a box selection: only the dragged node is reported.
+    const calls = (args.onNodesMove as ReturnType<typeof fn>).mock.calls as { id: string }[][][];
+    expect(calls.every((c) => c[0].length === 1 && c[0][0].id === "cloud")).toBe(true);
+  },
+};
+
+export const TheInvertKeySuspendsSnappingForOneDrag: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    await userEvent.keyboard("{Shift>}");
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
+    await userEvent.keyboard("{/Shift}");
+    expect(last.x % 20).not.toBe(0);
+    expect(last.y % 20).not.toBe(0);
+  },
+};
+
+/** With snapping on an arrow key moves the selected box by one grid step; with it off, by React Flow's small step. */
+export const ArrowKeysMoveByTheGridWhenSnappingIsOn: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}{ArrowRight}{ArrowDown}");
+    await waitFor(() => expect(args.onNodesMove).toHaveBeenCalledTimes(2));
+    const calls = (args.onNodesMove as ReturnType<typeof fn>).mock.calls as { id: string; x: number; y: number }[][][];
+    expect(calls[0][0][0]).toMatchObject({ id: "sensor", x: 20, y: 0 });
+    expect(calls[1][0][0]).toMatchObject({ id: "sensor", x: 20, y: 20 });
+  },
+};
+
+/** The invert key held with no pointer press changes nothing about a key-driven move. */
+export const TheInvertKeyDoesNotChangeAKeyMove: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    // Shift with an arrow moves React Flow's box by a larger factor; the snapped result is still on the grid.
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await waitFor(() => expect(args.onNodesMove).toHaveBeenCalled());
+    const calls = (args.onNodesMove as ReturnType<typeof fn>).mock.calls as { x: number; y: number }[][][];
+    expect(calls[calls.length - 1][0][0].x % 20).toBe(0);
+  },
+};
+
+/** Alt with an arrow key steps by the grid and puts the moved edge on it when snapping is on. */
+export const KeyboardResizeStepsByTheGridWhenSnappingIsOn: Story = {
+  args: { onNodesResize: fn() },
+  render: (args) => <Host resizable {...SNAP} snapOn onNodesResize={args.onNodesResize} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Alt>}{ArrowRight}{ArrowDown}{/Alt}");
+    await waitFor(() => expect(args.onNodesResize).toHaveBeenCalledTimes(2));
+    const calls = (args.onNodesResize as ReturnType<typeof fn>).mock.calls as { id: string; x: number; y: number; width: number; height: number }[][][];
+    expect(calls[0][0][0]).toMatchObject({ id: "sensor", x: 0, y: 0, width: 180, height: 64 });
+    // The bottom edge was at 64; one step down is 84, and the edge lands on the grid line at 80.
+    expect(calls[1][0][0]).toMatchObject({ id: "sensor", x: 0, y: 0, width: 180, height: 80 });
+  },
+};
+
+/** A pointer resize with snapping on ends with the edges it moved on the grid and the top left corner where it was. */
+export const APointerResizeEndsOnTheGridWhenSnappingIsOn: Story = {
+  args: { onNodesResize: fn() },
+  render: (args) => <Host resizable {...SNAP} snapOn onNodesResize={args.onNodesResize} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    const handle = await waitFor(() => {
+      const found = canvasElement.querySelector(".react-flow__resize-control.handle.bottom.right");
+      if (!found) throw new Error("no handle");
+      return found as HTMLElement;
+    });
+    let box = handle.getBoundingClientRect();
+    await waitFor(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const next = handle.getBoundingClientRect();
+      const still = next.left === box.left && next.top === box.top;
+      box = next;
+      if (!still) throw new Error("handle still moving");
+    });
+    const zoom = (node.closest(".react-flow__node") as HTMLElement).getBoundingClientRect().width / 160;
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    const to = (dx: number, dy: number) => ({ clientX: x + dx * zoom, clientY: y + dy * zoom });
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: handle, coords: to(0, 0) },
+      { target: handle, coords: to(13, 9) },
+      { target: handle, coords: to(27, 17) },
+      { target: handle, coords: to(27, 17) },
+      { keys: "[/MouseLeft]", target: handle, coords: to(27, 17) },
+    ]);
+    await waitFor(() => expect(args.onNodesResize).toHaveBeenCalled());
+    const calls = (args.onNodesResize as ReturnType<typeof fn>).mock.calls as { x: number; y: number; width: number; height: number }[][][];
+    const last = calls[calls.length - 1][0][0];
+    expect(last.x).toBe(0);
+    expect(last.y).toBe(0);
+    expect((last.x + last.width) % 20).toBe(0);
+    expect((last.y + last.height) % 20).toBe(0);
+    expect(last.width).toBeGreaterThan(160);
+  },
+};

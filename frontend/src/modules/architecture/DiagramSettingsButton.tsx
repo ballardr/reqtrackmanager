@@ -5,10 +5,12 @@
  * stored when changed (the connection-detail switch, which sets whether the diagram draws plain lines or typed,
  * labelled ones; it belongs to the diagram and applies to every viewer) and the viewer's own display switches: Show
  * notes (whether a box draws its display note; kept in the page address), and Show comments and Show resolved (whether the
- * comment markers, and those of resolved threads, are drawn). None of the three is stored or applied to exports.
+ * comment markers, and those of resolved threads, are drawn), and Snap to grid (whether boxes snap to the grid while they are
+ * moved or resized; kept in this browser). None of the four is stored with the diagram or applied to exports.
  */
 import { FieldCaption } from "../../components/FieldHelp";
 import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
+import { SnapToGridSetting } from "../../components/SnapToGridSetting";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import { useStrings } from "../../context/TerminologyContext";
 import { ARCHITECTURE_HELP } from "./help";
@@ -23,10 +25,12 @@ import { ARCHITECTURE_HELP } from "./help";
  * @param onShowCommentsChange Called with the new Show comments choice.
  * @param showResolved Whether markers of resolved threads are drawn.
  * @param onShowResolvedChange Called with the new Show resolved choice.
+ * @param snapToGrid Whether Snap to grid is on.
+ * @param onSnapToGridChange Called with the new Snap to grid setting.
  */
 export function DiagramSettingsButton({
   connectionDetail, disabled, onConnectionDetailChange, showNotes, onShowNotesChange, showComments, onShowCommentsChange,
-  showResolved, onShowResolvedChange,
+  showResolved, onShowResolvedChange, snapToGrid, onSnapToGridChange,
 }: {
   connectionDetail: boolean;
   disabled: boolean;
@@ -37,12 +41,14 @@ export function DiagramSettingsButton({
   onShowCommentsChange: (next: boolean) => void;
   showResolved: boolean;
   onShowResolvedChange: (next: boolean) => void;
+  snapToGrid: boolean;
+  onSnapToGridChange: (next: boolean) => void;
 }) {
   const text = useStrings().canvasComments;
   return (
     <SettingsPopoverButton
-      label={`Diagram settings: connection detail ${connectionDetail ? "on" : "off"}, notes ${showNotes ? "shown" : "hidden"}, comments ${showComments ? "shown" : "hidden"}`}
-      title="Diagram settings" marked={connectionDetail || !showNotes || !showComments}
+      label={`Diagram settings: connection detail ${connectionDetail ? "on" : "off"}, notes ${showNotes ? "shown" : "hidden"}, comments ${showComments ? "shown" : "hidden"}, snap to grid ${snapToGrid ? "on" : "off"}`}
+      title="Diagram settings" marked={connectionDetail || !showNotes || !showComments || snapToGrid}
     >
       <div className="stack" style={{ gap: "var(--space-2)" }}>
         <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
@@ -61,6 +67,7 @@ export function DiagramSettingsButton({
           <ToggleSwitch checked={showResolved} disabled={!showComments} label={text.showResolved} onChange={onShowResolvedChange} />
           <FieldCaption label={text.showResolved} help={text.showResolvedHelp} />
         </span>
+        <SnapToGridSetting checked={snapToGrid} onChange={onSnapToGridChange} />
       </div>
     </SettingsPopoverButton>
   );
