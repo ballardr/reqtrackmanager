@@ -15,7 +15,7 @@
  * selected with the cursor in its name, and its values are set in the Selection card (double-clicking a state opens the same
  * fields in a dialog). A transition is added the same way, at once and empty, by drawing a line between two states or from the
  * Selection card's "Add transition to" list (the same state draws a loop); its event (its guard for a line leaving a choice) takes
- * the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: the canvas moves a selected state with the arrow keys and removes it with Delete (which
+ * the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: Cmd or Ctrl with Z and Shift or Y undo and redo (`EditHistoryButtons`); the canvas moves a selected state with the arrow keys and removes it with Delete (which
  * asks first); the Selection card is the keyboard route to nesting a state and to the attach points.
  * The status moves are the server's; a move to Active is refused with the list of errors while the checks find any.
  * Export (PNG and SVG images, Mermaid `stateDiagram-v2` text to download or copy) saves a pending drawing first, then asks the
@@ -36,6 +36,7 @@ import { CommentModeToggle } from "../../components/CommentModeToggle";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import { DetailLayout } from "../../components/DetailLayout";
+import { EditHistoryButtons } from "../../components/EditHistoryButtons";
 import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
@@ -369,8 +370,7 @@ export function StateMachineEditorPage() {
 
   const toolbar = (
     <div className="row" role="toolbar" aria-label="State machine diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
-      <button type="button" className="btn btn-sm" disabled={!editable || !editor.canUndo} onClick={editor.undo}>Undo</button>
-      <button type="button" className="btn btn-sm" disabled={!editable || !editor.canRedo} onClick={editor.redo}>Redo</button>
+      <EditHistoryButtons editable={editable} canUndo={editor.canUndo} canRedo={editor.canRedo} undo={editor.undo} redo={editor.redo} />
       <button
         type="button" className="btn btn-primary btn-sm" disabled={!editable || !dirty || editor.saving || editor.conflict}
         onClick={() => void saveDrawing()}

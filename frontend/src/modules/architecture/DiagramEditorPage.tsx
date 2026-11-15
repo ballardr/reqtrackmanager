@@ -17,7 +17,7 @@
  * confirmed action. A line that stands for several connections edits each in the shared connection form (the pending layout is kept
  * and the lines redraw). View switches are stored when changed, but flipping one on the page changes only the address.
  * An Outline card (elements as a tree, lines as a table) is the text alternative to the canvas and shares its selection; the
- * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram) and the selection card
+ * canvas is keyboard operable (arrows move, Alt+arrows resize, Delete removes the box from the diagram; Cmd or Ctrl with Z and Shift or Y undo and redo, through `EditHistoryButtons`) and the selection card
  * can start a connection from a list. Export (PNG, SVG, Mermaid text, copy Mermaid) saves a pending layout first, then asks
  * the server for the saved diagram drawn for the switch states on the page.
  * A diagram of an element's inside can draw the connections that cross the element's boundary as boundary boxes (Add to diagram,
@@ -36,6 +36,7 @@ import { CommentModeToggle } from "../../components/CommentModeToggle";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Badge } from "../../components/Badge";
 import { DetailLayout } from "../../components/DetailLayout";
+import { EditHistoryButtons } from "../../components/EditHistoryButtons";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
 import { useSnapToGrid } from "../../hooks/useSnapToGrid";
 import { GraphCanvas, type GraphCanvasSelection, type GraphNodeBadge } from "../../components/GraphCanvas";
@@ -672,8 +673,7 @@ export function DiagramEditorPage() {
 
   const toolbar = (
     <div className="row" role="toolbar" aria-label="Diagram editing" style={{ alignItems: "center", gap: "var(--space-2)" }}>
-      <button type="button" className="btn btn-sm" disabled={!editable || !editor.canUndo} onClick={editor.undo}>Undo</button>
-      <button type="button" className="btn btn-sm" disabled={!editable || !editor.canRedo} onClick={editor.redo}>Redo</button>
+      <EditHistoryButtons editable={editable} canUndo={editor.canUndo} canRedo={editor.canRedo} undo={editor.undo} redo={editor.redo} />
       <button
         type="button" className="btn btn-primary btn-sm" disabled={!editable || !dirty || editor.saving || editor.conflict}
         onClick={() => void saveLayout()}

@@ -77,6 +77,10 @@ Choose **Add to diagram**, then Initial state, State, Final state or Choice, or 
 
 The Selection card edits the selected state in place: name and kind (the name of an initial state, final state or choice is captioned **Name (Outline and exports)**, because the drawn text is its symbol label); for an ordinary state its description and entry, exit and activity lines; for an initial state, final state or choice its symbol label. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
 
+## Undo and Redo
+
+**Undo** and **Redo** act on the unsaved drawing (positions, sizes, nesting and attach points). The keys are Cmd+Z and Cmd+Shift+Z on a Mac, and Ctrl+Z with Ctrl+Shift+Z or Ctrl+Y elsewhere. They work when the cursor is not in a text box and no dialog is open. A state or transition added from the diagram is created at once, so Undo does not remove it.
+
 ## Aligning states
 
 The settings button beside **Export** holds **Snap to grid**, off by default. While it is on, a dragged or resized state lands with its edges on a grid, arrow keys move the selected state by one grid step, and a dot grid is drawn. Holding **Shift** while dragging or resizing does the opposite for that move. The choice belongs to the person using the editor: it is kept in the browser, is shared with the block diagram editor, and is not part of the diagram, so it changes nothing for other people and moves no state already placed.

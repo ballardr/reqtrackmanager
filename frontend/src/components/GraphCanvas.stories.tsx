@@ -96,6 +96,44 @@ export const KeyboardMove: Story = {
   },
 };
 
+/** A consumer that undoes a move (its props return to the earlier position) shows the box back where it was, not where it was dragged. */
+export const AnUndoneMoveReturnsTheBox: Story = {
+  render: () => {
+    function UndoHost() {
+      const [nodes, setNodes] = useState(NODES);
+      const [selection, setSelection] = useState<GraphCanvasSelection | null>(null);
+      return (
+        <div className="stack">
+          <button type="button" onClick={() => setNodes(NODES)}>Undo move</button>
+          <GraphCanvas
+            nodes={nodes} edges={EDGES} ariaLabel="Telemetry system" selected={selection} onSelect={setSelection}
+            onNodesMove={(moves) => setNodes((current) => current.map((n) => ({ ...n, ...moves.find((m) => m.id === n.id) })))}
+          />
+        </div>
+      );
+    }
+    return <UndoHost />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText("Sensor, node");
+    const styleOf = () => /transform: [^;]*/.exec(node.closest(".react-flow__node")?.getAttribute("style") ?? "")?.[0] ?? "";
+    const before = styleOf();
+    const box = node.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: node, coords: { clientX: x, clientY: y } },
+      { target: node, coords: { clientX: x + 20, clientY: y + 30 } },
+      { target: node, coords: { clientX: x + 40, clientY: y + 60 } },
+      { keys: "[/MouseLeft]", target: node, coords: { clientX: x + 40, clientY: y + 60 } },
+    ]);
+    await waitFor(() => expect(styleOf()).not.toBe(before));
+    await userEvent.click(canvas.getByRole("button", { name: "Undo move" }));
+    await waitFor(() => expect(styleOf()).toBe(before));
+  },
+};
+
 /** Moves are reported to the consumer when a drag or key move ends. */
 export const ReportsMoves: Story = {
   args: { onNodesMove: fn() },

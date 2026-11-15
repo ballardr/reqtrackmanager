@@ -24,6 +24,8 @@ Choose **Add to diagram**, then an element type to create an element at once wit
 
 A line meets a box at an **attach point**. Left automatic, the line uses the point nearest its other end; drag the end of a selected line to use another point on the same box. The settings button holds **Connection detail** (lines drawn with type, protocol and colour), **Show notes** (the display note inside each box), the comment layer and **Snap to grid**.
 
+**Undo** and **Redo** act on the unsaved layout. The keys are Cmd+Z and Cmd+Shift+Z on a Mac, and Ctrl+Z with Ctrl+Shift+Z or Ctrl+Y elsewhere. They work when the cursor is not in a text box and no dialog is open; in a text box the key undoes the typing. An element or connection added from the diagram is created at once, so Undo does not remove it.
+
 ## Layers
 
 An element's own diagram shows its children. Double-click a box, or choose **Open inside**, to open its inside; elements added there become its children. The diagram of the system context shows the top-level elements.

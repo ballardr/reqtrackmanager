@@ -498,6 +498,25 @@ export function GraphCanvasView({
     return map;
   }, [nodes, moved, sized]);
 
+  // A local move, resize or leader end lasts only until the consumer's props catch up. Once the base it was measured from
+  // has changed it is spent, and is dropped: kept, it would apply again whenever the consumer's value returned to that base,
+  // so an undo of the move would leave the box where it was dragged.
+  const spentMoves = Object.keys(moved).filter((id) => {
+    const n = nodes.find((candidate) => candidate.id === id);
+    return !n || n.x !== moved[id].baseX || n.y !== moved[id].baseY;
+  });
+  if (spentMoves.length > 0) setMoved((m) => Object.fromEntries(Object.entries(m).filter(([id]) => !spentMoves.includes(id))));
+  const spentSizes = Object.keys(sized).filter((id) => {
+    const n = nodes.find((candidate) => candidate.id === id);
+    return !n || (n.width ?? DEFAULT_WIDTH) !== sized[id].baseWidth || (n.height ?? DEFAULT_HEIGHT) !== sized[id].baseHeight;
+  });
+  if (spentSizes.length > 0) setSized((m) => Object.fromEntries(Object.entries(m).filter(([id]) => !spentSizes.includes(id))));
+  const spentEnds = Object.keys(endMoved).filter((id) => {
+    const l = leaders.find((candidate) => candidate.id === id);
+    return !l || (l.to.kind === "point" && (l.to.x !== endMoved[id].baseX || l.to.y !== endMoved[id].baseY));
+  });
+  if (spentEnds.length > 0) setEndMoved((m) => Object.fromEntries(Object.entries(m).filter(([id]) => !spentEnds.includes(id))));
+
   /** The nodes inside each node, at any depth. */
   const descendantsOf = useCallback(
     (id: string): string[] => {
