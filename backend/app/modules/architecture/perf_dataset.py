@@ -425,7 +425,8 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
             {
                 "name": name, "purpose": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
                 "scope_element_id": scoped[0] if scoped else (rng.choice(elements) if rng.random() < 0.3 else None),
-                "connection_detail": rng.random() < 0.5, "folder_id": _pick_folder(rng, folder_ids), "status": status.value,
+                "connection_detail": rng.random() < 0.5, "line_hops": rng.random() < 0.5,
+                "folder_id": _pick_folder(rng, folder_ids), "status": status.value,
                 "version": 1, "is_archived": archived,
                 "archived_at": created if archived else None, "archived_by": creator if archived else None,
             },
@@ -515,7 +516,8 @@ def generate_state_machines(ctx: PerfProjectContext) -> dict[str, int]:
         batch.add(
             {
                 "name": name, "description": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
-                "element_id": rng.choice(elements), "status": status.value, "version": 1, "is_archived": archived,
+                "element_id": rng.choice(elements), "line_hops": rng.random() < 0.5, "status": status.value, "version": 1,
+                "is_archived": archived,
                 "archived_at": created if archived else None, "archived_by": creator if archived else None,
             },
             creator=creator, at=created, title=name, detail={"status": status.value},

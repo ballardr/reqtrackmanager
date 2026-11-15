@@ -1714,3 +1714,63 @@ export const ReadOnlyCanvasDrawsNoLeaders: Story = {
     expect(args.onConnectEmpty).not.toHaveBeenCalled();
   },
 };
+
+// --- Line hops --------------------------------------------------------------------------------------------------
+
+const CROSS_NODES: GraphCanvasNode[] = [
+  { id: "a", label: "Alpha", x: 0, y: 300 }, { id: "b", label: "Bravo", x: 700, y: 300 },
+  { id: "c", label: "Charlie", x: 350, y: 0 }, { id: "d", label: "Delta", x: 350, y: 600 },
+];
+const CROSS_EDGES: GraphCanvasEdge[] = [
+  { id: "h", source: "a", target: "b", label: "across" }, { id: "v", source: "c", target: "d" },
+];
+
+/** A line's drawn path, by edge id. */
+const pathOf = (root: HTMLElement, id: string) => root.querySelector(`.react-flow__edge[data-id="${id}"] path.react-flow__edge-path`)?.getAttribute("d") ?? "";
+
+/** With Line hops on, the line whose id sorts later is drawn with an arc where it crosses the other; the other stays straight. */
+export const TheLaterLineHopsWhereTwoLinesCross: Story = {
+  render: () => <GraphCanvas nodes={CROSS_NODES} edges={CROSS_EDGES} ariaLabel="Crossing" showViewToggle={false} lineHops />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Delta, node");
+    await waitFor(() => expect(pathOf(canvasElement, "v")).toContain(" A 6 6 "));
+    expect(pathOf(canvasElement, "h")).not.toContain(" A ");
+    // A plain line that became a drawn path keeps its label.
+    expect(within(canvasElement).getByText("across")).toBeTruthy();
+  },
+};
+
+/** With Line hops off (the default) lines cross with no arc. */
+export const LinesCrossWithNoArcWhenLineHopsIsOff: Story = {
+  render: () => <GraphCanvas nodes={CROSS_NODES} edges={CROSS_EDGES} ariaLabel="Crossing off" showViewToggle={false} />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Delta, node");
+    await settled(canvasElement);
+    expect(pathOf(canvasElement, "v")).not.toContain(" A ");
+    expect(pathOf(canvasElement, "h")).not.toContain(" A ");
+  },
+};
+
+/** Hosts the crossing pair with a button that moves the vertical pair out of the horizontal line's way. */
+function MovableCrossingHost() {
+  const [nodes, setNodes] = useState(CROSS_NODES);
+  return (
+    <div className="stack">
+      <GraphCanvas nodes={nodes} edges={CROSS_EDGES} ariaLabel="Crossing moved" showViewToggle={false} lineHops />
+      <button type="button" onClick={() => setNodes((current) => current.map((n) => (n.id === "c" || n.id === "d" ? { ...n, x: 1000 } : n)))}>
+        Move the vertical pair away
+      </button>
+    </div>
+  );
+}
+
+/** Moving a box so the lines no longer cross removes the arc (the hop is worked out from the boxes as drawn). */
+export const AMovedBoxTakesTheHopAway: Story = {
+  render: () => <MovableCrossingHost />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Delta, node");
+    await waitFor(() => expect(pathOf(canvasElement, "v")).toContain(" A "));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Move the vertical pair away" }));
+    await waitFor(() => expect(pathOf(canvasElement, "v")).not.toContain(" A "));
+  },
+};

@@ -382,7 +382,10 @@ export function StateMachineEditorPage() {
       <StateMachineAddMenu disabled={!editable || editor.saving} onAdd={(kind) => void addState(kind, null)} />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
       {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
-      <StateMachineSettingsButton snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={attachPoints.always} onAttachPointsAlwaysChange={attachPoints.setAlways} />
+      <StateMachineSettingsButton
+        lineHops={diagram?.line_hops ?? false} disabled={!editable || editor.saving}
+        onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
+        snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={attachPoints.always} onAttachPointsAlwaysChange={attachPoints.setAlways} />
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
   );
@@ -480,7 +483,7 @@ export function StateMachineEditorPage() {
               <GraphCanvas
                 nodes={nodes} edges={edges} ariaLabel={`State machine diagram ${diagram.name}`} height={canvasHeight}
                 readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
-                {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps}
+                {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} lineHops={diagram?.line_hops ?? false}
                 onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}

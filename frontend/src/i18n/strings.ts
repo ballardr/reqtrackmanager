@@ -4700,6 +4700,9 @@ const en = {
     attachPointsLabel: "Always show attach points",
     attachPointsHelp:
       "On: every box draws its attach points all the time.\nOff: a box draws them only while the pointer is near it, while it is selected or focused, and while a line is being drawn.\nThe choice is kept in your account; it is not part of the diagram and changes nothing for other people.",
+    lineHopsLabel: "Line hops",
+    lineHopsHelp:
+      "On: where one line crosses another, the line that sorts later is drawn with a small arc over the other, so a crossing is not read as a junction. The arcs are also in the SVG and PNG downloads (not in Mermaid).\nOff: lines cross with no arc.\nThis is a setting of the diagram, so everyone who opens it sees the same drawing.",
   },
   canvasComments: {
     modeLabel: "Comment",

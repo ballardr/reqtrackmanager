@@ -11,6 +11,7 @@ Responsibilities:
 - Draw each transition as an arrow between two attach points (the ones a person chose, else the nearest; markers offer only
   the middle of a side), a transition from a state to itself as the loop of `state_shapes`, and its `event [guard] / action`
   label.
+- With the diagram's `line_hops` on, draw a small arc where one transition crosses another (`diagram_line_hops`).
 
 Design decisions:
 - **Everything user-supplied is text.** Names, codes, actions and labels are XML-escaped and stripped of control characters
@@ -31,6 +32,7 @@ from __future__ import annotations
 import math
 import uuid
 
+from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, point_xy, route_points
 from app.modules.architecture.diagram_svg import _ROOT, _note_lines, _text, _wrap
@@ -165,16 +167,20 @@ def _label(lines: list[str], x: float, bottom: float, anchor: str) -> str:
 
 
 def _transitions(
-    transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut],
+    transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut], line_hops_on: bool = False,
 ) -> tuple[str, str]:
-    """The lines and then the labels of the transitions (labels are drawn last, above every box)."""
-    drawn: list[str] = []
-    labels: list[str] = []
+    """The lines and then the labels of the transitions (labels are drawn last, above every box).
+
+    With `line_hops_on` a transition that crosses another is drawn with a small arc over it (`diagram_line_hops`); a loop on
+    one state is not one of the lines.
+    """
     totals: dict[frozenset, int] = {}
     for t in transitions:
         key = frozenset((t.source_state_id, t.target_state_id))
         totals[key] = totals.get(key, 0) + 1
     rank: dict[frozenset, int] = {}
+    # Each entry is (transition, label lines, the loop's path or None, then for a drawn line: start, vertices, end, middle).
+    entries: list[tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point]] = []
     for t in transitions:
         source, target = boxes.get(t.source_state_id), boxes.get(t.target_state_id)
         if source is None or target is None:
@@ -182,12 +188,7 @@ def _transitions(
         lines = [part for part in transition_label(t.event, t.guard, t.action).split("\n") if part]
         if source.id == target.id:
             box = _box(source)
-            drawn.append(
-                f'<path d="{self_loop_path(box)}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>'
-            )
-            if lines:
-                lx, ly = self_loop(box)["label"]
-                labels.append(_label(lines, lx + 4, ly - 4, "start"))
+            entries.append((t, lines, self_loop_path(box), (0, 0), [], (0, 0), self_loop(box)["label"]))
             continue
         key = frozenset((t.source_state_id, t.target_state_id))
         index = rank.get(key, 0)
@@ -201,19 +202,31 @@ def _transitions(
         )
         (x1, y1), (x2, y2) = point_xy(_box(source), pa), point_xy(_box(target), pb)
         if vertices:
-            drawn.append(
-                f'<path d="{line_path((x1, y1), vertices, (x2, y2), t.smooth)}" fill="none" stroke="{_INK}" stroke-width="2" '
-                'marker-end="url(#arrow)"/>'
-            )
-            mx, my = line_middle((x1, y1), vertices, (x2, y2))
+            middle = line_middle((x1, y1), vertices, (x2, y2))
         else:
             length = math.hypot(x2 - x1, y2 - y1) or 1.0
             nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
             x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
+            middle = ((x1 + x2) / 2, (y1 + y2) / 2)
+        entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle))
+    hops = line_hops([
+        HopLine(str(t.id), start, vertices, end, t.smooth) for t, _, loop, start, vertices, end, _ in entries if loop is None
+    ]) if line_hops_on else {}
+    drawn: list[str] = []
+    labels: list[str] = []
+    for t, lines, loop, (x1, y1), vertices, (x2, y2), (mx, my) in entries:
+        if loop is not None:
+            drawn.append(f'<path d="{loop}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>')
+            if lines:
+                labels.append(_label(lines, mx + 4, my - 4, "start"))
+            continue
+        if vertices or str(t.id) in hops:
+            path = hops.get(str(t.id)) or line_path((x1, y1), vertices, (x2, y2), t.smooth)
+            drawn.append(f'<path d="{path}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>')
+        else:
             drawn.append(
                 f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>'
             )
-            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
         if lines:
             labels.append(_label(lines, mx, my - 5, "middle"))
     return "".join(drawn), "".join(labels)
@@ -238,7 +251,7 @@ def render_state_machine(model: StateMachineModel) -> str:
         ordered = sorted(states, key=lambda s: depths[s.id])
         holding = {s.parent_state_id for s in states if s.parent_state_id is not None}
         boxes = {s.id: s for s in states}
-        lines, labels = _transitions(model.transitions, boxes)
+        lines, labels = _transitions(model.transitions, boxes, model.diagram.line_hops)
         looped = {t.source_state_id for t in model.transitions if t.source_state_id == t.target_state_id}
         frames = {s.id: _box(s) for s in states}
         xs = [v for s in states for v in (frames[s.id][0], frames[s.id][0] + frames[s.id][2] + (SELF_LOOP_REACH if s.id in looped else 0))]

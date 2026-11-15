@@ -28,7 +28,7 @@ import {
   EMPTY_LAYOUT, commit, isDirty, layoutFromView, layoutToSave, mergeView, redo, refreshPresent, startHistory, undo,
   type EditorBox, type EditorLayout, type History,
 } from "./diagramEditorModel";
-import type { ArchitectureDiagram, DiagramFieldValues, DiagramModel, DiagramToggleValues, DiagramView } from "./types";
+import type { ArchitectureDiagram, DiagramFieldValues, DiagramModel, DiagramSettingValues, DiagramToggleValues, DiagramView } from "./types";
 
 export interface DiagramEditor {
   diagram: ArchitectureDiagram | null;
@@ -54,7 +54,7 @@ export interface DiagramEditor {
   /** Stores the toggles (their rules and members); resolves true when stored. */
   saveToggles: (toggles: DiagramToggleValues[]) => Promise<boolean>;
   /** Edits the diagram's own fields (name, purpose, scope, connection detail); resolves true when stored. */
-  updateFields: (values: Partial<DiagramFieldValues>) => Promise<boolean>;
+  updateFields: (values: Partial<DiagramFieldValues & DiagramSettingValues>) => Promise<boolean>;
   /** Reads the diagram again; `discard` also drops unsaved layout changes. */
   reload: (discard?: boolean) => Promise<void>;
   /** Updates what the boxes show (a name, a type) without an undo step or an unsaved change: it is not an edit of the layout. */
@@ -167,7 +167,7 @@ export function useDiagramEditor(projectId: string, diagramId: string): DiagramE
     return true;
   }, [store, read, api, diagramId]);
 
-  const updateFields = useCallback(async (values: Partial<DiagramFieldValues>) => {
+  const updateFields = useCallback(async (values: Partial<DiagramFieldValues & DiagramSettingValues>) => {
     if (!(await store((version) => api.update(diagramId, version, values)))) return false;
     await read(false);
     return true;

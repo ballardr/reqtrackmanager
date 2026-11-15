@@ -757,6 +757,7 @@ export function DiagramEditorPage() {
       <DiagramSettingsButton
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
+        lineHops={diagram.line_hops} onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
         showNotes={showNotes} onShowNotesChange={setShowNotes}
         showComments={commentLayer.showComments} onShowCommentsChange={commentLayer.setShowComments}
         showResolved={commentLayer.showResolved} onShowResolvedChange={commentLayer.setShowResolved}
@@ -863,7 +864,7 @@ export function DiagramEditorPage() {
             <div ref={setCanvasBox}>
             <GraphCanvas
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
-              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
+              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} lineHops={diagram.line_hops} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
               // A note just placed from Note mode must not lose its selection when the same click clears it on the canvas.
               onSelect={(next) => { if (next !== null || !placingNote) { setSelection(next); setFocusNew(null); } }}
               onCanvasClick={(at) => {

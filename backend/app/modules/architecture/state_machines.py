@@ -256,6 +256,8 @@ def update_state_machine(
     if payload.element_id is not None and payload.element_id != diagram.element_id:
         _check_new_element(db, viewer, [payload.element_id])
         changes["element_id"] = payload.element_id
+    if payload.line_hops is not None and payload.line_hops != diagram.line_hops:
+        changes["line_hops"] = payload.line_hops
     if not changes:
         return diagram
     _touch(diagram, **changes)
@@ -729,7 +731,7 @@ def state_machine_outs(
         findings = found.get(d.id, [])
         out.append(StateMachineDiagramOut(
             id=d.id, project_id=d.project_id, unique_code=d.unique_code, name=d.name, description=d.description,
-            element_id=d.element_id, element_code=code, element_name=name, status=d.status,
+            element_id=d.element_id, element_code=code, element_name=name, line_hops=d.line_hops, status=d.status,
             allowed_status_moves=allowed_moves(d.status), version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             state_count=state_counts.get(d.id, 0), transition_count=transition_counts.get(d.id, 0),

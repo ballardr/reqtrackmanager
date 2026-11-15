@@ -15,6 +15,8 @@ Responsibilities:
   and nothing for an empty note of that tone), with each leader line from the note's attach point through its vertices
   (straight or smooth) to the box, the line's midpoint or the free point it ends at, with an arrowhead or a dot at either
   end; a leader whose target is not drawn is not drawn.
+- With the diagram's `line_hops` on, draw a small arc where one line crosses another (`diagram_line_hops`; connections and
+  leaders are one set of lines).
 
 Design decisions:
 - **Everything user-supplied is text.** Names, codes, notes and labels are XML-escaped and stripped of control
@@ -28,7 +30,7 @@ Design decisions:
 - **Deterministic.** Elements are drawn in the order of the view, so equal views give equal bytes.
 - A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
 
-Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points).
+Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points), `diagram_line_path`, `diagram_line_hops`.
 """
 
 from __future__ import annotations
@@ -36,11 +38,13 @@ from __future__ import annotations
 import math
 import re
 import uuid
+from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy, route_points
 from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteTone
@@ -258,18 +262,27 @@ def _anchor_route(
     return None, None, [], False
 
 
-def _edges(
-    edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut],
-) -> tuple[str, str, dict[str, tuple[float, float]]]:
-    """The `<defs>` (arrowheads), the lines and where each line's middle is (by line id, for a note's leader)."""
-    middles: dict[str, tuple[float, float]] = {}
-    colors: dict[str, int] = {}
-    lines: list[str] = []
+@dataclass(frozen=True)
+class _Run:
+    """One drawn connection line: where it runs (after the sideways offset of parallel lines) and its middle."""
+
+    edge: ViewEdge
+    start: Point
+    vertices: list[Point]
+    end: Point
+    smooth: bool
+    middle: Point
+
+
+def _edge_runs(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut]) -> list[_Run]:
+    """The geometry of every drawn line, in the model's order: lines on a pair of boxes are spread sideways unless a person
+    routed them."""
     rank: dict[frozenset, int] = {}
     totals: dict[frozenset, int] = {}
     for edge in edges:
         key = frozenset((edge.source_element_id, edge.target_element_id))
         totals[key] = totals.get(key, 0) + 1
+    runs: list[_Run] = []
     for edge in edges:
         a, b = boxes.get(edge.source_element_id), boxes.get(edge.target_element_id)
         if a is None or b is None:
@@ -285,23 +298,33 @@ def _edges(
             length = math.hypot(x2 - x1, y2 - y1) or 1.0
             nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
             x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
+            middle = ((x1 + x2) / 2, (y1 + y2) / 2)
+        else:
+            middle = line_middle((x1, y1), vertices, (x2, y2))
+        runs.append(_Run(edge, (x1, y1), vertices, (x2, y2), smooth, middle))
+    return runs
+
+
+def _edges(runs: list[_Run], hops: dict[str, str]) -> tuple[str, str]:
+    """The `<defs>` (arrowheads) and the lines. A line in `hops` is drawn along its hop path (`diagram_line_hops`)."""
+    colors: dict[str, int] = {}
+    lines: list[str] = []
+    for run in runs:
+        edge, (x1, y1), (x2, y2), vertices = run.edge, run.start, run.end, run.vertices
+        mx, my = run.middle
         color = _color(edge.color_light)
         marker = colors.setdefault(color, len(colors))
         dash = ' stroke-dasharray="7 5"' if edge.indirect else (
             ' stroke-dasharray="2 4"' if edge.line_style == "dotted" else (' stroke-dasharray="7 5"' if edge.line_style == "dashed" else "")
         )
         arrow = f' marker-end="url(#arrow{marker})"' if not edge.two_way else ""
-        if vertices:
-            lines.append(
-                f'<path d="{line_path((x1, y1), vertices, (x2, y2), smooth)}" fill="none" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
-            )
-            mx, my = line_middle((x1, y1), vertices, (x2, y2))
+        if edge.id in hops or vertices:
+            path = hops.get(edge.id) or line_path((x1, y1), vertices, (x2, y2), run.smooth)
+            lines.append(f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2"{dash}{arrow}/>')
         else:
             lines.append(
                 f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
             )
-            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-        middles[edge.id] = (mx, my)
         if edge.label:
             lines.append(
                 f'<text x="{mx:.1f}" y="{my - 5:.1f}" text-anchor="middle" font-size="10" fill="{_TEXT_COLOR}" '
@@ -317,7 +340,7 @@ def _edges(
         f'<path d="M0,0 L10,5 L0,10 z" fill="{color}"/></marker>'
         for color, i in colors.items()
     )
-    return defs, "".join(lines), middles
+    return defs, "".join(lines)
 
 
 #: Fill and stroke of an annotation note by tone (the light-theme values of the product's tone colours).
@@ -396,12 +419,36 @@ def _leader_marker(tone: str, style: LineEnd, stroke: str, defs: dict[str, str])
     return f"url(#{name})"
 
 
-def _notes(
+def _leader_runs(
     notes: list[NoteOut], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
     edges: list[ViewEdge],
+) -> dict[uuid.UUID, tuple[Point, list[Point], Point]]:
+    """Where each drawn leader runs, by leader id (a leader whose target is not drawn is left out)."""
+    runs: dict[uuid.UUID, tuple[Point, list[Point], Point]] = {}
+    for n in _drawn_notes(notes):
+        for leader in n.leaders:
+            run = _leader_run(n, leader, boxes, middles, edges)
+            if run is not None:
+                runs[leader.id] = run
+    return runs
+
+
+def _hop_paths(runs: list[_Run], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], notes: list[NoteOut]) -> dict[str, str]:
+    """The hop path of every connection and leader that crosses another line (`diagram_line_hops`)."""
+    lines = [HopLine(str(r.edge.id), r.start, r.vertices, r.end, r.smooth) for r in runs]
+    for n in _drawn_notes(notes):
+        for leader in n.leaders:
+            if leader.id in leader_runs:
+                start, vertices, end = leader_runs[leader.id]
+                lines.append(HopLine(str(leader.id), start, vertices, end, leader.smooth))
+    return line_hops(lines)
+
+
+def _notes(
+    notes: list[NoteOut], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], hops: dict[str, str],
 ) -> tuple[str, str, str]:
     """The `<defs>` (a start and an end marker per tone and style used), the leaders (drawn under everything) and the note
-    blocks (over it)."""
+    blocks (over it). A leader in `hops` is drawn along its hop path."""
     defs: dict[str, str] = {}
     leaders: list[str] = []
     blocks: list[str] = []
@@ -409,17 +456,16 @@ def _notes(
         tone = n.tone.value if n.tone.value in _TONES else "neutral"
         fill, stroke = _TONES[tone]
         for leader in n.leaders:
-            run = _leader_run(n, leader, boxes, middles, edges)
+            run = leader_runs.get(leader.id)
             if run is None:
                 continue
             start, vertices, end = run
             start_marker = _leader_marker(tone, leader.start_style, stroke, defs)
             end_marker = _leader_marker(tone, leader.end_style, stroke, defs)
             marks = (f' marker-start="{start_marker}"' if start_marker else "") + (f' marker-end="{end_marker}"' if end_marker else "")
-            if vertices:
-                leaders.append(
-                    f'<path d="{line_path(start, vertices, end, leader.smooth)}" fill="none" stroke="{stroke}" stroke-width="1.5"{marks}/>'
-                )
+            if vertices or str(leader.id) in hops:
+                path = hops.get(str(leader.id)) or line_path(start, vertices, end, leader.smooth)
+                leaders.append(f'<path d="{path}" fill="none" stroke="{stroke}" stroke-width="1.5"{marks}/>')
             else:
                 leaders.append(
                     f'<line x1="{start[0]:.1f}" y1="{start[1]:.1f}" x2="{end[0]:.1f}" y2="{end[1]:.1f}" stroke="{stroke}" '
@@ -479,8 +525,11 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     else:
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
-        defs, edge_svg, middles = _edges(drawn_edges, boxes, view.anchors)
-        note_defs, leaders, notes = _notes(view.notes, boxes, middles, drawn_edges)
+        runs = _edge_runs(drawn_edges, boxes, view.anchors)
+        leader_runs = _leader_runs(view.notes, boxes, {str(r.edge.id): r.middle for r in runs}, drawn_edges)
+        hops = _hop_paths(runs, leader_runs, view.notes) if view.diagram.line_hops else {}
+        defs, edge_svg = _edges(runs, hops)
+        note_defs, leaders, notes = _notes(view.notes, leader_runs, hops)
         defs += note_defs
         body = (
             f"{edge_svg}{leaders}{''.join(_node(n, symbols) for n in visible)}{''.join(_boundary(b) for b in view.boundaries)}{notes}"

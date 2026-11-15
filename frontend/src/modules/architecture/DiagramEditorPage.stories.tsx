@@ -1166,6 +1166,21 @@ export const ConnectionDetailIsStoredFromTheGearBesideExport: Story = {
   },
 };
 
+/** Line hops is a setting of the diagram: the gear's switch stores it with the version, as connection detail is stored. */
+export const LineHopsIsStoredFromTheGear: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, line_hops: true }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const hops = await within(document.body).findByRole("switch", { name: "Line hops" });
+    await expect(hops).not.toBeChecked();
+    await userEvent.click(hops);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, line_hops: true }),
+    ));
+  },
+};
+
 export const ADisplayNoteIsDrawnInsideItsBoxAndTheGearHidesItWithoutSaving: Story = {
   beforeEach: () => {
     mockArchitectureReads({

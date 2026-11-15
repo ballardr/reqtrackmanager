@@ -31,6 +31,7 @@ const FIELD_LABEL: Record<string, string> = {
   purpose: "Purpose",
   scope: "Scope",
   connection_detail: "Connection detail",
+  line_hops: "Line hops",
   boxes: "Boxes",
   notes: "Notes",
   anchors: "Line ends",

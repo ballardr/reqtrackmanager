@@ -191,7 +191,7 @@ def create_diagram(db: Session, project: Any, actor: User, payload: DiagramCreat
         project_id=project.id,
         unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
         name=payload.name.strip(), purpose=payload.purpose, scope_element_id=payload.scope_element_id,
-        connection_detail=payload.connection_detail, folder_id=payload.folder_id,
+        connection_detail=payload.connection_detail, line_hops=payload.line_hops, folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value, version=1, creator_id=actor.id,
         is_archived=False,
     )
@@ -239,6 +239,8 @@ def update_diagram(
         changes["purpose"] = payload.purpose
     if payload.connection_detail is not None and payload.connection_detail != diagram.connection_detail:
         changes["connection_detail"] = payload.connection_detail
+    if payload.line_hops is not None and payload.line_hops != diagram.line_hops:
+        changes["line_hops"] = payload.line_hops
     if "scope_element_id" in given and payload.scope_element_id != diagram.scope_element_id:
         if payload.scope_element_id is not None:
             _check_new_element(db, Viewer.of_user(actor, project), [payload.scope_element_id])
@@ -865,7 +867,7 @@ def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: V
             scope_element_name=scopes[d.scope_element_id].name if d.scope_element_id in readable else (
                 "" if d.scope_element_id in scopes else None
             ),
-            connection_detail=d.connection_detail, folder_id=d.folder_id,
+            connection_detail=d.connection_detail, line_hops=d.line_hops, folder_id=d.folder_id,
             folder_path=paths.get(d.folder_id) if d.folder_id else None, status=d.status, allowed_status_moves=allowed_moves(d.status),
             version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,

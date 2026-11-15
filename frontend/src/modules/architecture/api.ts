@@ -37,6 +37,7 @@ import type {
   ConnectionTypeValues,
   DiagramCreateValues,
   DiagramFieldValues,
+  DiagramSettingValues,
   DiagramToggleValues,
   DiagramModel,
   DiagramView,
@@ -247,7 +248,7 @@ export const projectDiagramApi = (projectId: string) => {
     list: (filters: DiagramListFilters = {}) => api.get<ArchitectureDiagram[]>(`${base}${listQuery(filters)}`),
     create: (values: DiagramCreateValues) => api.post<ArchitectureDiagram>(base, values),
     get: (id: string) => api.get<ArchitectureDiagram>(`${base}/${id}`),
-    update: (id: string, version: number, values: Partial<DiagramFieldValues>) =>
+    update: (id: string, version: number, values: Partial<DiagramFieldValues & DiagramSettingValues>) =>
       api.put<ArchitectureDiagram>(`${base}/${id}`, { version, ...values }),
     setStatus: (id: string, version: number, status: ArchitectureRecordStatus) =>
       api.post<ArchitectureDiagram>(`${base}/${id}/status`, { version, status }),
@@ -306,7 +307,7 @@ export const projectStateMachineApi = (projectId: string) => {
     get: (id: string) => api.get<StateMachineDiagram>(`${base}/${id}`),
     /** The diagram with its states, transitions and modelling findings. */
     model: (id: string) => api.get<StateMachineModel>(`${base}/${id}/model`),
-    update: (id: string, version: number, values: Partial<StateMachineFieldValues>) =>
+    update: (id: string, version: number, values: Partial<StateMachineFieldValues & DiagramSettingValues>) =>
       api.put<StateMachineDiagram>(`${base}/${id}`, { version, ...values }),
     setStatus: (id: string, version: number, status: ArchitectureRecordStatus) =>
       api.post<StateMachineDiagram>(`${base}/${id}/status`, { version, status }),

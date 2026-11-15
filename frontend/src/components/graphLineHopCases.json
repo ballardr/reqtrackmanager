@@ -1,0 +1,736 @@
+[
+  {
+    "name": "the later line hops over the earlier one",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          100,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 100 0 L 100 94 A 6 6 0 0 1 100 106 L 100 200"
+    }
+  },
+  {
+    "name": "the order of the list does not decide",
+    "lines": [
+      {
+        "id": "b",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          100,
+          200
+        ],
+        "smooth": false
+      },
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 100 0 L 100 94 A 6 6 0 0 1 100 106 L 100 200"
+    }
+  },
+  {
+    "name": "the earlier id is the one that hops when it is listed later",
+    "lines": [
+      {
+        "id": "z",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "m",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          100,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "z": "M 0 100 L 94 100 A 6 6 0 0 1 106 100 L 200 100"
+    }
+  },
+  {
+    "name": "lines that do not cross have no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          0
+        ],
+        "points": [],
+        "end": [
+          200,
+          0
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          50
+        ],
+        "points": [],
+        "end": [
+          200,
+          50
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "parallel lines on top of each other have no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          0
+        ],
+        "points": [],
+        "end": [
+          200,
+          0
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          50,
+          0
+        ],
+        "points": [],
+        "end": [
+          150,
+          0
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "lines that share an end have no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          0
+        ],
+        "points": [],
+        "end": [
+          200,
+          200
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          0
+        ],
+        "points": [
+          [
+            100,
+            150
+          ],
+          [
+            150,
+            -50
+          ]
+        ],
+        "end": [
+          200,
+          0
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "a crossing near the end of the hopping line has no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          100,
+          108
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "a crossing near the end of the other line has no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          100,
+          92
+        ],
+        "points": [],
+        "end": [
+          100,
+          200
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "a crossing at a corner of the hopping line has no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          97,
+          -50
+        ],
+        "points": [],
+        "end": [
+          97,
+          50
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          0
+        ],
+        "points": [
+          [
+            100,
+            0
+          ]
+        ],
+        "end": [
+          100,
+          100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "a crossing that is too close to the previous hop is left out",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          100,
+          200
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          108,
+          0
+        ],
+        "points": [],
+        "end": [
+          108,
+          200
+        ],
+        "smooth": false
+      },
+      {
+        "id": "c",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "c": "M 0 100 L 94 100 A 6 6 0 0 1 106 100 L 200 100"
+    }
+  },
+  {
+    "name": "one line over two others has two hops",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          50
+        ],
+        "points": [],
+        "end": [
+          300,
+          50
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          150
+        ],
+        "points": [],
+        "end": [
+          300,
+          150
+        ],
+        "smooth": false
+      },
+      {
+        "id": "c",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          200,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "c": "M 100 0 L 122.32 44.63 A 6 6 0 0 1 127.68 55.37 L 172.32 144.63 A 6 6 0 0 1 177.68 155.37 L 200 200"
+    }
+  },
+  {
+    "name": "a line that runs right to left bulges up as one that runs left to right",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          200,
+          0
+        ],
+        "points": [],
+        "end": [
+          0,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 200 0 L 104.24 95.76 A 6 6 0 0 0 95.76 104.24 L 0 200"
+    }
+  },
+  {
+    "name": "a vertical hopping line bulges right",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          100,
+          0
+        ],
+        "points": [],
+        "end": [
+          100,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 100 0 L 100 94 A 6 6 0 0 1 100 106 L 100 200"
+    }
+  },
+  {
+    "name": "a vertical hopping line that runs upward also bulges right",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          200,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          100,
+          200
+        ],
+        "points": [],
+        "end": [
+          100,
+          0
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 100 200 L 100 106 A 6 6 0 0 0 100 94 L 100 0"
+    }
+  },
+  {
+    "name": "a diagonal hopping line",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          200
+        ],
+        "points": [],
+        "end": [
+          200,
+          0
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          0
+        ],
+        "points": [],
+        "end": [
+          200,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 0 0 L 95.76 95.76 A 6 6 0 0 1 104.24 104.24 L 200 200"
+    }
+  },
+  {
+    "name": "a curve hops over a straight line",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          240,
+          100
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          20,
+          20
+        ],
+        "points": [
+          [
+            120,
+            180
+          ]
+        ],
+        "end": [
+          220,
+          20
+        ],
+        "smooth": true
+      }
+    ],
+    "paths": {
+      "b": "M 20 20 L 23.5 26.19 L 27.71 34.53 L 32.56 44.67 L 37.97 56.25 L 43.86 68.93 L 50.18 82.34 L 56.09 94.62 A 6 6 0 0 1 61.43 105.37 L 63.75 110 L 70.87 123.54 L 78.11 136.41 L 85.39 148.26 L 92.66 158.75 L 99.82 167.52 L 106.82 174.22 L 113.57 178.5 L 120 180 L 126.43 178.5 L 133.18 174.22 L 140.18 167.52 L 147.34 158.75 L 154.61 148.26 L 161.89 136.41 L 169.13 123.54 L 176.25 110 L 178.57 105.37 A 6 6 0 0 1 183.91 94.62 L 189.82 82.34 L 196.14 68.93 L 202.03 56.25 L 207.44 44.67 L 212.29 34.53 L 216.5 26.19 L 220 20"
+    }
+  },
+  {
+    "name": "a straight line hops over a curve",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          20,
+          20
+        ],
+        "points": [
+          [
+            120,
+            180
+          ]
+        ],
+        "end": [
+          220,
+          20
+        ],
+        "smooth": true
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          240,
+          100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 0 100 L 52.75 100 A 6 6 0 0 1 64.75 100 L 175.25 100 A 6 6 0 0 1 187.25 100 L 240 100"
+    }
+  },
+  {
+    "name": "a line crossing itself has no hop",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          0
+        ],
+        "points": [
+          [
+            100,
+            0
+          ],
+          [
+            0,
+            100
+          ]
+        ],
+        "end": [
+          100,
+          100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "a very long diagonal crosses a short line",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          0
+        ],
+        "points": [],
+        "end": [
+          30000,
+          30000
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          15000,
+          14900
+        ],
+        "points": [],
+        "end": [
+          15000,
+          15100
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "b": "M 15000 14900 L 15000 14994 A 6 6 0 0 1 15000 15006 L 15000 15100"
+    }
+  },
+  {
+    "name": "a hop on a line with vertices keeps them",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          60,
+          50
+        ],
+        "points": [],
+        "end": [
+          60,
+          150
+        ],
+        "smooth": false
+      },
+      {
+        "id": "b",
+        "start": [
+          100,
+          150
+        ],
+        "points": [],
+        "end": [
+          200,
+          150
+        ],
+        "smooth": false
+      },
+      {
+        "id": "z",
+        "start": [
+          0,
+          100
+        ],
+        "points": [
+          [
+            150,
+            100
+          ],
+          [
+            150,
+            200
+          ]
+        ],
+        "end": [
+          300,
+          200
+        ],
+        "smooth": false
+      }
+    ],
+    "paths": {
+      "z": "M 0 100 L 54 100 A 6 6 0 0 1 66 100 L 150 100 L 150 144 A 6 6 0 0 1 150 156 L 150 200 L 300 200"
+    }
+  }
+]

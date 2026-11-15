@@ -36,6 +36,33 @@ function p(point: LinePoint): string {
   return `${n(point.x)} ${n(point.y)}`;
 }
 
+/** A point as the two numbers of an SVG path command, written by the one rounding rule. */
+export function formatPoint(point: LinePoint): string {
+  return p(point);
+}
+
+/** One cubic Bezier span of a smooth line: where it starts, its two control points and where it ends. */
+export type CurveSpan = readonly [LinePoint, LinePoint, LinePoint, LinePoint];
+
+/**
+ * The cubic Bezier spans of a smooth line through `start`, `points` and `end`, one per segment. The ends of a span are the
+ * line's own points, so the curve passes through every one.
+ */
+export function curveSpans(start: LinePoint, points: readonly LinePoint[], end: LinePoint): CurveSpan[] {
+  const nodes = [start, ...points, end];
+  const spans: CurveSpan[] = [];
+  for (let i = 0; i < nodes.length - 1; i += 1) {
+    const p0 = i > 0 ? nodes[i - 1] : nodes[i];
+    const p1 = nodes[i];
+    const p2 = nodes[i + 1];
+    const p3 = i + 2 < nodes.length ? nodes[i + 2] : nodes[i + 1];
+    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    spans.push([p1, c1, c2, p2]);
+  }
+  return spans;
+}
+
 /**
  * The SVG path of a line from `start` to `end` through `points`.
  *
@@ -46,18 +73,9 @@ function p(point: LinePoint): string {
  * @returns `M … L …` for straight segments (and for a line with no waypoints), `M … C …` for a smooth line.
  */
 export function linePath(start: LinePoint, points: readonly LinePoint[], end: LinePoint, smooth: boolean): string {
-  const nodes = [start, ...points, end];
-  if (!smooth || points.length === 0) return `M ${nodes.map(p).join(" L ")}`;
-  const parts = [`M ${p(nodes[0])}`];
-  for (let i = 0; i < nodes.length - 1; i += 1) {
-    const p0 = i > 0 ? nodes[i - 1] : nodes[i];
-    const p1 = nodes[i];
-    const p2 = nodes[i + 1];
-    const p3 = i + 2 < nodes.length ? nodes[i + 2] : nodes[i + 1];
-    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
-    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
-    parts.push(`C ${p(c1)} ${p(c2)} ${p(p2)}`);
-  }
+  if (!smooth || points.length === 0) return `M ${[start, ...points, end].map(p).join(" L ")}`;
+  const parts = [`M ${p(start)}`];
+  for (const [, c1, c2, p2] of curveSpans(start, points, end)) parts.push(`C ${p(c1)} ${p(c2)} ${p(p2)}`);
   return parts.join(" ");
 }
 

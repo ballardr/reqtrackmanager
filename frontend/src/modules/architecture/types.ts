@@ -358,6 +358,8 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
   scope_element_code: string | null;
   scope_element_name: string | null;
   connection_detail: boolean;
+  /** Whether a line that crosses another is drawn with a small arc over it. */
+  line_hops: boolean;
   folder_id: string | null;
   folder_path: string | null;
   status: ArchitectureRecordStatus;
@@ -372,6 +374,11 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
   placement_count: number;
   note_count: number;
   toggle_count: number;
+}
+
+/** A drawing option stored on a block diagram or a state machine diagram and set from the editor's settings (not in the forms). */
+export interface DiagramSettingValues {
+  line_hops: boolean;
 }
 
 /** The fields the diagram create and edit forms share. */
@@ -725,6 +732,8 @@ export interface StateMachineDiagram extends ProjectScopedRow {
   element_id: string;
   element_code: string | null;
   element_name: string | null;
+  /** Whether a transition that crosses another is drawn with a small arc over it. */
+  line_hops: boolean;
   status: ArchitectureRecordStatus;
   allowed_status_moves: ArchitectureRecordStatus[];
   version: number;

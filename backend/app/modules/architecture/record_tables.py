@@ -686,6 +686,7 @@ def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
         RecordColumn(
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
         ),
+        RecordColumn("line_hops", "Line hops", lambda t, r: "Yes" if r.line_hops else "No", text_parser),
         RecordColumn("placements", "Elements", lambda t, r: str(t.counts[r.id].placement_count), text_parser),
         _folder_column("diagram"),
         # A diagram has no import or update through its table, so its status is not edited in the bulk grid either.

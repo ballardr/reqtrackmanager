@@ -157,7 +157,7 @@ def export_state_machines(
     rows = [
         {
             "unique_code": m.unique_code, "name": m.name, "description": m.description, "status": m.status,
-            "element": element_ref(m.element_id),
+            "line_hops": m.line_hops, "element": element_ref(m.element_id),
             "states": [
                 {
                     "unique_code": s.unique_code, "name": s.name, "description": s.description, "kind": s.kind,
@@ -237,7 +237,7 @@ def import_state_machines(
             project_id=project.id,
             unique_code=generate_unique_code(db, project, STATE_MACHINE_ARTEFACT_TYPE, STATE_MACHINE_CODE_PREFIX),
             name=entry["name"], description=entry.get("description", ""), element_id=element_id,
-            status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
+            line_hops=bool(entry.get("line_hops")), status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"State machine diagram {code} archiver") or creator)
             if archived else None,

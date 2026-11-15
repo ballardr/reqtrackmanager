@@ -117,6 +117,19 @@ export const MovingAStateEnablesSaveAndSendsTheDrawingWithTheVersion: Story = {
   },
 };
 
+/** Line hops is a setting of the diagram: the gear's switch stores it with the version. */
+export const LineHopsIsStoredFromTheGear: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6, line_hops: true }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const hops = await within(document.body).findByRole("switch", { name: "Line hops" });
+    await expect(hops).not.toBeChecked();
+    await userEvent.click(hops);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(MACHINE, expect.objectContaining({ version: 5, line_hops: true })));
+  },
+};
+
 export const UndoReturnsToTheSavedDrawing: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

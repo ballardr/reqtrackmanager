@@ -29,7 +29,7 @@ import {
   EMPTY_STATE_LAYOUT, commit, isDirty, layoutFromModel, layoutSignature, layoutToSave, mergeModel, redo, refreshPresent, startHistory,
   undo, type History, type StateMachineLayout,
 } from "./stateMachineModel";
-import type { ArchitectureRecordStatus, StateMachineFieldValues, StateMachineModel } from "./types";
+import type { ArchitectureRecordStatus, DiagramSettingValues, StateMachineFieldValues, StateMachineModel } from "./types";
 
 /** The message the server gives a save based on an older version. */
 const STALE_MESSAGE = "This record was changed by someone else";
@@ -64,7 +64,7 @@ export interface StateMachineEditor {
    */
   write: <T>(call: (version: number) => Promise<T>) => Promise<T | null>;
   /** Edits the diagram's own fields; resolves true when stored. */
-  updateFields: (values: Partial<StateMachineFieldValues>) => Promise<boolean>;
+  updateFields: (values: Partial<StateMachineFieldValues & DiagramSettingValues>) => Promise<boolean>;
   /** Moves the diagram to another status; resolves true when stored (a refusal is in `saveError`). */
   setStatus: (status: ArchitectureRecordStatus) => Promise<boolean>;
   /** Reads the model again; `discard` also drops unsaved drawing changes. */
@@ -162,7 +162,7 @@ export function useStateMachineEditor(projectId: string, diagramId: string): Sta
   }, [store, read]);
 
   const updateFields = useCallback(
-    async (values: Partial<StateMachineFieldValues>) => (await write((version) => api.update(diagramId, version, values))) !== null,
+    async (values: Partial<StateMachineFieldValues & DiagramSettingValues>) => (await write((version) => api.update(diagramId, version, values))) !== null,
     [write, api, diagramId],
   );
 

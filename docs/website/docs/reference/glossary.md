@@ -162,6 +162,10 @@ A line from a note on a block diagram to what the note describes: a box, a drawn
 
 The fixed sequence a requirement moves through: Draft → Reviewed → Approved → Completed, with Archived available as an exit from Draft or Reviewed. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
 
+#### Line hop
+
+A small arc drawn where one line crosses another on a block diagram or a state machine diagram, so the crossing is not read as a junction. It is the **Line hops** setting of the diagram, off by default. Of two crossing lines, the one that sorts later by its identifier is drawn over the other; connections, transitions and leaders are all lines. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
 #### Link
 
 A typed relationship between two records of the same project (or a parent and child project), shown in the **Links** panel on both records. Its [link type](#link-type) names it from each end. See [Links and traceability](../core-features/links-and-traceability.md).

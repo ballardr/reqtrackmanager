@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
 import { useAttachPointVisibility } from "../../hooks/useAttachPointVisibility";
@@ -11,15 +12,18 @@ import { StateMachineSettingsButton } from "./StateMachineSettingsButton";
 function Host() {
   const snap = useSnapToGrid();
   const points = useAttachPointVisibility();
+  const [blockHops, setBlockHops] = useState(false);
+  const [machineHops, setMachineHops] = useState(false);
   return (
     <div className="row" style={{ gap: "var(--space-4)" }}>
       <DiagramSettingsButton
-        connectionDetail={false} disabled={false} onConnectionDetailChange={() => undefined} showNotes onShowNotesChange={() => undefined}
+        connectionDetail={false} disabled={false} onConnectionDetailChange={() => undefined} lineHops={blockHops} onLineHopsChange={setBlockHops} showNotes onShowNotesChange={() => undefined}
         showComments onShowCommentsChange={() => undefined} showResolved onShowResolvedChange={() => undefined}
         snapToGrid={snap.on} onSnapToGridChange={snap.setOn}
         attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways}
       />
-      <StateMachineSettingsButton snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways} />
+      <StateMachineSettingsButton lineHops={machineHops} disabled={false} onLineHopsChange={setMachineHops} snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways} />
+      <span data-testid="hops">{`${blockHops}/${machineHops}`}</span>
       <span data-testid="stored">{String(snap.on)}</span>
       <span data-testid="points">{points.canvasProps.attachPointVisibility}</span>
     </div>
@@ -51,7 +55,7 @@ export const SnapToGridIsOneChoiceForBothEditors: Story = {
     await userEvent.keyboard("{Escape}");
     await expect(canvas.getByTestId("stored")).toHaveTextContent("true");
     // The state machine editor's gear reads the same choice, and it is kept for the next visit.
-    await expect(canvas.getByRole("button", { name: "Diagram settings: snap to grid on, attach points near the pointer" })).toHaveClass("btn-marked");
+    await expect(canvas.getByRole("button", { name: "Diagram settings: line hops off, snap to grid on, attach points near the pointer" })).toHaveClass("btn-marked");
     await expect(localStorage.getItem("reqtrack.canvasSnapToGrid")).toBe("1");
   },
 };
@@ -59,7 +63,7 @@ export const SnapToGridIsOneChoiceForBothEditors: Story = {
 /** The switch's help says what each state does and what holding Shift does, one line each. */
 export const TheHelpNamesBothStatesAndTheShiftKey: Story = {
   play: async ({ canvasElement }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Diagram settings: snap to grid off, attach points near the pointer" }));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Diagram settings: line hops off, snap to grid off, attach points near the pointer" }));
     const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
     await userEvent.click(within(dialog).getByRole("button", { name: /^Help: Snap to grid/ }));
     const tip = await within(document.body).findByRole("tooltip");
@@ -74,7 +78,7 @@ export const AttachPointsCanBeAlwaysShownFromEitherGear: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByTestId("points")).toHaveTextContent("near");
-    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: snap to grid off, attach points near the pointer$/ }));
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off, attach points near the pointer$/ }));
     const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
     const always = within(dialog).getByRole("switch", { name: "Always show attach points" });
     await expect(always).toHaveAttribute("aria-checked", "false");
@@ -82,7 +86,7 @@ export const AttachPointsCanBeAlwaysShownFromEitherGear: Story = {
     await expect(always).toHaveAttribute("aria-checked", "true");
     await userEvent.keyboard("{Escape}");
     await expect(canvas.getByTestId("points")).toHaveTextContent("always");
-    await expect(canvas.getByRole("button", { name: "Diagram settings: snap to grid off, attach points always shown" })).toHaveClass("btn-marked");
+    await expect(canvas.getByRole("button", { name: "Diagram settings: line hops off, snap to grid off, attach points always shown" })).toHaveClass("btn-marked");
     await expect(canvas.getByRole("button", { name: /^Diagram settings: connection detail off.*attach points always shown$/ })).toBeInTheDocument();
   },
 };
@@ -90,11 +94,46 @@ export const AttachPointsCanBeAlwaysShownFromEitherGear: Story = {
 /** The switch's help describes both states, one line each. */
 export const TheAttachPointsHelpNamesBothStates: Story = {
   play: async ({ canvasElement }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Diagram settings: snap to grid off/ }));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off/ }));
     const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
     await userEvent.click(within(dialog).getByRole("button", { name: /^Help: Always show attach points/ }));
     const tip = await within(document.body).findByRole("tooltip");
     await expect(tip).toHaveTextContent("On: every box draws its attach points all the time.");
     await expect(tip).toHaveTextContent("Off: a box draws them only while the pointer is near it");
+  },
+};
+
+/** Line hops is off by default and is a switch in each editor's gear (each stores it on its own diagram); the gear is marked while it is on. */
+export const LineHopsIsASwitchInEachGear: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId("hops")).toHaveTextContent("false/false");
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: connection detail off, line hops off/ }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    const hops = within(dialog).getByRole("switch", { name: "Line hops" });
+    await expect(hops).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(hops);
+    await expect(hops).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByTestId("hops")).toHaveTextContent("true/false");
+    await expect(canvas.getByRole("button", { name: /^Diagram settings: connection detail off, line hops on/ })).toHaveClass("btn-marked");
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off/ }));
+    const machine = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    await userEvent.click(within(machine).getByRole("switch", { name: "Line hops" }));
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByTestId("hops")).toHaveTextContent("true/true");
+  },
+};
+
+/** The switch's help describes both states, one line each, and says the arcs are in the exports. */
+export const TheLineHopsHelpNamesBothStates: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off/ }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^Help: Line hops/ }));
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("On: where one line crosses another");
+    await expect(tip).toHaveTextContent("Off: lines cross with no arc.");
+    await expect(tip).toHaveTextContent("SVG and PNG downloads");
   },
 };

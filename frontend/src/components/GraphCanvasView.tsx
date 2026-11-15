@@ -19,6 +19,8 @@
  * - In comment mode report a click (empty canvas, a node or a line) instead of selecting or editing, and draw the consumer's
  *   pins in a layer above the canvas: each at one screen size, anchored to a node's corner or a line's middle, draggable
  *   when `movable`, and rendered by the consumer (`renderPin`).
+ * - With `lineHops` on, draw a small arc where one line crosses another (`graphLineHops`; connections and leaders are one set of
+ *   lines, a loop is not in it): a crossed line is drawn along its hop path by the routed edge, the others as before.
  * - Draw a line from a node back to itself as a loop (`graphSelfLoop`), a line label with line breaks over several lines, a
  *   marker node (consumer-supplied SVG filling the frame, met only on its sides) and a container node whose children sit
  *   inside it: React Flow places a child relative to its parent, so this file converts between that and the consumer's
@@ -80,6 +82,7 @@ import {
   ATTACH_POINTS, SIDE_POINTS, nearestPoint, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
 import { nearBoxIds } from "./graphAttachProximity";
+import { lineHops, type HopLine } from "./graphLineHops";
 import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint } from "./graphLinePath";
 import { GraphNodeBadges } from "./GraphNodeBadges";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
@@ -283,6 +286,8 @@ interface RoutedEdgeData extends Record<string, unknown> {
   grid: () => number;
   /** Opens the line (a double-click on a segment's handle, which sits over the middle of the line, is a double-click on the line). */
   open: () => void;
+  /** The path of a line that hops over another (`graphLineHops`); drawn instead of the line's own path except while a vertex is dragged. */
+  hopPath?: string;
 }
 
 /** How far the pointer must travel, in screen pixels, before a press on a segment's middle adds a vertex. */
@@ -351,7 +356,7 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
   }, [screenToFlowPosition, latest]);
 
   const remove = (index: number) => latest.current?.onChange(removeWaypoint(stored, index));
-  const path = linePath(start, points, end, data?.smooth ?? false);
+  const path = data?.hopPath && !drag ? data.hopPath : linePath(start, points, end, data?.smooth ?? false);
   return (
     <>
       <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
@@ -556,6 +561,7 @@ export function GraphCanvasView({
   renderPin,
   onPinMove,
   centerOn,
+  lineHops: hopsOn = false,
   snapGrid,
   snapOn = false,
   snapInvertKey,
@@ -816,7 +822,7 @@ export function GraphCanvasView({
   /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
   const flowLeaders = useMemo(() => {
     const middles = edgeMiddles(boxes, edges);
-    const built = leaders.flatMap<{ line: Edge; end?: Node<{ free: boolean }, "leaderEnd"> }>((l) => {
+    const built = leaders.flatMap<{ line: Edge; end?: Node<{ free: boolean }, "leaderEnd">; run: HopLine }>((l) => {
       const start = boxes.get(l.from);
       if (!start) return [];
       const via = l.points ?? [];
@@ -840,7 +846,8 @@ export function GraphCanvasView({
         const target = boxes.get(l.to.id);
         if (!target || l.to.id === l.from) return [];
         const [sourceHandle, targetHandle] = routeAttachPoints(start, target, l.fromPoint, undefined, via);
-        return [{ line: { ...common, target: l.to.id, sourceHandle, targetHandle } }];
+        const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: pointXY(target, targetHandle), smooth: l.smooth === true };
+        return [{ line: { ...common, target: l.to.id, sourceHandle, targetHandle }, run }];
       }
       let at: { x: number; y: number } | undefined;
       if (l.to.kind === "edge") at = middles.get(l.to.id);
@@ -856,9 +863,10 @@ export function GraphCanvasView({
         draggable: free && !readOnly && onLeaderTargetChange !== undefined,
       };
       const sourceHandle = l.fromPoint ?? nearestPoint(start, via[0] ?? at);
-      return [{ end, line: { ...common, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE } }];
+      const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: at, smooth: l.smooth === true };
+      return [{ end, line: { ...common, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE }, run }];
     });
-    return { ends: built.flatMap((b) => (b.end ? [b.end] : [])), lines: built.map((b) => b.line) };
+    return { ends: built.flatMap((b) => (b.end ? [b.end] : [])), lines: built.map((b) => b.line), runs: built.map((b) => b.run) };
   }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, dotMarkerId, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow]);
 
   /** Where each pin is drawn: on its node's top-right corner or its line's middle, else at its own place. */
@@ -1116,7 +1124,37 @@ export function GraphCanvasView({
   );
 
   const allNodes = useMemo<FlowNode[]>(() => [...flowNodes, ...flowLeaders.ends], [flowNodes, flowLeaders]);
-  const allEdges = useMemo<Edge[]>(() => [...flowEdges, ...flowLeaders.lines], [flowEdges, flowLeaders]);
+
+  // Where a line crosses another: the hop path of each line that hops over one (empty when Line hops is off). The lines are the
+  // connections (a loop is left out) and the leaders, from the same attach points and vertices they are drawn with.
+  const hopPaths = useMemo<Map<string, string>>(() => {
+    if (!hopsOn) return new Map();
+    const runs: HopLine[] = [];
+    for (const e of edges) {
+      const from = boxes.get(e.source);
+      const to = boxes.get(e.target);
+      if (!from || !to || e.source === e.target) continue;
+      const via = e.points ?? [];
+      const [a, b] = routeAttachPoints(from, to, e.sourcePoint, e.targetPoint, via);
+      runs.push({ id: e.id, start: pointXY(from, a), points: via, end: pointXY(to, b), smooth: e.smooth === true });
+    }
+    return lineHops([...runs, ...flowLeaders.runs]);
+  }, [hopsOn, edges, boxes, flowLeaders]);
+
+  const allEdges = useMemo<Edge[]>(() => {
+    const all = [...flowEdges, ...flowLeaders.lines];
+    if (hopPaths.size === 0) return all;
+    return all.map((edge) => {
+      const hop = hopPaths.get(edge.id.startsWith(LEADER_EDGE_PREFIX) ? edge.id.slice(LEADER_EDGE_PREFIX.length) : edge.id);
+      if (hop === undefined) return edge;
+      // A plain line becomes a routed one so it can draw its hop path; a routed line keeps its handles and vertices.
+      const data = edge.type === "routed" ? (edge.data as RoutedEdgeData) : {
+        label: edge.type === "multiline" ? (edge.data as { label?: string } | undefined)?.label : typeof edge.label === "string" ? edge.label : undefined,
+        points: [], smooth: false, editable: false, onChange: () => undefined, grid: () => 0, open: () => undefined,
+      } satisfies RoutedEdgeData;
+      return { ...edge, type: "routed", label: undefined, data: { ...data, hopPath: hop } };
+    });
+  }, [flowEdges, flowLeaders, hopPaths]);
 
   // A change of `centerOn.key` moves the view to the position, keeping the zoom unless it is too small to read. The first move
   // fits the drawing explicitly before moving (the canvas's own fit on load can land after it and undo it), so the view is

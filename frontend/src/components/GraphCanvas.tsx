@@ -338,6 +338,11 @@ export interface GraphCanvasProps {
    * points stay in the page and keep their size when hidden, so a keyboard or test route to them is unchanged.
    */
   attachPointVisibility?: "near" | "always";
+  /**
+   * When true a line that crosses another is drawn with a small arc over it (`graphLineHops`: the line whose id sorts later hops;
+   * connections and leaders are one set of lines, a loop is not in it). Off by default.
+   */
+  lineHops?: boolean;
   /** The person's Snap to grid setting; off by default. Switching it on moves no box that is already placed. */
   snapOn?: boolean;
   /**

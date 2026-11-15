@@ -11,8 +11,8 @@ Responsibilities:
 
 Design decisions:
 - Coordinates are absolute canvas units, so a box nested in another and the snap grid behave as on the screen.
-- Smooth is a Catmull-Rom curve (tension one half) written as cubic Beziers: the control points of the segment from `p1` to
-  `p2` are `p1 + (p2 - p0) / 6` and `p2 - (p3 - p1) / 6`, the missing neighbour at either end being the end itself.
+- Smooth is a Catmull-Rom curve (tension one half) written as cubic Beziers (`curve_spans`): the control points of the segment
+  from `p1` to `p2` are `p1 + (p2 - p0) / 6` and `p2 - (p3 - p1) / 6`, the missing neighbour at either end being the end itself.
 - A line with no waypoints is always straight, whatever `smooth` says: there is nothing to curve through.
 - The browser draws with a TypeScript copy (`frontend/src/components/graphLinePath.ts`); `graphLinePathCases.json` holds the
   cases both are tested against (`tests/test_architecture_line_path.py`), so a change to the rule is made in both.
@@ -40,6 +40,30 @@ def _p(point: Point) -> str:
     return f"{_n(point[0])} {_n(point[1])}"
 
 
+def format_point(point: Point) -> str:
+    """A point as the two numbers of an SVG path command, written by the one rounding rule."""
+    return _p(point)
+
+
+def curve_spans(start: Point, points: Sequence[Point], end: Point) -> list[tuple[Point, Point, Point, Point]]:
+    """The cubic Bezier spans of a smooth line through `start`, `points` and `end`, one per segment.
+
+    Returns:
+        `(from, control 1, control 2, to)` for each segment in order; the ends of a span are the line's own points, so the curve
+        passes through every one.
+    """
+    nodes = [start, *points, end]
+    spans: list[tuple[Point, Point, Point, Point]] = []
+    for i in range(len(nodes) - 1):
+        p0 = nodes[i - 1] if i > 0 else nodes[i]
+        p1, p2 = nodes[i], nodes[i + 1]
+        p3 = nodes[i + 2] if i + 2 < len(nodes) else nodes[i + 1]
+        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
+        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+        spans.append((p1, c1, c2, p2))
+    return spans
+
+
 def line_path(start: Point, points: Sequence[Point], end: Point, smooth: bool) -> str:
     """The SVG path of a line from `start` to `end` through `points`.
 
@@ -56,12 +80,7 @@ def line_path(start: Point, points: Sequence[Point], end: Point, smooth: bool) -
     if not smooth or not points:
         return "M " + " L ".join(_p(point) for point in nodes)
     parts = [f"M {_p(nodes[0])}"]
-    for i in range(len(nodes) - 1):
-        p0 = nodes[i - 1] if i > 0 else nodes[i]
-        p1, p2 = nodes[i], nodes[i + 1]
-        p3 = nodes[i + 2] if i + 2 < len(nodes) else nodes[i + 1]
-        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
-        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+    for _, c1, c2, p2 in curve_spans(start, points, end):
         parts.append(f"C {_p(c1)} {_p(c2)} {_p(p2)}")
     return " ".join(parts)
 

@@ -486,6 +486,7 @@ class DiagramCreate(BaseModel):
     Attributes:
         scope_element_id: The element whose inside the diagram shows, or `None` for the system context.
         connection_detail: Draw typed, labelled connections (otherwise plain lines).
+        line_hops: Draw a small arc where a line crosses another.
         activate: Create the diagram `active` instead of `draft` (Save and activate).
         populate: Place the scope element's children (the root elements for the system context) in a grid.
     """
@@ -494,6 +495,7 @@ class DiagramCreate(BaseModel):
     purpose: str = Field(default="", max_length=20000)
     scope_element_id: UUID | None = None
     connection_detail: bool = False
+    line_hops: bool = False
     folder_id: UUID | None = None
     activate: bool = False
     populate: bool = False
@@ -508,6 +510,7 @@ class DiagramUpdate(BaseModel):
     purpose: str | None = Field(default=None, max_length=20000)
     scope_element_id: UUID | None = None
     connection_detail: bool | None = None
+    line_hops: bool | None = None
     folder_id: UUID | None = None
 
 
@@ -524,6 +527,7 @@ class DiagramOut(ProjectScopedRow):
     scope_element_code: str | None = None
     scope_element_name: str | None = None
     connection_detail: bool
+    line_hops: bool
     folder_id: UUID | None = None
     folder_path: str | None = None
     status: str
@@ -946,6 +950,7 @@ class StateMachineDiagramUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=20000)
     element_id: UUID | None = None
+    line_hops: bool | None = None
 
 
 class FindingOut(BaseModel):
@@ -970,6 +975,7 @@ class StateMachineDiagramOut(ProjectScopedRow):
     element_id: UUID
     element_code: str | None = None
     element_name: str | None = None
+    line_hops: bool
     status: str
     allowed_status_moves: list[str]
     version: int

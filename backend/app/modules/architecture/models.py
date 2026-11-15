@@ -555,6 +555,7 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
             root elements). `SET NULL` when the element is deleted.
         connection_detail: When false the diagram draws plain lines (no type, protocol or port labels) and
             parallel lines collapse into one; when true connections are typed and labelled.
+        line_hops: When true a line that crosses another is drawn with a small arc over it (the later line by id hops).
         folder_id: The project's diagram folder the diagram is listed in, or `None` for the top level.
         status: A `RecordStatus` value.
         version: Optimistic counter.
@@ -574,6 +575,7 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True
     )
     connection_detail: Mapped[bool] = mapped_column(Boolean, default=False)
+    line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     folder_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -850,6 +852,7 @@ class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
         element_id: The element described. Required; one element may have several (operating modes, a connection's
             lifecycle). The element may belong to another owner the project can read; the database refuses to delete it
             while a state machine diagram describes it.
+        line_hops: When true a transition that crosses another is drawn with a small arc over it (the later by id hops).
         status: A `RecordStatus` value.
         version: Optimistic counter.
         creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
@@ -869,6 +872,7 @@ class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
     element_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_elements.id"), index=True
     )
+    line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
