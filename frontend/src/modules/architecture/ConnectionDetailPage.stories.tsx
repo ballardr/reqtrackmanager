@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildConnection, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
+import { buildConnection, buildRecordDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ConnectionDetailPage } from "./ConnectionDetailPage";
 
 const meta: Meta<typeof ConnectionDetailPage> = {
@@ -27,6 +27,22 @@ export const ShowsBothEndsWithPortsAndLinksToThem: Story = {
     await expect(source).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/elements/el-1`);
     await expect(canvas.getByRole("link", { name: /ELM-002 Orders/ })).toBeInTheDocument();
     await expect(canvas.getByText("One-way, source to target")).toBeInTheDocument();
+  },
+};
+
+/** The Diagrams card is directly under the details, before the Realisation card, and says how each diagram draws the line. */
+export const DiagramsCardFollowsTheDetailsCard: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      connection: buildConnection({ realises: [{ id: "con-9", unique_code: "CON-009", name: "Outer" } as never] }),
+      recordDiagrams: [buildRecordDiagram({ usage: "rolled_up" })],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText(/Block diagram · Rolled up/);
+    const cards = Array.from(canvasElement.querySelectorAll("section.card")).map((c) => c.getAttribute("aria-label"));
+    await expect(cards.slice(0, 2)).toEqual(["Details", "Diagrams"]);
   },
 };
 

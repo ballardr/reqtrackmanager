@@ -41,9 +41,10 @@ import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ElementFormModal } from "./ElementFormModal";
 import { ElementSharingCard } from "./ElementSharingCard";
 import { AllocationPanel } from "./AllocationPanel";
-import { ElementStateMachinesCard } from "./ElementStateMachinesCard";
 import { ARCHITECTURE_HELP } from "./help";
+import { NewStateMachineDiagramButton } from "./NewStateMachineDiagramButton";
 import { PortList } from "./PortList";
+import { RecordDiagramsCard } from "./RecordDiagramsCard";
 import { SymbolImage } from "./SymbolImage";
 import { useArchitectureReference } from "./useArchitectureReference";
 import {
@@ -208,6 +209,11 @@ export function ElementDetailPage() {
           {!element.description && <RecordField label="Description" value="—" />}
         </DetailCard>
 
+        <RecordDiagramsCard
+          projectId={projectId} record={{ kind: "element", id: element.id }}
+          action={element.is_archived ? undefined : <NewStateMachineDiagramButton projectId={projectId} element={element} candidates={[...owned, ...shared]} />}
+        />
+
         <DetailCard heading="Ports">
           <PortList
             ports={element.ports} connectionTypes={reference.connectionTypes} readOnly={readOnly || element.is_archived}
@@ -247,8 +253,6 @@ export function ElementDetailPage() {
         </DetailCard>
 
         <AllocationPanel projectId={projectId} perspective={{ kind: "element", elementId: element.id }} />
-
-        <ElementStateMachinesCard projectId={projectId} element={element} candidates={[...owned, ...shared]} readOnly={element.is_archived} />
 
         <ElementSharingCard projectId={projectId} element={element} />
 

@@ -49,6 +49,7 @@ import type {
   BoundaryValues,
   DiagramAnchor,
   PlacementValues,
+  RecordDiagram,
   Port,
   PortValues,
   StateFieldValues,
@@ -202,6 +203,8 @@ export const projectElementApi = (projectId: string) => ({
   /** Elements other owners share with the project; `open_only` leaves out retired ones (the picker's view). */
   listShared: (filters: { open_only?: boolean; search?: string } = {}) =>
     api.get<ArchitectureElement[]>(`${projectBase(projectId)}/elements/shared${listQuery(filters)}`),
+  /** The block diagrams that draw the element and the state machine diagrams that describe it (the Diagrams card). */
+  diagrams: (id: string) => api.get<RecordDiagram[]>(`${projectBase(projectId)}/elements/${id}/diagrams`),
 });
 
 /** An organisation's own elements (shared with projects through collections). */
@@ -221,6 +224,8 @@ export const projectConnectionApi = (projectId: string) => {
     archive: (id: string) => api.post<ArchitectureConnection>(`${base}/${id}/archive`),
     unarchive: (id: string) => api.post<ArchitectureConnection>(`${base}/${id}/unarchive`),
     remove: (id: string) => api.delete<void>(`${base}/${id}`),
+    /** The block diagrams that draw the connection, including as a line rolled up to ancestors of its ends (the Diagrams card). */
+    diagrams: (id: string) => api.get<RecordDiagram[]>(`${base}/${id}/diagrams`),
     /** Sets the outer connections a connection realises (the server checks the rule and refuses a cycle). */
     setRealisations: (id: string, version: number, outerConnectionIds: string[]) =>
       api.put<ArchitectureConnection>(`${base}/${id}/realisations`, { version, outer_connection_ids: outerConnectionIds }),

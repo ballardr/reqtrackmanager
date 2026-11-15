@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildConnection, buildElement, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
+import { buildConnection, buildElement, buildRecordDiagram, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
 import { ElementDetailPage } from "./ElementDetailPage";
 
 const PARENT = buildElement({ id: "el-0", unique_code: "ELM-000", name: "Platform", ports: [] });
@@ -49,6 +49,21 @@ export const ShowsPortsChildrenConnectionsAndSharing: Story = {
 };
 
 /** An element another owner shares is read-only: no Edit, no status menu, no port controls, no Add child. */
+/** The Diagrams card is the second card, directly under the details, so another view of the element is the first thing to reach. */
+export const DiagramsCardFollowsTheDetailsCard: Story = {
+  beforeEach: () => {
+    const get = mockArchitectureReads({ elements: [PARENT, ELEMENT, CHILD], element: ELEMENT, recordDiagrams: [buildRecordDiagram()] });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: /DGM-001 Main system/ });
+    const cards = Array.from(canvasElement.querySelectorAll("section.card")).map((c) => c.getAttribute("aria-label"));
+    await expect(cards.slice(0, 3)).toEqual(["Details", "Diagrams", "Ports"]);
+    await expect(canvas.getByRole("button", { name: "New state machine diagram" })).toBeInTheDocument();
+  },
+};
+
 export const SharedElementIsReadOnly: Story = {
   parameters: { elementId: "el-9" },
   beforeEach: () => {

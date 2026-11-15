@@ -16,7 +16,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
-  ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, StateMachineFinding, StateMachineModel, StateTransition,
+  ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, RecordDiagram, StateMachineFinding, StateMachineModel, StateTransition,
   BaselineComparison,
   BaselineItem,
   BaselineView,
@@ -90,6 +90,14 @@ export function buildStateMachine(overrides: Partial<StateMachineDiagram> = {}):
     element_id: "el-1", element_code: "ELM-001", element_name: "Gateway", status: "draft", allowed_status_moves: movesFrom(overrides.status ?? "draft"),
     version: 5, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", state_count: 4, transition_count: 4, error_count: 0, warning_count: 0, ...overrides,
+  };
+}
+
+/** One row of the Diagrams card: a block diagram the record is placed on by default. */
+export function buildRecordDiagram(overrides: Partial<RecordDiagram> = {}): RecordDiagram {
+  return {
+    id: "dgm-1", kind: "block", unique_code: "DGM-001", name: "Main system", status: "draft", usage: "placed",
+    via_element_id: null, via_element_code: null, via_element_name: null, ...overrides,
   };
 }
 
@@ -334,6 +342,8 @@ export interface ArchitectureReads {
   diagramModel?: DiagramModel;
   /** The project's state machine diagrams (the Diagrams list merges them with `diagrams`); none by default. */
   stateMachines?: StateMachineDiagram[];
+  /** The diagrams an element's or connection's Diagrams card lists; none by default. */
+  recordDiagrams?: RecordDiagram[];
   /** Answers the state machine diagram list as refused (403), as for a person with no access to that type. */
   stateMachinesRefused?: boolean;
   /** The state machine diagram's model (the editor's data). */
@@ -399,6 +409,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (base.endsWith("/allocation")) return reads.allocation ?? buildAllocationView();
     if (base.endsWith("/modules/architecture/elements/shared")) return reads.shared ?? [];
     if (base.endsWith("/modules/architecture/elements")) return elements;
+    if (/\/modules\/architecture\/(elements|connections)\/[^/]+\/diagrams$/.test(base)) return reads.recordDiagrams ?? [];
     if (base.includes("/modules/architecture/elements/")) return reads.element ?? elements[0];
     if (base.endsWith("/modules/architecture/connections")) return reads.connections ?? [buildConnection()];
     if (base.includes("/modules/architecture/connections/")) return reads.connection ?? buildConnection();

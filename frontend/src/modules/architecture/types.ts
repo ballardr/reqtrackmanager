@@ -650,6 +650,26 @@ export type DiagramKind = "block" | "state_machine";
 
 export const DIAGRAM_KIND_LABEL: Record<DiagramKind, string> = { block: "Block diagram", state_machine: "State machine diagram" };
 
+/** How a record appears on a diagram its page lists: its own box, inside a drawn ancestor, a line, a rolled-up line, or described by a state machine. */
+export type RecordDiagramUsage = "placed" | "inside" | "drawn" | "rolled_up" | "describes";
+
+export const RECORD_DIAGRAM_USAGE_LABEL: Record<Exclude<RecordDiagramUsage, "inside">, string> = {
+  placed: "Placed", drawn: "Drawn", rolled_up: "Rolled up", describes: "Describes this element",
+};
+
+/** One diagram an element or connection appears on (the Diagrams card). `via_*` names the drawn ancestor for `inside`; its name is blank when the viewer cannot read it. */
+export interface RecordDiagram {
+  id: string;
+  kind: DiagramKind;
+  unique_code: string;
+  name: string;
+  status: ArchitectureRecordStatus;
+  usage: RecordDiagramUsage;
+  via_element_id: string | null;
+  via_element_code: string | null;
+  via_element_name: string | null;
+}
+
 /** A state machine diagram with its counts. The element's name is blank when the viewer cannot read it. */
 export interface StateMachineDiagram extends ProjectScopedRow {
   id: string;

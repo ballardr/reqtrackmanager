@@ -552,11 +552,11 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(selectionCard(page).locator("strong").first()).toBeVisible();
     });
 
-    await test.step("the element's page lists its state machine diagrams", async () => {
+    await test.step("the element's Diagrams card lists its state machine diagrams", async () => {
       await page.goto(`/projects/${project.id}/modules/architecture/elements/${elementId}`);
-      const card = page.getByRole("region", { name: "State machine diagrams" });
+      const card = page.getByRole("region", { name: "Diagrams" });
       await expect(card.getByRole("link", { name: new RegExp(`Router modes ${suffix}`) })).toBeVisible();
-      await expect(card.getByText("2 states")).toBeVisible();
+      await expect(card.getByText(/State machine diagram · Describes this element/)).toBeVisible();
     });
   });
 });

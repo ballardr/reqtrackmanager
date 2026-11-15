@@ -1252,3 +1252,28 @@ class BaselineComparisonOut(BaseModel):
     against_id: UUID | None
     against_label: str
     types: list[BaselineTypeComparisonOut]
+
+
+class RecordDiagramOut(BaseModel):
+    """One diagram a record appears on, for the Diagrams card of an element or connection page.
+
+    Attributes:
+        id / unique_code / name / status: The diagram.
+        kind: `block` (a block diagram) or `state_machine` (a state machine diagram).
+        usage: How the record appears: `placed` (the element has its own box), `inside` (only an ancestor, `via_*`, is
+            drawn), `drawn` (a line between the connection's own ends), `rolled_up` (a line between ancestors of its
+            ends) or `describes` (a state machine diagram of the element).
+        via_element_id / via_element_code / via_element_name: The drawn ancestor for `inside`; the name is blank for an
+            ancestor the viewer may not read.
+    """
+
+    id: UUID
+    kind: str
+    unique_code: str
+    name: str
+    status: str
+    usage: str
+    via_element_id: UUID | None = None
+    via_element_code: str | None = None
+    via_element_name: str | None = None
+

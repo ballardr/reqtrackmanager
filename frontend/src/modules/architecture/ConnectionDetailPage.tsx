@@ -32,6 +32,7 @@ import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 import { ConnectionEnd } from "./connectionEnds";
 import { ARCHITECTURE_HELP } from "./help";
+import { RecordDiagramsCard } from "./RecordDiagramsCard";
 import { useArchitectureReference } from "./useArchitectureReference";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
@@ -188,6 +189,7 @@ export function ConnectionDetailPage() {
           </div>
           <RecordField label="Description" value={connection.description || "—"} />
         </DetailCard>
+        <RecordDiagramsCard projectId={projectId} record={{ kind: "connection", id: connection.id }} />
         {(connection.realises.length > 0 || connection.realised_by.length > 0) && (
           <DetailCard heading="Realisation">
             <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>

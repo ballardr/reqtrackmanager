@@ -5,7 +5,8 @@ Project-scoped API of the Architecture module, mounted at
 `/api/v1/projects/{project_id}/modules/architecture`: the project's effective
 element types, connection types and symbols, its own rows, hiding and restoring the
 organisation's defaults, and the project's elements, ports and connections
-(`record_routes`), collections (`collection_routes`), diagrams (`diagram_routes`) and the JSON and Structurizr
+(`record_routes`), the diagrams a record appears on (`record_diagram_routes`), collections (`collection_routes`),
+diagrams (`diagram_routes`) and the JSON and Structurizr
 interchange (`interchange_routes`) and the read of the baselines (`baseline_routes`).
 
 RBAC: the record type's sub-component and project membership to read; a
@@ -31,6 +32,7 @@ from app.modules.architecture.comments import add_comment_routes
 from app.modules.architecture.diagram_routes import add_diagram_routes
 from app.modules.architecture.folder_routes import add_project_folder_routes
 from app.modules.architecture.interchange_routes import add_interchange_routes
+from app.modules.architecture.record_diagram_routes import add_record_diagram_routes
 from app.modules.architecture.record_routes import add_record_routes
 from app.modules.architecture.reports import REPORT_ROUTERS
 from app.modules.architecture.schemas import (
@@ -91,6 +93,7 @@ def get_capabilities(project_id: UUID, current_user: User = Depends(_require_vie
 
 
 add_record_routes(router)
+add_record_diagram_routes(router)
 add_diagram_routes(router)
 add_state_machine_routes(router)
 add_comment_routes(router)
