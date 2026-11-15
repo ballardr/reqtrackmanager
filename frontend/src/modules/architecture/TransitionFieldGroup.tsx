@@ -3,7 +3,7 @@
  *
  * The field group of a transition of a state machine diagram, shared by the Selection card (edited in place) and the edit dialog
  * (`TransitionFormModal`, opened by double-clicking a line), so a field added later reaches both: the two ends (required), the
- * event, the guard and the action (plain text a person reads, never run) and a description. A transition is added to a diagram
+ * event, the condition (guard) and the action (plain text a person reads, never run) and a description. A transition is added to a diagram
  * with no form (drawing a line or the card's "Add transition to" creates it with empty values), so this group has no creation variant.
  * A transition has no record code, so it takes no quick links or tags.
  */
@@ -45,7 +45,7 @@ export function TransitionFieldGroup({
         options={options} onChange={(next) => onChange("target_state_id", next)}
       />
       <TextField help={ARCHITECTURE_HELP.transitionEvent} label="Event" value={values.event} inputProps={focus("event")} onChange={(value) => onChange("event", value)} />
-      <TextField help={ARCHITECTURE_HELP.transitionGuard} label="Guard" value={values.guard} inputProps={focus("guard")} onChange={(value) => onChange("guard", value)} />
+      <TextField help={ARCHITECTURE_HELP.transitionGuard} label="Condition (guard)" value={values.guard} inputProps={focus("guard")} onChange={(value) => onChange("guard", value)} />
       <FormGridFull>
         <TextField help={ARCHITECTURE_HELP.transitionAction} label="Action" value={values.action} onChange={(value) => onChange("action", value)} />
       </FormGridFull>

@@ -13,6 +13,31 @@
       "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 36 36\" width=\"36\" height=\"36\"><polygon points=\"18,1 35,18 18,35 1,18\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>"
     }
   },
+  "labelled_markers": {
+    "initial": {
+      "size": 52,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 52 52\" width=\"52\" height=\"52\"><circle cx=\"26\" cy=\"26\" r=\"25\" fill=\"#64748b\"/></svg>",
+      "text_width": 36,
+      "on_fill": true
+    },
+    "final": {
+      "size": 72,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 72 72\" width=\"72\" height=\"72\"><circle cx=\"36\" cy=\"36\" r=\"34\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\"/><circle cx=\"36\" cy=\"36\" r=\"26\" fill=\"#64748b\"/></svg>",
+      "text_width": 38,
+      "on_fill": true
+    },
+    "choice": {
+      "size": 96,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 96\" width=\"96\" height=\"96\"><polygon points=\"48,1 95,48 48,95 1,48\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>",
+      "text_width": 48,
+      "on_fill": false
+    }
+  },
+  "label": {
+    "max_lines": 3,
+    "font_size": 10,
+    "line_height": 12
+  },
   "state": {
     "width": 160,
     "height": 64,

@@ -838,6 +838,7 @@ def _state_columns(db: Session, project: Project) -> list[RecordColumn]:
         RecordColumn("entry_action", "Entry action", lambda t, r: r.entry_action, text_parser),
         RecordColumn("exit_action", "Exit action", lambda t, r: r.exit_action, text_parser),
         RecordColumn("activity", "Activity", lambda t, r: r.activity, text_parser),
+        RecordColumn("label", "Symbol label", lambda t, r: r.label, text_parser),
         _tags_column(),
     ]
 

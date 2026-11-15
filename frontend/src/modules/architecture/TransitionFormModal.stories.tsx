@@ -51,7 +51,7 @@ export const EditShowsTheTransitionsValues: Story = {
     const d = dialog();
     await expect(d.getByRole("heading", { name: "Edit transition" })).toBeInTheDocument();
     await expect(d.getByLabelText("Event")).toHaveValue("start");
-    await expect(d.getByLabelText("Guard")).toHaveValue("ready");
+    await expect(d.getByLabelText("Condition (guard)")).toHaveValue("ready");
     await expect(d.getByLabelText("Action")).toHaveValue("spin up");
   },
 };

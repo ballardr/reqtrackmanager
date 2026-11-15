@@ -141,6 +141,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             SearchField("entry_action", "Entry action", ArchitectureState.entry_action),
             SearchField("exit_action", "Exit action", ArchitectureState.exit_action),
             SearchField("activity", "Activity", ArchitectureState.activity),
+            SearchField("label", "Symbol label", ArchitectureState.label),
         ),
         where=(_OWN_ELEMENT,),
         status_labels=RECORD_STATUS_LABEL,

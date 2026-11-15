@@ -17,6 +17,9 @@ import enum
 #: The longest display note an element may carry (characters): the line drawn inside its box on a diagram.
 DISPLAY_NOTE_MAX = 500
 
+#: The longest label an initial, final or choice symbol may carry (characters): the text drawn inside the symbol.
+SYMBOL_LABEL_LENGTH = 40
+
 
 class Domain(str, enum.Enum):
     """Which kind of architecture a type belongs to; `ANY` suits both."""

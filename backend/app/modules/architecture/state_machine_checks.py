@@ -165,7 +165,7 @@ def check(states: Sequence[ArchitectureState], transitions: Sequence[Architectur
         if key in seen and key not in flagged:
             flagged.add(key)
             code = by_id[t.source_state_id].unique_code
-            warnings.append(_warning("ambiguous", code, f"{code} has two transitions with the same event and no guard."))
+            warnings.append(_warning("ambiguous", code, f"{code} has two transitions with the same event and no condition (guard)."))
         seen.add(key)
     return [*errors, *warnings]
 

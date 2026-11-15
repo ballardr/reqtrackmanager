@@ -64,7 +64,7 @@ export function ProjectStatesList({ chrome, viewTabs }: { chrome?: ArchitectureL
     const needle = search.trim().toLowerCase();
     return (states ?? []).filter((s) => (
       (!kindFilter || s.kind === kindFilter)
-      && (!needle || `${s.unique_code} ${s.name} ${s.description} ${s.state_machine_diagram_code} ${s.state_machine_diagram_name}`.toLowerCase().includes(needle))
+      && (!needle || `${s.unique_code} ${s.name} ${s.description} ${s.label} ${s.state_machine_diagram_code} ${s.state_machine_diagram_name}`.toLowerCase().includes(needle))
     ));
   }, [states, kindFilter, search]);
   const sorted = useMemo(() => sortRows(filtered, sort, STATE_SORT_VALUES), [filtered, sort]);

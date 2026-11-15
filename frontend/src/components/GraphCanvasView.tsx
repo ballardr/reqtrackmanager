@@ -70,7 +70,7 @@ import { useLatest } from "../hooks/useLatest";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import {
-  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphNodeOutline,
+  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphMarkerText, type GraphNodeOutline,
   type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
 } from "./GraphCanvas";
 import {
@@ -109,6 +109,7 @@ type NodeData = {
   tone?: GraphNodeTone;
   resizable: boolean;
   marker: boolean;
+  markerText?: GraphMarkerText;
   container: boolean;
 };
 type FlowNode = Node<NodeData, "graph"> | Node<{ free: boolean }, "leaderEnd">;
@@ -182,6 +183,14 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     return (
       <div className={data.symbol ? "graph-node-marker" : "graph-node-marker graph-node-marker-empty"}>
         {data.symbol && <img className="graph-node-marker-image" src={data.symbol} alt="" />}
+        {data.markerText && data.markerText.text && (
+          <span
+            className={data.markerText.onFill ? "graph-node-marker-text graph-node-marker-text-on-fill" : "graph-node-marker-text"}
+            style={{ width: data.markerText.width, WebkitLineClamp: data.markerText.lines }}
+          >
+            {data.markerText.text}
+          </span>
+        )}
         {SIDE_POINTS.map((point) => (
           <Handle key={point} id={point} type="source" position={HANDLE_POSITION[point]} />
         ))}
@@ -489,7 +498,7 @@ export function GraphCanvasView({
         data: {
           label: n.label, caption: n.caption, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
           accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone,
-          resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, container: n.container === true,
+          resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, markerText: n.marker ? n.markerText : undefined, container: n.container === true,
         },
       };
     });

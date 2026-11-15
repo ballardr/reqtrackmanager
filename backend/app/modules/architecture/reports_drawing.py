@@ -53,7 +53,7 @@ MODULE_KEY = ARCHITECTURE_MODULE_KEY
 ELEMENT_COLUMNS = ["Element", "Type", "Status", "Project"]
 LINE_COLUMNS = ["From", "To", "Type", "Connections", "Project"]
 MACHINE_COLUMNS = ["State machine diagram", "Element", "Status", "States", "Transitions", "Project"]
-STATE_COLUMNS = ["State machine diagram", "State", "Kind", "Parent", "Entry action", "Exit action", "Activity", "Project"]
+STATE_COLUMNS = ["State machine diagram", "State", "Kind", "Parent", "Entry action", "Exit action", "Activity", "Symbol label", "Project"]
 TRANSITION_COLUMNS = ["State machine diagram", "From", "To", "Event", "Guard", "Action", "Project"]
 _CLIP = 200
 
@@ -161,7 +161,7 @@ def collect_state_machines(db: Session, req: ReportContext) -> ReportResult:
                 state_rows.append([
                     label, f"{req.code(s.unique_code, project.id)} {s.name}".strip(), STATE_KIND_LABEL.get(s.kind, s.kind),
                     state_text(s.parent_state_id) if s.parent_state_id else "", s.entry_action[:_CLIP], s.exit_action[:_CLIP],
-                    s.activity[:_CLIP], project.name,
+                    s.activity[:_CLIP], s.label, project.name,
                 ])
             for t in transitions:
                 transition_rows.append([

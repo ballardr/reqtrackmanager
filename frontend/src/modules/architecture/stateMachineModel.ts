@@ -21,7 +21,8 @@
  * - Canvas ids are the state and transition ids; there are no notes or boundary boxes here, so no prefixes.
  * - Only an ordinary state may hold others (a marker is a shape with no inside); the checks the server runs (one initial
  *   state per level, no depth beyond 12) are not repeated here.
- * - The shapes' sizes come from `stateShapes`, the table the server's drawing is tested against.
+ * - The shapes' sizes come from `stateShapes`, the table the server's drawing is tested against. A marker with a label is drawn
+ *   larger than its stored box (`markerFrame`), centred on it, and the label is drawn inside it.
  */
 import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
@@ -29,7 +30,8 @@ import {
   commitStep, isDirtyBy, redoStep, refreshPresentOf, startHistoryOf, undoStep, type History as HistoryOf,
 } from "../../utils/editHistory";
 import {
-  COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING, STATE_DEFAULT_SIZE, STATE_MARKERS, type StateMarkerKind,
+  COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING, LABEL_METRICS, LABELLED_MARKERS, markerFrame, STATE_DEFAULT_SIZE, STATE_MARKERS,
+  type StateMarkerKind,
 } from "./stateShapes";
 import {
   STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type StateKind, type StateLayoutValues, type StateMachineFinding,
@@ -342,9 +344,14 @@ export function canvasNodes(model: StateMachineModel, layout: StateMachineLayout
     const box = boxes.get(state.id) ?? boxOfState(state);
     const parentId = box.parent_state_id && boxes.has(box.parent_state_id) ? box.parent_state_id : undefined;
     if (isMarkerKind(state.kind)) {
+      const labelled = state.label.trim() !== "";
+      const frame = markerFrame(state.kind, box, state.label);
+      const larger = LABELLED_MARKERS[state.kind];
       return {
         id: state.id, label: STATE_KIND_LABEL[state.kind], caption: state.name === STATE_KIND_LABEL[state.kind] ? undefined : state.name,
-        x: box.x, y: box.y, width: box.width, height: box.height, marker: true, symbolSvg: STATE_MARKERS[state.kind].svg, parentId,
+        x: frame.x, y: frame.y, width: frame.width, height: frame.height, marker: true,
+        symbolSvg: labelled ? larger.svg : STATE_MARKERS[state.kind].svg, parentId,
+        markerText: labelled ? { text: state.label.trim(), width: larger.textWidth, lines: LABEL_METRICS.max_lines, onFill: larger.onFill } : undefined,
       };
     }
     return {

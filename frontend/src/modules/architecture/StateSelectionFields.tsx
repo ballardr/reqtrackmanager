@@ -16,6 +16,7 @@ import { useEffect, useRef } from "react";
 import { FormGrid } from "../../components/FormGrid";
 import { useLatest } from "../../hooks/useLatest";
 import { StateFieldGroup } from "./StateFieldGroup";
+import { isMarkerKind } from "./stateMachineModel";
 import { diffStateFields, valuesFromState } from "./stateFields";
 import type { ArchitectureState, StateFieldValues } from "./types";
 import { useSelectionDraft } from "./useSelectionDraft";
@@ -37,7 +38,7 @@ export function StateSelectionFields({
   onSave: (changed: Partial<StateFieldValues>) => Promise<boolean>;
 }) {
   const { draft, set, hasChanges, refused: nameMissing, commit } = useSelectionDraft<StateFieldValues>({
-    stored: valuesFromState(state), diff: diffStateFields, normalise: (v) => ({ ...v, name: v.name.trim() }),
+    stored: valuesFromState(state), diff: diffStateFields, normalise: (v) => ({ ...v, name: v.name.trim(), label: isMarkerKind(v.kind) ? v.label.trim() : "" }),
     refuse: (v) => v.name.trim() === "", onSave,
   });
   const focusDone = useLatest(onFocused);

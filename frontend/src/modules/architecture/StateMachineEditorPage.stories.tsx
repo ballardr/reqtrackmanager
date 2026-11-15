@@ -336,7 +336,7 @@ export const ATransitionLeavingAChoiceFocusesItsGuard: Story = {
     await select(canvas, "Choice");
     await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Add transition to" }), "ste-3");
     const card = within(await canvas.findByRole("group", { name: "Transition details" }));
-    await waitFor(() => expect(card.getByLabelText("Guard")).toHaveFocus());
+    await waitFor(() => expect(card.getByLabelText("Condition (guard)")).toHaveFocus());
   },
 };
 
@@ -382,7 +382,7 @@ export const EditingATransitionInTheCardStoresOnlyWhatChangedWhenTheFocusLeavesI
     const card = within(await canvas.findByRole("group", { name: "Transition details" }));
     const save = card.getByRole("button", { name: "Save transition" });
     await expect(save).toBeDisabled();
-    const guard = card.getByLabelText("Guard");
+    const guard = card.getByLabelText("Condition (guard)");
     await userEvent.clear(guard);
     await userEvent.type(guard, "battery low");
     await expect(api.put).not.toHaveBeenCalled();
@@ -401,7 +401,7 @@ export const DoubleClickingALineOpensItsFieldsInADialog: Story = {
     const dialog = within(await within(document.body).findByRole("dialog"));
     await expect(dialog.getByRole("heading", { name: "Edit transition" })).toBeInTheDocument();
     await expect(dialog.getByLabelText("Event")).toHaveValue("start");
-    await expect(dialog.getByLabelText("Guard")).toHaveValue("ready");
+    await expect(dialog.getByLabelText("Condition (guard)")).toHaveValue("ready");
   },
 };
 
@@ -451,6 +451,43 @@ export const ABlankNameInTheCardIsNotStored: Story = {
     await userEvent.click(document.body);
     await expect(await canvas.findByText("A name is required.")).toBeInTheDocument();
     await expect(api.put).not.toHaveBeenCalled();
+  },
+};
+
+/** A choice's card offers a Symbol label that is stored on its own when the focus leaves it; the diamond draws the text inside it. */
+export const AChoicesSymbolLabelIsStoredFromTheCardAndDrawnInsideTheSymbol: Story = {
+  beforeEach: () => {
+    const model = buildStateMachineModel();
+    model.states = model.states.map((s) => (s.id === "ste-1" ? { ...s, kind: "choice" as const, name: "Branch", entry_action: "", exit_action: "", width: 36, height: 36 } : s));
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+    spyOn(api, "put").mockResolvedValue(buildState({ kind: "choice", label: "Battery low?" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Choice");
+    const label = await canvas.findByLabelText("Symbol label");
+    await expect(label).toHaveValue("");
+    await userEvent.type(label, "  Battery low?  ");
+    await userEvent.click(document.body);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/states/ste-1`, { version: 5, label: "Battery low?" }));
+  },
+};
+
+/** A state that already has a label draws it inside its symbol, and an ordinary state's card has no Symbol label. */
+export const AStoredSymbolLabelIsDrawnInsideItsSymbol: Story = {
+  beforeEach: () => {
+    const model = buildStateMachineModel();
+    model.states = model.states.map((s) => (s.id === "ste-1"
+      ? { ...s, kind: "choice" as const, name: "Branch", entry_action: "", exit_action: "", width: 36, height: 36, label: "Battery low?" }
+      : s));
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const choice = await canvas.findByLabelText("Choice, node");
+    await waitFor(() => expect(within(choice).getByText("Battery low?")).toBeInTheDocument());
+    await select(canvas, "Running");
+    await expect(canvas.queryByLabelText("Symbol label")).not.toBeInTheDocument();
   },
 };
 

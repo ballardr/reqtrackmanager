@@ -157,6 +157,32 @@ export const MarkerNodesDrawOnlyTheirDrawing: Story = {
   },
 };
 
+/** A marker's text sits inside its drawing, wrapped to the width given and cut at the line limit; it is plain text, never markup. */
+export const MarkerNodesDrawTheirTextInsideTheDrawing: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Order processing" showViewToggle={false}
+      nodes={[
+        { id: "start", label: "Start", x: 0, y: 0, width: 52, height: 52, marker: true, symbolSvg: DOT, markerText: { text: "Order <b>placed</b>", width: 36, lines: 3, onFill: true } },
+        { id: "check", label: "Payment check", x: 200, y: 0, width: 96, height: 96, marker: true, symbolSvg: DIAMOND, markerText: { text: "Paid?", width: 48, lines: 3, onFill: false } },
+        { id: "other", label: "Other", x: 400, y: 0, width: 20, height: 20, marker: true, symbolSvg: DOT },
+      ]}
+      edges={[]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const start = (await canvas.findByLabelText("Start, node")).closest(".react-flow__node") as HTMLElement;
+    const check = (await canvas.findByLabelText("Payment check, node")).closest(".react-flow__node") as HTMLElement;
+    const other = (await canvas.findByLabelText("Other, node")).closest(".react-flow__node") as HTMLElement;
+    await expect(start.querySelector(".graph-node-marker-text-on-fill")).toHaveTextContent("Order <b>placed</b>");
+    await expect(start.querySelector("b")).toBeNull();
+    await expect(check.querySelector(".graph-node-marker-text")).toHaveTextContent("Paid?");
+    await expect(check.querySelector(".graph-node-marker-text-on-fill")).toBeNull();
+    await expect(other.querySelector(".graph-node-marker-text")).toBeNull();
+  },
+};
+
 /** A line to a marker meets it at the middle of a side, never at a corner of its frame. */
 export const ALineToAMarkerMeetsAMiddleOfASide: Story = {
   render: () => (

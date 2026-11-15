@@ -274,12 +274,12 @@ test.describe("System Architecture: state machine diagrams", () => {
       expect(await response.request().postDataJSON()).toMatchObject({ event: "", guard: "", action: "" });
       await expect(page.getByRole("dialog")).toHaveCount(0);
       const details = selectionCard(page).getByRole("group", { name: "Transition details" });
-      await expect(details.getByLabel("Guard", { exact: true })).toBeFocused();
+      await expect(details.getByLabel("Condition (guard)", { exact: true })).toBeFocused();
     });
 
     await test.step("the condition is stored when the focus leaves the card and survives a reload", async () => {
       const details = selectionCard(page).getByRole("group", { name: "Transition details" });
-      await details.getByLabel("Guard", { exact: true }).fill("battery low");
+      await details.getByLabel("Condition (guard)", { exact: true }).fill("battery low");
       const stored = page.waitForResponse((r) => /\/transitions\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
       await page.getByRole("heading", { level: 1 }).click();
       expect((await stored).ok()).toBeTruthy();
@@ -305,6 +305,44 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(page.getByText("Could not add the transition.")).toBeVisible();
       await expect(selectionCard(page).getByRole("group", { name: "Transition details" })).toHaveCount(0);
       await page.unroute(/\/transitions$/);
+    });
+  });
+
+  test("a symbol label is set on a choice in the Selection card, drawn inside a larger diamond, kept by a reload and not offered for an ordinary state", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdLabel", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Drone ${suffix}`);
+    const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Drone modes ${suffix}`, [
+      { name: "Start", kind: "initial", x: 40, y: 60 }, { name: "Branch", kind: "choice", x: 240, y: 60 }, { name: "Idle", x: 420, y: 40 },
+    ], [["Start", "Branch"]]);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    const choice = page.getByLabel("Choice, node", { exact: true });
+    await expect(choice).toBeVisible();
+    const plain = (await choice.boundingBox())!;
+
+    await test.step("the Selection card of a choice offers a Symbol label, and an ordinary state does not", async () => {
+      await selectNode(page, "Idle");
+      await expect(selectionCard(page).getByLabel("Symbol label")).toHaveCount(0);
+      await selectNode(page, "Choice");
+      await expect(selectionCard(page).getByLabel("Symbol label")).toBeVisible();
+    });
+
+    await test.step("the label is stored when the focus leaves the card and the diamond grows to hold it", async () => {
+      await selectionCard(page).getByLabel("Symbol label").fill("Battery low?");
+      const stored = page.waitForResponse((r) => /\/states\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+      await page.getByRole("heading", { level: 1 }).click();
+      const response = await stored;
+      expect(response.ok()).toBeTruthy();
+      expect(await response.request().postDataJSON()).toMatchObject({ label: "Battery low?" });
+      await expect(choice.getByText("Battery low?")).toBeVisible();
+      expect((await choice.boundingBox())!.width).toBeGreaterThan(plain.width * 2);
+    });
+
+    await test.step("a reload keeps the label and the Outline lists it", async () => {
+      await page.reload();
+      await expect(page.getByLabel("Choice, node", { exact: true }).getByText("Battery low?")).toBeVisible();
+      await page.getByRole("tab", { name: "Outline" }).click();
+      await expect(page.getByText("Symbol label: Battery low?")).toBeVisible();
     });
   });
 

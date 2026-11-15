@@ -383,13 +383,14 @@ def add_state(
     _check_version(diagram, payload.version)
     name = payload.name.strip()
     _check_name(db, diagram.id, name)
+    label = _clean_label(payload.label, payload.kind.value)
     existing = states_of(db, diagram.id)
     state = ArchitectureState(
         state_machine_diagram_id=diagram.id, project_id=project.id,
         unique_code=generate_unique_code(db, project, STATE_ARTEFACT_TYPE, STATE_CODE_PREFIX),
         name=name, description=payload.description, kind=payload.kind.value, parent_state_id=payload.parent_state_id,
         entry_action=payload.entry_action, exit_action=payload.exit_action, activity=payload.activity,
-        x=payload.x, y=payload.y, width=payload.width, height=payload.height, collapsed=payload.collapsed,
+        label=label, x=payload.x, y=payload.y, width=payload.width, height=payload.height, collapsed=payload.collapsed,
         creator_id=actor.id,
     )
     db.add(state)
@@ -403,9 +404,22 @@ def add_state(
 
 
 _STATE_FIELDS = (
-    "name", "description", "kind", "parent_state_id", "entry_action", "exit_action", "activity", "x", "y", "width",
-    "height", "collapsed",
+    "name", "description", "kind", "parent_state_id", "entry_action", "exit_action", "activity", "label", "x", "y",
+    "width", "height", "collapsed",
 )
+
+
+def _clean_label(label: str, kind: str) -> str:
+    """The symbol label to store: trimmed, and only for an initial, final or choice state (an ordinary state's name is
+    drawn in its box, so a label there would never be seen).
+
+    Raises:
+        RuleError: 400 when a label is given for an ordinary state.
+    """
+    label = label.strip()
+    if label and kind == StateKind.STATE.value:
+        raise RuleError("Only an initial, final or choice state can carry a symbol label.", 400)
+    return label
 
 
 def update_state(
@@ -437,10 +451,19 @@ def update_state(
             if value is None:
                 continue
             value = value.value
+        elif field == "label":
+            if value is None:
+                continue
+            value = value.strip()
         elif value is None and field != "parent_state_id":
             continue
         if value != getattr(state, field):
             changes[field] = value
+    kind_after = changes.get("kind", state.kind)
+    if kind_after == StateKind.STATE.value and state.label and "label" not in changes:
+        changes["label"] = ""  # an ordinary state has no symbol, so the label goes with the kind
+    if changes.get("label"):
+        _clean_label(changes["label"], kind_after)
     if not changes:
         return state
     if changes.get("kind") in _MARKERS and db.scalar(
@@ -724,7 +747,7 @@ def state_outs(db: Session, states: Sequence[ArchitectureState], viewer: Viewer)
             state_machine_diagram_version=d.version, element_id=d.element_id,
             element_code=code, element_name=name, name=s.name, description=s.description, kind=s.kind,
             parent_state_id=s.parent_state_id, parent_state_code=parent_codes.get(s.parent_state_id) if s.parent_state_id else None,
-            entry_action=s.entry_action, exit_action=s.exit_action, activity=s.activity, x=s.x, y=s.y, width=s.width,
+            entry_action=s.entry_action, exit_action=s.exit_action, activity=s.activity, label=s.label, x=s.x, y=s.y, width=s.width,
             height=s.height, collapsed=s.collapsed, status=d.status, is_archived=d.is_archived, creator_id=s.creator_id,
             created_at=s.created_at, updated_at=s.updated_at,
         ))

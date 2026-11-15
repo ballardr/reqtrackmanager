@@ -40,6 +40,6 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     DIAGRAM_ARTEFACT_TYPE: from_search(SEARCH_PROVIDERS[DIAGRAM_ARTEFACT_TYPE], core_fields=("description",)),
     STATE_MACHINE_ARTEFACT_TYPE: from_search(SEARCH_PROVIDERS[STATE_MACHINE_ARTEFACT_TYPE], core_fields=("description",)),
     STATE_ARTEFACT_TYPE: from_search(
-        SEARCH_PROVIDERS[STATE_ARTEFACT_TYPE], core_fields=("description", "entry_action", "exit_action", "activity"),
+        SEARCH_PROVIDERS[STATE_ARTEFACT_TYPE], core_fields=("description", "entry_action", "exit_action", "activity", "label"),
     ),
 }

@@ -17,21 +17,23 @@ The diagrams use UML state machine notation, which is also the SysML state machi
 | State | Rounded rectangle with its name, code and any `entry /`, `exit /` and `do /` lines |
 | Initial state | Filled dot |
 | Final state | Ringed dot |
-| Choice | Diamond; the guards on its outgoing transitions decide the path |
+| Choice | Diamond; the conditions (guards) on its outgoing transitions decide the path |
 | Composite state | Frame that contains other states |
-| Transition | Arrow labelled `event [guard] / action`; a transition from a state to itself is drawn as a loop |
+| Transition | Arrow labelled `event [condition] / action`; a transition from a state to itself is drawn as a loop |
 
-Guards and actions are text that a person reads. The module does not simulate a diagram or generate code from it.
+An initial state, final state or choice can carry a **symbol label**, up to 40 characters of text drawn inside the symbol, so a branch can say what it decides ("Battery low?"). The symbol is drawn larger while it has a label, and a long label wraps over up to three lines and ends with an ellipsis; the full text is in the Selection card and the Outline.
+
+Conditions (guards) and actions are text that a person reads. The module does not simulate a diagram or generate code from it.
 
 ## Adding and editing states
 
 Choose **Add to diagram**, then Initial state, State, Final state or Choice, or drag the item onto the drawing. The item is added at once with a default name ("State 1", "State 2"; a marker is named for its kind), selected, and its name is ready to type over in the **Selection** card. Dropping an item inside a composite state puts it in that state. Point at **Add to diagram** for a short guide to building a machine.
 
-The Selection card edits the selected state in place: name, kind, and for an ordinary state its description and entry, exit and activity lines. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
+The Selection card edits the selected state in place: name and kind (the name of an initial state, final state or choice is captioned **Name (Outline and exports)**, because the drawn text is its symbol label); for an ordinary state its description and entry, exit and activity lines; for an initial state, final state or choice its symbol label. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
 
 ## Adding and editing transitions
 
-Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, guard or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Guard**, because the lines leaving a choice are told apart by their guards. The card edits the transition in place: its two states, event, guard, action and description. Changes are stored when the cursor leaves the card's fields, or with **Save transition**. Double-clicking a line opens the same fields in a dialog.
+Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. Changes are stored when the cursor leaves the card's fields, or with **Save transition**. Double-clicking a line opens the same fields in a dialog.
 
 ## Checks
 
@@ -40,7 +42,7 @@ The editor lists the findings of the checks beside the drawing. An **error** pre
 | Severity | Finding |
 | --- | --- |
 | Error | No initial state at the top level; more than one initial state in a level; an initial state with an incoming transition; a final state with an outgoing transition |
-| Warning | A state that cannot be reached; a state that is not final and has no outgoing transition; two transitions from one state with the same event and no guard; a choice with fewer than two outgoing transitions; a composite state with no initial state |
+| Warning | A state that cannot be reached; a state that is not final and has no outgoing transition; two transitions from one state with the same event and no condition (guard); a choice with fewer than two outgoing transitions; a composite state with no initial state |
 
 An edit to an Active diagram that introduces an error is still saved and shown, so a diagram is never locked out of repair.
 
@@ -61,4 +63,4 @@ stateDiagram-v2
     s2 --> [*] : halt
 ```
 
-In the Mermaid text, a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark.
+In the Mermaid text, a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label is not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep it.

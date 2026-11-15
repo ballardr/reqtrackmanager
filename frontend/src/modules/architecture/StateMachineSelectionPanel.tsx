@@ -7,7 +7,7 @@
  *   findings that name it; Comment, Delete (confirmed, naming how many transitions and links go with it) and, for an ordinary
  *   or marker state, "Inside": the state it sits inside, the keyboard route to dragging it into a frame. A state that holds
  *   others cannot become a marker. Double-clicking a state on the canvas opens the same fields in a dialog.
- * - A transition: its two states, event, guard, action and description, edited in place through the shared field group (read-only
+ * - A transition: its two states, event, condition (guard), action and description, edited in place through the shared field group (read-only
  *   text when the diagram cannot be edited), the findings that name it, the attach points of its two ends (the keyboard route to
  *   dragging a line's end); Comment and Delete. Double-clicking a line on the canvas opens the same fields in a dialog.
  * - Nothing selected: a short prompt.
@@ -117,6 +117,9 @@ export function StateMachineSelectionPanel({
                 <ActivityNote text={state.description} />
               </div>
             )}
+            {isMarkerKind(state.kind) && state.label && (
+              <dl style={{ margin: 0 }}><dt className="text-muted">Symbol label</dt><dd style={{ margin: 0 }}>{state.label}</dd></dl>
+            )}
             {!isMarkerKind(state.kind) && (state.entry_action || state.exit_action || state.activity) && (
               <dl style={{ margin: 0 }}>
                 {state.entry_action && <><dt className="text-muted">Entry action</dt><dd style={{ margin: 0 }}>{state.entry_action}</dd></>}
@@ -177,7 +180,7 @@ export function StateMachineSelectionPanel({
           <>
             <dl style={{ margin: 0 }}>
               {transition.event && <><dt className="text-muted">Event</dt><dd style={{ margin: 0 }}>{transition.event}</dd></>}
-              {transition.guard && <><dt className="text-muted">Guard</dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
+              {transition.guard && <><dt className="text-muted">Condition (guard)</dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
               {transition.action && <><dt className="text-muted">Action</dt><dd style={{ margin: 0 }}>{transition.action}</dd></>}
             </dl>
             {transition.description && <ActivityNote text={transition.description} />}

@@ -38,10 +38,16 @@ from app.modules.architecture.labels import STATE_KIND_LABEL
 from app.modules.architecture.schemas import StateMachineModel, StateOut, TransitionOut
 from app.modules.architecture.state_shapes import (
     COMPOSITE_HEADER_HEIGHT,
+    LABEL_FONT_SIZE,
+    LABEL_LINE_HEIGHT,
+    LABEL_MAX_LINES,
+    LABEL_ON_FILL,
+    LABELLED_MARKERS,
     SELF_LOOP_REACH,
     STATE_CORNER_RADIUS,
     STATE_MARKERS,
     action_lines,
+    marker_frame,
     self_loop,
     self_loop_path,
     transition_label,
@@ -59,7 +65,10 @@ Box = tuple[float, float, float, float]
 
 
 def _box(state: StateOut) -> Box:
-    return (state.x, state.y, state.width, state.height)
+    """The state's frame as drawn: its stored box, or the larger frame of a symbol that carries a label."""
+    box = (state.x, state.y, state.width, state.height)
+    kind = StateKind(state.kind)
+    return box if kind is StateKind.STATE else marker_frame(kind, box, state.label)
 
 
 def _depths(states: list[StateOut]) -> dict[uuid.UUID, int]:
@@ -76,15 +85,26 @@ def _depths(states: list[StateOut]) -> dict[uuid.UUID, int]:
 
 
 def _marker(state: StateOut) -> str:
-    """A marker state: its standard drawing scaled into the state's box, with its name below it when it is not just the kind's
-    own label."""
-    size, markup = STATE_MARKERS[StateKind(state.kind)]
+    """A marker state: its standard drawing scaled into its frame, the label (when it has one) inside it, and its name below
+    when it is not just the kind's own label."""
+    kind = StateKind(state.kind)
+    x, y, w, h = _box(state)
+    labelled = bool(state.label.strip())
+    size, markup = (LABELLED_MARKERS[kind].size, LABELLED_MARKERS[kind].svg) if labelled else STATE_MARKERS[kind]
     match = _ROOT.search(markup)
     inner = markup[match.end(): -len("</svg>")] if match else ""
-    scale_x, scale_y = state.width / size, state.height / size
-    drawing = f'<g transform="translate({state.x:.1f} {state.y:.1f}) scale({scale_x:.4f} {scale_y:.4f})">{inner}</g>'
+    drawing = f'<g transform="translate({x:.1f} {y:.1f}) scale({w / size:.4f} {h / size:.4f})">{inner}</g>'
+    if labelled:
+        lines = _wrap(state.label.strip(), max(int(LABELLED_MARKERS[kind].text_width / 5.6), 3), LABEL_MAX_LINES)
+        colour = LABEL_ON_FILL if LABELLED_MARKERS[kind].on_fill else _TEXT_COLOR
+        top = y + h / 2 - len(lines) * LABEL_LINE_HEIGHT / 2 + LABEL_FONT_SIZE
+        drawing += "".join(
+            f'<text x="{x + w / 2:.1f}" y="{top + i * LABEL_LINE_HEIGHT:.1f}" text-anchor="middle" '
+            f'font-size="{LABEL_FONT_SIZE}" fill="{colour}">{_text(line)}</text>'
+            for i, line in enumerate(lines)
+        )
     if state.name.strip() and state.name != STATE_KIND_LABEL.get(state.kind):
-        cx, ty = state.x + state.width / 2, state.y + state.height + 13
+        cx, ty = x + w / 2, y + h + 13
         drawing += f'<text x="{cx:.1f}" y="{ty:.1f}" text-anchor="middle" font-size="10" fill="{_MUTED}">{_text(state.name)}</text>'
     return drawing
 
@@ -210,16 +230,20 @@ def render_state_machine(model: StateMachineModel) -> str:
         boxes = {s.id: s for s in states}
         lines, labels = _transitions(model.transitions, boxes)
         looped = {t.source_state_id for t in model.transitions if t.source_state_id == t.target_state_id}
-        xs = [v for s in states for v in (s.x, s.x + s.width + (SELF_LOOP_REACH if s.id in looped else 0))]
-        ys = [v for s in states for v in (s.y - (SELF_LOOP_REACH if s.id in looped else 6), s.y + s.height + 18)]
+        frames = {s.id: _box(s) for s in states}
+        xs = [v for s in states for v in (frames[s.id][0], frames[s.id][0] + frames[s.id][2] + (SELF_LOOP_REACH if s.id in looped else 0))]
+        ys = [
+            v for s in states
+            for v in (frames[s.id][1] - (SELF_LOOP_REACH if s.id in looped else 6), frames[s.id][1] + frames[s.id][3] + 18)
+        ]
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
-        frames = "".join(_composite(s) for s in ordered if s.id in holding and StateKind(s.kind) is StateKind.STATE)
+        composites = "".join(_composite(s) for s in ordered if s.id in holding and StateKind(s.kind) is StateKind.STATE)
         leaves = "".join(
             _marker(s) if StateKind(s.kind) is not StateKind.STATE else _state(s)
             for s in ordered if not (s.id in holding and StateKind(s.kind) is StateKind.STATE)
         )
-        body = f"{frames}{lines}{leaves}{labels}"
+        body = f"{composites}{lines}{leaves}{labels}"
     defs = (
         f'<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
         f'<path d="M0,0 L10,5 L0,10 z" fill="{_INK}"/></marker>'

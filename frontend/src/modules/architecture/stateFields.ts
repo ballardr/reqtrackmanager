@@ -10,7 +10,7 @@ import { STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type S
 /** @param kind The kind to preselect. @returns A blank state form; a marker is named for its kind. */
 export function blankStateValues(kind: StateKind = "state"): StateFieldValues {
   return {
-    name: kind === "state" ? "" : STATE_KIND_LABEL[kind], description: "", kind, entry_action: "", exit_action: "", activity: "",
+    name: kind === "state" ? "" : STATE_KIND_LABEL[kind], description: "", kind, entry_action: "", exit_action: "", activity: "", label: "",
   };
 }
 
@@ -18,7 +18,7 @@ export function blankStateValues(kind: StateKind = "state"): StateFieldValues {
 export function valuesFromState(state: ArchitectureState): StateFieldValues {
   return {
     name: state.name, description: state.description, kind: state.kind, entry_action: state.entry_action,
-    exit_action: state.exit_action, activity: state.activity,
+    exit_action: state.exit_action, activity: state.activity, label: state.label,
   };
 }
 

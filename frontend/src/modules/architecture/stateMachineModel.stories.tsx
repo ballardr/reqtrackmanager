@@ -102,6 +102,25 @@ export const CanvasNodesUseMarkersContainersAndFindingTones: Story = {
   },
 };
 
+/** A marker with a label is drawn larger, centred on its stored box, with the label as its text; one with none is drawn as before. */
+export const ALabelledMarkerIsDrawnLargerAroundItsBoxWithItsText: Story = {
+  play: async () => {
+    const labelled = buildStateMachineModel({
+      states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "  Power on " } : s)),
+    });
+    const nodes = new Map(canvasNodes(labelled, layoutFromModel(labelled), { findings: [] }).map((n) => [n.id, n]));
+    const stored = box(layoutFromModel(labelled), "ste-0");
+    const drawn = nodes.get("ste-0")!;
+    await expect(drawn).toMatchObject({ width: 52, height: 52, markerText: { text: "Power on", width: 36, lines: 3, onFill: true } });
+    await expect((drawn.x ?? 0) + 26).toBe(stored.x + stored.width / 2);
+    await expect((drawn.y ?? 0) + 26).toBe(stored.y + stored.height / 2);
+    await expect(drawn.symbolSvg).toContain('viewBox="0 0 52 52"');
+    const plain = nodes.get("ste-3")!;
+    await expect(plain.markerText).toBeUndefined();
+    await expect(plain).toMatchObject({ width: 28, height: 28 });
+  },
+};
+
 /** A line keeps its attach points from the drawing; a transition to the same state is a line from a node to itself. */
 export const CanvasEdgesCarryPointsAndLabels: Story = {
   play: async () => {

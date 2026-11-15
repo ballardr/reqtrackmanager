@@ -706,6 +706,8 @@ export interface ArchitectureState extends ProjectScopedRow {
   entry_action: string;
   exit_action: string;
   activity: string;
+  /** Plain text drawn inside an initial, final or choice symbol (up to 40 characters); empty for an ordinary state. */
+  label: string;
   x: number;
   y: number;
   width: number;
@@ -726,7 +728,11 @@ export interface StateFieldValues {
   entry_action: string;
   exit_action: string;
   activity: string;
+  label: string;
 }
+
+/** The longest symbol label the server stores (characters). */
+export const SYMBOL_LABEL_MAX = 40;
 
 /** A transition with the codes of its two states and the diagram's version after the change. */
 export interface StateTransition {

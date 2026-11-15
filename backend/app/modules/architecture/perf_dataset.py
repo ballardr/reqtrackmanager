@@ -540,6 +540,7 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                     "parent_state_id": parent, "entry_action": f"enter_{slot}()" if detail else "",
                     "exit_action": f"leave_{slot}()" if detail and rng.random() < 0.5 else "",
                     "activity": "monitor()" if detail and rng.random() < 0.4 else "",
+                    "label": "OK?" if kind == "choice" else "Go" if kind == "initial" else "",
                     "x": float(slot % 6 * 220), "y": float(slot // 6 * 120), "width": 160.0, "height": 64.0,
                     "collapsed": rng.random() < 0.05,
                 },

@@ -36,11 +36,15 @@ The only way to modify a locked (Approved or Completed) requirement: a proposal 
 
 #### Choice
 
-A diamond in a state machine diagram. The guards on its outgoing transitions decide which path is taken. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+A diamond in a state machine diagram. The conditions (guards) on its outgoing transitions decide which path is taken. It can carry a symbol label, text drawn inside the diamond. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Close the loop
 
 Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
+
+#### Condition (guard)
+
+A condition, written as text, that must be true for a transition to be taken, for example "battery low". It is shown in square brackets after the event, and the lines leaving a choice are told apart by their conditions. The stored and exported name of the field is `guard`. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Component placement
 
@@ -80,7 +84,7 @@ What triggers a transition in a state machine diagram, such as `overpressure`. S
 
 #### Final state
 
-The ringed dot where a state machine diagram ends. A final state has no outgoing transitions. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+The ringed dot where a state machine diagram ends. A final state has no outgoing transitions and can carry a symbol label, text drawn inside the ring. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### General (Pain Point scores)
 
@@ -88,7 +92,7 @@ The part of a Pain Point's scores that applies to the whole Pain Point: every cr
 
 #### Guard
 
-A condition, written as text, that must hold for a transition to be taken; it is shown in square brackets on the transition. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+Another name for a [condition](#condition-guard) on a transition.
 
 #### Imported person
 
@@ -100,7 +104,7 @@ The part of a requirement that never changes once created: its project, componen
 
 #### Initial state
 
-The filled dot where a state machine diagram starts. An Active diagram needs exactly one initial state at the top level. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+The filled dot where a state machine diagram starts. An Active diagram needs exactly one initial state at the top level. It can carry a symbol label, text drawn inside the dot. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Lifecycle (requirement lifecycle)
 

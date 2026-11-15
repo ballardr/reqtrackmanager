@@ -71,7 +71,7 @@ def filter_states(
         if (kind is None or s.kind == kind)
         and (state_machine_diagram_id is None or s.state_machine_diagram_id == state_machine_diagram_id)
         and _matches(
-            search, s.unique_code, s.name, s.description, s.entry_action, s.exit_action, s.activity,
+            search, s.unique_code, s.name, s.description, s.entry_action, s.exit_action, s.activity, s.label,
             codes.get(s.state_machine_diagram_id, ""),
         )
     ]

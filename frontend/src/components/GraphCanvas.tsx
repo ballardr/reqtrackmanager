@@ -42,6 +42,17 @@ export type GraphNodeOutline = "rectangle" | "pointed-right" | "pointed-left" | 
 /** The colour family of a node (an annotation), drawn from the theme's tokens so it follows light and dark. */
 export type GraphNodeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
+/** Plain text drawn inside a marker, centred and wrapped to `width` canvas units, cut with an ellipsis after `lines` lines. */
+export interface GraphMarkerText {
+  text: string;
+  /** The width the text may use, in canvas units. */
+  width: number;
+  /** The most lines drawn. */
+  lines: number;
+  /** True when the text sits on the marker's fill (drawn in a light colour); false when it sits on the page. */
+  onFill: boolean;
+}
+
 /** A box on the canvas. `x`/`y` are the top-left corner in canvas units. */
 export interface GraphCanvasNode {
   id: string;
@@ -71,10 +82,12 @@ export interface GraphCanvasNode {
   tone?: GraphNodeTone;
   /**
    * Draws the node as a marker: no box, border or text, only `symbolSvg` filling the node's frame (a dot, a ring, a diamond).
-   * The label is spoken and listed but not drawn. A marker is met by lines only at the middle of its sides, is not
+   * The label is spoken and listed but not drawn (a `markerText` is drawn inside it). A marker is met by lines only at the middle of its sides, is not
    * resizable and is not a container.
    */
   marker?: boolean;
+  /** Text drawn inside a marker (a label on a decision symbol); ignored for a node that is not a marker. Plain text, never markup. */
+  markerText?: GraphMarkerText;
   /**
    * Draws the node as a container: a rounded frame with its label in a strip across the top and a see-through body, drawn
    * behind the nodes whose `parentId` names it. A node does not need this to be named as a parent; it only changes how

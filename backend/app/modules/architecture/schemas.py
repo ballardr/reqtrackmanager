@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
+    SYMBOL_LABEL_LENGTH,
     AttachPoint,
     Domain,
     ElementShape,
@@ -939,6 +940,7 @@ class StateCreate(BaseModel):
     entry_action: str = Field(default="", max_length=2000)
     exit_action: str = Field(default="", max_length=2000)
     activity: str = Field(default="", max_length=2000)
+    label: str = Field(default="", max_length=SYMBOL_LABEL_LENGTH)
     x: Coordinate = 0.0
     y: Coordinate = 0.0
     width: Extent = 160.0
@@ -958,6 +960,7 @@ class StateUpdate(BaseModel):
     entry_action: str | None = Field(default=None, max_length=2000)
     exit_action: str | None = Field(default=None, max_length=2000)
     activity: str | None = Field(default=None, max_length=2000)
+    label: str | None = Field(default=None, max_length=SYMBOL_LABEL_LENGTH)
     x: Coordinate | None = None
     y: Coordinate | None = None
     width: Extent | None = None
@@ -987,6 +990,7 @@ class StateOut(ProjectScopedRow):
     entry_action: str
     exit_action: str
     activity: str
+    label: str
     x: float
     y: float
     width: float

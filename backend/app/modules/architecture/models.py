@@ -56,7 +56,7 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
-from app.modules.architecture.enums import DISPLAY_NOTE_MAX
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX, SYMBOL_LABEL_LENGTH
 
 
 class OwnedNamedMixin(UUIDPKMixin, TimestampMixin):
@@ -860,6 +860,8 @@ class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
         parent_state_id: The composite state this state is nested in, or `None` at the top level. The database
             refuses to delete a state that still has children (the rules ask for them to be moved or deleted first).
         entry_action / exit_action / activity: Plain text a person reads, never evaluated or drawn as markup.
+        label: Up to 40 characters of plain text drawn inside an initial, final or choice symbol (`SYMBOL_LABEL_LENGTH`);
+            empty for an ordinary state, whose name is drawn in its box.
         x / y / width / height / collapsed: The box in diagram units; a collapsed composite state is drawn as one box.
         creator_id: The author.
     """
@@ -887,6 +889,7 @@ class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
     entry_action: Mapped[str] = mapped_column(Text, default="")
     exit_action: Mapped[str] = mapped_column(Text, default="")
     activity: Mapped[str] = mapped_column(Text, default="")
+    label: Mapped[str] = mapped_column(String(SYMBOL_LABEL_LENGTH), default="", server_default="")
     x: Mapped[float] = mapped_column(Float, default=0.0)
     y: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(Float, default=160.0)

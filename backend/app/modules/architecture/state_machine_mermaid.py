@@ -22,8 +22,9 @@ Design decisions:
   belong to their own block and Mermaid has no mark that reaches across.
 - A composite state's entry, exit and do lines are not written: Mermaid refuses a description on a block (its label is all
   it takes). The SVG omits them for the same reason of room.
-- A choice's name is left out (Mermaid draws the diamond without text); its code is written as a comment line so the text
-  still names it.
+- A choice's name and symbol label are left out (Mermaid draws the diamond without text, and the start and end marks cannot
+  carry one); the choice's code and its label are written as a comment line so the text still names it. The label is not lost
+  from the SVG, PNG or bundle.
 
 Dependencies: `schemas` (the model), `state_shapes` (the label rules).
 """
@@ -92,7 +93,7 @@ def render_state_machine_mermaid(model: StateMachineModel) -> str:
             if kind in (StateKind.INITIAL, StateKind.FINAL):
                 continue
             if kind is StateKind.CHOICE:
-                out += [f"{indent}%% {_text(s.unique_code)}", f"{indent}state {key} <<choice>>"]
+                out += [f"{indent}%% {_text(f'{s.unique_code} {s.label}'.strip())}", f"{indent}state {key} <<choice>>"]
                 continue
             out.append(f'{indent}state "{_text(s.unique_code)} {_text(s.name)}" as {key}')
             if children[s.id]:

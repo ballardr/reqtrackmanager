@@ -2,11 +2,11 @@
  * Module: modules/architecture/StateMachineOutline
  *
  * The state machine diagram editor's "Outline" tab: the text alternative to the canvas. The states are a tree (a composite
- * state holds its children), the transitions a table (from, to, event, guard, action), and the findings follow. It follows the
+ * state holds its children), the transitions a table (from, to, event, condition (guard), action), and the findings follow. It follows the
  * page: it is built from the model and the drawing being edited, so a state moved inside another shows under it before Save.
  *
  * Responsibilities:
- * - List every state with its code, kind and entry, exit and do lines, nested as drawn.
+ * - List every state with its code, kind, symbol label and entry, exit and do lines, nested as drawn.
  * - List every transition with the codes and names of its two states; selecting a row selects it on the canvas and in the
  *   Selection card.
  *
@@ -61,6 +61,7 @@ export function StateMachineOutline({
                 {stateName(node.state)}
               </button>
               <span className="text-muted">{STATE_KIND_LABEL[node.state.kind]}</span>
+              {node.state.label && <span className="text-muted">Symbol label: {node.state.label}</span>}
               {actionLines(node.state) && <span className="text-muted" style={{ whiteSpace: "pre-line" }}>{actionLines(node.state)}</span>}
             </span>
           )}
@@ -77,7 +78,7 @@ export function StateMachineOutline({
                   <th scope="col">From</th>
                   <th scope="col">To</th>
                   <th scope="col">Event</th>
-                  <th scope="col">Guard</th>
+                  <th scope="col">Condition (guard)</th>
                   <th scope="col">Action</th>
                 </tr>
               </thead>

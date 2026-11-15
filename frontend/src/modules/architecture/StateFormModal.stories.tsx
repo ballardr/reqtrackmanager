@@ -32,14 +32,27 @@ export const EditShowsTheStatesValuesAndNeedsAName: Story = {
   },
 };
 
-/** A marker takes a name only: the actions go away when the kind is a marker. */
-export const AMarkerKindHidesTheActions: Story = {
-  args: { initial: buildState({ name: "Final state", kind: "final" }) },
+/** A marker takes a name and a symbol label: the actions go away when the kind is a marker, and the label when it is a state. */
+export const AMarkerKindHidesTheActionsAndShowsTheSymbolLabel: Story = {
+  args: { initial: buildState({ name: "Final state", kind: "final", label: "Landed" }) },
   play: async () => {
     const d = dialog();
     await expect(d.queryByLabelText("Entry action")).not.toBeInTheDocument();
+    await expect(d.getByLabelText("Symbol label")).toHaveValue("Landed");
     await userEvent.selectOptions(d.getByLabelText("Kind"), "state");
     await expect(d.getByLabelText("Entry action")).toBeInTheDocument();
+    await expect(d.queryByLabelText("Symbol label")).not.toBeInTheDocument();
+  },
+};
+
+/** The label is limited to 40 characters in the field, so a longer entry cannot be typed. */
+export const TheSymbolLabelTakesFortyCharacters: Story = {
+  args: { initial: buildState({ name: "Choice", kind: "choice" }) },
+  play: async () => {
+    const field = dialog().getByLabelText("Symbol label");
+    await expect(field).toHaveAttribute("maxlength", "40");
+    await userEvent.type(field, "Battery low?");
+    await expect(field).toHaveValue("Battery low?");
   },
 };
 
