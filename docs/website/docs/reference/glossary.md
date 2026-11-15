@@ -28,7 +28,7 @@ A short plain-text message written by a server administrator (for the whole plat
 
 #### Attach point
 
-One of the eight points on the edge of a box (the four corners and the four midpoints) where a line meets it. Left automatic, a line uses the point nearest its other end; the end of a selected line can be dragged to another point on the same box. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+One of the eight points on the edge of a box (the four corners and the four midpoints) where a line meets it. A box shows its points only while the pointer is near it, while it is selected and while a line is drawn nearby. Left automatic, a line uses the point nearest its other end; the end of a selected line can be dragged to another point on the same box. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
 #### Audit trail
 

@@ -11,6 +11,8 @@
  * - Draw eight attach handles on every box and route each line between the points `graphAttachPoints` chooses (the nearest
  *   pair, or the ends the consumer fixed), following a box while it is dragged or resized; dragging a line's end to
  *   another handle of the same box is reported as an anchor change.
+ * - Show a box's attach points only near the pointer, on the selected box and on a box with focus (`attachPointVisibility`);
+ *   the nearness is worked out from the pointer position and set as an attribute on the box's element, never as React state.
  * - Draw each leader (an annotation's pointer) as a thin line from its node to the target: a node (nearest attach points), the
  *   middle of a line or a free position (a small end handle the person can drag; dropping a dragged end on a node names that node).
  * - In comment mode report a click (empty canvas, a node or a line) instead of selecting or editing, and draw the consumer's
@@ -76,6 +78,7 @@ import {
 import {
   ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
+import { nearBoxIds } from "./graphAttachProximity";
 import { GraphNodeBadges } from "./GraphNodeBadges";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
 import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
@@ -410,6 +413,7 @@ export function GraphCanvasView({
   snapGrid,
   snapOn = false,
   snapInvertKey,
+  attachPointVisibility = "near",
   height = 480,
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
@@ -497,6 +501,52 @@ export function GraphCanvasView({
     }
     return map;
   }, [nodes, moved, sized]);
+
+  // Attach points near the pointer: the boxes the pointer is near carry `data-attach-near` on their element (the stylesheet shows
+  // their points). It is set from a pointer move through the DOM, never through state, so a move re-renders nothing; the work
+  // is one pass over the boxes per animation frame. Read-only and comment mode draw no points, so they track nothing.
+  const wrapper = useRef<HTMLDivElement>(null);
+  const nearIds = useRef<Set<string>>(new Set());
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const frame = useRef(0);
+  const tracking = attachPointVisibility === "near" && !readOnly && !commenting;
+  const containerIds = useMemo(() => new Set(nodes.filter((n) => n.container).map((n) => n.id)), [nodes]);
+  const latestBoxes = useLatest(boxes);
+  const latestContainers = useLatest(containerIds);
+  const markNear = useCallback((ids: Set<string>) => {
+    const root = wrapper.current;
+    if (!root) return;
+    const mark = (id: string, near: boolean) => {
+      const el = root.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+      if (near) el?.setAttribute("data-attach-near", "true");
+      else el?.removeAttribute("data-attach-near");
+    };
+    for (const id of nearIds.current) if (!ids.has(id)) mark(id, false);
+    for (const id of ids) if (!nearIds.current.has(id)) mark(id, true);
+    nearIds.current = ids;
+  }, []);
+  const trackPointer = useCallback((event: { clientX: number; clientY: number }) => {
+    pointer.current = { x: event.clientX, y: event.clientY };
+    if (frame.current !== 0) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const instance = flow.current;
+      const screen = pointer.current;
+      if (!instance || !screen) return;
+      const at = instance.screenToFlowPosition(screen);
+      const entries = Array.from(latestBoxes.current, ([id, box]): [string, Box & { container: boolean }] => [id, { ...box, container: latestContainers.current.has(id) }]);
+      markNear(nearBoxIds(entries, at, instance.getZoom()));
+    });
+  }, [latestBoxes, latestContainers, markNear]);
+  const clearNear = useCallback(() => {
+    pointer.current = null;
+    if (frame.current !== 0) { cancelAnimationFrame(frame.current); frame.current = 0; }
+    markNear(new Set());
+  }, [markNear]);
+  useEffect(() => {
+    if (!tracking) clearNear();
+    return clearNear;
+  }, [tracking, clearNear]);
 
   // A local move, resize or leader end lasts only until the consumer's props catch up. Once the base it was measured from
   // has changed it is spent, and is dropped: kept, it would apply again whenever the consumer's value returned to that base,
@@ -932,9 +982,12 @@ export function GraphCanvasView({
 
   return (
     <div
-      role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}
+      ref={wrapper} role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}
       onDragOver={allowDrop} onDrop={dropItem} onKeyDownCapture={handleKey}
+      onPointerMoveCapture={tracking ? trackPointer : undefined}
+      onPointerLeave={tracking ? clearNear : undefined}
       onPointerDownCapture={(event) => {
+        if (tracking) trackPointer(event);
         if (snapGrid !== undefined && (event.target as HTMLElement).closest(".react-flow__node, .react-flow__resize-control")) setGesture(true);
       }}
     >
@@ -945,7 +998,7 @@ export function GraphCanvasView({
         {snapGrid !== undefined && snapOn ? ` ${text.keyboardSnapHelp}` : ""}
       </span>
       <ReactFlow
-        className={["graph-canvas", readOnly ? "graph-canvas-readonly" : "", commenting ? "graph-canvas-comment" : ""].filter(Boolean).join(" ")}
+        className={["graph-canvas", attachPointVisibility === "near" ? "graph-attach-near" : "", readOnly ? "graph-canvas-readonly" : "", commenting ? "graph-canvas-comment" : ""].filter(Boolean).join(" ")}
         nodes={allNodes}
         edges={allEdges}
         nodeTypes={NODE_TYPES}

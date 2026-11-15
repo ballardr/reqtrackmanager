@@ -38,6 +38,7 @@ import { Badge } from "../../components/Badge";
 import { DetailLayout } from "../../components/DetailLayout";
 import { EditHistoryButtons } from "../../components/EditHistoryButtons";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
+import { useAttachPointVisibility } from "../../hooks/useAttachPointVisibility";
 import { useSnapToGrid } from "../../hooks/useSnapToGrid";
 import { GraphCanvas, type GraphCanvasSelection, type GraphNodeBadge } from "../../components/GraphCanvas";
 import { RecordActivity } from "../../components/RecordActivity";
@@ -399,6 +400,7 @@ export function DiagramEditorPage() {
     [layout.boxes, resolved.edges, drawnEdgeIds],
   );
   const snap = useSnapToGrid();
+  const attachPoints = useAttachPointVisibility();
   const commentLayer = useCanvasComments({
     projectId, artefactType: "architecture_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick,
   });
@@ -697,6 +699,7 @@ export function DiagramEditorPage() {
         showComments={commentLayer.showComments} onShowCommentsChange={commentLayer.setShowComments}
         showResolved={commentLayer.showResolved} onShowResolvedChange={commentLayer.setShowResolved}
         snapToGrid={snap.on} onSnapToGridChange={snap.setOn}
+        attachPointsAlways={attachPoints.always} onAttachPointsAlwaysChange={attachPoints.setAlways}
       />
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
@@ -795,7 +798,7 @@ export function DiagramEditorPage() {
             <div ref={setCanvasBox}>
             <GraphCanvas
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
-              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
+              readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
               // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
               onSelect={(next) => { if (next !== null || pickingSpot === null) { setSelection(next); setFocusNew(null); } }}
               onCanvasClick={(at) => {

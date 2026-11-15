@@ -85,6 +85,8 @@ The Selection card edits the selected state in place: name and kind (the name of
 
 The settings button beside **Export** holds **Snap to grid**, off by default. While it is on, a dragged or resized state lands with its edges on a grid, arrow keys move the selected state by one grid step, and a dot grid is drawn. Holding **Shift** while dragging or resizing does the opposite for that move. The choice belongs to the person using the editor: it is kept in the browser, is shared with the block diagram editor, and is not part of the diagram, so it changes nothing for other people and moves no state already placed.
 
+The same button holds **Always show attach points**, off by default: a state then draws its attach points all the time instead of only while the pointer is near it, while it is selected and while a line is drawn nearby. It is kept in your account and shared with the block diagram editor.
+
 ## Adding and editing transitions
 
 Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. Changes are stored when the cursor leaves the card's fields, or with **Save transition**. Double-clicking a line opens the same fields in a dialog.

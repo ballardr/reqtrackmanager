@@ -4695,6 +4695,9 @@ const en = {
     snapLabel: "Snap to grid",
     snapHelp:
       "On: boxes move and resize in steps of the grid, and their edges land on it.\nOff: boxes move freely.\nHolding Shift while dragging or resizing does the opposite for that move. The choice is kept in this browser; it is not part of the diagram and changes nothing for other people.",
+    attachPointsLabel: "Always show attach points",
+    attachPointsHelp:
+      "On: every box draws its attach points all the time.\nOff: a box draws them only while the pointer is near it, while it is selected or focused, and while a line is being drawn.\nThe choice is kept in your account; it is not part of the diagram and changes nothing for other people.",
   },
   canvasComments: {
     modeLabel: "Comment",

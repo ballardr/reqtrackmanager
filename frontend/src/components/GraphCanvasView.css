@@ -173,6 +173,25 @@
   visibility: hidden;
 }
 
+/* Comment mode connects nothing, so it draws no attach points. */
+.graph-canvas-comment .react-flow__handle {
+  visibility: hidden;
+}
+
+/* Attach points show only near the pointer (`data-attach-near`, set by the canvas), on the selected box, on a box with focus
+   and on the handle a line is being drawn from. Hidden points keep their size and stay in the page, so a drag can start from
+   one and the keyboard routes are unchanged; `attachPointVisibility="always"` leaves them drawn. */
+.graph-canvas.graph-attach-near .react-flow__node-graph .react-flow__handle {
+  opacity: 0;
+}
+
+.graph-canvas.graph-attach-near .react-flow__node-graph.selected .react-flow__handle,
+.graph-canvas.graph-attach-near .react-flow__node-graph:focus-within .react-flow__handle,
+.graph-canvas.graph-attach-near .react-flow__node-graph[data-attach-near="true"] .react-flow__handle,
+.graph-canvas.graph-attach-near .react-flow__node-graph .react-flow__handle.connectingfrom {
+  opacity: 1;
+}
+
 /* A toned node (an annotation) takes its tone's colour for its border and a light tint of it behind the text. */
 .graph-node-tone {
   --graph-node-tone-color: var(--color-text-muted);

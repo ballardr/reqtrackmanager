@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useState } from "react";
+import { Profiler, useRef, useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { GRAPH_DROP_MIME, GraphCanvas, type GraphCanvasEdge, type GraphCanvasNode, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
@@ -1138,5 +1138,148 @@ export const ABadgeWithSeveralTargetsOpensAList: Story = {
     await userEvent.click(within(list).getByRole("button", { name: "Faults" }));
     await waitFor(() => expect(canvas.getByTestId("opened")).toHaveTextContent("Faults"));
     await waitFor(() => expect(within(document.body).queryByRole("list", { name: "Open a state machine diagram" })).toBeNull());
+  },
+};
+
+const APPROACH_NODES: GraphCanvasNode[] = [
+  { id: "a", label: "Alpha", x: 0, y: 0 },
+  { id: "b", label: "Bravo", x: 400, y: 0 },
+];
+
+/** A box's handle by attach point. */
+const handleOf = (node: HTMLElement, point: string) => node.querySelector(`.react-flow__handle[data-handleid="${point}"]`) as HTMLElement;
+/** Whether a handle is drawn: hidden ones keep their size and stay in the page, so only the opacity tells. */
+const drawn = (node: HTMLElement) => getComputedStyle(handleOf(node, "top")).opacity === "1";
+/** Waits until the opening fit has finished moving the view, so a box's measured place is where it stays. */
+const settled = async (root: HTMLElement) => {
+  const transform = () => (root.querySelector(".react-flow__viewport") as HTMLElement | null)?.style.transform ?? "";
+  let last = "";
+  for (let tries = 0; tries < 40; tries += 1) {
+    const now = transform();
+    if (now !== "" && now === last) return;
+    last = now;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+};
+/** Where a pointer a few screen pixels outside the box's left edge, level with its middle, is. */
+const justLeftOf = (node: HTMLElement, gap = 10) => {
+  const r = node.getBoundingClientRect();
+  return { clientX: r.left - gap, clientY: r.top + r.height / 2 };
+};
+
+/** At rest no box shows its attach points; the pointer coming near a box shows that box's points and no other's, and leaving hides them. */
+export const AttachPointsShowOnlyNearThePointer: Story = {
+  render: () => <GraphCanvas nodes={APPROACH_NODES} edges={[]} ariaLabel="Approach" showViewToggle={false} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const a = await canvas.findByLabelText("Alpha, node");
+    const b = await canvas.findByLabelText("Bravo, node");
+    await settled(canvasElement);
+    await expect(handleOf(a, "top")).toBeInTheDocument();
+    await expect(drawn(a)).toBe(false);
+    await expect(drawn(b)).toBe(false);
+    await userEvent.pointer({ target: canvasElement.querySelector(".react-flow__pane") as HTMLElement, coords: justLeftOf(a) });
+    await waitFor(() => expect(drawn(a)).toBe(true));
+    await expect(drawn(b)).toBe(false);
+    const far = b.getBoundingClientRect();
+    await userEvent.pointer({ target: canvasElement.querySelector(".react-flow__pane") as HTMLElement, coords: { clientX: far.right + 200, clientY: far.bottom + 200 } });
+    await waitFor(() => expect(drawn(a)).toBe(false));
+  },
+};
+
+/** The selected box keeps its points drawn while the pointer is elsewhere; a box with keyboard focus shows them too. */
+export const SelectedAndFocusedBoxesShowTheirPoints: Story = {
+  render: () => <Host />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const sensor = await canvas.findByLabelText("Sensor, node");
+    const cloud = await canvas.findByLabelText("Cloud service, node");
+    await settled(canvasElement);
+    await expect(drawn(sensor)).toBe(false);
+    cloud.focus();
+    await waitFor(() => expect(drawn(cloud)).toBe(true));
+    cloud.blur();
+    await userEvent.click(sensor);
+    await waitFor(() => expect(canvas.getByTestId("selection")).toHaveTextContent("node:sensor"));
+    const pane = canvasElement.querySelector(".react-flow__pane") as HTMLElement;
+    const r = pane.getBoundingClientRect();
+    await userEvent.pointer({ target: pane, coords: { clientX: r.right - 5, clientY: r.bottom - 5 } });
+    await waitFor(() => expect(drawn(cloud)).toBe(false));
+    await expect(drawn(sensor)).toBe(true);
+  },
+};
+
+/** While a line is drawn from a box, that box's start point stays drawn and a box the pointer nears shows its points to end on. */
+export const DrawingALineShowsPointsOnTheBoxItNears: Story = {
+  render: () => <GraphCanvas nodes={APPROACH_NODES} edges={[]} ariaLabel="Drawing" showViewToggle={false} onConnect={() => undefined} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const a = await canvas.findByLabelText("Alpha, node");
+    const b = await canvas.findByLabelText("Bravo, node");
+    await settled(canvasElement);
+    const pane = canvasElement.querySelector(".react-flow__pane") as HTMLElement;
+    const start = handleOf(a, "right");
+    const from = start.getBoundingClientRect();
+    const origin = { clientX: from.left + from.width / 2, clientY: from.top + from.height / 2 };
+    // Approach the handle first, as a person does, so it is drawn and can be pressed.
+    await userEvent.pointer({ target: pane, coords: origin });
+    await waitFor(() => expect(drawn(a)).toBe(true));
+    await userEvent.pointer([{ keys: "[MouseLeft>]", target: start, coords: origin }]);
+    const into = justLeftOf(b, 12);
+    await userEvent.pointer([
+      { target: pane, coords: { clientX: (origin.clientX + into.clientX) / 2, clientY: origin.clientY } },
+      { target: pane, coords: into },
+    ]);
+    await waitFor(() => expect(drawn(b)).toBe(true));
+    await expect(getComputedStyle(handleOf(a, "right")).opacity).toBe("1");
+    await userEvent.pointer([{ keys: "[/MouseLeft]", target: pane, coords: into }]);
+  },
+};
+
+/** A consumer can ask for the points to stay drawn on every box. */
+export const AttachPointsCanAlwaysBeShown: Story = {
+  render: () => <GraphCanvas nodes={APPROACH_NODES} edges={[]} ariaLabel="Always" showViewToggle={false} attachPointVisibility="always" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const a = await canvas.findByLabelText("Alpha, node");
+    const b = await canvas.findByLabelText("Bravo, node");
+    await expect(drawn(a)).toBe(true);
+    await expect(drawn(b)).toBe(true);
+  },
+};
+
+const MANY_NODES: GraphCanvasNode[] = Array.from({ length: 120 }, (_, i) => ({ id: `n${i}`, label: `Box ${i}`, x: (i % 12) * 220, y: Math.floor(i / 12) * 120 }));
+
+/** A large drawing that counts what React commits in a data attribute, written to the page directly so counting renders nothing itself. */
+function CountedDrawing() {
+  const counter = useRef<HTMLOutputElement>(null);
+  const commits = useRef(0);
+  return (
+    <div>
+      <Profiler id="canvas" onRender={() => { commits.current += 1; if (counter.current) counter.current.dataset.commits = String(commits.current); }}>
+        <GraphCanvas nodes={MANY_NODES} edges={[]} ariaLabel="Large" showViewToggle={false} />
+      </Profiler>
+      <output ref={counter} data-testid="commits" data-commits="0" />
+    </div>
+  );
+}
+
+/** Moving the pointer over a large drawing changes the points through the page only: React commits nothing. */
+export const MovingThePointerOverALargeDrawingRendersNothing: Story = {
+  render: () => <CountedDrawing />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const first = await canvas.findByLabelText("Box 0, node");
+    const read = () => canvas.getByTestId("commits").dataset.commits;
+    // Let the opening fit and measuring settle before counting.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const before = read();
+    const pane = canvasElement.querySelector(".react-flow__pane") as HTMLElement;
+    const r = first.getBoundingClientRect();
+    for (let step = 0; step < 12; step += 1) {
+      await userEvent.pointer({ target: pane, coords: { clientX: r.left + step * 12, clientY: r.top + step * 6 } });
+    }
+    await waitFor(() => expect(canvasElement.querySelector('.react-flow__node[data-attach-near="true"]')).not.toBeNull());
+    await expect(read()).toBe(before);
   },
 };

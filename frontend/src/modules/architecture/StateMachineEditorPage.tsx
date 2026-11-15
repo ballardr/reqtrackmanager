@@ -31,6 +31,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { Badge } from "../../components/Badge";
 import { useCanvasComments } from "../../components/CanvasCommentLayer";
+import { useAttachPointVisibility } from "../../hooks/useAttachPointVisibility";
 import { useSnapToGrid } from "../../hooks/useSnapToGrid";
 import { CommentModeToggle } from "../../components/CommentModeToggle";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -178,6 +179,7 @@ export function StateMachineEditorPage() {
     [model, layout],
   );
   const snap = useSnapToGrid();
+  const attachPoints = useAttachPointVisibility();
   const commentLayer = useCanvasComments({
     projectId, artefactType: "architecture_state_machine_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick,
   });
@@ -380,7 +382,7 @@ export function StateMachineEditorPage() {
       <StateMachineAddMenu disabled={!editable || editor.saving} onAdd={(kind) => void addState(kind, null)} />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
       {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
-      <StateMachineSettingsButton snapToGrid={snap.on} onSnapToGridChange={snap.setOn} />
+      <StateMachineSettingsButton snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={attachPoints.always} onAttachPointsAlwaysChange={attachPoints.setAlways} />
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
   );
@@ -478,7 +480,7 @@ export function StateMachineEditorPage() {
               <GraphCanvas
                 nodes={nodes} edges={edges} ariaLabel={`State machine diagram ${diagram.name}`} height={canvasHeight}
                 readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
-                {...commentLayer.canvasProps} {...snap.canvasProps}
+                {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps}
                 onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}

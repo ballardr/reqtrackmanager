@@ -286,6 +286,13 @@ export interface GraphCanvasProps {
    * box by one grid step, and a dot grid is drawn. Without it the canvas never snaps and draws its plain dotted background.
    */
   snapGrid?: number;
+  /**
+   * When a box's eight attach points are drawn: `near` (default) shows them only while the pointer is within 24 screen pixels
+   * of the box (a container only along its edge), on the selected box, on a box with keyboard focus, and, while a line is
+   * drawn, on the box it starts from and on every box the pointer nears; `always` draws them on every box all the time. The
+   * points stay in the page and keep their size when hidden, so a keyboard or test route to them is unchanged.
+   */
+  attachPointVisibility?: "near" | "always";
   /** The person's Snap to grid setting; off by default. Switching it on moves no box that is already placed. */
   snapOn?: boolean;
   /**
