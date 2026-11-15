@@ -223,6 +223,48 @@ def test_the_svg_draws_a_leader_to_a_box_a_line_midpoint_and_a_point_with_the_no
     assert (x2, y2) == (700.0, 300.0) and (x1, y1) == (160.0, 260.0)
 
 
+def test_a_note_with_no_tone_is_stored_and_survives_a_bundle_round_trip(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch notes none")
+    p = project["id"]
+    _a, _b, _link, diagram, boxes = _flow(client, token, p)
+    _save(client, token, p, diagram, boxes, [{"text": "Label", "tone": "none"}, {"text": "Boxed", "tone": "neutral"}])
+    assert [n["tone"] for n in view(client, token, p, diagram["id"])["notes"]] == ["none", "neutral"]
+
+    exported = client.get(f"/api/v1/projects/{p}/export", headers=auth_headers(token))
+    imported = client.post(
+        "/api/v1/projects/import", data={"organization_id": org["id"], "name": "Arch notes none copy"},
+        files={"file": ("bundle.zip", exported.content, "application/zip")}, headers=auth_headers(token),
+    )
+    assert imported.status_code == 201, imported.text
+    copy = imported.json()["project"]
+    listing = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
+    shown = view(client, token, copy["id"], listing[0]["id"])["notes"]
+    assert [(n["text"], n["tone"]) for n in shown] == [("Label", "none"), ("Boxed", "neutral")]
+
+
+def test_the_svg_draws_a_note_with_no_tone_as_text_alone_and_skips_an_empty_one(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch notes none svg")
+    p = project["id"]
+    a, _b, _link, diagram, boxes = _flow(client, token, p)
+    block = {"x": 0, "y": 200, "width": 160, "height": 60}
+    _save(client, token, p, diagram, boxes, [
+        {"text": "Plain label", "tone": "none", "leader_kind": "element", "leader_element_id": a["id"], **block},
+        {"text": "  ", "tone": "none", "x": 400, "y": 400, "width": 160, "height": 60},
+        {"text": "", "tone": "neutral", "x": 700, "y": 400, "width": 160, "height": 60},
+    ])
+    svg = _svg(client, token, p, diagram["id"])
+    groups = re.findall(r'<g data-note="[^"]+">(.*?)</g>', svg)
+    # The text-only note has no rectangle; the empty note with no tone is skipped; an empty neutral note keeps its block.
+    assert len(groups) == 2
+    assert "<rect" not in groups[0] and "Plain label" in groups[0]
+    assert "<rect" in groups[1]
+    # The leader of a text-only note is still drawn, in the neutral line colour.
+    assert _leader_line(svg) == (80.0, 200.0, 80.0, 80.0)
+    assert 'stroke="#64748B"' in svg
+    # The skipped note takes no room: the drawing ends at the empty neutral note (x 700 + 160), not at a note beyond it.
+    assert "viewBox" in svg
+
+
 def test_a_leader_to_a_box_a_switch_hides_is_not_drawn_and_a_hidden_box_never_appears_in_mermaid(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch notes hidden")
     p = project["id"]

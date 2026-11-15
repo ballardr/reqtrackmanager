@@ -116,6 +116,7 @@ type NodeData = {
   dashed?: boolean;
   outline: GraphNodeOutline;
   tone?: GraphNodeTone;
+  placeholder?: boolean;
   resizable: boolean;
   marker: boolean;
   markerText?: GraphMarkerText;
@@ -211,6 +212,7 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     "graph-node", data.dashed ? "graph-node-dashed" : "", shaped ? "graph-node-shaped" : "",
     data.container ? "graph-node-container" : "",
     data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
+    data.placeholder ? "graph-node-placeholder" : "",
   ].filter(Boolean).join(" ");
   return (
     <>
@@ -606,7 +608,7 @@ export function GraphCanvasView({
         ariaLabel: text.nodeAria(n.label),
         data: {
           label: n.label, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
-          accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone,
+          accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone, placeholder: n.placeholder,
           resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, markerText: n.marker ? n.markerText : undefined, container: n.container === true,
         },
       };

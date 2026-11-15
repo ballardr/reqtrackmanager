@@ -94,8 +94,10 @@ class AttachPoint(str, enum.Enum):
 
 
 class NoteTone(str, enum.Enum):
-    """The colour family of an annotation note on a diagram, drawn from the theme's tokens (light and dark)."""
+    """The colour family of an annotation note on a diagram, drawn from the theme's tokens (light and dark). `NONE` draws
+    the text alone, with no fill, border or dashed outline."""
 
+    NONE = "none"
     NEUTRAL = "neutral"
     INFO = "info"
     SUCCESS = "success"

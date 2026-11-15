@@ -40,8 +40,11 @@ import { Spinner } from "./Spinner";
  */
 export type GraphNodeOutline = "rectangle" | "pointed-right" | "pointed-left" | "pointed-both" | "ellipse";
 
-/** The colour family of a node (an annotation), drawn from the theme's tokens so it follows light and dark. */
-export type GraphNodeTone = "neutral" | "info" | "success" | "warning" | "danger";
+/**
+ * The colour family of a node (an annotation), drawn from the theme's tokens so it follows light and dark. `none` draws the
+ * text alone, with no fill, border or dashed edge; a faint outline shows only while the node is hovered, selected or a placeholder.
+ */
+export type GraphNodeTone = "none" | "neutral" | "info" | "success" | "warning" | "danger";
 
 /** Plain text drawn inside a marker, centred and wrapped to `width` canvas units, cut with an ellipsis after `lines` lines. */
 export interface GraphMarkerText {
@@ -109,8 +112,10 @@ export interface GraphCanvasNode {
   body?: string;
   /** The outline; defaults to `rectangle`. */
   outline?: GraphNodeOutline;
-  /** Tints the node (its border and background) in a tone's colour; none draws the usual surface. */
+  /** Tints the node (its border and background) in a tone's colour; left out, the node has the usual surface. */
   tone?: GraphNodeTone;
+  /** Marks `label` as a stand-in for text the node does not have yet: drawn muted, with a faint outline so the node can be found. */
+  placeholder?: boolean;
   /**
    * Draws the node as a marker: no box, border or text, only `symbolSvg` filling the node's frame (a dot, a ring, a diamond).
    * The label is spoken and listed but not drawn (a `markerText` is drawn inside it). A marker is met by lines only at the middle of its sides, is not

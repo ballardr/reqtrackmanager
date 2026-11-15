@@ -451,6 +451,111 @@ export const ANoteIsEditedInPlainText: Story = {
   },
 };
 
+/** Clicks empty canvas at a position inside the pane (a real pointer click, so the canvas reports its position). */
+async function clickPane(canvasElement: HTMLElement, at: { x: number; y: number }) {
+  const pane = canvasElement.querySelector(".react-flow__pane") as HTMLElement;
+  const rect = pane.getBoundingClientRect();
+  await userEvent.pointer({ keys: "[MouseLeft]", target: pane, coords: { clientX: rect.left + at.x, clientY: rect.top + at.y } });
+}
+
+export const ANoteWithNoToneIsItsTextAloneWithNoCaption: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await addFromMenu(canvas, "Add note");
+    const text = await canvas.findByRole("textbox", { name: "Note text" });
+    await userEvent.type(text, "Plain label");
+    await userEvent.tab();
+    const boxed = await canvas.findByLabelText("Plain label, node");
+    await expect(boxed.querySelector(".graph-node-caption")?.textContent).toBe("Note");
+    await expect(boxed.querySelector(".graph-node")?.classList.contains("graph-node-dashed")).toBe(true);
+    await userEvent.selectOptions(await noteField(canvas, "Tone"), "none");
+    // Select another box, so the colours read are the note's own and not the selection ring's.
+    await select(canvas, "Gateway");
+    const plain = await canvas.findByLabelText("Plain label, node");
+    const box = plain.querySelector(".graph-node") as HTMLElement;
+    await expect(box.classList.contains("graph-node-tone-none")).toBe(true);
+    await expect(box.classList.contains("graph-node-dashed")).toBe(false);
+    await expect(plain.querySelector(".graph-node-caption")).toBeNull();
+    await expect(getComputedStyle(box).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    await expect(getComputedStyle(box).borderTopColor).toBe("rgba(0, 0, 0, 0)");
+    // The wording is still the accessible name, and the tone's help lists None.
+    await expect(within(plain).getByText("Plain label")).toBeInTheDocument();
+  },
+};
+
+export const AnEmptyNoteWithNoToneKeepsAFaintOutlineSoItCanBeFound: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await addFromMenu(canvas, "Add note");
+    await userEvent.selectOptions(await noteField(canvas, "Tone"), "none");
+    await userEvent.tab();
+    // Deselect by choosing another box, so the outline seen is the empty-note one and not the selection ring.
+    await select(canvas, "Gateway");
+    const empty = await canvas.findByLabelText("Empty note, node");
+    const box = empty.querySelector(".graph-node") as HTMLElement;
+    await expect(box.classList.contains("graph-node-placeholder")).toBe(true);
+    await expect(getComputedStyle(box).borderTopStyle).toBe("dashed");
+    await expect(getComputedStyle(box).borderTopColor).not.toBe("rgba(0, 0, 0, 0)");
+  },
+};
+
+export const NoteModePlacesANoteAtEachClickAndEscapeLeavesIt: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Gateway, node");
+    const noteToggle = canvas.getByRole("button", { name: "Note" });
+    const commentToggle = canvas.getByRole("button", { name: "Comment" });
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(noteToggle);
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "true");
+    await clickPane(canvasElement, { x: 40, y: 260 });
+    // The note is placed, selected, and its text has the cursor (add, then edit).
+    const text = await canvas.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(text).toHaveFocus());
+    await expect(canvasElement.querySelectorAll('[aria-label$="Empty note, node"], [aria-label="Empty note, node"]').length).toBe(1);
+    await userEvent.type(text, "First");
+    await userEvent.tab();
+    // The mode stays on, so a second click places a second note, and the first is not lost.
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "true");
+    await clickPane(canvasElement, { x: 260, y: 260 });
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-node-tone").length).toBe(2));
+    // Comment and Note are never both on.
+    await userEvent.click(commentToggle);
+    await expect(commentToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(noteToggle);
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(commentToggle).toHaveAttribute("aria-pressed", "false");
+    // Escape leaves the mode, and a click then selects again instead of placing a note.
+    (document.activeElement as HTMLElement | null)?.blur();
+    await userEvent.keyboard("{Escape}");
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "false");
+    await clickPane(canvasElement, { x: 500, y: 260 });
+    await expect(canvasElement.querySelectorAll(".graph-node-tone").length).toBe(2);
+  },
+};
+
+export const TheNoteSwitchExplainsBothStatesOnTheButton: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const noteToggle = await canvas.findByRole("button", { name: "Note" });
+    await userEvent.hover(noteToggle);
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("On:");
+    await expect(tip).toHaveTextContent("Off:");
+    await expect(canvas.queryByRole("button", { name: /^Help: Note/ })).toBeNull();
+  },
+};
+
+export const AnArchivedDiagramCannotPlaceNotes: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: ELEMENTS, diagramView: buildDiagramView({ diagram: buildDiagram({ is_archived: true }) }) });
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("button", { name: "Note" })).toBeDisabled();
+  },
+};
+
 /** The note card's fields (the card is the second "Selection" region once a note is chosen). */
 const noteField = (canvas: ReturnType<typeof within>, name: string) => canvas.findByRole("combobox", { name });
 

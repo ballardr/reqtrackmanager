@@ -11,7 +11,8 @@ Responsibilities:
   when several connections collapse into it, and (with connection detail on) its type and protocol.
 - Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with the
   connection's code, the element outside and a covered or not covered marker.
-- Draw annotation notes as plain text in a block of their tone, with the leader line (and arrowhead) to the box, the line's
+- Draw annotation notes as plain text in a block of their tone (no block at all for the tone None, which draws the text alone,
+  and nothing for an empty note of that tone), with the leader line (and arrowhead) to the box, the line's
   midpoint or the free point they point at; a leader whose target is not drawn is not drawn.
 
 Design decisions:
@@ -40,7 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy
-from app.modules.architecture.enums import AttachPoint, LeaderKind
+from app.modules.architecture.enums import AttachPoint, LeaderKind, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
 from app.modules.architecture.schemas import AnchorOut, DiagramView, NoteOut, ViewBoundary, ViewEdge, ViewNode
@@ -311,12 +312,19 @@ def _edges(
 
 #: Fill and stroke of an annotation note by tone (the light-theme values of the product's tone colours).
 _TONES: dict[str, tuple[str, str]] = {
+    "none": ("none", "#64748B"),
     "neutral": ("#F1F5F9", "#64748B"),
     "info": ("#DBEAFE", "#2563EB"),
     "success": ("#DCFCE7", "#16A34A"),
     "warning": ("#FEF9C3", "#CA8A04"),
     "danger": ("#FEE2E2", "#DC2626"),
 }
+
+
+def _drawn_notes(notes: list[NoteOut]) -> list[NoteOut]:
+    """The notes the document draws: all of them, except an empty note with no tone, which would be invisible (the editor
+    shows it with a faint outline so it can be found, which is never exported)."""
+    return [n for n in notes if n.tone != NoteTone.NONE or n.text.strip()]
 
 
 def _leader_end(
@@ -359,7 +367,7 @@ def _notes(
     leaders: list[str] = []
     blocks: list[str] = []
     seen: set[str] = set()
-    for n in notes:
+    for n in _drawn_notes(notes):
         tone = n.tone.value if n.tone.value in _TONES else "neutral"
         fill, stroke = _TONES[tone]
         run = _leader_end(n, boxes, middles, edges)
@@ -377,9 +385,12 @@ def _notes(
             leaders.append(
                 f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{stroke}" stroke-width="1.5"{arrow}/>'
             )
+        box = (
+            "" if tone == "none"
+            else f'<rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" fill="{fill}" stroke="{stroke}"/>'
+        )
         blocks.append(
-            f'<g data-note="{n.id}"><rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" '
-            f'fill="{fill}" stroke="{stroke}"/>'
+            f'<g data-note="{n.id}">{box}'
             + "".join(
                 f'<text x="{n.x + 6:.1f}" y="{n.y + 16 + i * 13:.1f}" font-size="11" fill="{_TEXT_COLOR}">{_text(line)}</text>'
                 for i, line in enumerate(_wrap(n.text, max(int(n.width / 6.5), 6), max(int((n.height - 8) / 13), 1)))
@@ -411,10 +422,11 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     boxes.update({b.id: b for b in view.boundaries})
     drawn_edges = [e for e in view.edges if e.source_element_id in boxes and e.target_element_id in boxes]
     drawn_boxes: list[ViewNode | ViewBoundary] = [*visible, *view.boundaries]
-    points = [(n.leader_x, n.leader_y) for n in view.notes if n.leader_kind == LeaderKind.POINT]
-    xs = [v for n in drawn_boxes for v in (n.x, n.x + n.width)] + [v for n in view.notes for v in (n.x, n.x + n.width)]
+    drawn_notes = _drawn_notes(view.notes)
+    points = [(n.leader_x, n.leader_y) for n in drawn_notes if n.leader_kind == LeaderKind.POINT]
+    xs = [v for n in drawn_boxes for v in (n.x, n.x + n.width)] + [v for n in drawn_notes for v in (n.x, n.x + n.width)]
     xs += [px for px, _ in points if px is not None]
-    ys = [v for n in drawn_boxes for v in (n.y - 6, n.y + n.height + 6)] + [v for n in view.notes for v in (n.y, n.y + n.height)]
+    ys = [v for n in drawn_boxes for v in (n.y - 6, n.y + n.height + 6)] + [v for n in drawn_notes for v in (n.y, n.y + n.height)]
     ys += [py for _, py in points if py is not None]
     if not xs:
         min_x, min_y, width, height = 0.0, 0.0, 320.0, 120.0

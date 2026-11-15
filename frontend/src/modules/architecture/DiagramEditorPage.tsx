@@ -33,6 +33,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { CommentModeToggle } from "../../components/CommentModeToggle";
+import { NoteModeToggle } from "./NoteModeToggle";
+import { useEscapeToLeaveMode } from "../../hooks/useEscapeToLeaveMode";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Badge } from "../../components/Badge";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -69,7 +71,7 @@ import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
   addBoundaries, addBoxes, addNote, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
   canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
-  setLineAnchor, setNoteLeader, updateNote, BOUNDARY_NODE_PREFIX, NOTE_NODE_PREFIX, type NoteLeaderTarget,
+  setLineAnchor, setNoteLeader, updateNote, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
 import { toggleStates } from "./diagramExport";
@@ -405,6 +407,14 @@ export function DiagramEditorPage() {
     projectId, artefactType: "architecture_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick,
   });
 
+  // Note mode and Comment mode are never both on: turning one on turns the other off, and a comment started elsewhere (Pin to
+  // diagram) wins while it lasts.
+  const [noteMode, setNoteMode] = useState(false);
+  const placingNote = noteMode && !commentLayer.commentMode;
+  const chooseCommentMode = (on: boolean) => { if (on) setNoteMode(false); commentLayer.setCommentMode(on); };
+  const chooseNoteMode = (on: boolean) => { if (on) commentLayer.setCommentMode(false); setNoteMode(on); };
+  useEscapeToLeaveMode(placingNote || commentLayer.commentMode, () => { setNoteMode(false); commentLayer.setCommentMode(false); });
+
   const archive = useArchiveAction({
     noun: "Diagram",
     isArchived: diagram?.is_archived ?? false,
@@ -549,11 +559,16 @@ export function DiagramEditorPage() {
     setAdding(false);
   }
 
-  function addNewNote() {
+  /** Adds an empty note with its top-left corner at `at`, selects it and puts the cursor in its text (add, then edit). */
+  function addNoteAt(at: { x: number; y: number }) {
     const key = newNoteKey(layout);
-    const at = nextFreePosition(layout);
     editor.edit((l) => addNote(l, newNote(key, at)));
     setSelection({ kind: "node", id: NOTE_NODE_PREFIX + key });
+    setFocusNew(NOTE_NODE_PREFIX + key);
+  }
+
+  function addNewNote() {
+    addNoteAt(nextFreePosition(layout));
   }
 
   /**
@@ -691,7 +706,8 @@ export function DiagramEditorPage() {
         onSetup={canManageTypes ? () => (dirty ? setLeaveForSetup(true) : navigate(SETUP_PATH(projectId))) : undefined}
       />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
-      {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
+      {tab === "drawing" && <NoteModeToggle on={placingNote} onChange={chooseNoteMode} disabled={!editable} />}
+      {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={chooseCommentMode} />}
       <DiagramSettingsButton
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
@@ -719,7 +735,7 @@ export function DiagramEditorPage() {
           const to = layout.boxes.find((b) => b.elementId === line?.target_element_id);
           const at = from && to ? { x: (from.x + from.width / 2 + to.x + to.width / 2) / 2, y: (from.y + from.height / 2 + to.y + to.height / 2) / 2 } : { x: 0, y: 0 };
           setTabChoice("");
-          commentLayer.setCommentMode(true);
+          chooseCommentMode(true);
           commentLayer.startAt(pinPlaceOf(at, target, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)));
         }}
         elements={elements} connectionTypes={reference.connectionTypes}
@@ -800,8 +816,13 @@ export function DiagramEditorPage() {
               nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`Diagram ${diagram.name}`} height={canvasHeight}
               readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} centerOn={selectCenter ?? commentLayer.canvasProps.centerOn}
               // Placing a leader's end by a canvas click must not lose the note's selection when the same click clears it.
-              onSelect={(next) => { if (next !== null || pickingSpot === null) { setSelection(next); setFocusNew(null); } }}
+              // The same holds for a note just placed from Note mode, which a click on empty canvas would otherwise deselect.
+              onSelect={(next) => { if (next !== null || (pickingSpot === null && !placingNote)) { setSelection(next); setFocusNew(null); } }}
               onCanvasClick={(at) => {
+                if (placingNote) {
+                  addNoteAt({ x: Math.round(at.x - NOTE_WIDTH / 2), y: Math.round(at.y - NOTE_HEIGHT / 2) });
+                  return;
+                }
                 if (pickingSpot === null) return;
                 pointNoteAt(pickingSpot, { kind: "point", x: Math.round(at.x), y: Math.round(at.y) });
                 setPickingSpot(null);

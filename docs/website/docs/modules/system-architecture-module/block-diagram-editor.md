@@ -62,6 +62,6 @@ Selecting a row selects the matching box or line on the drawing.
 
 ## Notes, comments and export
 
-A note is text placed on this diagram only, with an optional line pointing at a box, a connection or a spot, and a tone. It differs from a display note, which belongs to an element. Comments are anchored to a box or a line and are listed on the Comments tab. A diagram exports as PNG, SVG or Mermaid.
+A note is text placed on this diagram only, with an optional line pointing at a box, a connection or a spot, and a tone. A tone of **None** draws the words alone, with no box, for a plain label on the drawing; a faint outline shows only while you hover over the note, select it or leave it empty, and it is not in any export. Turn on **Note** in the toolbar, beside **Comment**, and each click on empty canvas places a note there with the cursor in its text; Escape or the same button turns the mode off. Note and Comment are never on together. **Add note** in the Add to diagram menu places one without the pointer. It differs from a display note, which belongs to an element. Comments are anchored to a box or a line and are listed on the Comments tab. A diagram exports as PNG, SVG or Mermaid.
 
 A block whose element has state machine diagrams shows a small badge that opens one; see [State machine diagrams](state-machine-diagrams.md).

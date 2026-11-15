@@ -310,6 +310,7 @@ export function DiagramSelectionPanel({
     body = (
       <DiagramNoteEditor
         key={note.key} note={note} editable={editable} boxes={drawnBoxes} connections={[...drawnConnections.values()]}
+        autoFocusText={focusNew === NOTE_NODE_PREFIX + note.key} onFocused={onFocused}
         drawn={leaderIsDrawn(note, new Set(drawnBoxes.map((b) => b.elementId)), edges, drawnEdgeIds)} picking={pickingSpot === note.key}
         onText={(text) => onEditNote(note.key, text)} onTone={(tone) => onNoteTone(note.key, tone)}
         onArrow={(arrow) => onNoteArrow(note.key, arrow)} onPointAt={(target) => onNotePointAt(note.key, target)}

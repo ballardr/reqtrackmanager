@@ -22,11 +22,11 @@ export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string>
 
 export type PortDirection = "in" | "out" | "both";
 
-/** The colour family of an annotation note on a diagram. */
-export type NoteTone = "neutral" | "info" | "success" | "warning" | "danger";
+/** The colour family of an annotation note on a diagram; `none` draws the text alone, with no box. */
+export type NoteTone = "none" | "neutral" | "info" | "success" | "warning" | "danger";
 
 export const NOTE_TONE_LABEL: Record<NoteTone, string> = {
-  neutral: "Neutral", info: "Information", success: "Positive", warning: "Caution", danger: "Critical",
+  none: "None", neutral: "Neutral", info: "Information", success: "Positive", warning: "Caution", danger: "Critical",
 };
 
 /** What an annotation's leader line points at. */

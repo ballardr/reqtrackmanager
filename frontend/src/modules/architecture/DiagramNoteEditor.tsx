@@ -16,10 +16,11 @@
  * - The list names only what is drawn, but keeps the current target selectable when it is not drawn, so the control always
  *   shows the truth.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CheckboxField, TextAreaField } from "../../components/FormFields";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { useLatest } from "../../hooks/useLatest";
 import { labelOptions } from "../../utils/labelOptions";
 import { LEADER_SPOT_OPTION, leaderOf, leaderOptionValue, type EditorBox, type EditorNote, type NoteLeaderTarget } from "./diagramEditorModel";
 import { boxName } from "./diagramOutlineModel";
@@ -33,6 +34,8 @@ import { NOTE_TONE_LABEL, type ArchitectureConnection, type NoteTone } from "./t
  * @param editable Whether the layout can be changed.
  * @param boxes The boxes the diagram draws (switched-off boxes left out).
  * @param connections The connections of the drawn lines.
+ * @param autoFocusText True to put the cursor in the text when the card first appears (a note just placed).
+ * @param onFocused Called once the text has taken the focus.
  * @param drawn Whether the note's leader target is drawn (a leader to something switched off or removed is not).
  * @param picking Whether the next click on the canvas places the leader's end.
  * @param onText Called with the new text when the field loses focus.
@@ -43,12 +46,14 @@ import { NOTE_TONE_LABEL, type ArchitectureConnection, type NoteTone } from "./t
  * @param onRemove Called to remove the note.
  */
 export function DiagramNoteEditor({
-  note, editable, boxes, connections, drawn, picking, onText, onTone, onArrow, onPointAt, onPickSpot, onRemove,
+  note, editable, boxes, connections, autoFocusText, onFocused, drawn, picking, onText, onTone, onArrow, onPointAt, onPickSpot, onRemove,
 }: {
   note: EditorNote;
   editable: boolean;
   boxes: EditorBox[];
   connections: ArchitectureConnection[];
+  autoFocusText: boolean;
+  onFocused: () => void;
   drawn: boolean;
   picking: boolean;
   onText: (text: string) => void;
@@ -59,6 +64,19 @@ export function DiagramNoteEditor({
   onRemove: () => void;
 }) {
   const [draft, setDraft] = useState(note.text);
+  const focusDone = useLatest(onFocused);
+  const [askedFocus] = useState(autoFocusText);
+  const textBox = useRef<HTMLDivElement>(null);
+  // The focus is moved a frame later, not by `autoFocus`: a note added from the Add menu mounts while that menu is closing, and
+  // the menu's own focus return to its button runs after the mount and would take the cursor back.
+  useEffect(() => {
+    if (!askedFocus) return;
+    const frame = requestAnimationFrame(() => {
+      textBox.current?.querySelector("textarea")?.focus();
+      focusDone.current();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [askedFocus, focusDone]);
   const target = leaderOf(note);
   const current = leaderOptionValue(target);
   const options = [
@@ -77,7 +95,7 @@ export function DiagramNoteEditor({
 
   return (
     <div className="stack">
-      <div className="stack" onBlur={() => { if (draft !== note.text) onText(draft); }}>
+      <div ref={textBox} className="stack" onBlur={() => { if (draft !== note.text) onText(draft); }}>
         <TextAreaField helpNotNeeded label="Note text" value={draft} onChange={setDraft} disabled={!editable} />
       </div>
       <LabeledSelect

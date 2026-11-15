@@ -199,6 +199,26 @@
   border-color: var(--graph-node-tone-color);
 }
 
+.graph-node-tone-none {
+  /* Text only: no fill and no edge at rest, so a plain label on the drawing reads as writing and not as a box. */
+  background: transparent;
+  border-color: transparent;
+  border-left-color: transparent;
+}
+
+/* The faint outline that makes a text-only node findable: while it is hovered, selected (the selection ring above) or empty. */
+.react-flow__node:not(.selected):hover .graph-node-tone-none,
+.react-flow__node:not(.selected) .graph-node-tone-none.graph-node-placeholder {
+  border-color: var(--color-border);
+  border-left-color: var(--color-border);
+  border-style: dashed;
+}
+
+.graph-node-placeholder .graph-node-label {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .graph-node-tone-info { --graph-node-tone-color: var(--color-info); }
 .graph-node-tone-success { --graph-node-tone-color: var(--color-accent); }
 .graph-node-tone-warning { --graph-node-tone-color: var(--color-warning); }

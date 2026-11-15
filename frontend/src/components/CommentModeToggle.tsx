@@ -4,12 +4,11 @@
  * The toolbar switch that turns a graph canvas's comment mode on and off, shared by every editor that comments on a
  * canvas so the label, the pressed look and the help are one thing (`useCanvasComments` supplies the state).
  *
- * Design decisions: the help is the button's own tooltip (one line per state), never a `(?)` beside it
- * (docs/ux-style-guide.md, "Pattern: help on interactive elements"); the button is a small `ToggleButton`, matching its
- * toolbar neighbours' height.
+ * Design decisions: it is a `CanvasModeToggle` with the comment wording, so it looks and behaves like every other canvas mode
+ * switch.
  */
 import { useStrings } from "../context/TerminologyContext";
-import { ToggleButton } from "./ToggleButton";
+import { CanvasModeToggle } from "./CanvasModeToggle";
 
 /**
  * @param on Whether comment mode is on.
@@ -17,9 +16,5 @@ import { ToggleButton } from "./ToggleButton";
  */
 export function CommentModeToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
   const text = useStrings().canvasComments;
-  return (
-    <ToggleButton label={text.modeLabel} iconOnly={false} pressed={on} help={text.modeHelp} onClick={() => onChange(!on)}>
-      {text.modeLabel}
-    </ToggleButton>
-  );
+  return <CanvasModeToggle label={text.modeLabel} help={text.modeHelp} on={on} onChange={onChange} />;
 }

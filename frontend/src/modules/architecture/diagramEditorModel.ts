@@ -540,9 +540,11 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
     dashed: b.locked || isOutOfUse(b.status),
     badges: b.locked ? undefined : ctx.badges(b.elementId),
   }));
+  // A note with no tone is its text alone: no "Note" caption and no dashed edge (the canvas draws a faint outline while it is
+  // hovered, selected or empty, so it can still be found and edited).
   const notes = layout.notes.map<GraphCanvasNode>((n) => ({
-    id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: ctx.noteCaption,
-    x: n.x, y: n.y, width: n.width, height: n.height, dashed: true, tone: n.tone,
+    id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: n.tone === "none" ? undefined : ctx.noteCaption,
+    x: n.x, y: n.y, width: n.width, height: n.height, dashed: n.tone !== "none", tone: n.tone, placeholder: n.text.trim() === "",
   }));
   const boundaries = layout.boundaries.map<GraphCanvasNode>((b) => ({
     id: boundaryNodeId(b.connectionId), label: b.connection_code,
