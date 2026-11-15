@@ -266,6 +266,22 @@ def test_a_transition_joins_two_states_of_its_own_diagram_and_a_self_transition_
     assert machine_model(client, token, project["id"], machine["id"])["transitions"] == []
 
 
+def test_a_transition_is_created_with_no_event_condition_or_action_and_they_are_set_later(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch smd bare transition")
+    element = make_element(client, token, project["id"], "Charger")
+    machine = make_machine(client, token, project["id"], element["id"])
+    a = add_state(client, token, project["id"], machine["id"], "A")
+    b = add_state(client, token, project["id"], machine["id"], "B")
+    bare = add_transition(client, token, project["id"], machine["id"], a["id"], b["id"])
+    assert (bare["event"], bare["guard"], bare["action"], bare["description"]) == ("", "", "", "")
+    edited = client.put(
+        f"{project_base(project['id'])}/state-machine-diagrams/{machine['id']}/transitions/{bare['id']}",
+        json={"version": machine_version(client, token, project["id"], machine["id"]), "guard": "battery low"},
+        headers=auth_headers(token),
+    )
+    assert edited.status_code == 200 and edited.json()["guard"] == "battery low" and edited.json()["event"] == ""
+
+
 def test_deleting_a_state_removes_its_transitions_and_links_but_not_while_it_contains_states(client, admin_token):
     world = World(client, admin_token, "Arch smd delete state")
     world.enable("architecture")

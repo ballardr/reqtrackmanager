@@ -54,15 +54,23 @@ async function addState(page: Page, item: "State" | "Initial state" | "Final sta
   }
 }
 
-/** Adds a transition from the selected state to another (or itself, named "itself") through the Selection card. */
+/**
+ * Adds a transition from the selected state to another (or itself, named "itself") through the Selection card: it is created at
+ * once and empty, selected with the cursor in its event (its guard when it leaves a choice); `event` is then typed there and stored
+ * when the focus leaves the card.
+ */
 async function addTransition(page: Page, targetLabel: RegExp, event = "") {
+  const created = page.waitForResponse((r) => r.url().endsWith("/transitions") && r.request().method() === "POST");
   await selectionCard(page).getByLabel("Add transition to").selectOption({ label: await optionLabel(page, targetLabel) });
-  const dialog = page.getByRole("dialog");
-  if (event) await dialog.getByLabel("Event", { exact: true }).fill(event);
-  const stored = page.waitForResponse((r) => r.url().endsWith("/transitions") && r.request().method() === "POST");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await stored).ok()).toBeTruthy();
+  expect((await created).ok()).toBeTruthy();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  const details = selectionCard(page).getByRole("group", { name: "Transition details" });
+  await expect(details.getByLabel("Event", { exact: true })).toBeFocused();
+  if (!event) return;
+  await details.getByLabel("Event", { exact: true }).fill(event);
+  const stored = page.waitForResponse((r) => /\/transitions\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+  await page.getByRole("heading", { level: 1 }).click();
+  expect((await stored).ok()).toBeTruthy();
 }
 
 /** The full text of the "Add transition to" option matching `pattern`. */
@@ -245,6 +253,59 @@ test.describe("System Architecture: state machine diagrams", () => {
     await expect(page.getByLabel("State 1, node", { exact: true })).toBeVisible();
     // The first state does not move the canvas: nothing above it appears or goes away.
     expect(await canvasTop(page)).toBe(top);
+  });
+
+  test("a transition is added at once and empty, its values are set in the Selection card, and a refused add adds nothing", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdTrn", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Charger ${suffix}`);
+    const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Charger modes ${suffix}`, [
+      { name: "Start", kind: "initial", x: 40, y: 60 }, { name: "Branch", kind: "choice", x: 240, y: 60 },
+      { name: "Idle", x: 420, y: 40 },
+    ], [["Start", "Branch"]]);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+
+    await test.step("a line leaving a choice is added at once and its guard takes the focus", async () => {
+      await selectNode(page, "Choice");
+      const created = page.waitForResponse((r) => r.url().endsWith("/transitions") && r.request().method() === "POST");
+      await selectionCard(page).getByLabel("Add transition to").selectOption({ label: await optionLabel(page, /Idle/) });
+      const response = await created;
+      expect(response.ok()).toBeTruthy();
+      expect(await response.request().postDataJSON()).toMatchObject({ event: "", guard: "", action: "" });
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      const details = selectionCard(page).getByRole("group", { name: "Transition details" });
+      await expect(details.getByLabel("Guard", { exact: true })).toBeFocused();
+    });
+
+    await test.step("the condition is stored when the focus leaves the card and survives a reload", async () => {
+      const details = selectionCard(page).getByRole("group", { name: "Transition details" });
+      await details.getByLabel("Guard", { exact: true }).fill("battery low");
+      const stored = page.waitForResponse((r) => /\/transitions\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+      await page.getByRole("heading", { level: 1 }).click();
+      expect((await stored).ok()).toBeTruthy();
+      await page.reload();
+      await expect(page.getByLabel(/\[battery low\], connection from Choice to Idle/)).toBeVisible();
+    });
+
+    await test.step("double-clicking a line opens its fields in a dialog", async () => {
+      const line = page.getByLabel("Connection from Initial state to Choice", { exact: true });
+      await line.click();
+      await line.dblclick();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("heading", { name: "Edit transition" })).toBeVisible();
+      await expect(dialog.getByLabel("Event", { exact: true })).toHaveValue("");
+      await dialog.getByRole("button", { name: "Close" }).click();
+      await expect(dialog).toHaveCount(0);
+    });
+
+    await test.step("a refused add shows an error and adds nothing", async () => {
+      await selectNode(page, "Idle");
+      await page.route(/\/transitions$/, (route) => (route.request().method() === "POST" ? route.fulfill({ status: 400, json: { detail: "Refused." } }) : route.continue()));
+      await selectionCard(page).getByLabel("Add transition to").selectOption({ label: await optionLabel(page, /\(itself\)/) });
+      await expect(page.getByText("Could not add the transition.")).toBeVisible();
+      await expect(selectionCard(page).getByRole("group", { name: "Transition details" })).toHaveCount(0);
+      await page.unroute(/\/transitions$/);
+    });
   });
 
   test("a state is nested in another, the drawing is stored by Save and survives a reload, and a state is deleted with what goes with it", async ({ page }) => {

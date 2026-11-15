@@ -7,17 +7,18 @@
  * kept.
  *
  * Design decisions:
- * - Content is stored at once, not with the drawing (the findings and the state's code come from the server), so the card owns a
- *   draft only until it is stored; `onSave` resolves false for a refusal, which leaves the draft for correction.
+ * - The draft and its commit are the shared `useSelectionDraft`; content is stored at once, not with the drawing (the findings and
+ *   the state's code come from the server).
  * - The Save button is always present and disabled while nothing has changed, so the card does not change size as the person types.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { FormGrid } from "../../components/FormGrid";
 import { useLatest } from "../../hooks/useLatest";
 import { StateFieldGroup } from "./StateFieldGroup";
 import { diffStateFields, valuesFromState } from "./stateFields";
 import type { ArchitectureState, StateFieldValues } from "./types";
+import { useSelectionDraft } from "./useSelectionDraft";
 
 /**
  * @param state The selected state as last read.
@@ -35,48 +36,15 @@ export function StateSelectionFields({
   onFocused: () => void;
   onSave: (changed: Partial<StateFieldValues>) => Promise<boolean>;
 }) {
-  const stored = valuesFromState(state);
-  const [draft, setDraft] = useState<StateFieldValues>(stored);
-  const [seen, setSeen] = useState<StateFieldValues>(stored);
-  const [nameMissing, setNameMissing] = useState(false);
-  const saving = useRef(false);
+  const { draft, set, hasChanges, refused: nameMissing, commit } = useSelectionDraft<StateFieldValues>({
+    stored: valuesFromState(state), diff: diffStateFields, normalise: (v) => ({ ...v, name: v.name.trim() }),
+    refuse: (v) => v.name.trim() === "", onSave,
+  });
   const focusDone = useLatest(onFocused);
   const askedFocus = useRef(autoFocusName);
 
   // The name takes the focus as the group mounts (its `autoFocus`); the page is then told, so a later mount does not repeat it.
   useEffect(() => { if (askedFocus.current) focusDone.current(); }, [focusDone]);
-
-  // A read that brings new stored values replaces only the fields the person has not changed since the last one.
-  if (Object.keys(diffStateFields(seen, stored)).length > 0) {
-    setSeen(stored);
-    setDraft((d) => {
-      const next = { ...stored };
-      (Object.keys(d) as (keyof StateFieldValues)[]).forEach((key) => {
-        if (d[key] !== seen[key]) (next as Record<string, unknown>)[key] = d[key];
-      });
-      return next;
-    });
-  }
-
-  const changed = diffStateFields(stored, { ...draft, name: draft.name.trim() });
-  const set = <K extends keyof StateFieldValues>(key: K, value: StateFieldValues[K]) => {
-    setNameMissing(false);
-    setDraft((d) => ({ ...d, [key]: value }));
-  };
-
-  async function commit() {
-    if (saving.current || Object.keys(changed).length === 0) return;
-    if (draft.name.trim() === "") {
-      setNameMissing(true);
-      return;
-    }
-    saving.current = true;
-    try {
-      await onSave(changed);
-    } finally {
-      saving.current = false;
-    }
-  }
 
   return (
     <div
@@ -89,7 +57,7 @@ export function StateSelectionFields({
       {nameMissing && <p role="alert" style={{ color: "var(--color-danger)" }}>A name is required.</p>}
       <button
         type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={Object.keys(changed).length === 0} onClick={() => void commit()}
+        disabled={!hasChanges} onClick={() => void commit()}
       >
         Save state
       </button>

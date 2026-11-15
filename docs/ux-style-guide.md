@@ -965,10 +965,11 @@ Where a list of rows each carries a few actions (the comments of a thread), the 
 A canvas creation that has nothing to ask up front **adds at once and is edited in the Selection card**; it never opens a form.
 
 - **The menu item or palette item already decided the kind**, so there is no Kind choice when adding. The item is created with a default name that is not in use (`defaultStateName`: "State 1", "State 2"; a marker is named for its kind), at the drop position or the next free spot, inside a frame when dropped into one.
+- **A transition is added at once and empty** (drawing a line, or the card's "Add transition to"), its ends as drawn; its event holds the focus, or its guard when it leaves a choice (those lines are told apart by their conditions). Double-clicking a line opens the dialog (`GraphCanvas` `onEdgeOpen`).
 - **The new item is selected and its name field in the card holds the focus** (selected, so typing replaces the default name). A refused add shows an error and adds nothing.
-- **The card edits in place** through the same field group the edit dialog uses (`StateFieldGroup`), stored when the focus leaves the card's fields or **Save state** is pressed. A blank name is not stored and says so. Double-clicking the item opens the same fields in a dialog. Kind stays in the edit group so a wrong choice is repairable.
+- **The card edits in place** through the same field group the edit dialog uses (`StateFieldGroup`, `TransitionFieldGroup`), stored when the focus leaves the card's fields or **Save state** / **Save transition** is pressed; the draft and its commit are the shared `useSelectionDraft`. A blank name is not stored and says so. Double-clicking the item opens the same fields in a dialog. Kind stays in the edit group so a wrong choice is repairable.
 - **The how-to is the add button's tooltip** ([Pattern: explain in help, not in the layout](#pattern-field-help)), never a paragraph above the canvas: a paragraph that appears for an empty canvas and disappears with the first item moves the canvas down and up.
-- **When this applies:** the item needs no value to exist (a state, a marker). A record that is coded, shared or permissioned with a required choice (a block diagram element, which needs a type) keeps its create form with `QuickLinkField` and `TagField`.
+- **When this applies:** the item needs no value to exist (a state, a marker, a transition between two states). A record that is coded, shared or permissioned with a required choice (a block diagram element, which needs a type) keeps its create form with `QuickLinkField` and `TagField`.
 
 ## Pattern: selection actions
 

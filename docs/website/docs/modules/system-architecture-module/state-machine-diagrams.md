@@ -29,6 +29,10 @@ Choose **Add to diagram**, then Initial state, State, Final state or Choice, or 
 
 The Selection card edits the selected state in place: name, kind, and for an ordinary state its description and entry, exit and activity lines. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
 
+## Adding and editing transitions
+
+Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, guard or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Guard**, because the lines leaving a choice are told apart by their guards. The card edits the transition in place: its two states, event, guard, action and description. Changes are stored when the cursor leaves the card's fields, or with **Save transition**. Double-clicking a line opens the same fields in a dialog.
+
 ## Checks
 
 The editor lists the findings of the checks beside the drawing. An **error** prevents the diagram from becoming Active; a **warning** never does.

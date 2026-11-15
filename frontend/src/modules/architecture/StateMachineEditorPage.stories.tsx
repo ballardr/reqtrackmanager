@@ -286,38 +286,122 @@ export const DoubleClickingAStateOpensItsFieldsInADialog: Story = {
   },
 };
 
-export const ATransitionIsAddedFromTheSelectionCard: Story = {
-  beforeEach: () => { spyOn(api, "post").mockResolvedValue(buildTransition({ id: "trn-9" }) as never); },
+/**
+ * The model the transition stories read: a store call that creates a transition appends it to the model, as the server's next
+ * read would show it.
+ */
+function mockAddingTransitions(model = buildStateMachineModel()) {
+  mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+  spyOn(api, "post").mockImplementation((async (path: string, body: Record<string, unknown>) => {
+    const source = model.states.find((s) => s.id === body.source_state_id)!;
+    const target = model.states.find((s) => s.id === body.target_state_id)!;
+    const created = buildTransition({
+      id: "trn-9", source_state_id: source.id, source_state_code: source.unique_code, target_state_id: target.id,
+      target_state_code: target.unique_code, event: "", guard: "", action: "",
+    });
+    if (path.endsWith("/transitions")) model.transitions = [...model.transitions, created];
+    return created;
+  }) as never);
+  return model;
+}
+
+/** Choosing a state in the card's list adds the transition at once, empty; it is selected with the cursor in its event, and no dialog opens. */
+export const ATransitionIsAddedFromTheSelectionCardAtOnce: Story = {
+  beforeEach: () => { mockAddingTransitions(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Add transition to" }), "ste-3");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await expect(dialog.getByLabelText(/^From/)).toHaveValue("ste-1");
-    await expect(dialog.getByLabelText(/^To/)).toHaveValue("ste-3");
-    await userEvent.type(dialog.getByLabelText("Event"), "shutdown");
-    await userEvent.type(dialog.getByLabelText("Guard"), "idle for 10 min");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `${MACHINE}/transitions`,
-      expect.objectContaining({ version: 5, source_state_id: "ste-1", target_state_id: "ste-3", event: "shutdown", guard: "idle for 10 min" }),
+      expect.objectContaining({ version: 5, source_state_id: "ste-1", target_state_id: "ste-3", event: "", guard: "", action: "", description: "" }),
     ));
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    const card = within(await canvas.findByRole("group", { name: "Transition details" }));
+    await expect(card.getByLabelText(/^From/)).toHaveValue("ste-1");
+    await expect(card.getByLabelText(/^To/)).toHaveValue("ste-3");
+    await waitFor(() => expect(card.getByLabelText("Event")).toHaveFocus());
+  },
+};
+
+/** A line leaving a choice is told apart by its condition, so the guard takes the focus instead of the event. */
+export const ATransitionLeavingAChoiceFocusesItsGuard: Story = {
+  beforeEach: () => {
+    const model = buildStateMachineModel();
+    model.states = model.states.map((s) => (s.id === "ste-1" ? { ...s, kind: "choice" as const } : s));
+    mockAddingTransitions(model);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Choice");
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Add transition to" }), "ste-3");
+    const card = within(await canvas.findByRole("group", { name: "Transition details" }));
+    await waitFor(() => expect(card.getByLabelText("Guard")).toHaveFocus());
   },
 };
 
 /** Choosing the state itself in the list draws a loop: both ends are the same state. */
 export const ALoopIsAddedByChoosingTheStateItself: Story = {
-  beforeEach: () => { spyOn(api, "post").mockResolvedValue(buildTransition({ id: "trn-9" }) as never); },
+  beforeEach: () => { mockAddingTransitions(); },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Add transition to" }), "ste-1");
-    const dialog = within(await within(document.body).findByRole("dialog"));
-    await userEvent.type(dialog.getByLabelText("Event"), "retry");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `${MACHINE}/transitions`, expect.objectContaining({ source_state_id: "ste-1", target_state_id: "ste-1", event: "retry" }),
+      `${MACHINE}/transitions`, expect.objectContaining({ source_state_id: "ste-1", target_state_id: "ste-1", event: "" }),
     ));
+    const card = within(await canvas.findByRole("group", { name: "Transition details" }));
+    await expect(card.getByLabelText(/^From/)).toHaveValue("ste-1");
+    await expect(card.getByLabelText(/^To/)).toHaveValue("ste-1");
+  },
+};
+
+/** A refused add shows an error and adds nothing: no transition is drawn and no card opens. */
+export const AFailedTransitionAddShowsAnErrorAndAddsNothing: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: buildStateMachineModel() });
+    spyOn(api, "post").mockRejectedValue(new ApiError(400, "A transition needs a source state and a target state."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Add transition to" }), "ste-3");
+    await expect(await within(document.body).findByText("Could not add the transition.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("group", { name: "Transition details" })).not.toBeInTheDocument();
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** The transition's card edits in place: leaving its fields stores only what changed, quoting the version. */
+export const EditingATransitionInTheCardStoresOnlyWhatChangedWhenTheFocusLeavesIt: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildTransition({ guard: "battery low" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
+    await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
+    const card = within(await canvas.findByRole("group", { name: "Transition details" }));
+    const save = card.getByRole("button", { name: "Save transition" });
+    await expect(save).toBeDisabled();
+    const guard = card.getByLabelText("Guard");
+    await userEvent.clear(guard);
+    await userEvent.type(guard, "battery low");
+    await expect(api.put).not.toHaveBeenCalled();
+    await userEvent.click(document.body);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${MACHINE}/transitions/trn-1`, { version: 5, guard: "battery low" }));
+  },
+};
+
+/** Double-clicking a line opens the shared fields in a dialog. */
+export const DoubleClickingALineOpensItsFieldsInADialog: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Selecting redraws the line, so it is selected first and found again for the double-click.
+    await userEvent.click(await canvas.findByLabelText("start [ready], connection from Idle to Running"));
+    await userEvent.dblClick(await canvas.findByLabelText("start [ready], connection from Idle to Running"));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByRole("heading", { name: "Edit transition" })).toBeInTheDocument();
+    await expect(dialog.getByLabelText("Event")).toHaveValue("start");
+    await expect(dialog.getByLabelText("Guard")).toHaveValue("ready");
   },
 };
 
@@ -511,7 +595,7 @@ export const TheOutlineListsStatesAsATreeAndTransitionsAsATable: Story = {
     const table = outline.getByRole("table", { name: "Transitions" });
     await expect(within(table).getByText("ready")).toBeInTheDocument();
     await userEvent.click(within(table).getByRole("button", { name: /Transition from STE-001 Idle to STE-002 Running/ }));
-    await expect(within(canvas.getByRole("region", { name: "Selection" })).getByRole("button", { name: "Edit transition" })).toBeInTheDocument();
+    await expect(within(canvas.getByRole("region", { name: "Selection" })).getByRole("group", { name: "Transition details" })).toBeInTheDocument();
   },
 };
 
@@ -664,13 +748,13 @@ export const AStateSelectionOffersItsActionsAsIconButtons: Story = {
   },
 };
 
-/** A transition's card offers the same three actions. */
+/** A transition's card offers its actions as icon buttons: its fields are in the card, so there is no Edit. */
 export const ATransitionSelectionOffersItsActionsAsIconButtons: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await openTab(canvas, "Outline");
     await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
-    await expect(actionNames(panel)).toEqual(["Edit transition", "Comment on this connection", "Delete transition…"]);
+    await expect(actionNames(panel)).toEqual(["Comment on this connection", "Delete transition…"]);
   },
 };

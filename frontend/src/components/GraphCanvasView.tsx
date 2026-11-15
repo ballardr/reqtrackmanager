@@ -379,6 +379,7 @@ export function GraphCanvasView({
   onDelete,
   onDropItem,
   onNodeOpen,
+  onEdgeOpen,
   onLeaderTargetChange,
   onCanvasClick,
   onBackgroundClick,
@@ -876,6 +877,7 @@ export function GraphCanvasView({
         }}
         edgesReconnectable={!readOnly && !commenting && (onEdgeAnchorChange !== undefined || onLeaderTargetChange !== undefined)}
         onNodeDoubleClick={(_event, node) => onNodeOpen?.(node.id)}
+        onEdgeDoubleClick={(_event, edge) => { if (!edge.id.startsWith(LEADER_EDGE_PREFIX)) onEdgeOpen?.(edge.id); }}
         onInit={(instance) => { flow.current = instance; setInitialised(true); }}
         nodesDraggable={!readOnly && !commenting}
         nodesConnectable={!readOnly && !commenting}

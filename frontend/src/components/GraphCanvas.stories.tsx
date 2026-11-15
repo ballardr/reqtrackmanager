@@ -392,6 +392,20 @@ export const OpensANodeOnDoubleClick: Story = {
   },
 };
 
+/** A double-click on a line asks the consumer to open it, the same contract as a node; a single click only selects. */
+export const OpensALineOnDoubleClick: Story = {
+  args: { onEdgeOpen: fn() },
+  render: (args) => <Host onEdgeOpen={args.onEdgeOpen} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByLabelText("SPI, connection from Sensor to Gateway"));
+    await expect(args.onEdgeOpen).not.toHaveBeenCalled();
+    // Selecting redraws the line, so it is found again rather than reused.
+    await userEvent.dblClick(await canvas.findByLabelText("SPI, connection from Sensor to Gateway"));
+    await expect(args.onEdgeOpen).toHaveBeenCalledWith("e1");
+  },
+};
+
 /** A read-only canvas does not report a delete, and does not advertise one. */
 export const ReadOnlyIgnoresTheDeleteKey: Story = {
   args: { onDelete: fn() },

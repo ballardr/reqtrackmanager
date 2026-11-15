@@ -203,6 +203,8 @@ export interface GraphCanvasProps {
    * inner diagram) belongs to the consumer, who must also offer a keyboard route (Enter is left to selecting).
    */
   onNodeOpen?: (nodeId: string) => void;
+  /** Called when a line is opened by a double-click; the same contract as `onNodeOpen` (the consumer offers the keyboard route). */
+  onEdgeOpen?: (edgeId: string) => void;
   /**
    * Called once when a person drags a leader's target end (not in read-only mode): dropped on a node it names that node, and
    * dropped on empty canvas (or dragged, for a free end) it names that position. The canvas stores nothing: the consumer

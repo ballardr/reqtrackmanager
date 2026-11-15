@@ -59,7 +59,7 @@ Each phase ships everything its tables need in the same change: bundle section (
 | 12 | Baselines, core: polymorphic `BaselineItem`, `Baseline.kind`, the snapshot provider hook (proven on requirements) | [x] |
 | 13 | Baselines, architecture: snapshot, view and compare, Module 6 hand-off | [x] |
 | 18a | Review 7: a diagram opens with no comment thread showing and a view fitted to the drawing; a thread opens only from a link to it | [x] |
-| 18b | Review 7: transitions are added at once and edited in the Selection card (state machine diagrams) | [ ] |
+| 18b | Review 7: transitions are added at once and edited in the Selection card (state machine diagrams) | [x] |
 | 18c | Review 7: block diagram elements and connections are added at once and edited in the Selection card | [ ] |
 | 18d | Review 7: text inside initial, final and choice symbols (new Symbol label field); transition condition wording | [ ] |
 | 18e | Review 7: snap to grid (a setting, and a key held while dragging), both editors | [ ] |
@@ -890,6 +890,7 @@ Seven review items, grouped into eight phases. Like rounds 1 to 6 they are built
   - **One shared field group** (`TransitionFieldGroup`: ends, event, condition (guard), action, description) used by a transition's Selection card (saved when focus leaves the card or on Save, with the version lock, as `StateSelectionFields` does) and by `TransitionFormModal`, which becomes the double-click edit dialog only.
   - The style guide's "Pattern: add, then edit in the selection" lists transitions with states.
 - **Tests:** stories (transition Selection card, a transition leaving a choice with Condition focused); Playwright (draw a line, see it selected with the card focused, set a condition, reload keeps it; a failed create shows an error and adds nothing; the existing specs that used the dialog follow); a backend test for the empty values.
+- **Built as:** `addTransition` (page) posts an empty transition and selects it; `TransitionFieldGroup` is the one field group (card: `TransitionSelectionFields`, dialog: `TransitionFormModal`, edit-only, opened by the new generic `GraphCanvas onEdgeOpen`); the draft logic is the shared `useSelectionDraft`. The card's Edit icon is gone. The guard takes the focus for a line leaving a choice (the field is still captioned "Guard" until 18d). See `docs/decisions.md`.
 
 ### Phase 18c: block diagram elements and connections added at once
 

@@ -13,8 +13,9 @@
  * by Save, which quotes the diagram's version; a stale version offers a reload instead of overwriting a newer save. A state
  * is added at once, with a default name, by choosing it in the Add to diagram menu or dropping it on the canvas; it is then
  * selected with the cursor in its name, and its values are set in the Selection card (double-clicking a state opens the same
- * fields in a dialog). A transition by drawing a line between two states or from the Selection card's "Add transition to" list (the same state
- * draws a loop). Keyboard operation: the canvas moves a selected state with the arrow keys and removes it with Delete (which
+ * fields in a dialog). A transition is added the same way, at once and empty, by drawing a line between two states or from the
+ * Selection card's "Add transition to" list (the same state draws a loop); its event (its guard for a line leaving a choice) takes
+ * the focus, and double-clicking a line opens its fields in a dialog. Keyboard operation: the canvas moves a selected state with the arrow keys and removes it with Delete (which
  * asks first); the Selection card is the keyboard route to nesting a state and to the attach points.
  * The status moves are the server's; a move to Active is refused with the list of errors while the checks find any.
  * Export (PNG and SVG images, Mermaid `stateDiagram-v2` text to download or copy) saves a pending drawing first, then asks the
@@ -65,8 +66,9 @@ import {
 import { statePinAnchorOf, statePinDescriber, statePinPlaceOf } from "./stateMachineComments";
 import { StateMachineOutline } from "./StateMachineOutline";
 import { StateMachineSelectionPanel } from "./StateMachineSelectionPanel";
+import type { TransitionFocusField } from "./TransitionFieldGroup";
 import { TransitionFormModal } from "./TransitionFormModal";
-import { diffTransitionFields, valuesFromTransition } from "./transitionFields";
+import { blankTransitionValues, diffTransitionFields, valuesFromTransition } from "./transitionFields";
 import { useStateLabel } from "./useStateLabel";
 import { useStateMachineEditor } from "./useStateMachineEditor";
 import {
@@ -120,7 +122,7 @@ export function StateMachineEditorPage() {
   const canvasHeight = useFillViewportHeight(canvasBox, CANVAS_MIN_HEIGHT);
   const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
   const [editingState, setEditingState] = useState<ArchitectureState | null>(null);
-  const [connecting, setConnecting] = useState<{ source: string; target: string } | null>(null);
+  const [focusTransition, setFocusTransition] = useState<{ id: string; field: TransitionFocusField } | null>(null);
   const [editingTransition, setEditingTransition] = useState<StateTransition | null>(null);
   const [editingDiagram, setEditingDiagram] = useState(false);
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
@@ -266,16 +268,28 @@ export function StateMachineEditorPage() {
     }
   }
 
-  async function createTransition(values: TransitionFieldValues) {
-    setFormError(null);
-    const created = await editor.write((version) => api.addTransition(diagramId, version, values));
+  /**
+   * Adds a transition from `sourceId` to `targetId` at once, with an empty event, guard and action: it is selected and its first
+   * field takes the focus (the guard for a line leaving a choice, whose lines are told apart by their conditions; else the event).
+   * A refusal is shown and nothing is added.
+   */
+  async function addTransition(sourceId: string, targetId: string) {
+    if (!model || editor.saving) return;
+    const created = await editor.write((version) => api.addTransition(diagramId, version, blankTransitionValues(sourceId, targetId)));
     if (created === null) {
-      setFormError("Could not create the transition.");
+      showToast("Could not add the transition.", "error");
       return;
     }
-    setConnecting(null);
+    setFocusTransition({ id: created.id, field: kinds.get(sourceId) === "choice" ? "guard" : "event" });
     setSelection({ kind: "edge", id: created.id });
-    showToast("Transition created.");
+    showToast("Transition added.");
+  }
+
+  /** Stores the fields changed in the Selection card; resolves true when stored (a refusal is shown at the top of the page). */
+  async function saveTransitionFields(transition: StateTransition, changed: Partial<TransitionFieldValues>): Promise<boolean> {
+    if ((await editor.write((version) => api.updateTransition(diagramId, transition.id, version, changed))) === null) return false;
+    showToast("Transition updated.");
+    return true;
   }
 
   async function saveTransition(values: TransitionFieldValues) {
@@ -371,12 +385,12 @@ export function StateMachineEditorPage() {
       <StateMachineSelectionPanel
         projectId={projectId} model={model} layout={layout} selection={selection} editable={editable}
         onSaveState={saveStateFields} focusNameOf={focusNameOf} onNameFocused={() => setFocusNameOf(null)}
-        onEditTransition={(transition) => { setFormError(null); setEditingTransition(transition); }}
+        onSaveTransition={saveTransitionFields} focusTransition={focusTransition} onTransitionFocused={() => setFocusTransition(null)}
         onDeleteState={(state) => void askDeleteState(state)}
         onDeleteTransition={(transition) => setPendingDelete({ kind: "transition", transition })}
         onParentChange={(state, parentId) => editor.edit((l) => setParent(l, state.id, parentId, kinds))}
         onPointsChange={(transition, change) => editor.edit((l) => setTransitionPoints(l, transition.id, change))}
-        onConnect={(state, targetId) => { setFormError(null); setConnecting({ source: state.id, target: targetId }); }}
+        onConnect={(state, targetId) => void addTransition(state.id, targetId)}
         onComment={(target) => {
           // A transition has no position of its own here, so the comment starts at the middle of the states it joins.
           const line = target.kind === "edge" ? model.transitions.find((t) => t.id === target.id) : undefined;
@@ -443,7 +457,7 @@ export function StateMachineEditorPage() {
           </button>
         </div>
       )}
-      {editor.saveError && !editingState && !connecting && !editingTransition && !editingDiagram && (
+      {editor.saveError && !editingState && !editingTransition && !editingDiagram && (
         <p role="alert" style={{ color: "var(--color-danger)" }}>{editor.saveError}</p>
       )}
 
@@ -462,11 +476,15 @@ export function StateMachineEditorPage() {
                 onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}
-                onConnect={(source, target) => { setFormError(null); setConnecting({ source, target }); }}
+                onConnect={(source, target) => void addTransition(source, target)}
                 onDelete={deleteSelected}
                 onNodeOpen={(id) => {
                   const state = model.states.find((s) => s.id === id);
                   if (state && editable) { setFormError(null); setEditingState(state); }
+                }}
+                onEdgeOpen={(id) => {
+                  const transition = model.transitions.find((t) => t.id === id);
+                  if (transition && editable) { setFormError(null); setEditingTransition(transition); }
                 }}
                 onDropItem={(payload, at) => {
                   if (payload.startsWith(PALETTE_KIND_PREFIX)) void addState(payload.slice(PALETTE_KIND_PREFIX.length) as StateKind, at);
@@ -524,12 +542,6 @@ export function StateMachineEditorPage() {
         <StateFormModal
           initial={editingState} error={formError} holdsStates={layout.boxes.some((b) => b.parent_state_id === editingState.id)}
           onCancel={() => { setEditingState(null); setFormError(null); }} onSave={(values) => void saveState(values)}
-        />
-      )}
-      {connecting && (
-        <TransitionFormModal
-          states={model.states} defaultSourceId={connecting.source} defaultTargetId={connecting.target} error={formError ?? editor.saveError}
-          onCancel={() => { setConnecting(null); setFormError(null); editor.clearError(); }} onSave={(values) => void createTransition(values)}
         />
       )}
       {editingTransition && (

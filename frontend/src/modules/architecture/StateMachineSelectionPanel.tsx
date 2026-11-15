@@ -7,8 +7,9 @@
  *   findings that name it; Comment, Delete (confirmed, naming how many transitions and links go with it) and, for an ordinary
  *   or marker state, "Inside": the state it sits inside, the keyboard route to dragging it into a frame. A state that holds
  *   others cannot become a marker. Double-clicking a state on the canvas opens the same fields in a dialog.
- * - A transition: its two states, event, guard, action and description, the findings that name it, the attach points of its two
- *   ends (the keyboard route to dragging a line's end); Edit, Comment and Delete.
+ * - A transition: its two states, event, guard, action and description, edited in place through the shared field group (read-only
+ *   text when the diagram cannot be edited), the findings that name it, the attach points of its two ends (the keyboard route to
+ *   dragging a line's end); Comment and Delete. Double-clicking a line on the canvas opens the same fields in a dialog.
  * - Nothing selected: a short prompt.
  *
  * Design decisions:
@@ -28,10 +29,12 @@ import { ARCHITECTURE_HELP } from "./help";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import { StateSelectionFields } from "./StateSelectionFields";
+import type { TransitionFocusField } from "./TransitionFieldGroup";
+import { TransitionSelectionFields } from "./TransitionSelectionFields";
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import {
-  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type StateMachineModel, type StateTransition,
+  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
 } from "./types";
 
 /** The geometry of a state's box as the canvas draws it, with the points a marker offers. */
@@ -49,7 +52,9 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param onSaveState Stores the changed content fields of a state; resolves true when stored.
  * @param focusNameOf The id of a state just added, whose name takes the focus when its card appears; null for none.
  * @param onNameFocused Called once that focus has been given, so it is not repeated.
- * @param onEditTransition Opens the transition form.
+ * @param onSaveTransition Stores the changed fields of a transition; resolves true when stored.
+ * @param focusTransition The id and field of a transition just added, whose field takes the focus when its card appears; null for none.
+ * @param onTransitionFocused Called once that focus has been given, so it is not repeated.
  * @param onDeleteState Asks to delete the state (the page confirms, naming what goes with it).
  * @param onDeleteTransition Asks to delete the transition (the page confirms).
  * @param onConnect Starts a transition from a state to the state with the given id (the same state for a loop): the keyboard
@@ -59,7 +64,7 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param onComment Starts a comment on the selected state or transition.
  */
 export function StateMachineSelectionPanel({
-  projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onEditTransition, onDeleteState, onDeleteTransition, onParentChange,
+  projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onSaveTransition, focusTransition, onTransitionFocused, onDeleteState, onDeleteTransition, onParentChange,
   onPointsChange, onComment, onConnect,
 }: {
   projectId: string;
@@ -70,7 +75,9 @@ export function StateMachineSelectionPanel({
   onSaveState: (state: ArchitectureState, changed: Partial<StateFieldValues>) => Promise<boolean>;
   focusNameOf: string | null;
   onNameFocused: () => void;
-  onEditTransition: (transition: StateTransition) => void;
+  onSaveTransition: (transition: StateTransition, changed: Partial<TransitionFieldValues>) => Promise<boolean>;
+  focusTransition: { id: string; field: TransitionFocusField } | null;
+  onTransitionFocused: () => void;
   onDeleteState: (state: ArchitectureState) => void;
   onDeleteTransition: (transition: StateTransition) => void;
   onConnect: (state: ArchitectureState, targetId: string) => void;
@@ -160,16 +167,25 @@ export function StateMachineSelectionPanel({
           <strong>{to ? stateName(to) : transition.target_state_code}</strong>
           {loop && <span className="text-muted"> · loop</span>}
         </p>
-        <dl style={{ margin: 0 }}>
-          {transition.event && <><dt className="text-muted">Event</dt><dd style={{ margin: 0 }}>{transition.event}</dd></>}
-          {transition.guard && <><dt className="text-muted">Guard</dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
-          {transition.action && <><dt className="text-muted">Action</dt><dd style={{ margin: 0 }}>{transition.action}</dd></>}
-        </dl>
-        {transition.description && <ActivityNote text={transition.description} />}
+        {editable ? (
+          <TransitionSelectionFields
+            key={`fields:${transition.id}`} transition={transition} states={model.states}
+            autoFocus={focusTransition?.id === transition.id ? focusTransition.field : undefined} onFocused={onTransitionFocused}
+            onSave={(changed) => onSaveTransition(transition, changed)}
+          />
+        ) : (
+          <>
+            <dl style={{ margin: 0 }}>
+              {transition.event && <><dt className="text-muted">Event</dt><dd style={{ margin: 0 }}>{transition.event}</dd></>}
+              {transition.guard && <><dt className="text-muted">Guard</dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
+              {transition.action && <><dt className="text-muted">Action</dt><dd style={{ margin: 0 }}>{transition.action}</dd></>}
+            </dl>
+            {transition.description && <ActivityNote text={transition.description} />}
+          </>
+        )}
         <FindingList findings={findings} />
         <SelectionActions
           actions={[
-            editable && selectionAction.edit("Edit transition", () => onEditTransition(transition)),
             selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: transition.id })),
             editable && selectionAction.delete("Delete transition…", () => onDeleteTransition(transition)),
           ]}
