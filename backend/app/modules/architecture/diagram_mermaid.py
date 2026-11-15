@@ -16,7 +16,7 @@ Design decisions:
   end, are not written, so nothing hidden leaves in the text.
 - **Flat.** Placed elements are not nested as subgraphs: a rolled-up line already joins the nearest placed ancestors, and
   a line to a subgraph is drawn unreliably by Mermaid.
-- **Positions and colours are left out**: Mermaid lays the graph out itself.
+- **Positions, vertices and colours are left out**: Mermaid lays the graph and routes the lines itself.
 - An annotation note with text is a flag-shaped node. A leader to a drawn box is a dotted link from the note (with a head when the
   leader has an arrowhead); a leader to a line or a free point is not written, because Mermaid cannot point at a line, and
   a leader to a box that is not drawn is not written either, so nothing hidden leaves in the text.

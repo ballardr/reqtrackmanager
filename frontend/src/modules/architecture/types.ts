@@ -516,12 +516,31 @@ export interface DiagramView {
   boundaries: DiagramViewBoundary[];
 }
 
-/** Where a drawn line meets its two boxes, when a person chose it; an end that is null is automatic. */
+/** A vertex of a drawn line, in canvas units. */
+export interface LineWaypoint {
+  x: number;
+  y: number;
+}
+
+/** A change to how a line is routed: each part named is set, the others are kept (`null` makes an attach point automatic). */
+export interface LineRouteChange {
+  sourcePoint?: AttachPoint | null;
+  targetPoint?: AttachPoint | null;
+  points?: LineWaypoint[];
+  smooth?: boolean;
+}
+
+/**
+ * How a drawn line is routed, when a person chose it: where it meets its two boxes (an end that is null is automatic) and
+ * its vertices in order from `source_element_id` to `target_element_id`, drawn straight or as a curve (`smooth`).
+ */
 export interface DiagramAnchor {
   source_element_id: string;
   target_element_id: string;
   source_point: AttachPoint | null;
   target_point: AttachPoint | null;
+  points: LineWaypoint[];
+  smooth: boolean;
 }
 
 /** A state machine diagram that describes an element, as a block on a block diagram links to it. */
@@ -779,6 +798,9 @@ export interface StateTransition {
   sort_order: number;
   source_point: AttachPoint | null;
   target_point: AttachPoint | null;
+  /** Vertices in order from the source state to the target state; empty draws a straight line. */
+  points: LineWaypoint[];
+  smooth: boolean;
 }
 
 /** The fields the transition form edits. */
@@ -818,11 +840,13 @@ export interface StateLayoutValues {
   parent_state_id: string | null;
 }
 
-/** One transition's attach points as saved (`null` is automatic). */
+/** One transition's attach points (`null` is automatic) and route as saved. */
 export interface TransitionPointsValues {
   id: string;
   source_point: AttachPoint | null;
   target_point: AttachPoint | null;
+  points: LineWaypoint[];
+  smooth: boolean;
 }
 
 /** A requirement as the allocation panels name it. */

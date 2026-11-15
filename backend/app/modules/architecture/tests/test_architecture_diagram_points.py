@@ -18,7 +18,15 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, Box, line_points, nearest_pair, point_xy
+from app.modules.architecture.diagram_points import (
+    ATTACH_POINTS,
+    SIDE_POINTS,
+    Box,
+    line_points,
+    nearest_pair,
+    point_xy,
+    route_points,
+)
 from app.modules.architecture.enums import AttachPoint
 
 CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "components" / "graphAttachPointCases.json"
@@ -26,12 +34,14 @@ CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "compone
 
 def _case(
     name: str, source: Box, target: Box, source_point: AttachPoint | None = None, target_point: AttachPoint | None = None,
-    source_sides: bool = False, target_sides: bool = False,
+    source_sides: bool = False, target_sides: bool = False, via: list[tuple[float, float]] | None = None,
 ) -> dict:
-    """One case: the inputs and the points the rule returns. A box that offers only the sides (a marker) says so."""
-    chosen = line_points(
-        source, target, source_point, target_point,
-        SIDE_POINTS if source_sides else ATTACH_POINTS, SIDE_POINTS if target_sides else ATTACH_POINTS,
+    """One case: the inputs and the points the rule returns. A box that offers only the sides (a marker) says so, and a
+    line with vertices (`via`) chooses its open ends toward the nearest vertex."""
+    offered = (SIDE_POINTS if source_sides else ATTACH_POINTS, SIDE_POINTS if target_sides else ATTACH_POINTS)
+    chosen = (
+        route_points(source, target, source_point, target_point, via, *offered) if via
+        else line_points(source, target, source_point, target_point, *offered)
     )
     result: dict = {
         "name": name, "source": list(source), "target": list(target),
@@ -42,6 +52,8 @@ def _case(
         result["source_offers"] = [p.value for p in SIDE_POINTS]
     if target_sides:
         result["target_offers"] = [p.value for p in SIDE_POINTS]
+    if via:
+        result["via"] = [list(p) for p in via]
     result["expected"] = [chosen[0].value, chosen[1].value]
     return result
 
@@ -70,6 +82,10 @@ def cases() -> list[dict]:
         _case("a marker down and to the left of a marker meets side to side", (0, 0, 24, 24), (-300, 200, 24, 24), None, None, True, True),
         _case("a marker as the source offers only its sides", (0, 0, 36, 36), (200, 150, 160, 80), None, None, True, False),
         _case("a fixed end on a marker is used as given", (0, 0, 36, 36), a, AttachPoint.TOP_RIGHT, None, True, False),
+        _case("a vertex above the boxes pulls both open ends to the top", a, (300, 0, 160, 80), None, None, False, False, [(230, -120)]),
+        _case("a fixed end is kept and the other follows its vertex", a, (300, 0, 160, 80), AttachPoint.LEFT, None, False, False, [(230, 200)]),
+        _case("two vertices: each end follows the vertex beside it", a, (300, 0, 160, 80), None, None, False, False, [(80, 200), (380, 200)]),
+        _case("a marker end follows the vertex on a side", (0, 0, 36, 36), (300, 0, 160, 80), None, None, True, False, [(18, 200)]),
     ]
 
 

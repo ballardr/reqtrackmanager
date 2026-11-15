@@ -837,6 +837,10 @@ export function DiagramEditorPage() {
                 const line = resolved.edges.find((e) => e.id === edgeId);
                 if (line && !line.source_is_boundary && !line.target_is_boundary) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
               }}
+              onEdgePointsChange={(edgeId, points) => {
+                const line = resolved.edges.find((e) => e.id === edgeId);
+                if (line && !line.source_is_boundary && !line.target_is_boundary) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, { points }));
+              }}
               onConnect={(source, target) => void startConnection(source, target)} onDelete={removeSelected} onNodeOpen={openBoxInside}
               onDropItem={(payload, at) => {
                 if (payload.startsWith(PALETTE_TYPE_PREFIX)) void addElementAt(payload.slice(PALETTE_TYPE_PREFIX.length), at);
@@ -852,7 +856,7 @@ export function DiagramEditorPage() {
         <div className="row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }} {...tabPanelProps("diagram-editor", "outline")}>
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
             <DiagramOutline
-              boxes={layout.boxes} notes={layout.notes} boundaries={layout.boundaries} covered={new Set(realisedBy.keys())}
+              boxes={layout.boxes} notes={layout.notes} boundaries={layout.boundaries} anchors={layout.anchors} covered={new Set(realisedBy.keys())}
               edges={resolved.edges} drawnEdgeIds={drawnEdgeIds} parents={model.parents} hidden={resolved.hidden} descriptions={descriptions}
               selection={selection} onSelect={setSelection}
               stateMachinesOf={(elementId) => machinesOf.get(elementId) ?? []} onOpenMachine={openMachine}

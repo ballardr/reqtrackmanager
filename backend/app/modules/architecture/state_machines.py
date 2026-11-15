@@ -64,6 +64,7 @@ from app.modules.architecture.schemas import (
     StateUpdate,
     TransitionIn,
     TransitionOut,
+    WaypointIn,
 )
 from app.modules.architecture.service import (
     STATE_ARTEFACT_TYPE,
@@ -553,6 +554,7 @@ def add_transition(
         action=(payload.action or "").strip(), description=payload.description or "", sort_order=count,
         source_point=payload.source_point.value if payload.source_point else None,
         target_point=payload.target_point.value if payload.target_point else None,
+        points=[{"x": p.x, "y": p.y} for p in payload.points or []], smooth=bool(payload.smooth),
     )
     db.add(transition)
     diagram.version += 1
@@ -595,6 +597,12 @@ def update_transition(
             value = value.value if value else None
             if value != getattr(transition, field):
                 changes[field] = value
+    if "points" in given and payload.points is not None:
+        points = [{"x": p.x, "y": p.y} for p in payload.points]
+        if points != transition.points:
+            changes["points"] = points
+    if "smooth" in given and payload.smooth is not None and payload.smooth != transition.smooth:
+        changes["smooth"] = payload.smooth
     if not changes:
         return transition
     _own_states(
@@ -661,6 +669,14 @@ def save_layout(
         points = (given_t.source_point.value if given_t.source_point else None, given_t.target_point.value if given_t.target_point else None)
         if points != (t.source_point, t.target_point):
             t.source_point, t.target_point = points
+            changed += 1
+        if given_t.points is not None:
+            route = [{"x": p.x, "y": p.y} for p in given_t.points]
+            if route != t.points:
+                t.points = route
+                changed += 1
+        if given_t.smooth is not None and given_t.smooth != t.smooth:
+            t.smooth = given_t.smooth
             changed += 1
     if changed:
         diagram.version += 1
@@ -769,6 +785,7 @@ def transition_outs(
             description=t.description, sort_order=t.sort_order,
             source_point=AttachPoint(t.source_point) if t.source_point else None,
             target_point=AttachPoint(t.target_point) if t.target_point else None,
+            points=[WaypointIn(x=p["x"], y=p["y"]) for p in t.points], smooth=t.smooth,
         )
         for t in transitions
     ]

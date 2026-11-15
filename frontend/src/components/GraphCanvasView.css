@@ -421,3 +421,40 @@
   padding: 0;
   list-style: none;
 }
+
+/* The handles of a selected line, drawn in the label layer: a ring on each vertex and a smaller dot on the middle of each segment. */
+.graph-waypoint,
+.graph-segment-handle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--color-primary);
+  border-radius: 50%;
+  background: var(--color-surface);
+  pointer-events: all;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-waypoint {
+  width: 14px;
+  height: 14px;
+}
+
+.graph-segment-handle {
+  width: 10px;
+  height: 10px;
+  opacity: 0.6;
+}
+
+.graph-waypoint:hover,
+.graph-segment-handle:hover,
+.graph-waypoint:focus-visible {
+  background: var(--color-primary);
+  opacity: 1;
+  outline: none;
+}
+
+.graph-waypoint:active,
+.graph-segment-handle:active {
+  cursor: grabbing;
+}

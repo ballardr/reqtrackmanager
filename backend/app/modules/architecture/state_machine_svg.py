@@ -31,7 +31,8 @@ from __future__ import annotations
 import math
 import uuid
 
-from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, line_points, point_xy
+from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
+from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, point_xy, route_points
 from app.modules.architecture.diagram_svg import _ROOT, _note_lines, _text, _wrap
 from app.modules.architecture.enums import StateKind
 from app.modules.architecture.labels import STATE_KIND_LABEL
@@ -193,19 +194,28 @@ def _transitions(
         rank[key] = index + 1
         offset = (index - (totals[key] - 1) / 2) * 16
         a_marker, b_marker = StateKind(source.kind) is not StateKind.STATE, StateKind(target.kind) is not StateKind.STATE
-        pa, pb = line_points(
-            _box(source), _box(target), t.source_point, t.target_point,
+        vertices: list[Point] = [(p.x, p.y) for p in t.points]
+        pa, pb = route_points(
+            _box(source), _box(target), t.source_point, t.target_point, vertices,
             SIDE_POINTS if a_marker else ATTACH_POINTS, SIDE_POINTS if b_marker else ATTACH_POINTS,
         )
         (x1, y1), (x2, y2) = point_xy(_box(source), pa), point_xy(_box(target), pb)
-        length = math.hypot(x2 - x1, y2 - y1) or 1.0
-        nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
-        x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
-        drawn.append(
-            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>'
-        )
+        if vertices:
+            drawn.append(
+                f'<path d="{line_path((x1, y1), vertices, (x2, y2), t.smooth)}" fill="none" stroke="{_INK}" stroke-width="2" '
+                'marker-end="url(#arrow)"/>'
+            )
+            mx, my = line_middle((x1, y1), vertices, (x2, y2))
+        else:
+            length = math.hypot(x2 - x1, y2 - y1) or 1.0
+            nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
+            x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
+            drawn.append(
+                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>'
+            )
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
         if lines:
-            labels.append(_label(lines, (x1 + x2) / 2, (y1 + y2) / 2 - 5, "middle"))
+            labels.append(_label(lines, mx, my - 5, "middle"))
     return "".join(drawn), "".join(labels)
 
 
@@ -236,6 +246,9 @@ def render_state_machine(model: StateMachineModel) -> str:
             v for s in states
             for v in (frames[s.id][1] - (SELF_LOOP_REACH if s.id in looped else 6), frames[s.id][1] + frames[s.id][3] + 18)
         ]
+        for t in model.transitions:
+            xs.extend(p.x for p in t.points)
+            ys.extend(p.y for p in t.points)
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
         composites = "".join(_composite(s) for s in ordered if s.id in holding and StateKind(s.kind) is StateKind.STATE)

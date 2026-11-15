@@ -306,7 +306,8 @@ test.describe("System Architecture: state machine diagrams", () => {
     await test.step("double-clicking a line opens its fields in a dialog", async () => {
       const line = page.getByLabel("Connection from Initial state to Choice", { exact: true });
       await line.click();
-      await line.dblclick();
+      // The selected line shows a dot over its middle (to add a vertex); a double-click on it opens the line too.
+      await page.locator(".graph-segment-handle").first().dblclick();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("heading", { name: "Edit transition" })).toBeVisible();
       await expect(dialog.getByLabel("Event", { exact: true })).toHaveValue("");

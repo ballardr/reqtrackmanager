@@ -312,9 +312,84 @@ export const ChoosingALineEndInTheSelectionCardIsStoredWithTheLayout: Story = {
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
-        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "bottom", target_point: null }],
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "bottom", target_point: null, points: [], smooth: false }],
       }),
     ));
+  },
+};
+
+/** The Vertices section of the Selection card is the keyboard route to a line's route: add, position, curve, remove and reset. */
+export const VerticesAreAddedPositionedAndRemovedInTheSelectionCard: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
+    await expect(panel.getByRole("switch", { name: "Smooth curve" })).toBeDisabled();
+    await userEvent.click(panel.getByRole("button", { name: "Add vertex" }));
+    // Gateway and Orders are level, so the first vertex goes below the middle of the line.
+    const x = await panel.findByRole("spinbutton", { name: "Vertex 1 X" });
+    const y = panel.getByRole("spinbutton", { name: "Vertex 1 Y" });
+    await expect(Number((y as HTMLInputElement).value)).toBeGreaterThan(0);
+    await userEvent.clear(x);
+    await userEvent.type(x, "210");
+    await userEvent.tab();
+    await expect(panel.getByRole("spinbutton", { name: "Vertex 1 X" })).toHaveValue(210);
+    await expect(panel.getByRole("switch", { name: "Smooth curve" })).toBeEnabled();
+    await userEvent.click(panel.getByRole("switch", { name: "Smooth curve" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({
+        anchors: [expect.objectContaining({
+          source_element_id: "el-1", target_element_id: "el-2", source_point: null, target_point: null,
+          points: [expect.objectContaining({ x: 210 })], smooth: true,
+        })],
+      }),
+    ));
+  },
+};
+
+export const ResettingVerticesStraightensTheLineAndDropsTheAnchor: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: null, target_point: null, points: [{ x: 150, y: 120 }, { x: 250, y: 120 }], smooth: true }],
+      }),
+    });
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(panel.getByRole("spinbutton", { name: "Vertex 2 Y" })).toHaveValue(120);
+    await userEvent.click(panel.getByRole("button", { name: "Remove vertex 1" }));
+    await expect(panel.queryByRole("spinbutton", { name: "Vertex 2 X" })).not.toBeInTheDocument();
+    await userEvent.click(panel.getByRole("button", { name: "Reset vertices" }));
+    await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({ anchors: [] })));
+  },
+};
+
+/** A line whose anchor is stored for the opposite direction shows its vertices from the line's own source. */
+export const VerticesOfAReversedAnchorAreListedFromTheLinesSource: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({
+        anchors: [{ source_element_id: "el-2", target_element_id: "el-1", source_point: null, target_point: "top", points: [{ x: 250, y: 90 }, { x: 150, y: 110 }], smooth: false }],
+      }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    // The line runs Gateway to Orders; the anchor was stored Orders to Gateway, so its points read in the other order.
+    await expect(panel.getByRole("spinbutton", { name: "Vertex 1 X" })).toHaveValue(150);
+    await expect(panel.getByRole("spinbutton", { name: "Vertex 2 X" })).toHaveValue(250);
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Top");
   },
 };
 
@@ -322,7 +397,7 @@ export const ChoosingAutomaticAgainRemovesTheAnchor: Story = {
   beforeEach: () => {
     mockArchitectureReads({
       elements: ELEMENTS,
-      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: null }] }),
+      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: null, points: [], smooth: false }] }),
     });
   },
   play: async ({ canvasElement }) => {
@@ -341,7 +416,7 @@ export const RemovingABoxDropsTheAnchorsOfItsLines: Story = {
   beforeEach: () => {
     mockArchitectureReads({
       elements: ELEMENTS,
-      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: "bottom" }] }),
+      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: "bottom", points: [], smooth: false }] }),
     });
     spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
   },
@@ -362,6 +437,7 @@ export const AnArchivedDiagramOffersNoLineEnds: Story = {
     const canvas = within(canvasElement);
     const panel = await selectLine(canvas);
     await expect(panel.queryByRole("combobox", { name: "Line starts at" })).not.toBeInTheDocument();
+    await expect(panel.queryByRole("button", { name: "Add vertex" })).not.toBeInTheDocument();
   },
 };
 

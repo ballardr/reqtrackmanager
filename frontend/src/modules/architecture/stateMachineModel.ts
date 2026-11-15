@@ -25,7 +25,6 @@
  *   larger than its stored box (`markerFrame`), centred on it, and the label is drawn inside it.
  */
 import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
-import type { AttachPoint } from "../../components/graphAttachPoints";
 import {
   commitStep, isDirtyBy, redoStep, refreshPresentOf, startHistoryOf, undoStep, type History as HistoryOf,
 } from "../../utils/editHistory";
@@ -34,7 +33,7 @@ import {
   type StateMarkerKind,
 } from "./stateShapes";
 import {
-  STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type StateKind, type StateLayoutValues, type StateMachineFinding,
+  STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type LineRouteChange, type StateKind, type StateLayoutValues, type StateMachineFinding,
   type StateMachineModel, type StateTransition, type TransitionPointsValues,
 } from "./types";
 
@@ -87,7 +86,9 @@ export function boxOfState(state: ArchitectureState): StateBox {
 export function layoutFromModel(model: StateMachineModel): StateMachineLayout {
   return {
     boxes: model.states.map(boxOfState),
-    points: model.transitions.map((t) => ({ id: t.id, source_point: t.source_point, target_point: t.target_point })),
+    points: model.transitions.map((t) => ({
+      id: t.id, source_point: t.source_point, target_point: t.target_point, points: t.points, smooth: t.smooth,
+    })),
   };
 }
 
@@ -210,18 +211,24 @@ export function setParent(layout: StateMachineLayout, id: string, parentId: stri
   return { ...layout, boxes: layout.boxes.map((b) => (b.id === id ? { ...b, parent_state_id: null } : b)) };
 }
 
-/** Sets the attach point of one or both ends of a transition (`null` makes an end automatic). */
+/**
+ * Sets how a transition is routed: the attach point of one or both ends (`null` makes an end automatic), its vertices
+ * (an empty list makes it straight) and whether a curve runs through them. What the change does not name is kept.
+ */
 export function setTransitionPoints(
-  layout: StateMachineLayout, id: string, change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null },
+  layout: StateMachineLayout, id: string,
+  change: LineRouteChange,
 ): StateMachineLayout {
   const known = layout.points.some((p) => p.id === id);
-  const points = known ? layout.points : [...layout.points, { id, source_point: null, target_point: null }];
+  const points = known ? layout.points : [...layout.points, { id, source_point: null, target_point: null, points: [], smooth: false }];
   return {
     ...layout,
     points: points.map((p) => (p.id === id ? {
       ...p,
       source_point: change.sourcePoint === undefined ? p.source_point : change.sourcePoint,
       target_point: change.targetPoint === undefined ? p.target_point : change.targetPoint,
+      points: change.points === undefined ? p.points : change.points,
+      smooth: change.smooth === undefined ? p.smooth : change.smooth,
     } : p)),
   };
 }
@@ -368,6 +375,7 @@ export function canvasEdges(model: StateMachineModel, layout: StateMachineLayout
   return model.transitions.map<GraphCanvasEdge>((t) => ({
     id: t.id, source: t.source_state_id, target: t.target_state_id, label: transitionLabel(t) || undefined, direction: "forward",
     sourcePoint: points.get(t.id)?.source_point ?? null, targetPoint: points.get(t.id)?.target_point ?? null,
+    points: points.get(t.id)?.points ?? [], smooth: points.get(t.id)?.smooth ?? false,
   }));
 }
 

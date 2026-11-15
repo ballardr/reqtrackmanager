@@ -484,6 +484,7 @@ export function StateMachineEditorPage() {
                 onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}
+                onEdgePointsChange={(edgeId, points) => editor.edit((l) => setTransitionPoints(l, edgeId, { points, smooth: points.length > 0 ? undefined : false }))}
                 onConnect={(source, target) => void addTransition(source, target)}
                 onDelete={deleteSelected}
                 onNodeOpen={(id) => {

@@ -21,10 +21,11 @@
  */
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode, GraphNodeBadge } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
+import { reverseRoute } from "../../components/graphLinePath";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
   ArchitectureConnection, ArchitectureElement, BoundaryShape, BoundaryValues, DiagramAnchor, DiagramNote, DiagramView,
-  DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, NoteLeader, NoteTone, NoteValues, PlacementValues,
+  DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, LineRouteChange, LineWaypoint, NoteLeader, NoteTone, NoteValues, PlacementValues,
 } from "./types";
 import { isOutOfUse } from "./types";
 import {
@@ -297,7 +298,7 @@ function signature(layout: EditorLayout): string {
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
     notes.map((n) => [n.text, n.x, n.y, n.width, n.height, n.tone, n.leader_kind, n.leader_element_id, n.leader_connection_id, n.leader_x, n.leader_y, n.leader_arrow]),
-    anchors.map((a) => [a.source_element_id, a.target_element_id, a.source_point, a.target_point]).sort(),
+    anchors.map((a) => [a.source_element_id, a.target_element_id, a.source_point, a.target_point, a.points.map((p) => [p.x, p.y]), a.smooth]).sort(),
     [...boundaries].sort((a, b) => a.connection_id.localeCompare(b.connection_id)),
   ]);
 }
@@ -359,44 +360,56 @@ export function removeBox(layout: EditorLayout, elementId: string): EditorLayout
   };
 }
 
-/** The points a person chose for the line from `sourceId` to `targetId`, oriented to that direction; null ends are automatic. */
-export function anchorOf(
-  anchors: readonly DiagramAnchor[], sourceId: string, targetId: string,
-): { sourcePoint: AttachPoint | null; targetPoint: AttachPoint | null } {
+/** How a line is routed, oriented from its source to its target: the chosen attach points (null is automatic) and the vertices. */
+export interface LineRoute {
+  sourcePoint: AttachPoint | null;
+  targetPoint: AttachPoint | null;
+  points: LineWaypoint[];
+  smooth: boolean;
+}
+
+/** The route a person chose for the line from `sourceId` to `targetId`, oriented to that direction (an anchor stored the other way round is read reversed). */
+export function anchorOf(anchors: readonly DiagramAnchor[], sourceId: string, targetId: string): LineRoute {
   for (const a of anchors) {
     if (a.source_element_id === sourceId && a.target_element_id === targetId) {
-      return { sourcePoint: a.source_point, targetPoint: a.target_point };
+      return { sourcePoint: a.source_point, targetPoint: a.target_point, points: a.points, smooth: a.smooth };
     }
     if (a.source_element_id === targetId && a.target_element_id === sourceId) {
-      return { sourcePoint: a.target_point, targetPoint: a.source_point };
+      return { sourcePoint: a.target_point, targetPoint: a.source_point, points: reverseRoute(a.points), smooth: a.smooth };
     }
   }
-  return { sourcePoint: null, targetPoint: null };
+  return { sourcePoint: null, targetPoint: null, points: [], smooth: false };
 }
 
 /**
- * Chooses attach points for the line from `sourceId` to `targetId`. An end the change does not name keeps what it had; a
- * `null` end is made automatic. A line left with both ends automatic has no anchor at all.
+ * Routes the line from `sourceId` to `targetId`. A part the change does not name keeps what it had: an attach point (a `null`
+ * end is made automatic), the vertices (an empty list makes the line straight) and the curve. A line left with both ends
+ * automatic and no vertices has no anchor at all.
  *
  * @param layout The layout being edited.
  * @param sourceId The line's source element.
  * @param targetId The line's target element.
- * @param change The ends to set (`undefined` leaves an end as it is).
+ * @param change The parts to set (`undefined` leaves a part as it is); `points` run from the source to the target.
  */
 export function setLineAnchor(
   layout: EditorLayout, sourceId: string, targetId: string,
-  change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null },
+  change: LineRouteChange,
 ): EditorLayout {
   const before = anchorOf(layout.anchors, sourceId, targetId);
   const sourcePoint = change.sourcePoint === undefined ? before.sourcePoint : change.sourcePoint;
   const targetPoint = change.targetPoint === undefined ? before.targetPoint : change.targetPoint;
+  const points = change.points === undefined ? before.points : change.points;
+  const smooth = change.smooth === undefined ? before.smooth : change.smooth;
   const others = layout.anchors.filter((a) => !(
     (a.source_element_id === sourceId && a.target_element_id === targetId) ||
     (a.source_element_id === targetId && a.target_element_id === sourceId)
   ));
-  const next = sourcePoint === null && targetPoint === null
+  const next = sourcePoint === null && targetPoint === null && points.length === 0
     ? others
-    : [...others, { source_element_id: sourceId, target_element_id: targetId, source_point: sourcePoint, target_point: targetPoint }];
+    : [...others, {
+      source_element_id: sourceId, target_element_id: targetId, source_point: sourcePoint, target_point: targetPoint,
+      points, smooth: points.length > 0 && smooth,
+    }];
   return { ...layout, anchors: next };
 }
 
@@ -587,6 +600,8 @@ export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidd
       dashed: e.indirect || (e.line_style !== null && e.line_style !== "solid"),
       color: pick(e.color_light, e.color_dark, theme),
       direction: e.two_way ? "none" : "forward",
+      // A line to a boundary box has no element pair of its own to keep a route on, so it stays automatic.
+      routable: !e.source_is_boundary && !e.target_is_boundary,
       ...anchorOf(layout.anchors, e.source_element_id, e.target_element_id),
     }));
 }

@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
-from app.modules.architecture.enums import LeaderKind, NoteTone, RecordStatus
+from app.modules.architecture.enums import AttachPoint, LeaderKind, NoteTone, RecordStatus
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -345,14 +345,24 @@ def _check_anchors(anchors: Sequence[AnchorIn], placed: set[uuid.UUID]) -> None:
     for anchor in anchors:
         if anchor.source_element_id == anchor.target_element_id:
             raise RuleError("A line joins two different elements.", 400)
-        if anchor.source_point is None and anchor.target_point is None:
-            raise RuleError("A line anchor must fix at least one end.", 400)
+        if anchor.source_point is None and anchor.target_point is None and not anchor.points:
+            raise RuleError("A line anchor must fix an end or a vertex.", 400)
         if anchor.source_element_id not in placed or anchor.target_element_id not in placed:
             raise RuleError("A line anchor must join two elements placed on the diagram.", 400)
         key = frozenset((anchor.source_element_id, anchor.target_element_id))
         if key in seen:
             raise RuleError("A line can have one anchor.", 400)
         seen.add(key)
+
+
+def _route_values(anchor: AnchorIn | ArchitectureDiagramAnchor) -> tuple[Any, ...]:
+    """What makes an anchor what it is, for comparing a stored one with a submitted one: both ends, the vertices and the curve."""
+    points = [{"x": float(p["x"]), "y": float(p["y"])} if isinstance(p, dict) else {"x": p.x, "y": p.y} for p in anchor.points]
+    return (
+        anchor.source_point.value if isinstance(anchor.source_point, AttachPoint) else anchor.source_point,
+        anchor.target_point.value if isinstance(anchor.target_point, AttachPoint) else anchor.target_point,
+        points, anchor.smooth,
+    )
 
 
 def _sync_anchors(db: Session, diagram_id: uuid.UUID, wanted: Sequence[AnchorIn] | None, placed: set[uuid.UUID]) -> int:
@@ -375,11 +385,11 @@ def _sync_anchors(db: Session, diagram_id: uuid.UUID, wanted: Sequence[AnchorIn]
         if a is None:
             db.delete(row)
             changed += 1
-        elif (row.source_point, row.target_point) != (
-            a.source_point.value if a.source_point else None, a.target_point.value if a.target_point else None,
-        ):
+        elif _route_values(row) != _route_values(a):
             row.source_point = a.source_point.value if a.source_point else None
             row.target_point = a.target_point.value if a.target_point else None
+            row.points = [{"x": p.x, "y": p.y} for p in a.points]
+            row.smooth = a.smooth
             changed += 1
     for key, a in given.items():
         if key not in keep:
@@ -387,6 +397,7 @@ def _sync_anchors(db: Session, diagram_id: uuid.UUID, wanted: Sequence[AnchorIn]
                 diagram_id=diagram_id, source_element_id=a.source_element_id, target_element_id=a.target_element_id,
                 source_point=a.source_point.value if a.source_point else None,
                 target_point=a.target_point.value if a.target_point else None,
+                points=[{"x": p.x, "y": p.y} for p in a.points], smooth=a.smooth,
             ))
             changed += 1
     return changed

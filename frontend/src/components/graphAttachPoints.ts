@@ -118,3 +118,22 @@ export function lineAttachPoints(
   if (targetPoint) return [nearestPoint(source, pointXY(target, targetPoint)), targetPoint];
   return nearestPair(source, target);
 }
+
+/**
+ * The two points a line with vertices uses: an open end is the point of its box nearest the vertex next to it (the first for
+ * the source, the last for the target), not the other box. With no vertices this is `lineAttachPoints`.
+ *
+ * @param source The source box.
+ * @param target The target box.
+ * @param sourcePoint The point fixed on the source box, or null/undefined for automatic.
+ * @param targetPoint The point fixed on the target box, or null/undefined for automatic.
+ * @param via The vertices in order from the source to the target.
+ * @returns `[source point, target point]`.
+ */
+export function routeAttachPoints(
+  source: BoxGeometry, target: BoxGeometry, sourcePoint: AttachPoint | null | undefined, targetPoint: AttachPoint | null | undefined,
+  via: readonly { x: number; y: number }[],
+): [AttachPoint, AttachPoint] {
+  if (via.length === 0) return lineAttachPoints(source, target, sourcePoint, targetPoint);
+  return [sourcePoint ?? nearestPoint(source, via[0]), targetPoint ?? nearestPoint(target, via[via.length - 1])];
+}

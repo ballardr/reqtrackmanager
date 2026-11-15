@@ -26,7 +26,7 @@ Dependencies: `enums` (the point names).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from app.modules.architecture.enums import AttachPoint
 
@@ -129,3 +129,31 @@ def line_points(
     if target_point is not None:
         return nearest_point(source, point_xy(target, target_point), source_offered), target_point
     return nearest_pair(source, target, source_offered, target_offered)
+
+
+def route_points(
+    source: Box, target: Box, source_point: AttachPoint | None, target_point: AttachPoint | None,
+    waypoints: Sequence[Point],
+    source_offered: tuple[AttachPoint, ...] = ATTACH_POINTS, target_offered: tuple[AttachPoint, ...] = ATTACH_POINTS,
+) -> tuple[AttachPoint, AttachPoint]:
+    """The two points a line uses when it has vertices: an open end is the point of its box nearest the vertex next to it
+    (the first for the source, the last for the target), not the other box. With no vertices this is `line_points`.
+
+    Args:
+        source: The source box.
+        target: The target box.
+        source_point: The point a person chose on the source box, or `None` for automatic.
+        target_point: The point a person chose on the target box, or `None` for automatic.
+        waypoints: The vertices in order from the source to the target.
+        source_offered: The points an automatic end of the source box may choose.
+        target_offered: The points an automatic end of the target box may choose.
+
+    Returns:
+        `(source point, target point)`.
+    """
+    if not waypoints:
+        return line_points(source, target, source_point, target_point, source_offered, target_offered)
+    return (
+        source_point if source_point is not None else nearest_point(source, waypoints[0], source_offered),
+        target_point if target_point is not None else nearest_point(target, waypoints[-1], target_offered),
+    )

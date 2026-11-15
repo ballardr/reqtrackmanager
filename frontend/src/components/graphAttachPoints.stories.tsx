@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
 import cases from "./graphAttachPointCases.json";
-import { ATTACH_POINTS, ATTACH_POINT_LABEL, lineAttachPoints, pointXY, type AttachPoint } from "./graphAttachPoints";
+import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, routeAttachPoints, type AttachPoint } from "./graphAttachPoints";
 
 /** One shared case: its inputs and the server's answer (see `graphAttachPointCases.json`). */
 interface Case {
@@ -14,6 +14,8 @@ interface Case {
   /** The points a marker box offers, when the case has one (the other box offers all eight). */
   source_offers?: AttachPoint[];
   target_offers?: AttachPoint[];
+  /** The vertices of a routed line; its open ends follow the vertex beside them. */
+  via?: [number, number][];
   expected: [AttachPoint, AttachPoint];
 }
 
@@ -33,7 +35,8 @@ export const MatchesTheServersRuleOnEverySharedCase: Story = {
   play: async () => {
     const failures: string[] = [];
     for (const c of CASES) {
-      const got = lineAttachPoints(box(c.source, c.source_offers), box(c.target, c.target_offers), c.source_point, c.target_point);
+      const via = (c.via ?? []).map(([x, y]) => ({ x, y }));
+      const got = routeAttachPoints(box(c.source, c.source_offers), box(c.target, c.target_offers), c.source_point, c.target_point, via);
       if (got.join() !== c.expected.join()) failures.push(`${c.name}: expected ${c.expected.join()}, got ${got.join()}`);
     }
     await expect(failures).toEqual([]);

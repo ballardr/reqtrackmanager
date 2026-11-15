@@ -21,8 +21,10 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailCard } from "../../components/DetailCard";
 import { FieldCaption } from "../../components/FieldHelp";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
-import { ATTACH_POINTS, ATTACH_POINT_LABEL, SIDE_POINTS, lineAttachPoints, type AttachPoint, type BoxGeometry } from "../../components/graphAttachPoints";
+import { ATTACH_POINTS, ATTACH_POINT_LABEL, SIDE_POINTS, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry } from "../../components/graphAttachPoints";
+import { suggestWaypoint } from "../../components/graphLinePath";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { LineVertexFields } from "./LineVertexFields";
 import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { ARCHITECTURE_HELP } from "./help";
@@ -35,7 +37,7 @@ import { TransitionSelectionFields } from "./TransitionSelectionFields";
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import {
-  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
+  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type LineRouteChange, type LineWaypoint, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
 } from "./types";
 
 /** The geometry of a state's box as the canvas draws it, with the points a marker offers. */
@@ -83,7 +85,7 @@ export function StateMachineSelectionPanel({
   onDeleteTransition: (transition: StateTransition) => void;
   onConnect: (state: ArchitectureState, targetId: string) => void;
   onParentChange: (state: ArchitectureState, parentId: string | null) => void;
-  onPointsChange: (transition: StateTransition, change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
+  onPointsChange: (transition: StateTransition, change: LineRouteChange) => void;
   onComment: (target: { kind: "node" | "edge"; id: string }) => void;
 }) {
   const commentText = useStrings().canvasComments;
@@ -197,6 +199,7 @@ export function StateMachineSelectionPanel({
         {editable && from && to && !loop && (
           <EndPoints
             from={from} to={to} layout={layout} sourcePoint={points?.source_point ?? null} targetPoint={points?.target_point ?? null}
+            vertices={points?.points ?? []} smooth={points?.smooth ?? false}
             onChange={(change) => onPointsChange(transition, change)}
           />
         )}
@@ -223,21 +226,25 @@ function FindingList({ findings }: { findings: { severity: "error" | "warning"; 
   );
 }
 
-/** The two attach-point selects of a transition between different states. */
+/** The two attach-point selects of a transition between different states, and its vertices. */
 function EndPoints({
-  from, to, layout, sourcePoint, targetPoint, onChange,
+  from, to, layout, sourcePoint, targetPoint, vertices, smooth, onChange,
 }: {
   from: ArchitectureState;
   to: ArchitectureState;
   layout: StateMachineLayout;
   sourcePoint: AttachPoint | null;
   targetPoint: AttachPoint | null;
-  onChange: (change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
+  vertices: LineWaypoint[];
+  smooth: boolean;
+  onChange: (change: LineRouteChange) => void;
 }) {
   const a = geometry(layout, from);
   const b = geometry(layout, to);
-  const sourceAutomatic = lineAttachPoints(a, b, null, targetPoint)[0];
-  const targetAutomatic = lineAttachPoints(a, b, sourcePoint, null)[1];
+  const sourceAutomatic = routeAttachPoints(a, b, null, targetPoint, vertices)[0];
+  const targetAutomatic = routeAttachPoints(a, b, sourcePoint, null, vertices)[1];
+  const [first, last] = routeAttachPoints(a, b, sourcePoint, targetPoint, vertices);
+  const newPoint = suggestWaypoint(pointXY(a, first), vertices, pointXY(b, last));
   const offered = (state: ArchitectureState) => (isMarkerKind(state.kind) ? SIDE_POINTS : ATTACH_POINTS);
   const options = (state: ArchitectureState, automatic: AttachPoint) => [
     { value: "", label: `Automatic (${ATTACH_POINT_LABEL[automatic]})` },
@@ -254,6 +261,7 @@ function EndPoints({
         label="Line ends at" help={ARCHITECTURE_HELP.diagramLineTo} placeholder={null} value={targetPoint ?? ""}
         options={options(to, targetAutomatic)} onChange={(value) => onChange({ targetPoint: parse(value) })}
       />
+      <LineVertexFields points={vertices} smooth={smooth} editable newPoint={newPoint} onChange={onChange} />
     </>
   );
 }

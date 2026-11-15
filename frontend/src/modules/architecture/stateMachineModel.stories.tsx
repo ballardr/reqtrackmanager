@@ -5,7 +5,7 @@ import { buildState, buildStateMachineModel, buildTransition } from "./architect
 import labelCases from "./stateLabelCases.json";
 import {
   actionLines, canvasEdges, canvasNodes, commit, defaultSize, frameAt, isDirty, layoutFromModel, layoutSignature, mergeModel, moveStates,
-  nextFreeSpot, redo, resizeStates, setParent, setTransitionPoints, stateTree, startHistory, transitionLabel, undo,
+  layoutToSave, nextFreeSpot, redo, resizeStates, setParent, setTransitionPoints, stateTree, startHistory, transitionLabel, undo,
 } from "./stateMachineModel";
 import { defaultStateName } from "./stateFields";
 import { COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING } from "./stateShapes";
@@ -118,6 +118,20 @@ export const ALabelledMarkerIsDrawnLargerAroundItsBoxWithItsText: Story = {
     const plain = nodes.get("ste-3")!;
     await expect(plain.markerText).toBeUndefined();
     await expect(plain).toMatchObject({ width: 28, height: 28 });
+  },
+};
+
+/** A transition's vertices and curve are edited with its attach points, kept when only one of them changes, and reach the canvas line. */
+export const TransitionRoutesAreEditedKeptAndDrawn: Story = {
+  play: async () => {
+    const bent = setTransitionPoints(LAYOUT, "trn-1", { points: [{ x: 120, y: 200 }], smooth: true });
+    const moved = setTransitionPoints(bent, "trn-1", { sourcePoint: "top" });
+    const line = canvasEdges(MODEL, moved).find((e) => e.id === "trn-1")!;
+    await expect(line).toMatchObject({ sourcePoint: "top", points: [{ x: 120, y: 200 }], smooth: true });
+    const straight = setTransitionPoints(moved, "trn-1", { points: [], smooth: false });
+    await expect(canvasEdges(MODEL, straight).find((e) => e.id === "trn-1")).toMatchObject({ points: [], smooth: false });
+    // The save carries the route of every transition named.
+    await expect(layoutToSave(bent).transitions.find((t) => t.id === "trn-1")).toMatchObject({ points: [{ x: 120, y: 200 }], smooth: true });
   },
 };
 

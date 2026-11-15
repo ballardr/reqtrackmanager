@@ -76,9 +76,10 @@ import {
   type GraphNodeOutline, type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
 } from "./GraphCanvas";
 import {
-  ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, type AttachPoint, type BoxGeometry,
+  ATTACH_POINTS, SIDE_POINTS, lineAttachPoints, nearestPoint, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
 import { nearBoxIds } from "./graphAttachProximity";
+import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint } from "./graphLinePath";
 import { GraphNodeBadges } from "./GraphNodeBadges";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
 import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
@@ -268,6 +269,124 @@ function GraphLineEdge({ id, sourceX, sourceY, targetX, targetY, markerStart, ma
   );
 }
 
+/** What a routed line is given besides React Flow's own props. */
+interface RoutedEdgeData extends Record<string, unknown> {
+  label?: string;
+  points: LinePoint[];
+  smooth: boolean;
+  /** True when a selected line shows handles and the vertices can be changed. */
+  editable: boolean;
+  /** Called once with the whole new list of vertices when a gesture ends. */
+  onChange: (points: LinePoint[]) => void;
+  /** The grid step to put a dragged vertex on right now, or 0 for none (read when the pointer moves, so a held key counts). */
+  grid: () => number;
+  /** Opens the line (a double-click on a segment's handle, which sits over the middle of the line, is a double-click on the line). */
+  open: () => void;
+}
+
+/** How far the pointer must travel, in screen pixels, before a press on a segment's middle adds a vertex. */
+const VERTEX_DRAG_THRESHOLD = 4;
+
+/**
+ * A line with vertices: the path through them (`graphLinePath`), its label at the middle and, on a selected line that can be
+ * edited, a handle on each vertex (drag to move, double-click or Delete to remove) and one on each segment's middle (drag to add a vertex).
+ */
+function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, markerEnd, style, selected, id, data }: EdgeProps<Edge<RoutedEdgeData, "routed">>) {
+  const text = useStrings().graphCanvas;
+  const { screenToFlowPosition } = useReactFlow();
+  const [drag, setDrag] = useState<LinePoint[] | null>(null);
+  const gesture = useRef<{ index: number | null; insertAt: number | null; startX: number; startY: number; points: LinePoint[]; changed: boolean } | null>(null);
+  const latest = useLatest(data);
+  const stored = data?.points ?? [];
+  const points = drag ?? stored;
+  const start = { x: sourceX, y: sourceY };
+  const end = { x: targetX, y: targetY };
+  const middle = lineMiddle(start, points, end);
+  const handles = Boolean(selected && data?.editable);
+
+  /** Starts moving vertex `index`, or (`insertAt`) adding one at the segment's middle once the pointer has travelled. */
+  const begin = (event: ReactPointerEvent<HTMLElement>, index: number | null, insertAt: number | null) => {
+    if (event.button !== 0 || !latest.current?.editable) return;
+    event.stopPropagation();
+    gesture.current = { index, insertAt, startX: event.clientX, startY: event.clientY, points: stored, changed: false };
+  };
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const g = gesture.current;
+      if (!g) return;
+      if (g.insertAt !== null && Math.hypot(event.clientX - g.startX, event.clientY - g.startY) < VERTEX_DRAG_THRESHOLD) return;
+      if (g.insertAt === null && g.index === null) return;
+      const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const grid = latest.current?.grid() ?? 0;
+      const place = grid > 0 ? { x: snapCoordinate(at.x, grid), y: snapCoordinate(at.y, grid) } : { x: Math.round(at.x), y: Math.round(at.y) };
+      if (g.insertAt !== null) {
+        const grown = insertWaypoint(g.points, g.insertAt, place);
+        if (grown.length === g.points.length) { gesture.current = null; return; }
+        g.points = grown;
+        g.index = g.insertAt;
+        g.insertAt = null;
+      } else {
+        g.points = moveWaypoint(g.points, g.index as number, place);
+      }
+      g.changed = true;
+      setDrag(g.points);
+    };
+    const finish = () => {
+      const g = gesture.current;
+      gesture.current = null;
+      if (!g) return;
+      setDrag(null);
+      if (g.changed) latest.current?.onChange(g.points);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [screenToFlowPosition, latest]);
+
+  const remove = (index: number) => latest.current?.onChange(removeWaypoint(stored, index));
+  const path = linePath(start, points, end, data?.smooth ?? false);
+  return (
+    <>
+      <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
+      {data?.label && <EdgeLabel text={data.label} at={middle} />}
+      {handles && (
+        // The handles sit in the label layer, above the line's own end grips (React Flow draws those inside the line, so on a short line
+        // they would cover the middle of the segment) and above the boxes.
+        <EdgeLabelRenderer>
+          {segmentMiddles(start, points, end).map((at, i) => (
+            <div
+              key={`segment-${i}`} className="graph-segment-handle nopan nodrag" aria-hidden="true"
+              style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)` }}
+              onPointerDown={(event) => begin(event, null, i)}
+              onDoubleClick={(event) => { event.stopPropagation(); latest.current?.open(); }}
+            />
+          ))}
+          {points.map((at, i) => (
+            <div
+              key={`vertex-${i}`} className="graph-waypoint nopan nodrag" tabIndex={0} role="button" aria-label={text.waypointAria(i + 1)}
+              style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)` }}
+              onPointerDown={(event) => begin(event, i, null)}
+              onDoubleClick={(event) => { event.stopPropagation(); remove(i); }}
+              onKeyDown={(event) => {
+                if (event.key !== "Delete" && event.key !== "Backspace") return;
+                event.preventDefault();
+                event.stopPropagation();
+                remove(i);
+              }}
+            />
+          ))}
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
 /** A loop on one box: the path and label anchor come from `graphSelfLoop`, passed in `data`. */
 function GraphLoopEdge({ id, markerStart, markerEnd, style, data }: EdgeProps<Edge<{ path: string; label?: string; at: LoopPoint }, "loop">>) {
   if (!data) return null;
@@ -279,7 +398,7 @@ function GraphLoopEdge({ id, markerStart, markerEnd, style, data }: EdgeProps<Ed
   );
 }
 
-const EDGE_TYPES = { multiline: GraphLineEdge, loop: GraphLoopEdge };
+const EDGE_TYPES = { multiline: GraphLineEdge, loop: GraphLoopEdge, routed: GraphRoutedEdge };
 
 type Box = BoxGeometry;
 
@@ -294,10 +413,9 @@ function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"]):
       middles.set(e.id, selfLoop(from).label);
       continue;
     }
-    const [a, b] = lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
-    const pa = pointXY(from, a);
-    const pb = pointXY(to, b);
-    middles.set(e.id, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 });
+    const via = e.points ?? [];
+    const [a, b] = routeAttachPoints(from, to, e.sourcePoint, e.targetPoint, via);
+    middles.set(e.id, lineMiddle(pointXY(from, a), via, pointXY(to, b)));
   }
   return middles;
 }
@@ -396,6 +514,7 @@ export function GraphCanvasView({
   onNodesMove,
   onConnect,
   onEdgeAnchorChange,
+  onEdgePointsChange: onEdgePointsChangeProp,
   resizable = false,
   fitMaxZoom = 2,
   onNodesResize,
@@ -447,6 +566,9 @@ export function GraphCanvasView({
   const [gesture, setGesture] = useState(false);
   const snapping = snapGrid !== undefined && snapGrid > 0 && snapApplies(snapOn, invertHeld, gesture);
   const snapRef = useLatest({ size: snapGrid ?? 0, on: snapping });
+  const onEdgePointsChange = useLatest(onEdgePointsChangeProp);
+  const onEdgeOpenRef = useLatest(onEdgeOpen);
+  const pointsEditable = onEdgePointsChangeProp !== undefined;
   useEffect(() => {
     if (snapGrid === undefined || snapInvertKey === undefined) return undefined;
     const press = (event: globalThis.KeyboardEvent) => { if (event.key === snapInvertKey) setInvertHeld(true); };
@@ -624,11 +746,25 @@ export function GraphCanvasView({
       const marker = { type: MarkerType.ArrowClosed, color: e.color };
       const loop = e.source === e.target;
       // A loop's shape is fixed; React Flow only needs a handle that exists on the box (every box has "top").
-      const [sourceHandle, targetHandle] = loop ? (["top", "top"] as const) : lineAttachPoints(from, to, e.sourcePoint, e.targetPoint);
+      const via = e.points ?? [];
+      const [sourceHandle, targetHandle] = loop ? (["top", "top"] as const) : routeAttachPoints(from, to, e.sourcePoint, e.targetPoint, via);
       const multiline = e.label !== undefined && e.label.includes("\n");
+      // Every line of an editable canvas is drawn by the routed edge, so its label looks the same selected or not and a drag can add a vertex.
+      const editable = !readOnly && !commenting && pointsEditable && e.routable !== false;
+      const routed = !loop && (via.length > 0 || (!readOnly && pointsEditable && e.routable !== false));
       const shape = loop
         ? { type: "loop", data: { path: selfLoopPath(selfLoop(from)), label: e.label, at: selfLoop(from).label } }
-        : multiline ? { type: "multiline", data: { label: e.label } } : { type: "straight", label: e.label };
+        : routed
+          ? {
+            type: "routed",
+            data: {
+              label: e.label, points: via, smooth: e.smooth === true, editable,
+              onChange: (next: LinePoint[]) => onEdgePointsChange.current?.(e.id, next),
+              grid: () => (snapRef.current.on ? snapRef.current.size : 0),
+              open: () => onEdgeOpenRef.current?.(e.id),
+            } satisfies RoutedEdgeData,
+          }
+          : multiline ? { type: "multiline", data: { label: e.label } } : { type: "straight", label: e.label };
       return [{
         id: e.id,
         source: e.source,
@@ -644,7 +780,7 @@ export function GraphCanvasView({
         style: { stroke: e.color, strokeDasharray: e.dashed ? "6 4" : undefined },
       }];
     });
-  }, [edges, boxes, selection, labels, text, readOnly, onEdgeAnchorChange]);
+  }, [edges, boxes, selection, labels, text, readOnly, commenting, onEdgeAnchorChange, pointsEditable, onEdgePointsChange, onEdgeOpenRef, snapRef]);
 
   /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
   const flowLeaders = useMemo(() => {
@@ -936,7 +1072,7 @@ export function GraphCanvasView({
    */
   const handleKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (!selection || target.closest("input, textarea, select, [contenteditable='true']")) return;
+    if (!selection || target.closest("input, textarea, select, [contenteditable='true'], .graph-waypoint")) return;
     const step = RESIZE_KEYS[event.key];
     if (keyResize && event.altKey && step && selection.kind === "node") {
       const node = flow.current?.getNode(selection.id);

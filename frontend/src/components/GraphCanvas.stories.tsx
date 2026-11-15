@@ -687,7 +687,7 @@ export const LeadersPointAtANodeALineAndAPosition: Story = {
     expect(heads("n")).toBeTruthy();
     expect(heads("l")).toBeFalsy();
     expect(canvas.queryByLabelText(/connection from Check with ops/)).toBeNull();
-    expect(canvasElement.querySelectorAll(".graph-leader-end-free").length).toBe(1);
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-leader-end-free").length).toBe(1));
   },
 };
 
@@ -1281,5 +1281,221 @@ export const MovingThePointerOverALargeDrawingRendersNothing: Story = {
     }
     await waitFor(() => expect(canvasElement.querySelector('.react-flow__node[data-attach-near="true"]')).not.toBeNull());
     await expect(read()).toBe(before);
+  },
+};
+
+// --- Vertices ---------------------------------------------------------------------------------------------------
+
+const ROUTE_NODES: GraphCanvasNode[] = [{ id: "a", label: "A", x: 0, y: 0 }, { id: "b", label: "B", x: 300, y: 0 }];
+const SELECTED_LINE: GraphCanvasSelection = { kind: "edge", id: "e1" };
+
+/** Hosts one line `e1` between two boxes with real state for its vertices, as a consumer would. */
+function RouteHost({ initial = [], smooth = false, readOnly = false, routable, onChange }: {
+  initial?: { x: number; y: number }[]; smooth?: boolean; readOnly?: boolean; routable?: boolean; onChange?: (points: { x: number; y: number }[]) => void;
+}) {
+  const [points, setPoints] = useState(initial);
+  return (
+    <GraphCanvas
+      nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b", points, smooth, routable }]} ariaLabel="Routes" showViewToggle={false}
+      readOnly={readOnly} selected={SELECTED_LINE}
+      onEdgePointsChange={(_id, next) => { setPoints(next); onChange?.(next); }}
+    />
+  );
+}
+
+/** The path's numbers, in order. */
+function pathNumbers(root: HTMLElement, edgeId = "e1"): number[] {
+  return lineEnds(root, edgeId);
+}
+
+/** A line with vertices is drawn through them: the path passes each vertex in order between its two ends. */
+export const ALineIsDrawnThroughItsVertices: Story = {
+  render: () => <RouteHost initial={[{ x: 150, y: 200 }, { x: 250, y: 200 }]} />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const numbers = pathNumbers(canvasElement);
+      expect(numbers).toHaveLength(8);
+      expect(numbers.slice(2, 6)).toEqual([150, 200, 250, 200]);
+    });
+  },
+};
+
+/** A smooth line is drawn as a curve through the same points. */
+export const ASmoothLineIsDrawnAsACurve: Story = {
+  render: () => <RouteHost initial={[{ x: 150, y: 200 }]} smooth />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
+      expect(d.startsWith("M ")).toBe(true);
+      expect(d.match(/ C /g)).toHaveLength(2); // one curve into the vertex and one out of it
+    });
+  },
+};
+
+/** The selected line shows a handle on each vertex and one on the middle of each segment. */
+export const ASelectedLineShowsVertexAndSegmentHandles: Story = {
+  render: () => <RouteHost initial={[{ x: 150, y: 200 }]} />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      expect(canvasElement.querySelectorAll(".graph-waypoint")).toHaveLength(1);
+      expect(canvasElement.querySelectorAll(".graph-segment-handle")).toHaveLength(2);
+    });
+    expect(canvasElement.querySelector(".graph-waypoint")?.getAttribute("aria-label")).toContain("Vertex 1");
+  },
+};
+
+/** Drags the centre of `handle` by `dx`, `dy` screen pixels with the pointer. */
+async function dragHandle(handle: Element, dx: number, dy: number) {
+  const box = handle.getBoundingClientRect();
+  const start = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+  const along = (i: number) => ({ clientX: start.clientX + (dx * i) / 6, clientY: start.clientY + (dy * i) / 6 });
+  await userEvent.pointer([
+    { keys: "[MouseLeft>]", target: handle, coords: along(0) },
+    ...Array.from({ length: 6 }, (_, i) => ({ target: handle, coords: along(i + 1) })),
+    { keys: "[/MouseLeft]", target: handle, coords: along(6) },
+  ]);
+}
+
+/** Dragging the middle of a segment adds one vertex, reported once with the whole list. */
+export const DraggingASegmentMiddleAddsAVertex: Story = {
+  args: { onEdgePointsChange: fn() },
+  render: () => {
+    const onChange = fn();
+    // The canvas reports through the host's state; the spy is read back through the DOM below.
+    return <div data-testid="route"><RouteHost onChange={(points) => { onChange(points); document.body.dataset.vertices = String(points.length); }} /></div>;
+  },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    const handle = await waitFor(() => {
+      const found = canvasElement.querySelector(".graph-segment-handle");
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    await dragHandle(handle, 0, 80);
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-waypoint")).toHaveLength(1));
+    expect(document.body.dataset.vertices).toBe("1");
+    // The line now passes below its old straight course: the middle numbers of the path are the new vertex.
+    const numbers = pathNumbers(canvasElement);
+    expect(numbers).toHaveLength(6);
+    expect(numbers[3]).toBeGreaterThan(numbers[1]);
+  },
+};
+
+/** Dragging a vertex moves it. */
+export const DraggingAVertexMovesIt: Story = {
+  render: () => <RouteHost initial={[{ x: 150, y: 100 }]} />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    const vertex = await waitFor(() => {
+      const found = canvasElement.querySelector(".graph-waypoint");
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    const before = pathNumbers(canvasElement);
+    await dragHandle(vertex, 0, 60);
+    await waitFor(() => expect(pathNumbers(canvasElement)[3]).toBeGreaterThan(before[3]));
+    expect(pathNumbers(canvasElement)[2]).toBeCloseTo(before[2], -1);
+  },
+};
+
+/** Double-clicking a vertex removes it. */
+export const DoubleClickingAVertexRemovesIt: Story = {
+  render: () => <RouteHost initial={[{ x: 150, y: 100 }]} />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    const vertex = await waitFor(() => {
+      const found = canvasElement.querySelector(".graph-waypoint");
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    await userEvent.dblClick(vertex);
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-waypoint")).toHaveLength(0));
+  },
+};
+
+/** One routed line with real state and a delete handler that records that it was called. */
+function DeleteKeyHost() {
+  const [points, setPoints] = useState([{ x: 150, y: 100 }]);
+  return (
+    <GraphCanvas
+      nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b", points }]} ariaLabel="Routes" showViewToggle={false}
+      selected={SELECTED_LINE} onEdgePointsChange={(_id, next) => setPoints(next)}
+      onDelete={() => { document.body.dataset.deleted = "yes"; }}
+    />
+  );
+}
+
+/** Delete on a focused vertex removes the vertex, and never asks to delete the line. */
+export const DeleteOnAVertexRemovesTheVertexNotTheLine: Story = {
+  render: () => <DeleteKeyHost />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    delete document.body.dataset.deleted;
+    const vertex = await waitFor(() => {
+      const found = canvasElement.querySelector(".graph-waypoint") as HTMLElement | null;
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    vertex.focus();
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-waypoint")).toHaveLength(0));
+    expect(document.body.dataset.deleted).toBeUndefined();
+  },
+};
+
+/** A read-only canvas draws the route but offers no handles; a line the consumer cannot route offers none either. */
+export const ReadOnlyAndUnroutableLinesOfferNoVertexHandles: Story = {
+  render: () => (
+    <div className="stack">
+      <div data-testid="read-only"><RouteHost initial={[{ x: 150, y: 100 }]} readOnly /></div>
+      <div data-testid="fixed"><RouteHost initial={[{ x: 150, y: 100 }]} routable={false} /></div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findAllByLabelText("B, node");
+    await waitFor(() => expect(pathNumbers(canvas.getByTestId("read-only"))).toHaveLength(6));
+    expect(canvasElement.querySelectorAll(".graph-waypoint")).toHaveLength(0);
+    expect(canvasElement.querySelectorAll(".graph-segment-handle")).toHaveLength(0);
+  },
+};
+
+/** An open end follows the vertex beside it: a vertex above the boxes draws the line from their tops. */
+export const AnOpenEndFollowsTheVertexBesideIt: Story = {
+  render: () => <RouteHost initial={[{ x: 230, y: -200 }]} />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const numbers = pathNumbers(canvasElement);
+      expect(numbers).toHaveLength(6);
+      // Both ends sit on the top edge (y = 0) of their boxes, not on the facing sides (y = 40).
+      expect(numbers[1]).toBeLessThan(10);
+      expect(numbers[5]).toBeLessThan(10);
+    });
+  },
+};
+
+/** A double-click on the dot over a selected line's middle opens the line, as a double-click on the line itself does. */
+export const DoubleClickingASegmentHandleOpensTheLine: Story = {
+  args: { onEdgeOpen: fn() },
+  render: (args) => (
+    <GraphCanvas
+      nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Routes" showViewToggle={false}
+      selected={SELECTED_LINE} onEdgePointsChange={() => undefined} onEdgeOpen={args.onEdgeOpen}
+    />
+  ),
+  play: async ({ canvasElement, args }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    const handle = await waitFor(() => {
+      const found = canvasElement.querySelector(".graph-segment-handle");
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    await userEvent.dblClick(handle);
+    await waitFor(() => expect(args.onEdgeOpen).toHaveBeenCalledWith("e1"));
+    expect(args.onEdgeOpen).toHaveBeenCalledTimes(1);
   },
 };

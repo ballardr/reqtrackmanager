@@ -44,7 +44,8 @@ import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
-import { ATTACH_POINTS, ATTACH_POINT_LABEL, lineAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
+import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, routeAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
+import { suggestWaypoint } from "../../components/graphLinePath";
 import {
   BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, leaderIsDrawn, type EditorBoundary,
   type EditorBox, type EditorNote, type NoteLeaderTarget,
@@ -54,11 +55,12 @@ import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
 import { ConnectionSelectionFields } from "./ConnectionSelectionFields";
 import { ElementSelectionFields } from "./ElementSelectionFields";
+import { LineVertexFields } from "./LineVertexFields";
 import { PortList } from "./PortList";
 import { selectionAction, type SelectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import type {
-  ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionFieldValues, ConnectionRef, ConnectionType, DiagramAnchor,
+  ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionFieldValues, ConnectionRef, ConnectionType, DiagramAnchor, LineRouteChange,
   DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, NoteTone, PortValues,
 } from "./types";
 import type { OrgUser } from "../../api/types";
@@ -159,7 +161,7 @@ export function DiagramSelectionPanel({
   onConnect: (box: EditorBox, targetId: string) => void;
   onOpenInside: (box: EditorBox) => void;
   onDeleteElement: (box: EditorBox) => void;
-  onAnchorChange: (edge: DiagramViewEdge, change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
+  onAnchorChange: (edge: DiagramViewEdge, change: LineRouteChange) => void;
   drawnEdgeIds: ReadonlySet<string>;
   pickingSpot: string | null;
   onEditNote: (key: string, text: string) => void;
@@ -366,6 +368,9 @@ export function DiagramSelectionPanel({
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
           <LineEnds edge={edge} boxes={boxes} anchors={anchors} onChange={(change) => onAnchorChange(edge, change)} />
         )}
+        {editable && (edge.source_is_boundary || edge.target_is_boundary) && (
+          <p className="text-muted">A line to a boundary box is placed automatically, so it has no attach points or vertices to set.</p>
+        )}
         {editable && edge.connections.length === 1 && boundaries.length > 0 && (
           <RealisesControl connection={edge.connections[0]} boundaries={boundaries} onSet={onSetRealises} />
         )}
@@ -450,15 +455,17 @@ function LineEnds({
   edge: DiagramViewEdge;
   boxes: EditorBox[];
   anchors: DiagramAnchor[];
-  onChange: (change: { sourcePoint?: AttachPoint | null; targetPoint?: AttachPoint | null }) => void;
+  onChange: (change: LineRouteChange) => void;
 }) {
   const from = boxes.find((b) => b.elementId === edge.source_element_id);
   const to = boxes.find((b) => b.elementId === edge.target_element_id);
   if (!from || !to) return null;
   const chosen = anchorOf(anchors, edge.source_element_id, edge.target_element_id);
-  // What Automatic would give each end with the other end as it is now.
-  const sourceAutomatic = lineAttachPoints(from, to, null, chosen.targetPoint)[0];
-  const targetAutomatic = lineAttachPoints(from, to, chosen.sourcePoint, null)[1];
+  // What Automatic would give each end with the other end as it is now (the nearest vertex, when the line has any).
+  const sourceAutomatic = routeAttachPoints(from, to, null, chosen.targetPoint, chosen.points)[0];
+  const targetAutomatic = routeAttachPoints(from, to, chosen.sourcePoint, null, chosen.points)[1];
+  const [a, b] = routeAttachPoints(from, to, chosen.sourcePoint, chosen.targetPoint, chosen.points);
+  const newPoint = suggestWaypoint(pointXY(from, a), chosen.points, pointXY(to, b));
   const options = (automatic: AttachPoint) => [
     { value: "", label: `Automatic (${ATTACH_POINT_LABEL[automatic]})` },
     ...ATTACH_POINTS.map((p) => ({ value: p, label: ATTACH_POINT_LABEL[p] })),
@@ -474,6 +481,7 @@ function LineEnds({
         label="Line ends at" help={ARCHITECTURE_HELP.diagramLineTo} placeholder={null} value={chosen.targetPoint ?? ""}
         options={options(targetAutomatic)} onChange={(value) => onChange({ targetPoint: parse(value) })}
       />
+      <LineVertexFields points={chosen.points} smooth={chosen.smooth} editable newPoint={newPoint} onChange={onChange} />
     </>
   );
 }

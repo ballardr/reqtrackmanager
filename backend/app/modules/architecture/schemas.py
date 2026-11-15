@@ -21,6 +21,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.modules.architecture.diagram_line_path import MAX_WAYPOINTS
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
     SYMBOL_LABEL_LENGTH,
@@ -590,15 +591,28 @@ class NoteIn(BaseModel):
         return self
 
 
+class WaypointIn(BaseModel):
+    """A vertex of a drawn line, in canvas units (absolute, whatever box it passes)."""
+
+    x: Coordinate
+    y: Coordinate
+
+
+#: The vertices of a line, in order from its source to its target (at most `diagram_line_path.MAX_WAYPOINTS`).
+Waypoints = Annotated[list[WaypointIn], Field(max_length=MAX_WAYPOINTS)]
+
+
 class AnchorIn(BaseModel):
-    """Where a drawn line meets its two boxes, chosen by a person. The line is the one joining the two placed elements
-    (a merged or rolled-up line has one anchor for all it stands for); an end left `None` is automatic. At least one end
-    is given."""
+    """How a drawn line is routed, chosen by a person. The line is the one joining the two placed elements (a merged or
+    rolled-up line has one anchor for all it stands for); an end left `None` is automatic. At least one end, or a vertex
+    point, is given. `points` run from `source_element_id` to `target_element_id`; `smooth` draws a curve through them."""
 
     source_element_id: UUID
     target_element_id: UUID
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
+    points: Waypoints = Field(default_factory=list)
+    smooth: bool = False
 
 
 class AnchorOut(AnchorIn):
@@ -1026,6 +1040,8 @@ class TransitionIn(BaseModel):
     description: str | None = Field(default=None, max_length=20000)
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
+    points: Waypoints | None = None
+    smooth: bool | None = None
 
 
 class TransitionOut(BaseModel):
@@ -1045,6 +1061,8 @@ class TransitionOut(BaseModel):
     sort_order: int
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
+    points: list[WaypointIn] = Field(default_factory=list)
+    smooth: bool = False
 
 
 class StateLayoutIn(BaseModel):
@@ -1060,11 +1078,14 @@ class StateLayoutIn(BaseModel):
 
 
 class TransitionPointsIn(BaseModel):
-    """One transition's attach points in a layout save (`null` is automatic)."""
+    """One transition's attach points (`null` is automatic) and route in a layout save; `points` and `smooth` left out keep
+    the stored route."""
 
     id: UUID
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
+    points: Waypoints | None = None
+    smooth: bool | None = None
 
 
 class StateMachineLayoutSave(BaseModel):

@@ -38,7 +38,7 @@ import {
 import {
   boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
 } from "./diagramOutlineModel";
-import type { DiagramViewEdge, ModelStateMachine } from "./types";
+import type { DiagramAnchor, DiagramViewEdge, ModelStateMachine } from "./types";
 import { ARCHITECTURE_HELP } from "./help";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
@@ -66,9 +66,10 @@ function noteSummary(text: string): string {
  * @param onOpenMachine Opens a state machine diagram from this diagram (the page asks before leaving unsaved changes).
  */
 export function DiagramOutline({
-  boxes, notes, boundaries, covered, edges, drawnEdgeIds, parents, hidden, descriptions, selection, onSelect, stateMachinesOf, onOpenMachine,
+  boxes, notes, boundaries, anchors, covered, edges, drawnEdgeIds, parents, hidden, descriptions, selection, onSelect, stateMachinesOf, onOpenMachine,
 }: {
   boxes: EditorBox[];
+  anchors: DiagramAnchor[];
   notes: EditorNote[];
   boundaries: EditorBoundary[];
   covered: ReadonlySet<string>;
@@ -98,7 +99,7 @@ export function DiagramOutline({
     );
   };
   const tree = outlineTree(boxes, parents, hidden);
-  const rows = connectionRows(edges, boxes, boundaries);
+  const rows = connectionRows(edges, boxes, boundaries, anchors);
   const [elementView, setElementView] = useViewMode("architecture_outline_elements", "tree");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const branchIds = outlineBranchIds(tree);
@@ -264,6 +265,7 @@ export function DiagramOutline({
                   <HelpHeader label="Type" help={ARCHITECTURE_HELP.connectionType} />
                   <HelpHeader label="Connections" help={ARCHITECTURE_HELP.outlineConnections} />
                   <HelpHeader label="Route" help={ARCHITECTURE_HELP.outlineRoute} />
+                  <HelpHeader label="Vertices" help={ARCHITECTURE_HELP.lineVertices} />
                 </tr>
               </thead>
               <tbody>
@@ -286,6 +288,7 @@ export function DiagramOutline({
                       {ROUTE_LABEL[row.route]}
                       {row.via.length > 0 && <span className="text-muted"> via {row.via.join(", ")}</span>}
                     </td>
+                    <td>{row.vertices || "—"}</td>
                   </tr>
                 ))}
               </tbody>

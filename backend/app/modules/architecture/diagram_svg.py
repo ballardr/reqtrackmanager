@@ -40,7 +40,8 @@ from xml.sax.saxutils import escape
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy
+from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
+from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy, route_points
 from app.modules.architecture.enums import AttachPoint, LeaderKind, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
@@ -242,17 +243,18 @@ def _boundary(box: ViewBoundary) -> str:
     return "".join(parts)
 
 
-def _anchor_points(
+def _anchor_route(
     anchors: list[AnchorOut], edge: ViewEdge,
-) -> tuple[AttachPoint | None, AttachPoint | None]:
-    """The points a person chose for the line, as (source end, target end); an anchor stored for the opposite direction
-    of the same pair applies with its ends swapped."""
+) -> tuple[AttachPoint | None, AttachPoint | None, list[Point], bool]:
+    """How a person routed the line: (source end, target end, vertices from the source to the target, smooth). An anchor
+    stored for the opposite direction of the same pair applies with its ends swapped and its vertices reversed."""
     for anchor in anchors:
+        points: list[Point] = [(p.x, p.y) for p in anchor.points]
         if (anchor.source_element_id, anchor.target_element_id) == (edge.source_element_id, edge.target_element_id):
-            return anchor.source_point, anchor.target_point
+            return anchor.source_point, anchor.target_point, points, anchor.smooth
         if (anchor.source_element_id, anchor.target_element_id) == (edge.target_element_id, edge.source_element_id):
-            return anchor.target_point, anchor.source_point
-    return None, None
+            return anchor.target_point, anchor.source_point, points[::-1], anchor.smooth
+    return None, None, [], False
 
 
 def _edges(
@@ -275,22 +277,29 @@ def _edges(
         index = rank.get(key, 0)
         rank[key] = index + 1
         offset = (index - (totals[key] - 1) / 2) * 16
-        chosen = _anchor_points(anchors, edge)
-        pa, pb = line_points((a.x, a.y, a.width, a.height), (b.x, b.y, b.width, b.height), chosen[0], chosen[1])
+        first, last, vertices, smooth = _anchor_route(anchors, edge)
+        pa, pb = route_points((a.x, a.y, a.width, a.height), (b.x, b.y, b.width, b.height), first, last, vertices)
         (x1, y1), (x2, y2) = point_xy((a.x, a.y, a.width, a.height), pa), point_xy((b.x, b.y, b.width, b.height), pb)
-        length = math.hypot(x2 - x1, y2 - y1) or 1.0
-        nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
-        x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
+        if not vertices:
+            length = math.hypot(x2 - x1, y2 - y1) or 1.0
+            nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
+            x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
         color = _color(edge.color_light)
         marker = colors.setdefault(color, len(colors))
         dash = ' stroke-dasharray="7 5"' if edge.indirect else (
             ' stroke-dasharray="2 4"' if edge.line_style == "dotted" else (' stroke-dasharray="7 5"' if edge.line_style == "dashed" else "")
         )
         arrow = f' marker-end="url(#arrow{marker})"' if not edge.two_way else ""
-        lines.append(
-            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
-        )
-        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        if vertices:
+            lines.append(
+                f'<path d="{line_path((x1, y1), vertices, (x2, y2), smooth)}" fill="none" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
+            )
+            mx, my = line_middle((x1, y1), vertices, (x2, y2))
+        else:
+            lines.append(
+                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
+            )
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
         middles[edge.id] = (mx, my)
         if edge.label:
             lines.append(
@@ -426,8 +435,10 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     points = [(n.leader_x, n.leader_y) for n in drawn_notes if n.leader_kind == LeaderKind.POINT]
     xs = [v for n in drawn_boxes for v in (n.x, n.x + n.width)] + [v for n in drawn_notes for v in (n.x, n.x + n.width)]
     xs += [px for px, _ in points if px is not None]
+    xs += [p.x for a in view.anchors for p in a.points]
     ys = [v for n in drawn_boxes for v in (n.y - 6, n.y + n.height + 6)] + [v for n in drawn_notes for v in (n.y, n.y + n.height)]
     ys += [py for _, py in points if py is not None]
+    ys += [p.y for a in view.anchors for p in a.points]
     if not xs:
         min_x, min_y, width, height = 0.0, 0.0, 320.0, 120.0
         body = '<text x="160" y="60" text-anchor="middle" font-size="12" fill="#64748B">Empty diagram</text>'

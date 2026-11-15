@@ -31,6 +31,7 @@ import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import type { AttachPoint } from "./graphAttachPoints";
+import type { LinePoint } from "./graphLinePath";
 import { Spinner } from "./Spinner";
 
 /**
@@ -204,6 +205,15 @@ export interface GraphCanvasEdge {
   sourcePoint?: AttachPoint | null;
   /** The attach point fixed on the target box, or null/undefined for automatic. */
   targetPoint?: AttachPoint | null;
+  /**
+   * Vertices in canvas units, in order from the source to the target (`graphLinePath`). An open end meets the point of
+   * its box nearest the vertex beside it. Ignored for a loop.
+   */
+  points?: LinePoint[];
+  /** Draws a curve through the vertices instead of straight segments (no effect without vertices). */
+  smooth?: boolean;
+  /** False when the consumer cannot keep a route for this line: no vertex handles are offered on it. True when omitted. */
+  routable?: boolean;
 }
 
 /** What is selected: one node or one connection. */
@@ -247,6 +257,12 @@ export interface GraphCanvasProps {
    * edge's `sourcePoint`/`targetPoint`. Dragging an end to a different box is ignored.
    */
   onEdgeAnchorChange?: (edgeId: string, change: { sourcePoint?: AttachPoint; targetPoint?: AttachPoint }) => void;
+  /**
+   * Called once when a person changes a line's vertices on the canvas (not in read-only mode): dragging a segment's middle
+   * adds a vertex, dragging a vertex moves it, and double-clicking it or pressing Delete on it removes it. `points` is the whole new
+   * list. The canvas stores nothing: the consumer keeps it and passes it back as the edge's `points`.
+   */
+  onEdgePointsChange?: (edgeId: string, points: LinePoint[]) => void;
   /**
    * Called when a node is opened by a double-click. The canvas opens nothing itself; what "open" means (a detail page, an
    * inner diagram) belongs to the consumer, who must also offer a keyboard route (Enter is left to selecting).

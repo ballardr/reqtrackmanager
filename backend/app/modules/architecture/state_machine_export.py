@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.architecture.diagram_line_path import clean_waypoints
 from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, AttachPoint, RecordStatus, StateKind
 from app.modules.architecture.models import (
     ArchitectureState,
@@ -172,6 +173,7 @@ def export_state_machines(
                     "source": state_names.get(t.source_state_id), "target": state_names.get(t.target_state_id),
                     "event": t.event, "guard": t.guard, "action": t.action, "description": t.description,
                     "source_point": t.source_point, "target_point": t.target_point,
+                    "points": clean_waypoints(t.points), "smooth": t.smooth,
                 }
                 for t in by_machine_transitions.get(m.id, [])
             ],
@@ -292,6 +294,7 @@ def import_state_machines(
                 description=raw.get("description", ""), sort_order=len(transition_ids),
                 source_point=raw.get("source_point") if raw.get("source_point") in _POINTS else None,
                 target_point=raw.get("target_point") if raw.get("target_point") in _POINTS else None,
+                points=clean_waypoints(raw.get("points")), smooth=raw.get("smooth") is True,
             )
             db.add(transition)
             db.flush()

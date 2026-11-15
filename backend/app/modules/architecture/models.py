@@ -672,7 +672,10 @@ class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
         diagram_id: The diagram; deleting it removes its anchors.
         source_element_id / target_element_id: The two placed elements; deleting either removes the anchor. Both must
             be placed on the diagram, which the layout save enforces and an unplace repeats.
-        source_point / target_point: An `AttachPoint` value, or `None` for automatic (at least one is set).
+        source_point / target_point: An `AttachPoint` value, or `None` for automatic.
+        points: The line's vertices as `{x, y}` in canvas units, in order from `source_element_id` to `target_element_id`
+            (a line drawn the other way round reads them reversed). At least one of the two points or a vertex is set.
+        smooth: True to draw a curve through the vertices, false for straight segments.
     """
 
     __tablename__ = "architecture_diagram_anchors"
@@ -680,7 +683,8 @@ class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
         UniqueConstraint("diagram_id", "source_element_id", "target_element_id", name="uq_architecture_diagram_anchors"),
         CheckConstraint("source_element_id <> target_element_id", name="ck_architecture_diagram_anchors_distinct"),
         CheckConstraint(
-            "source_point IS NOT NULL OR target_point IS NOT NULL", name="ck_architecture_diagram_anchors_something_set",
+            "source_point IS NOT NULL OR target_point IS NOT NULL OR jsonb_array_length(points) > 0",
+            name="ck_architecture_diagram_anchors_something_set",
         ),
     )
 
@@ -695,6 +699,8 @@ class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
     )
     source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
+    smooth: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class ArchitectureDiagramBoundary(UUIDPKMixin, TimestampMixin, Base):
@@ -911,6 +917,8 @@ class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
         event / guard / action / description: Plain text a person reads; never evaluated.
         sort_order: Order among the diagram's transitions.
         source_point / target_point: An `AttachPoint` value fixing where the line meets a box, or `None` for automatic.
+        points / smooth: The line's vertices as `{x, y}` in canvas units from the source state to the target state, and
+            whether a curve runs through them (see `ArchitectureDiagramAnchor`).
     """
 
     __tablename__ = "architecture_transitions"
@@ -931,6 +939,8 @@ class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
+    smooth: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class ArchitectureAllocationDismissal(UUIDPKMixin, TimestampMixin, Base):

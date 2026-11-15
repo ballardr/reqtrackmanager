@@ -16,7 +16,7 @@ Design decisions:
   the label rule is the shared `state_shapes.transition_label` with its line break written as a space (Mermaid reads one line).
 - **A transition is written in the block of its two states** when they share a parent and at the top level when they do not,
   because Mermaid scopes the start and end marks to a block and draws a line that crosses blocks only from the top.
-- Positions, sizes and attach points are left out: Mermaid lays the graph out itself. Several final states in one block
+- Positions, sizes, attach points and vertices are left out: Mermaid lays the graph out itself. Several final states in one block
   collapse into the block's single end mark, which Mermaid cannot tell apart.
 - A transition that leaves an initial state, or enters a final one, for a state in another block is not written: the marks
   belong to their own block and Mermaid has no mark that reaches across.

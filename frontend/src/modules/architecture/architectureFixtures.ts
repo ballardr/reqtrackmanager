@@ -117,7 +117,7 @@ export function buildTransition(overrides: Partial<StateTransition> = {}): State
   return {
     id: "trn-1", state_machine_diagram_id: "smd-1", state_machine_diagram_version: 5, source_state_id: "ste-1", source_state_code: "STE-001",
     target_state_id: "ste-2", target_state_code: "STE-002", event: "start", guard: "", action: "", description: "", sort_order: 0,
-    source_point: null, target_point: null, ...overrides,
+    source_point: null, target_point: null, points: [], smooth: false, ...overrides,
   };
 }
 

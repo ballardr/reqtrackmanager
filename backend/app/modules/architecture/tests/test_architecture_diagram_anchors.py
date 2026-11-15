@@ -45,8 +45,12 @@ def _boxes(a, b):
     return [{"element_id": a["id"], "x": 0, "y": 0}, {"element_id": b["id"], "x": 400, "y": 0}]
 
 
-def _anchor(a, b, source_point="bottom", target_point="top"):
-    return {"source_element_id": a["id"], "target_element_id": b["id"], "source_point": source_point, "target_point": target_point}
+def _anchor(a, b, source_point="bottom", target_point="top", points=(), smooth=False):
+    """An anchor as the save takes it and the view gives it (`points` are `(x, y)` vertices from `a` to `b`)."""
+    return {
+        "source_element_id": a["id"], "target_element_id": b["id"], "source_point": source_point, "target_point": target_point,
+        "points": [{"x": x, "y": y} for x, y in points], "smooth": smooth,
+    }
 
 
 def test_an_anchor_is_stored_returned_in_the_view_and_advances_the_version(client, admin_token):
@@ -181,6 +185,7 @@ def test_anchors_round_trip_through_the_project_bundle(client, admin_token):
     (entry,) = data["architecture_diagrams"]
     assert entry["anchors"] == [{
         "source": {"code": a["unique_code"]}, "target": {"code": b["unique_code"]}, "source_point": "bottom", "target_point": None,
+        "points": [], "smooth": False,
     }]
     assert str(a["id"]) not in json.dumps(entry)  # codes, never ids
 
@@ -226,3 +231,93 @@ def test_an_import_drops_an_anchor_it_cannot_restore_with_a_warning(client, admi
     (diagram_copy,) = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
     assert len(view(client, token, copy["id"], diagram_copy["id"])["anchors"]) == 1
     assert sum("line anchor" in w for w in imported.json().get("warnings", [])) == 4
+
+
+# --- Waypoints ---------------------------------------------------------------------------------------------------------
+
+
+def test_a_line_with_only_vertex_points_is_stored_and_returned_in_order(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch route store")
+    a, b, diagram = _pair(client, token, project["id"])
+    route = _anchor(a, b, None, None, [(200, 120), (300, 120)], smooth=True)
+    saved = _save(client, token, project["id"], diagram, _boxes(a, b), [route])
+    assert saved["version"] == diagram["version"] + 1
+    assert view(client, token, project["id"], diagram["id"])["anchors"] == [route]
+    again = _save(client, token, project["id"], saved, _boxes(a, b), [route])
+    assert again["version"] == saved["version"]  # the same route changes nothing
+    straight = _anchor(a, b, None, None, [(200, 120), (300, 120)], smooth=False)
+    changed = _save(client, token, project["id"], again, _boxes(a, b), [straight])
+    assert changed["version"] == saved["version"] + 1  # the curve alone is a change
+    moved = _save(client, token, project["id"], changed, _boxes(a, b), [_anchor(a, b, None, None, [(200, 130), (300, 120)])])
+    assert moved["version"] == changed["version"] + 1  # so is one moved vertex
+
+
+def test_the_save_refuses_a_bad_route(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch route refuse")
+    a, b, diagram = _pair(client, token, project["id"])
+    p = project["id"]
+    too_many = [(i, i) for i in range(17)]
+    _save(client, token, p, diagram, _boxes(a, b), [_anchor(a, b, None, None, too_many)], expect=422)
+    _save(client, token, p, diagram, _boxes(a, b), [_anchor(a, b, None, None, [(2_000_000, 0)])], expect=422)
+    body = _anchor(a, b, None, None, [(0, 0)])
+    body["points"] = [{"x": "NaN", "y": 0}]
+    _save(client, token, p, diagram, _boxes(a, b), [body], expect=422)
+    _save(client, token, p, diagram, _boxes(a, b), [_anchor(a, b, None, None, [])], expect=400)  # nothing fixed, no vertex
+    assert view(client, token, p, diagram["id"])["anchors"] == []
+    _save(client, token, p, diagram, _boxes(a, b), [_anchor(a, b, None, None, [(i, i) for i in range(16)])])  # the cap itself is allowed
+
+
+def test_the_svg_draws_a_routed_line_as_a_path_through_its_vertices(client, admin_token):
+    _org, project, token = setup(client, admin_token, "Arch route svg")
+    a, b, diagram = _pair(client, token, project["id"])
+    p = project["id"]
+    # Boxes are 160 x 80 at x = 0 and 400. A vertex at (280, -100) pulls both open ends to the top corners nearest it.
+    saved = _save(client, token, p, diagram, _boxes(a, b), [_anchor(a, b, None, None, [(280, -100)])])
+    svg = client.get(f"{project_base(p)}/diagrams/{saved['id']}/svg", headers=auth_headers(token)).text
+    assert 'd="M 160 0 L 280 -100 L 400 0"' in svg and "<line " not in svg
+    smooth = _save(client, token, p, saved, _boxes(a, b), [_anchor(a, b, None, None, [(280, -100)], smooth=True)])
+    svg = client.get(f"{project_base(p)}/diagrams/{smooth['id']}/svg", headers=auth_headers(token)).text
+    assert 'd="M 160 0 C ' in svg and svg.count(" C ") == 2
+    # The vertex lies above the boxes, so the picture's box grows to hold it.
+    top = re.search(r'viewBox="[\d.-]+ (-?[\d.]+) ', svg)
+    assert top is not None and float(top.group(1)) < -100
+
+
+def test_a_route_stored_the_other_way_round_is_drawn_reversed(client, admin_token):
+    """A line from Bravo to Alpha shares the route stored for Alpha to Bravo, read from the other end."""
+    _org, project, token = setup(client, admin_token, "Arch route reversed")
+    a = make_element(client, token, project["id"], "Alpha")
+    b = make_element(client, token, project["id"], "Bravo")
+    make_connection(client, token, project["id"], b["id"], a["id"])
+    diagram = place_all(client, token, project["id"], make_diagram(client, token, project["id"], "Flow"), a["id"], b["id"])
+    saved = _save(client, token, project["id"], diagram, _boxes(a, b), [_anchor(a, b, None, None, [(60, 150), (340, 160)])])
+    svg = client.get(f"{project_base(project['id'])}/diagrams/{saved['id']}/svg", headers=auth_headers(token)).text
+    # The line runs Bravo to Alpha: it leaves Bravo toward the vertex nearest it (340, 160), then (60, 150), and ends at Alpha.
+    assert re.search(r'd="M [\d. -]+ L 340 160 L 60 150 L ', svg), svg
+
+
+def test_routes_round_trip_through_the_project_bundle_and_bad_ones_are_cleaned(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch route bundle")
+    a, b, diagram = _pair(client, token, project["id"])
+    _save(client, token, project["id"], diagram, _boxes(a, b), [_anchor(a, b, None, None, [(200, 120), (300, 140.5)], smooth=True)])
+    resp = client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(token))
+    data = json.loads(zipfile.ZipFile(io.BytesIO(resp.content)).read("project.json"))
+    (anchor,) = data["architecture_diagrams"][0]["anchors"]
+    assert anchor["points"] == [{"x": 200.0, "y": 120.0}, {"x": 300.0, "y": 140.5}] and anchor["smooth"] is True
+
+    source = zipfile.ZipFile(io.BytesIO(resp.content))
+    anchor["points"] += [{"x": "far", "y": 1}, {"x": float("inf"), "y": 1}, {"x": 9_999_999, "y": 0}, "nonsense", {"x": 1}]
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as target:
+        for item in source.infolist():
+            target.writestr(item.filename, json.dumps(data) if item.filename == "project.json" else source.read(item.filename))
+    imported = client.post(
+        "/api/v1/projects/import", data={"organization_id": org["id"], "name": "Arch route bundle copy"},
+        files={"file": ("bundle.zip", out.getvalue(), "application/zip")}, headers=auth_headers(token),
+    )
+    assert imported.status_code == 201, imported.text
+    copy = imported.json()["project"]
+    (diagram_copy,) = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
+    (stored,) = view(client, token, copy["id"], diagram_copy["id"])["anchors"]
+    assert stored["points"] == [{"x": 200.0, "y": 120.0}, {"x": 300.0, "y": 140.5}] and stored["smooth"] is True
+    assert (stored["source_point"], stored["target_point"]) == (None, None)

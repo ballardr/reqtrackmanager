@@ -62,6 +62,7 @@ from app.modules.architecture.schemas import (
     ViewHop,
     ViewNode,
     ViewPort,
+    WaypointIn,
 )
 from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
 from app.modules.architecture.symbols import visible_symbol_ids
@@ -229,6 +230,7 @@ def build_view(
                 source_element_id=a.source_element_id, target_element_id=a.target_element_id,
                 source_point=AttachPoint(a.source_point) if a.source_point else None,
                 target_point=AttachPoint(a.target_point) if a.target_point else None,
+                points=[WaypointIn(x=p["x"], y=p["y"]) for p in a.points], smooth=a.smooth,
             )
             for a in diagrams.anchors_of(db, diagram.id)
         ],

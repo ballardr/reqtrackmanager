@@ -461,7 +461,7 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(ends).toHaveValue("top");
       const view = await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
       expect(view.anchors).toEqual([
-        { source_element_id: gatewayId, target_element_id: ordersId, source_point: "bottom", target_point: "top" },
+        { source_element_id: gatewayId, target_element_id: ordersId, source_point: "bottom", target_point: "top", points: [], smooth: false },
       ]);
       const svg = await (await page.request.get(`${base}/diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
       // Gateway is 160 x 80 at the origin and Orders the same at x = 400: bottom middle (80, 80) to top middle (480, 0).

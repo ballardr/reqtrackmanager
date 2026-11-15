@@ -2633,6 +2633,9 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         f"{base}/diagrams/{placed['id']}/layout", headers=headers, timeout=30,
         json={
             "version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 600, "y": 280}],
+            # The IMU bus is routed round the corner with two vertices instead of a straight line.
+            "anchors": [{"source_element_id": imu["id"], "target_element_id": fc["id"],
+                         "points": [{"x": 410, "y": 30}, {"x": 410, "y": 180}]}],
             "notes": [
                 {"text": "Single flight controller: redundancy is decided separately.", "x": 380, "y": -150, "width": 200, "height": 70,
                  "tone": "warning", "leader_kind": "element", "leader_element_id": fc["id"]},
@@ -2714,7 +2717,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         ("Flight start", "Armed", {}),
         ("Armed", "Hovering", {"event": "takeoff", "action": "climb(2 m)"}),
         ("Hovering", "Hovering", {"event": "position drift", "action": "correct()"}),
-        ("Hovering", "Battery check", {"event": "every 10 s"}),
+        ("Hovering", "Battery check", {"event": "every 10 s", "points": [{"x": 860, "y": 205}], "smooth": True}),
         ("Battery check", "Returning home", {"guard": "battery low"}),
         ("Battery check", "Hovering", {"guard": "battery ok"}),
         ("Flying", "Failsafe", {"event": "sensor fault", "action": "alert()"}),

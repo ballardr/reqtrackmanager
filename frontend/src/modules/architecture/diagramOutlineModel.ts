@@ -9,15 +9,15 @@
  * - `outlineTree`: nest each visible box under its nearest visible placed ancestor (the rule the roll-up uses to join a
  *   line to a placed parent), so decomposition reads as a tree.
  * - `connectionRows`: one row per drawn line with its ends, direction, type, route kind (direct, rolled up, bridged) and,
- *   for a bridged line, the hidden elements it passes through.
+ *   for a bridged line, the hidden elements it passes through, and how many vertices the line has.
  *
  * Design decisions:
  * - A box a view switch hides is left out, like the canvas; only its count is reported, so the outline follows the
  *   current switch states.
  * - A box the viewer cannot read is named by its code only, never its name.
  */
-import { boundaryNodeId, boundaryOutsideName, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
-import type { DiagramViewEdge } from "./types";
+import { anchorOf, boundaryNodeId, boundaryOutsideName, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
+import type { DiagramAnchor, DiagramViewEdge } from "./types";
 
 /** The longest ancestor walk, matching the resolver's cap. */
 const WALK_CAP = 13;
@@ -45,6 +45,8 @@ export interface ConnectionRow {
   route: "direct" | "rolled_up" | "bridged";
   /** The hidden elements a bridged line passes through, as "CODE name" text. */
   via: string[];
+  /** How many vertices the line has (chosen by a person; zero draws it straight). */
+  vertices: number;
 }
 
 /** @param box A placed element. @returns Its name for a list: code and name, or the code alone when unreadable. */
@@ -141,10 +143,12 @@ export function outlineBranchIds(tree: readonly OutlineNode[]): string[] {
  * @param edges The resolved lines.
  * @param boxes Every box of the layout, to name the ends.
  * @param boundaries The boundary boxes, which also end lines (named by the outer connection's code and the element outside).
+ * @param anchors The routes chosen for lines (their vertices are counted); none by default.
  * @returns One row per line whose ends are both on the diagram.
  */
 export function connectionRows(
   edges: readonly DiagramViewEdge[], boxes: readonly EditorBox[], boundaries: readonly EditorBoundary[] = [],
+  anchors: readonly DiagramAnchor[] = [],
 ): ConnectionRow[] {
   const names = new Map<string, string>([
     ...boxes.map((b): [string, string] => [b.elementId, boxName(b)]),
@@ -159,6 +163,7 @@ export function connectionRows(
       id: edge.id, from, to, twoWay: edge.two_way, detail: edge.label ?? "", count: edge.count,
       route: edge.bridged ? "bridged" : edge.rolled_up ? "rolled_up" : "direct",
       via: edge.hops.map((h) => `${h.unique_code} ${h.name}`),
+      vertices: anchorOf(anchors, edge.source_element_id, edge.target_element_id).points.length,
     });
   }
   return rows;

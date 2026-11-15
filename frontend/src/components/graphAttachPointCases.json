@@ -448,5 +448,123 @@
       "top_right",
       "top_left"
     ]
+  },
+  {
+    "name": "a vertex above the boxes pulls both open ends to the top",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "via": [
+      [
+        230,
+        -120
+      ]
+    ],
+    "expected": [
+      "top_right",
+      "top_left"
+    ]
+  },
+  {
+    "name": "a fixed end is kept and the other follows its vertex",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": "left",
+    "target_point": null,
+    "via": [
+      [
+        230,
+        200
+      ]
+    ],
+    "expected": [
+      "left",
+      "bottom_left"
+    ]
+  },
+  {
+    "name": "two vertices: each end follows the vertex beside it",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "via": [
+      [
+        80,
+        200
+      ],
+      [
+        380,
+        200
+      ]
+    ],
+    "expected": [
+      "bottom",
+      "bottom"
+    ]
+  },
+  {
+    "name": "a marker end follows the vertex on a side",
+    "source": [
+      0,
+      0,
+      36,
+      36
+    ],
+    "target": [
+      300,
+      0,
+      160,
+      80
+    ],
+    "source_point": null,
+    "target_point": null,
+    "source_offers": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "via": [
+      [
+        18,
+        200
+      ]
+    ],
+    "expected": [
+      "bottom",
+      "bottom_left"
+    ]
   }
 ]

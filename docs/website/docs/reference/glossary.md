@@ -322,6 +322,10 @@ An arrow between two states of a state machine diagram, labelled `event [guard] 
 
 An optional TOTP-based second authentication factor a user can enrol in for their own account. See [Core Features → Two-factor authentication](../core-features/two-factor-authentication.md).
 
+#### Vertex
+
+A point a line passes through between its two ends (a vertex of the line), so it can go round another box. Drag the dot on the middle of a segment of the selected line to add one, drag a vertex to move it, and double-click it or press Delete on it to remove it; the Selection card lists the vertices with their X and Y positions for use without a pointer. A smooth curve can be drawn through them. Available on block diagram connections and on state machine transitions. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+
 #### View switch
 
 A named on/off control on a block diagram that shows or hides a group of elements and connections, for example "Security devices". Flipping it changes only what is shown; hidden elements between two shown ones are bridged by a dashed line. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).

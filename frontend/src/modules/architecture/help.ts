@@ -79,6 +79,8 @@ export const ARCHITECTURE_HELP = {
   diagramPopulate: "Places the scope element's child elements (or the top-level elements for the system context) on the diagram in a grid. You can move, add and remove boxes afterwards.",
   diagramActivate: "Creates the diagram as Active instead of Draft. A diagram has no approval step, so this needs no more than permission to create.",
   diagramConnectTo: "Starts a new connection from the selected element to the one you choose, the same as drawing a line between the two boxes. Use it when you cannot drag with a pointer.",
+  lineVertices: "The points a line passes through between its two ends, so it can go round another box or cross another line cleanly. Drag the small dot in the middle of a segment of the selected line to add one, drag a vertex to move it, and double-click a vertex or press Delete on it to remove it. X and Y are positions on the drawing: use them when you cannot drag with a pointer. A line with no vertices is straight.",
+  lineSmooth: "Smooth: draws one curve through the line's ends and every vertex.\nOff: draws straight segments between them.",
   diagramLineFrom: "The attach point: where the line meets the box it starts from. Automatic uses the point nearest the other end. You can also drag the end of a selected line to another point on the same box.",
   diagramLineTo: "The attach point: where the line meets the box it ends at. Automatic uses the point nearest the other end. You can also drag the end of a selected line to another point on the same box.",
   diagramBoundaryConnectTo: "Starts a new connection between the chosen inner element and the element outside, and marks it as realising this outer connection. The same as drawing a line from the inner element to the box.",
@@ -138,4 +140,5 @@ export const ARCHITECTURE_TERMS: readonly ArchitectureTerm[] = [
   { label: "Exit action", help: ARCHITECTURE_HELP.stateExit },
   { label: "Activity", help: ARCHITECTURE_HELP.stateActivity },
   { label: "Symbol label", help: ARCHITECTURE_HELP.stateSymbolLabel },
+  { label: "Vertices", help: ARCHITECTURE_HELP.lineVertices },
 ];

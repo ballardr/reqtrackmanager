@@ -537,6 +537,30 @@ export const TheDeleteKeyAsksBeforeDeletingATransition: Story = {
   },
 };
 
+/** A transition's vertices are set in the Selection card, shown in the Outline, and saved with the drawing. */
+export const VerticesOfATransitionAreSetInTheCardListedInTheOutlineAndSaved: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvas, "Outline");
+    await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
+    await userEvent.click(panel.getByRole("button", { name: "Add vertex" }));
+    await userEvent.click(panel.getByRole("switch", { name: "Smooth curve" }));
+    // The Outline follows the unsaved drawing: the transition now has one vertex.
+    const row = canvas.getByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }).closest("tr") as HTMLElement;
+    await waitFor(() => expect(within(row).getAllByRole("cell").slice(-1)[0]).toHaveTextContent("1"));
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${MACHINE}/layout`,
+      expect.objectContaining({
+        transitions: expect.arrayContaining([expect.objectContaining({ id: "trn-1", points: [{ x: 320, y: 106 }], smooth: true })]),
+      }),
+    ));
+  },
+};
+
 /** Nesting is a drawing edit: the state moves into the frame, the frame grows, and Save sends the new parent. */
 export const NestingAStateFromTheSelectionCardIsAnUnsavedDrawingEdit: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never); },

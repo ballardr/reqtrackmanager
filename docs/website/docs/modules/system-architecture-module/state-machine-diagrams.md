@@ -79,7 +79,7 @@ The Selection card edits the selected state in place: name and kind (the name of
 
 ## Undo and Redo
 
-**Undo** and **Redo** act on the unsaved drawing (positions, sizes, nesting and attach points). The keys are Cmd+Z and Cmd+Shift+Z on a Mac, and Ctrl+Z with Ctrl+Shift+Z or Ctrl+Y elsewhere. They work when the cursor is not in a text box and no dialog is open. A state or transition added from the diagram is created at once, so Undo does not remove it.
+**Undo** and **Redo** act on the unsaved drawing (positions, sizes, nesting, attach points and vertices). The keys are Cmd+Z and Cmd+Shift+Z on a Mac, and Ctrl+Z with Ctrl+Shift+Z or Ctrl+Y elsewhere. They work when the cursor is not in a text box and no dialog is open. A state or transition added from the diagram is created at once, so Undo does not remove it.
 
 ## Aligning states
 
@@ -89,7 +89,7 @@ The same button holds **Always show attach points**, off by default: a state the
 
 ## Adding and editing transitions
 
-Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. Changes are stored when the cursor leaves the card's fields, or with **Save transition**. Double-clicking a line opens the same fields in a dialog.
+Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. A transition can be routed with **vertices** like a line on a block diagram (see [Block diagram editor](block-diagram-editor.md)): drag the dot on the middle of the selected line, or use the card's **Vertices** list and **Smooth curve** switch; a transition from a state to itself keeps its fixed loop. The Outline's **Vertices** column counts them. Changes are stored when the cursor leaves the card's fields, or with **Save transition**. Double-clicking a line opens the same fields in a dialog.
 
 ## Checks
 
@@ -119,4 +119,4 @@ stateDiagram-v2
     s2 --> [*] : halt
 ```
 
-In the Mermaid text, a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label is not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep it.
+In the Mermaid text, vertices are left out (Mermaid routes the lines itself), a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label is not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep it.

@@ -72,6 +72,7 @@ from app.models.user import User
 from app.modules.architecture import allocation_export, state_machine_export
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
+from app.modules.architecture.diagram_line_path import clean_waypoints
 from app.modules.architecture.diagrams import effective_leader_kind
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
@@ -900,7 +901,8 @@ def _diagrams_json(
             ],
             "anchors": [
                 {"source": _element_ref(codes, foreign, a.source_element_id), "target": _element_ref(codes, foreign, a.target_element_id),
-                 "source_point": a.source_point, "target_point": a.target_point}
+                 "source_point": a.source_point, "target_point": a.target_point,
+                 "points": clean_waypoints(a.points), "smooth": a.smooth}
                 for a in by_diagram_anchors.get(d.id, ())
             ],
             "boundaries": [
@@ -1048,9 +1050,10 @@ def _import_anchors(
         source = _resolve_ref(db, project, current_user, elements, entry.get("source") or {})
         target = _resolve_ref(db, project, current_user, elements, entry.get("target") or {})
         points = (entry.get("source_point"), entry.get("target_point"))
+        vertices = clean_waypoints(entry.get("points"))
         if (
             source is None or target is None or source == target or source not in placed or target not in placed
-            or any(p is not None and p not in valid for p in points) or points == (None, None)
+            or any(p is not None and p not in valid for p in points) or (points == (None, None) and not vertices)
             or frozenset((source, target)) in seen
         ):
             warnings.add(f"Diagram {code}: a line anchor could not be restored — left out.")
@@ -1058,7 +1061,7 @@ def _import_anchors(
         seen.add(frozenset((source, target)))
         db.add(ArchitectureDiagramAnchor(
             diagram_id=diagram_id, source_element_id=source, target_element_id=target,
-            source_point=points[0], target_point=points[1],
+            source_point=points[0], target_point=points[1], points=vertices, smooth=entry.get("smooth") is True,
         ))
 
 

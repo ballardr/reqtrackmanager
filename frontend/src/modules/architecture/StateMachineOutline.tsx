@@ -42,6 +42,7 @@ export function StateMachineOutline({
   const stateName = useStateLabel().label;
   const tree = useMemo(() => stateTree(model, layout), [model, layout]);
   const states = new Map(model.states.map((s) => [s.id, s]));
+  const vertices = new Map(layout.points.map((p) => [p.id, p.points.length]));
   const isSelected = (kind: GraphCanvasSelection["kind"], id: string) => selection?.kind === kind && selection.id === id;
   const { states: stateCount, transitions: transitionCount } = { states: model.states.length, transitions: model.transitions.length };
   return (
@@ -82,6 +83,7 @@ export function StateMachineOutline({
                   <HelpHeader label="Event" help={ARCHITECTURE_HELP.transitionEvent} />
                   <HelpHeader label="Condition (guard)" help={ARCHITECTURE_HELP.transitionGuard} />
                   <HelpHeader label="Action" help={ARCHITECTURE_HELP.transitionAction} />
+                  <HelpHeader label="Vertices" help={ARCHITECTURE_HELP.lineVertices} />
                 </tr>
               </thead>
               <tbody>
@@ -104,6 +106,7 @@ export function StateMachineOutline({
                       <td>{t.event || "—"}</td>
                       <td>{t.guard || "—"}</td>
                       <td>{t.action || "—"}</td>
+                      <td>{vertices.get(t.id) || "—"}</td>
                     </tr>
                   );
                 })}

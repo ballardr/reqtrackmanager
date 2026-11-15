@@ -97,6 +97,9 @@ _PORT_NAMES = ("Main", "Control", "Data", "Power", "Debug", "Status")
 _LARGE_DIAGRAM = 200
 _SMALL_DIAGRAM = (3, 12)
 _ATTACH_POINTS = [point.value for point in AttachPoint]
+#: The share of drawn lines that carry vertices, and the most vertices a generated line gets.
+_ROUTED_LINES = 0.2
+_MAX_VERTICES = 3
 #: The most folders a kind gets and how deep they go.
 _MAX_FOLDERS = 60
 _FOLDER_DEPTH = 4
@@ -104,6 +107,14 @@ _FOLDER_DEPTH = 4
 _SCOPED_DIAGRAMS = 5
 _MAX_BOUNDARIES = 20
 _NOTE_TONES = [tone.value for tone in NoteTone]
+
+
+def _route(rng: random.Random, seed: int) -> list[dict[str, float]]:
+    """One to `_MAX_VERTICES` vertices near the diagram's grid, as a drawn line stores them."""
+    return [
+        {"x": float(seed % 7 * 200 + 100 * (vertex + 1)), "y": float(rng.randint(-60, 400))}
+        for vertex in range(rng.randint(1, _MAX_VERTICES))
+    ]
 
 
 def _note_leader(
@@ -412,12 +423,13 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
                 "x": float(slot % columns * 200), "y": float(slot // columns * 120), "width": 160.0, "height": 80.0,
                 "collapsed": rng.random() < 0.1, "created_at": created, "updated_at": created,
             })
-        for first, second in zip(placed, placed[1:], strict=False):
+        for slot, (first, second) in enumerate(zip(placed, placed[1:], strict=False)):
             if rng.random() < 0.15:
                 points = rng.sample(_ATTACH_POINTS, 2)
                 batch.satellite(ArchitectureDiagramAnchor, {
                     "id": batch.new_id(), "diagram_id": record_id, "source_element_id": first, "target_element_id": second,
                     "source_point": points[0], "target_point": points[1] if rng.random() < 0.7 else None,
+                    "points": _route(rng, slot) if rng.random() < _ROUTED_LINES else [], "smooth": rng.random() < 0.3,
                     "created_at": created, "updated_at": created,
                 })
         for slot, (connection_id, _side, realising) in enumerate(scoped[1] if scoped else ()):
@@ -555,7 +567,8 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                 "target_state_id": target, "event": rng.choice(_EVENTS), "guard": "ready" if rng.random() < 0.2 else "",
                 "action": f"do_{order}()" if rng.random() < 0.3 else "", "description": "", "sort_order": order,
                 "source_point": rng.choice(_ATTACH_POINTS) if rng.random() < 0.1 else None,
-                "target_point": None, "created_at": stamp, "updated_at": stamp,
+                "target_point": None, "points": _route(rng, order) if rng.random() < _ROUTED_LINES else [], "smooth": rng.random() < 0.3,
+                "created_at": stamp, "updated_at": stamp,
             })
         ordinary_ids = [state_id for state_id, state_kind in made if state_kind == "state"]
         for extra in range(min(len(ordinary_ids), 3)):
@@ -563,7 +576,7 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                 "id": batch.new_id(), "state_machine_diagram_id": machine_id, "source_state_id": ordinary_ids[extra],
                 "target_state_id": ordinary_ids[extra] if extra == 0 else rng.choice(ordinary_ids), "event": rng.choice(_EVENTS),
                 "guard": "", "action": "", "description": "", "sort_order": size + extra, "source_point": None,
-                "target_point": None, "created_at": stamp, "updated_at": stamp,
+                "target_point": None, "points": [], "smooth": False, "created_at": stamp, "updated_at": stamp,
             })
     batch.write()
     add_tags(ctx, batch)
