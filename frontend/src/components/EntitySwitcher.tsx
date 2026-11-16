@@ -140,13 +140,12 @@ export function EntitySwitcher({
                 onChange={(e) => setQuery(e.target.value)}
               />
             )}
-            <div className="stack" style={{ gap: "0.15rem", maxHeight: 320, overflowY: "auto" }}>
+            <div className="menu-list" style={{ maxHeight: 320, overflowY: "auto" }}>
               {visible.map((s) => (
                 <Link
                   key={s.id}
                   to={s.href}
-                  className="btn"
-                  style={{ justifyContent: "flex-start" }}
+                  className="menu-item"
                   onClick={() => setOpen(false)}
                 >
                   {s.label}

@@ -124,7 +124,12 @@ test.describe("footer position", () => {
     ]);
     const saved = await (await request.get(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}`, { headers: orgHeaders })).json();
     expect(saved.footer_position).toBe("bottom_of_page");
+    // The save's own reload resets the form from the saved record; clearing before it lands would be overwritten.
+    await expect(page.getByText("Branding saved")).toBeVisible();
+    await expect(select).toHaveValue("bottom_of_page");
+    await page.waitForLoadState("networkidle");
     await select.selectOption("");
+    await expect(select).toHaveValue("");
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/branding") && r.request().method() === "PUT"),
       page.getByRole("button", { name: "Save branding" }).click(),

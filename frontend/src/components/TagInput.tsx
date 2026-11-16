@@ -212,11 +212,7 @@ export function TagInput({
                     role="option"
                     aria-selected={i === highlighted}
                     type="button"
-                    className="btn"
-                    style={{
-                      border: "none", justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal",
-                      background: i === highlighted ? "var(--color-surface-alt)" : undefined,
-                    }}
+                    className="menu-item"
                     onMouseEnter={() => setHighlighted(i)}
                     // mousedown, not click: the input's blur would close the list before a click lands.
                     onMouseDown={(e) => {

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
 import { Modal } from "./Modal";
+import { expectTextRows } from "../testing/menuRows";
 import { buildChip, openTagPicker } from "../testing/tagsFixtures";
 import { TagInput } from "./TagInput";
 
@@ -53,6 +54,8 @@ export const PickingFromTheListAddsTheTag: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.type(await openTagPicker(canvas), "sec");
+    // Options are plain text rows like every menu, never standard buttons.
+    await expectTextRows(await body().findByRole("listbox"));
     await userEvent.click(await body().findByRole("option", { name: "Security" }));
     await expect(chosen(canvas)).toBe("Security");
     await expect(canvas.getByRole("button", { name: "Remove tag Security" })).toBeInTheDocument();

@@ -202,7 +202,7 @@ export function MultiSelectDropdown({
                 </Fragment>
               ))}
               {canAdd && addFromFilter && (
-                <button type="button" className="btn" style={{ justifyContent: "flex-start" }} onClick={addTyped}>
+                <button type="button" className="menu-item" onClick={addTyped}>
                   {addFromFilter.label(typed)}
                 </button>
               )}

@@ -170,7 +170,7 @@ export const DownloadReport: Story = {
     await waitFor(() => expect(canvas.getByText(/ISO-27001/)).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download PDF report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports?format=pdf`
     ));

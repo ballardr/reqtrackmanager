@@ -23,9 +23,8 @@
  * surface its own failure toast (each caller's message names what failed
  * to generate — "the organisation compliance report," "this project's
  * compliance report," etc.) — this component only tracks which kind (if
- * any) is mid-download, to disable the popover's own two buttons and swap
- * their label to "…", matching `CsvImportWizard.tsx`'s identical
- * `exporting` convention.
+ * any) is mid-download, to disable the trigger while the file is produced, matching `CsvImportWizard.tsx`'s identical
+ * `exporting` convention. The offered formats are the shared `ActionMenuList` (text rows).
  */
 import { Download } from "lucide-react";
 import { useRef, useState } from "react";
@@ -33,6 +32,7 @@ import type { ReactNode } from "react";
 
 import { REPORT_FORMAT } from "../api/reportFormats";
 import type { ReportFileKind } from "../api/reports";
+import { ActionMenuList, type ActionMenuItem } from "./ActionMenu";
 import { Popover } from "./Popover";
 
 /**
@@ -79,29 +79,29 @@ export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
         <Download /> {downloading ? "Exporting…" : label}
       </button>
       {menuOpen && (
-        <Popover anchorRef={triggerRef} title="Export" onClose={() => setMenuOpen(false)}>
-          <div className="stack" style={{ gap: "var(--space-1)", minWidth: 180 }}>
-            {kinds.map((kind) => (
-              <button
-                key={kind} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-                title={REPORT_FORMAT[kind].title} onClick={() => handleDownload(kind)}
-              >
-                <Download /> {downloading === kind ? "…" : `Download ${REPORT_FORMAT[kind].label} report`}
-              </button>
-            ))}
-            {extras.map((extra) => (
-              <button
-                key={extra.key} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void extra.onSelect();
-                }}
-              >
-                <Download /> {extra.label}
-              </button>
-            ))}
-            {note && <span className="text-muted" style={{ maxWidth: 260 }}>{note}</span>}
-          </div>
+        <Popover anchorRef={triggerRef} fit menu title="Export" onClose={() => setMenuOpen(false)}>
+          <ActionMenuList
+            label="Export"
+            footer={note}
+            onSelect={() => setMenuOpen(false)}
+            items={[
+              ...kinds.map((kind): ActionMenuItem => ({
+                key: kind,
+                icon: <Download aria-hidden="true" />,
+                label: `Download ${REPORT_FORMAT[kind].label} report`,
+                title: REPORT_FORMAT[kind].title,
+                disabled: downloading !== null,
+                onSelect: () => void handleDownload(kind),
+              })),
+              ...extras.map((extra): ActionMenuItem => ({
+                key: extra.key,
+                icon: <Download aria-hidden="true" />,
+                label: extra.label,
+                disabled: downloading !== null,
+                onSelect: () => void extra.onSelect(),
+              })),
+            ]}
+          />
         </Popover>
       )}
     </>

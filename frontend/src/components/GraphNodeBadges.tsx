@@ -72,7 +72,7 @@ function BadgeButton({ badge }: { badge: GraphNodeBadge }) {
           <ul className="graph-node-badge-list" aria-label={badge.label}>
             {items.map((item) => (
               <li key={item.id}>
-                <button type="button" className="btn btn-sm" onClick={() => { setOpen(false); item.onSelect(); }}>{item.label}</button>
+                <button type="button" className="menu-item" onClick={() => { setOpen(false); item.onSelect(); }}>{item.label}</button>
               </li>
             ))}
           </ul>

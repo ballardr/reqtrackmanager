@@ -364,7 +364,7 @@ export const ImportProjectIsASeparateDialog: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "More options" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Import project" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Import project" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Import project" });
 
     await expect(within(dialog).queryByText("Create from template")).not.toBeInTheDocument();
@@ -404,7 +404,7 @@ export const ImportProjectShowsTheError: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "More options" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Import project" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Import project" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Import project" });
     await userEvent.type(within(dialog).getByLabelText("Name"), "Broken");
     await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, new File(["x"], "bad.zip", { type: "application/zip" }));

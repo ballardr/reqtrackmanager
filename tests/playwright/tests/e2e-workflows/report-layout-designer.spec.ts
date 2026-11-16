@@ -196,9 +196,9 @@ test.describe("Report layout designer", () => {
       const panel = designerPreviewPanel(page);
       await panel.getByRole("button", { name: /Download preview/ }).click();
       const menu = page.getByRole("dialog", { name: "Export" });
-      for (const format of ["PDF", "Word", "ODT", "HTML"]) await expect(menu.getByRole("button", { name: `Download ${format} report` })).toBeVisible();
+      for (const format of ["PDF", "Word", "ODT", "HTML"]) await expect(menu.getByRole("menuitem", { name: `Download ${format} report` })).toBeVisible();
       const downloading = page.waitForEvent("download");
-      await menu.getByRole("button", { name: "Download Word report" }).click();
+      await menu.getByRole("menuitem", { name: "Download Word report" }).click();
       const download = await downloading;
       expect(download.suggestedFilename()).toMatch(/^Preview - .+\.docx$/);
       await closeDesignerPreview(page);

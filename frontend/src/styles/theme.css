@@ -2767,12 +2767,16 @@ td:has(> .disclosure-toggle) {
   color: var(--color-text);
   font: inherit;
   text-align: left;
+  text-decoration: none;
   white-space: normal;
   cursor: pointer;
 }
 
+/* The same row serves a link in a list of destinations (`EntitySwitcher`) and an option of a listbox
+   (`UserAutocomplete`, `TagInput`, `QuickLinkField`), whose highlighted option is `aria-selected`. */
 .menu-item:hover,
-.menu-item:focus-visible {
+.menu-item:focus-visible,
+.menu-item[aria-selected="true"] {
   background: var(--color-surface-alt);
 }
 

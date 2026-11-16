@@ -171,7 +171,7 @@ export const ImportStandardViaSplitButtonMenu: Story = {
     await expect(canvas.queryByRole("button", { name: "Import standard" })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "More options" }));
     const body = within(document.body);
-    await userEvent.click(body.getByRole("button", { name: "Import standard" }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Import standard" }));
 
     const dialog = within(document.body);
     const file = new File([JSON.stringify({ format: "reqtrackmanager.compliance_standard.v1" })], "SOC2-export.json", {

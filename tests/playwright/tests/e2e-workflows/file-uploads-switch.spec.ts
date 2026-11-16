@@ -117,7 +117,7 @@ test("importing a bundle with a file while uploads are disabled offers Import wi
   const importedName = `E2E Uploads Imported ${suffix}`;
   await page.goto("/projects");
   await page.getByRole("button", { name: "More options" }).click();
-  await page.getByRole("button", { name: "Import project" }).click();
+  await page.getByRole("menuitem", { name: "Import project" }).click();
   const form = page.getByRole("dialog", { name: "Import project" });
   await form.getByLabel("Name", { exact: true }).fill(importedName);
   // The organisation admin belongs to one organisation, so the dialog has no organisation picker.

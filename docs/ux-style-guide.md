@@ -352,6 +352,20 @@ flowchart TD
 
 **A menu always closes on a click outside it, on Escape and when Tab leaves it, and returns focus to its trigger**, including a menu opened over a canvas that handles its own pointer events. The shared `Popover` listens for `pointerdown` in the capture phase on the document, because React Flow's pane and boxes stop the `mousedown` before it bubbles, which once left an Add to diagram menu open over a diagram. A dismissal that works on one page and not on another is a defect in the shared `Popover`, not something a page patches. A group holding one item is not a parent: its name stays as a heading over that item.
 
+**Every list a control opens uses the same row, not only `ActionMenu`.** Where a popover or dropdown lists choices, destinations or options, the rows are `.menu-item` text rows: `ActionMenuList` for actions (split-button alternatives, export formats), and the `menu-item` class on a link (`EntitySwitcher`), a badge's list (`GraphNodeBadges`) or a listbox option (`UserAutocomplete`, `TagInput`, `QuickLinkField`, whose highlighted option is `aria-selected` and keeps its own listbox roles). A new list reuses one of these and never styles a `btn` as a row.
+
+| Surface | Row |
+|---|---|
+| `ActionMenu`, `MenuButton`, `AddUserMenu`, list actions, snippets | `ActionMenuList` (flat, or a tree for several levels) |
+| `SplitButtonTrigger` alternatives, `ReportExportButton` formats | `ActionMenuList` inside `Popover menu` |
+| `EntitySwitcher`, `MultiSelectDropdown`'s add row, `GraphNodeBadges` list | `menu-item` |
+| `UserAutocomplete`, `TagInput`, `QuickLinkField` options | `menu-item` with `role="option"` |
+| `HeaderSearch`, `TreeSelect`, `ProjectNavSection` more list, `ResourceMenu` | already text rows or a tree |
+| `FilterSelect`, `LabeledSelect`, `InlineSelect` | the browser's own option list, which cannot be styled |
+| Checkbox lists, forms and panels in a popover (`ColumnChooser`, `AddPopoverButton`) | not a choice list; controls keep their own style |
+
+- **Checked** by `scripts/check_menu_rows.py` (pinned by `backend/tests/test_menu_rows.py`, empty baseline): a `role="menuitem"` or `role="option"` element, or a `menu-item`, that also carries `btn`, and a `btn` repeated by `.map(` inside a `Popover`. A single Save, Cancel or Done button in a popover is not a row. A story asserts it with `expectTextRows` (`frontend/src/testing/menuRows.ts`); `data-menu-row-ok="<reason>"` opts one element out.
+
 An item that itself opens a create/rename flow follows Principle 3 as normal — the menu is just the entry point, not a replacement for the `Modal`/`Popover` choice that flow's own content already dictates. First call site: `OrgAdminPage.tsx`'s Overview group combines "Rename" (opens a `Modal`, replacing what used to be an always-visible inline input) and "Export {org} bundle" (calls the existing export handler directly and closes the menu — not a create/rename flow, so no dialog of its own) behind one trigger. Rename is only offered to an org admin (the same gate the inline input used to carry); Export stays available to every member, matching its previous, ungated placement — collapsing two actions behind one menu doesn't collapse who can see each one.
 
 **Addendum (2026-09-22): the same threshold applies per-row inside a `DirectoryTable`, not just page-level toolbars.** Once a row has two or more actions (edit, delete, or similar), give it an `ActionMenu` in an actions column. An inline/row-click shortcut for one of those actions (e.g. click-the-row-to-edit) may still exist alongside the menu, but never *in place of* listing that same action in the menu — the menu is the row's complete, discoverable action list; an inline shortcut is a convenience layered on top of an entry that's still there, not a replacement for it. A row with exactly one action total may skip the menu and use a single inline button or `rowHref`/`onRowClick` directly, per this pattern's own two-or-more floor. See `DecisionTemplatesPanel.tsx` for the corrected precedent (`docs/decisions.md`, 2026-09-22) and "Pattern: directory table"'s own callout below.

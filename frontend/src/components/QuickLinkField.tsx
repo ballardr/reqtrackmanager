@@ -242,11 +242,7 @@ export function QuickLinkField({
                 role="option"
                 aria-selected={highlighted === i}
                 type="button"
-                className="btn"
-                style={{
-                  border: "none", justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal",
-                  background: highlighted === i ? "var(--color-surface-alt)" : undefined,
-                }}
+                className="menu-item"
                 onMouseEnter={() => setHighlighted(i)}
                 onClick={() => add(c)}
               >
