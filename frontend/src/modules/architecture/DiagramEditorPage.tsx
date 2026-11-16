@@ -154,9 +154,13 @@ export function DiagramEditorPage() {
   const [selectConnection, setSelectConnection] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectParam = searchParams.get("select");
+  /** The connection of a merged line the person chose in the Selection card; it belongs to that line and ends with its selection. */
+  const [chosenConnection, setChosenConnection] = useState<{ edgeId: string; connectionId: string } | null>(null);
   const setSelection = useCallback((next: GraphCanvasSelection | null) => {
     setPicked(next);
     setSelectConnection(null);
+    // Selecting the same line again (the canvas does so after a save redraws it) keeps the choice; anything else ends it.
+    setChosenConnection((current) => (current && next?.kind === "edge" && next.id === current.edgeId ? current : null));
     // Selecting anything (or clearing the selection) ends the link's selection.
     if (selectParam) setSearchParams((current) => { const params = new URLSearchParams(current); params.delete("select"); return params; }, { replace: true });
   }, [selectParam, setSearchParams]);
@@ -388,6 +392,7 @@ export function DiagramEditorPage() {
   const selection: GraphCanvasSelection | null = newLine
     ? { kind: "edge", id: newLine.id }
     : picked ?? (linkedBox ? { kind: "node", id: linkedBox.elementId } : null);
+  const chosenConnectionId = chosenConnection && selection?.kind === "edge" && selection.id === chosenConnection.edgeId ? chosenConnection.connectionId : null;
   // The canvas moves the view when `key` changes, so the same key while the box is dragged afterwards does not move it again.
   const linkedFrame = linkedBox ? boxFrame(linkedBox) : undefined;
   const selectCenter = linkedBox && linkedFrame ? { x: linkedBox.x + linkedFrame.width / 2, y: linkedBox.y + linkedFrame.height / 2, key: 1 } : undefined;
@@ -801,6 +806,8 @@ export function DiagramEditorPage() {
         elements={elements} connectionTypes={reference.connectionTypes}
         elementEditor={elementEditor} elementTypes={elementTypes} onSaveElement={saveElementFields} onSaveConnection={saveConnectionFields}
         focusNew={focusNew} onFocused={() => setFocusNew(null)}
+        chosenConnectionId={chosenConnectionId}
+        onChooseConnection={(connectionId) => setChosenConnection(connectionId !== null && selection?.kind === "edge" ? { edgeId: selection.id, connectionId } : null)}
         onEditConnection={(connection) => { setConnectionFormError(null); setEditingConnection(connection); }}
         onAddPort={portsApi.add} onChangePort={portsApi.change} onRemovePort={portsApi.remove}
         onRemoveBox={(box) => { editor.edit((l) => removeBox(l, box.elementId)); setSelection(null); }}

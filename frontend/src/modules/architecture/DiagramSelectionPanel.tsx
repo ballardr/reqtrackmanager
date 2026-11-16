@@ -17,8 +17,10 @@
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
  *   keyboard route to dragging a line's end. A line that stands for one connection of this project edits it in place
  *   (`ConnectionSelectionFields`, the shared connection field group); a line that stands for several lists them as compact rows
- *   (`ConnectionSummaryList`), each with an Edit button that opens the shared connection form (`onEditConnection`); one shared
- *   from another project is listed without it.
+ *   (`ConnectionSummaryList`); choosing a row (the chosen connection, kept by the page) shows that connection under a heading
+ *   with Back, Open and (for one of this project) its fields edited in place, the line's own attach point and vertex fields
+ *   staying below it; Escape on the card, outside a text field, goes back. Each row also has Open (the record's page) and Edit
+ *   (the shared connection form, `onEditConnection`); one shared from another project is listed without Edit.
  * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
  *   line between two boxes does.
  * - A boundary box (an outer connection of the diagram's element): the connection, the element outside, its direction and
@@ -30,8 +32,8 @@
  * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set); a connection row's
  * Edit and a realised connection's Remove are the same `IconAction`.
  */
-import { Pencil, X } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, ExternalLink, Pencil, X } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { ActivityNote } from "../../components/ActivityNote";
@@ -39,8 +41,10 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { returnFocusToCanvas } from "../../utils/canvasFocus";
+import { overlayIsOpen } from "../../utils/keyboardTargets";
 import { FieldCaption } from "../../components/FieldHelp";
 import { IconAction } from "../../components/IconAction";
+import { ItemRow } from "../../components/ItemRow";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordPlacements } from "../../components/RecordPlacements";
 import { RecordTags } from "../../components/RecordTags";
@@ -57,7 +61,7 @@ import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
 import { ConnectionSelectionFields } from "./ConnectionSelectionFields";
-import { ConnectionSummaryList } from "./ConnectionSummaryList";
+import { ConnectionSummaryList, ConnectionSummaryRow } from "./ConnectionSummaryList";
 import { ElementSelectionFields } from "./ElementSelectionFields";
 import { LineVertexFields } from "./LineVertexFields";
 import { PortList } from "./PortList";
@@ -117,6 +121,8 @@ function stateMachineActions(
  * @param onSaveConnection Stores changed fields of a connection (version lock); resolves true when stored.
  * @param focusNew The id of the element or connection just added, whose name field takes the focus, or null.
  * @param onFocused Called once that name has taken the focus.
+ * @param chosenConnectionId The connection of the selected line the person chose, or null for the line's list (ignored when the line does not stand for it).
+ * @param onChooseConnection Chooses a connection of the selected line, or null to go back to the list; not part of the undo history.
  * @param onEditConnection Opens a connection's edit form (a line that stands for several connections).
  * @param onAddPort Adds a port to an element.
  * @param onChangePort Changes one field of an element's port.
@@ -145,7 +151,7 @@ function stateMachineActions(
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, lineEnds, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
@@ -188,6 +194,8 @@ export function DiagramSelectionPanel({
   onSaveConnection: (connection: ArchitectureConnection, changed: Partial<ConnectionFieldValues>) => Promise<boolean>;
   focusNew: string | null;
   onFocused: () => void;
+  chosenConnectionId: string | null;
+  onChooseConnection: (connectionId: string | null) => void;
   onEditConnection: (connection: ArchitectureConnection) => void;
   onAddPort: (elementId: string, values: PortValues) => Promise<void>;
   onChangePort: (elementId: string, portId: string, change: Partial<PortValues>) => Promise<void>;
@@ -196,6 +204,8 @@ export function DiagramSelectionPanel({
   const formatCode = useRecordCode();
   const commentText = useStrings().canvasComments;
   const [deleting, setDeleting] = useState<EditorBox | null>(null);
+  /** The connection whose row takes the focus after Back, so the keyboard returns to where it was. */
+  const [returnedTo, setReturnedTo] = useState<string | null>(null);
   const base = `/projects/${projectId}/modules/architecture`;
 
   const noteKey = selection?.kind === "node" && selection.id.startsWith(NOTE_NODE_PREFIX) ? selection.id.slice(NOTE_NODE_PREFIX.length) : null;
@@ -213,6 +223,10 @@ export function DiagramSelectionPanel({
   // A line that stands for one connection of this project edits it in place; a rolled-up or merged line lists its connections.
   const ownConnection = edge && editable && edge.connections.length === 1 && edge.connections[0].project_id === projectId
     ? edge.connections[0] : null;
+  // A line that stands for several connections is a second level of selection: one of them may be chosen, which shows its
+  // fields instead of the list. The choice belongs to the page; it is ignored when the selected line has no such connection.
+  const chosen = edge && edge.connections.length > 1 ? edge.connections.find((c) => c.id === chosenConnectionId) ?? null : null;
+  const chooseBack = () => { if (chosen) setReturnedTo(chosen.id); onChooseConnection(null); };
 
   let body;
   if (box) {
@@ -357,21 +371,56 @@ export function DiagramSelectionPanel({
       );
     }
   } else if (edge) {
+    const lineHeading = (
+      <p>
+        {edge.count > 1 ? `${edge.count} connections` : "1 connection"}
+        {edge.bridged ? " (bridged across hidden elements)" : edge.rolled_up ? " (rolled up to the placed parents)" : ""}
+      </p>
+    );
+    const passesThrough = edge.hops.length > 0 && (
+      <p className="text-muted">Passes through: {edge.hops.map((h) => `${h.unique_code} ${h.name}`).join(", ")}</p>
+    );
+    const open = (c: ArchitectureConnection) => (
+      <IconAction label={`Open ${formatCode.code(c.unique_code, c.from_project_code)}`} to={`${base}/connections/${c.id}`}><ExternalLink /></IconAction>
+    );
+    const chosenFields = chosen && editable && chosen.project_id === projectId ? chosen : null;
     body = (
       <>
-        <p>
-          {edge.count > 1 ? `${edge.count} connections` : "1 connection"}
-          {edge.bridged ? " (bridged across hidden elements)" : edge.rolled_up ? " (rolled up to the placed parents)" : ""}
-        </p>
-        {edge.hops.length > 0 && (
-          <p className="text-muted">Passes through: {edge.hops.map((h) => `${h.unique_code} ${h.name}`).join(", ")}</p>
+        {lineHeading}
+        {passesThrough}
+        {chosen ? (
+          <ChosenConnection
+            key={`chosen-${chosen.id}`} connection={chosen} count={edge.count} code={formatCode.code(chosen.unique_code, chosen.from_project_code)}
+            open={open(chosen)} onBack={chooseBack}
+            fields={chosenFields && (
+              <>
+                <ConnectionSelectionFields
+                  key={`fields-${chosenFields.id}`} connection={chosenFields} connectionTypes={connectionTypes} elementTypes={elementTypes}
+                  elements={elements} projectId={projectId} autoFocusName={false} onFocused={onFocused}
+                  onSave={(changed) => onSaveConnection(chosenFields, changed)}
+                />
+                <RecordTags
+                  key={`tags-${chosenFields.id}`} projectId={projectId} artefactType="architecture_connection" artefactId={chosenFields.id}
+                  components={false}
+                />
+              </>
+            )}
+          />
+        ) : (
+          <ConnectionSummaryList
+            connections={edge.connections} label="Connections of this line" codeOf={(c) => formatCode.code(c.unique_code, c.from_project_code)}
+            onChoose={edge.connections.length > 1 ? (c) => onChooseConnection(c.id) : undefined}
+            focusId={returnedTo} onFocused={() => setReturnedTo(null)}
+            actionsOf={(c) => (
+              <>
+                {open(c)}
+                {editable && ownConnection === null && c.project_id === projectId && (
+                  <IconAction label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}><Pencil /></IconAction>
+                )}
+              </>
+            )}
+          />
         )}
-        <ConnectionSummaryList
-          connections={edge.connections} label="Connections of this line" codeOf={(c) => formatCode.code(c.unique_code, c.from_project_code)}
-          linkTo={(c) => `${base}/connections/${c.id}`}
-          actionsOf={(c) => editable && c.project_id === projectId && ownConnection === null
-            ? <IconAction label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}><Pencil /></IconAction> : null}
-        />
         <SelectionActions actions={[onComment && selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: edge.id }))]} />
         {ownConnection && (
           <ConnectionSelectionFields
@@ -385,6 +434,9 @@ export function DiagramSelectionPanel({
             key={`tags-${ownConnection.id}`} projectId={projectId} artefactType="architecture_connection" artefactId={ownConnection.id}
             components={false}
           />
+        )}
+        {chosen && editable && (
+          <p className="text-muted">The attach points and vertices below belong to the line, so they apply to all {edge.count} connections.</p>
         )}
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
           <LineEnds edge={edge} boxes={boxes} anchors={anchors} ends={lineEnds(edge.id)} onChange={(change) => onAnchorChange(edge, change)} />
@@ -402,7 +454,13 @@ export function DiagramSelectionPanel({
   }
 
   return (
-    <DetailCard heading="Selection" onKeyDown={(event) => returnFocusToCanvas(event, selection)}>
+    <DetailCard
+      heading="Selection"
+      onKeyDown={(event) => {
+        returnFocusToCanvas(event, selection);
+        if (chosen && leavesChosenConnection(event)) { event.preventDefault(); chooseBack(); }
+      }}
+    >
       {body}
       {deleting && (
         <ConfirmDialog
@@ -414,6 +472,60 @@ export function DiagramSelectionPanel({
         />
       )}
     </DetailCard>
+  );
+}
+
+/**
+ * Whether a key press on the card means "back to the line's connection list": Escape that nothing else has used. A text
+ * field and a select keep Escape for leaving the field (the card returns the focus to the canvas, as for any field) and an
+ * open menu or dialog for closing itself.
+ */
+function leavesChosenConnection(event: KeyboardEvent<HTMLElement>): boolean {
+  if (event.key !== "Escape" || event.defaultPrevented || overlayIsOpen()) return false;
+  const target = event.target;
+  return !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement);
+}
+
+/**
+ * The connection chosen from a merged line: a heading naming it (which takes the focus, so a screen reader announces the
+ * change) with Back to the list and Open for its page, then its fields (or a read-only summary when it cannot be edited here).
+ *
+ * @param connection The chosen connection.
+ * @param count How many connections the line stands for (the Back control names them).
+ * @param code The connection's code, formatted by the code rule.
+ * @param open The Open action (a link to the record's page).
+ * @param onBack Returns to the line's list.
+ * @param fields The editable fields, or null to show the connection as a read-only summary.
+ */
+function ChosenConnection({
+  connection, count, code, open, onBack, fields,
+}: {
+  connection: ArchitectureConnection;
+  count: number;
+  code: string;
+  open: ReactNode;
+  onBack: () => void;
+  fields: ReactNode;
+}) {
+  const heading = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { heading.current?.focus(); }, []);
+  return (
+    <div className="stack" role="group" aria-label="Chosen connection">
+      <div>
+        <button type="button" className="btn btn-sm" onClick={onBack}><ArrowLeft aria-hidden="true" /> Back to the {count} connections</button>
+      </div>
+      <ItemRow actions={open}>
+        <p ref={heading} tabIndex={-1} style={{ margin: 0 }}>
+          <strong>{code}</strong>
+          {connection.name && <span> {connection.name}</span>}
+        </p>
+      </ItemRow>
+      {fields ?? (
+        <ul className="item-row-list" aria-label="Connection summary">
+          <ConnectionSummaryRow connection={connection} code={code} />
+        </ul>
+      )}
+    </div>
   );
 }
 

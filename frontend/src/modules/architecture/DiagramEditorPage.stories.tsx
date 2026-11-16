@@ -335,7 +335,7 @@ export const SelectingALineListsTheConnectionsBehindIt: Story = {
     edge.focus();
     await userEvent.keyboard("{Enter}");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
-    await expect(panel.getByRole("link", { name: "CON-001" })).toBeInTheDocument();
+    await expect(panel.getByRole("link", { name: "Open CON-001" })).toBeInTheDocument();
     await expect(panel.getByText(/1 connection/)).toBeInTheDocument();
   },
 };
@@ -956,7 +956,7 @@ export const ChoosingInTheOutlineSelectsInTheSelectionCardAndOnTheCanvas: Story 
     await expect(panel.getByText(/ELM-002 Orders/)).toBeInTheDocument();
     await expect(outline.getByRole("button", { name: /^ELM-002 Orders/ })).toHaveAttribute("aria-current", "true");
     await userEvent.click(outline.getByRole("button", { name: /^Line from/ }));
-    await expect(await panel.findByRole("link", { name: "CON-001" })).toBeInTheDocument();
+    await expect(await panel.findByRole("link", { name: "Open CON-001" })).toBeInTheDocument();
   },
 };
 
@@ -1393,6 +1393,120 @@ export const ALineStandingForSeveralConnectionsEditsEachInTheDialog: Story = {
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
   },
 };
+const TWO_CONNECTIONS = {
+  elements: ELEMENTS,
+  diagramModel: buildDiagramModel({ connections: [buildConnection(), buildConnection({ id: "con-2", unique_code: "CON-002", name: "Admin traffic" })] }),
+};
+
+/** Choosing a row of a merged line shows that connection's fields in the card, the line's own fields below, and Back returns to the list. */
+export const ChoosingAConnectionOfAMergedLineShowsItsFieldsAndBackReturnsToTheList: Story = {
+  beforeEach: () => { mockArchitectureReads(TWO_CONNECTIONS); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await expect(panel.queryByRole("group", { name: "Connection details" })).not.toBeInTheDocument();
+    await userEvent.click(panel.getByRole("button", { name: /^CON-002 / }));
+    const chosen = within(await panel.findByRole("group", { name: "Chosen connection" }));
+    await expect(chosen.getByRole("textbox", { name: /^Name/ })).toHaveValue("Admin traffic");
+    await expect(panel.queryByRole("list", { name: "Connections of this line" })).not.toBeInTheDocument();
+    // The heading takes the focus, so the change is announced; the line's own fields stay under the connection's.
+    await waitFor(() => expect(chosen.getByText("CON-002").closest("p")).toHaveFocus());
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toBeInTheDocument();
+    await expect(panel.getByText(/apply to all 2 connections/)).toBeInTheDocument();
+    await expect(panel.getByRole("heading", { name: "Selection" })).toBeInTheDocument();
+    await userEvent.click(panel.getByRole("button", { name: "Back to the 2 connections" }));
+    await expect(await panel.findByRole("list", { name: "Connections of this line" })).toBeInTheDocument();
+    await expect(panel.queryByRole("group", { name: "Chosen connection" })).not.toBeInTheDocument();
+    await waitFor(() => expect(panel.getByRole("button", { name: /^CON-002 / })).toHaveFocus());
+  },
+};
+
+/** The row is a button: Enter chooses it, and Escape on the card (outside a text field) goes back to the list. */
+export const AConnectionRowIsChosenFromTheKeyboardAndEscapeGoesBack: Story = {
+  beforeEach: () => { mockArchitectureReads(TWO_CONNECTIONS); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    panel.getByRole("button", { name: /^CON-001 / }).focus();
+    await userEvent.keyboard("{Enter}");
+    const back = await panel.findByRole("button", { name: "Back to the 2 connections" });
+    back.focus();
+    await userEvent.keyboard("{Escape}");
+    await expect(await panel.findByRole("list", { name: "Connections of this line" })).toBeInTheDocument();
+    await expect(panel.queryByRole("group", { name: "Chosen connection" })).not.toBeInTheDocument();
+  },
+};
+
+/** Escape in a text field of the chosen connection leaves the field (focus to the line), not the connection. */
+export const EscapeInAFieldOfTheChosenConnectionKeepsTheChoice: Story = {
+  beforeEach: () => { mockArchitectureReads(TWO_CONNECTIONS); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await userEvent.click(panel.getByRole("button", { name: /^CON-001 / }));
+    const name = await panel.findByRole("textbox", { name: /^Name/ });
+    name.focus();
+    await userEvent.keyboard("{Escape}");
+    await expect(panel.getByRole("group", { name: "Chosen connection" })).toBeInTheDocument();
+  },
+};
+
+/** A saved edit to the chosen connection is stored on its own record and the choice stays. */
+export const EditingTheChosenConnectionStoresItAndKeepsTheChoice: Story = {
+  beforeEach: () => {
+    mockArchitectureReads(TWO_CONNECTIONS);
+    spyOn(api, "put").mockResolvedValue(buildConnection({ id: "con-2", unique_code: "CON-002", name: "Admin traffic", version: 2, protocol: "HTTP/2" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await userEvent.click(panel.getByRole("button", { name: /^CON-002 / }));
+    const protocol = await panel.findByLabelText(/^Protocol/);
+    await userEvent.clear(protocol);
+    await userEvent.type(protocol, "HTTP/2");
+    await userEvent.click(panel.getByRole("button", { name: "Save connection" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/connections/con-2`, { protocol: "HTTP/2", version: 1 }));
+    await expect(panel.getByRole("group", { name: "Chosen connection" })).toBeInTheDocument();
+    await expect(panel.getByRole("group", { name: "Connection details" })).toBeInTheDocument();
+  },
+};
+
+/** Selecting anything else on the canvas ends the choice, so the line opens at its list again. */
+export const SelectingAnotherItemEndsTheChoiceOfAConnection: Story = {
+  beforeEach: () => { mockArchitectureReads(TWO_CONNECTIONS); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await userEvent.click(panel.getByRole("button", { name: /^CON-001 / }));
+    await panel.findByRole("group", { name: "Chosen connection" });
+    await select(canvas, "Gateway");
+    await expect(await panel.findByRole("link", { name: "Open element" })).toBeInTheDocument();
+    const again = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await expect(await again.findByRole("list", { name: "Connections of this line" })).toBeInTheDocument();
+    await expect(again.queryByRole("group", { name: "Chosen connection" })).not.toBeInTheDocument();
+  },
+};
+
+/** A connection shared from another project is chosen like any other but shown read-only; Open names it and goes to its page. */
+export const AChosenConnectionOfAnotherProjectIsReadOnlyAndOpenGoesToItsPage: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramModel: buildDiagramModel({ connections: [buildConnection(), buildConnection({ id: "con-2", unique_code: "CON-002", project_id: "proj-other" })] }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await expect(panel.getByRole("link", { name: "Open CON-001" })).toHaveAttribute("href", expect.stringMatching(/\/connections\/con-1$/));
+    await expect(panel.queryByRole("button", { name: "Edit CON-002" })).not.toBeInTheDocument();
+    await userEvent.click(panel.getByRole("button", { name: /^CON-002 / }));
+    const chosen = within(await panel.findByRole("group", { name: "Chosen connection" }));
+    await expect(chosen.queryByRole("textbox")).not.toBeInTheDocument();
+    await expect(chosen.getByRole("link", { name: "Open CON-002" })).toHaveAttribute("href", expect.stringMatching(/\/connections\/con-2$/));
+  },
+};
+
 export const AConnectionSharedFromAnotherProjectHasNoEditButton: Story = {
   beforeEach: () => {
     mockArchitectureReads({
@@ -1403,7 +1517,7 @@ export const AConnectionSharedFromAnotherProjectHasNoEditButton: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const panel = await selectLine(canvas);
-    await expect(panel.getByRole("link", { name: "CON-001" })).toBeInTheDocument();
+    await expect(panel.getByRole("link", { name: "Open CON-001" })).toBeInTheDocument();
     await expect(panel.queryByRole("button", { name: "Edit CON-001" })).not.toBeInTheDocument();
   },
 };

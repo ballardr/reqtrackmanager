@@ -1085,6 +1085,31 @@ a.figure-projects-link:hover {
   margin-left: auto;
 }
 
+/* A row whose text is itself one button that chooses the row (`ConnectionSummaryRow`): it looks like the row's text, with
+   a hover edge and the product focus ring, so the row's own actions beside it stay separate controls. */
+.item-row__choose {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.item-row__choose:hover {
+  text-decoration: underline;
+}
+
+.item-row__choose:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* Actions revealed on hover or focus (style guide "Pattern: actions revealed on hover"). Opacity, not `display`, so the
    actions keep their space and stay in the tab order; focus inside the row reveals them, and a device with no hover
    shows them always. */

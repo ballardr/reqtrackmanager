@@ -103,3 +103,30 @@ export const ShowNameAddsTheConnectionName: Story = {
     await expect(within(canvasElement).getAllByRole("link")[0]).toHaveFocus();
   },
 };
+
+/** With `onChoose` the two lines are one button (the code is text, not a link), chosen by click or Enter, and fit the narrow card. */
+export const AChoosableRowIsOneButtonThatFitsTheCard: Story = {
+  args: { onChoose: fn(), linkTo: undefined, connections: [buildConnection({ unique_code: "F3ID-CON-003" })] },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
+    const choose = canvas.getByRole("button", { name: /^F3ID-CON-003 REST API/ });
+    await expect(choose).toHaveAccessibleName(/Gateway to Orders$/);
+    await userEvent.click(choose);
+    await expect(args.onChoose).toHaveBeenCalledTimes(1);
+    choose.focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(args.onChoose).toHaveBeenCalledTimes(2);
+    const list = canvasElement.querySelector<HTMLElement>(".item-row-list")!;
+    await expect(list.scrollWidth).toBeLessThanOrEqual(list.clientWidth + 1);
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** The row named by `focusId` takes the keyboard focus when it appears (the way back from a chosen connection). */
+export const TheRowNamedByFocusIdTakesTheFocus: Story = {
+  args: { onChoose: fn(), focusId: "con-2", linkTo: undefined },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole("button", { name: /^CON-002 / })).toHaveFocus();
+  },
+};
