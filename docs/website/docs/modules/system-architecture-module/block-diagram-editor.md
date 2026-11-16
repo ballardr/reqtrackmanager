@@ -33,6 +33,8 @@ Where two lines still cross, switch on **Line hops** in the settings button so t
 
 **Undo** and **Redo** act on the unsaved layout. The keys are Cmd+Z and Cmd+Shift+Z on a Mac, and Ctrl+Z with Ctrl+Shift+Z or Ctrl+Y elsewhere. They work when the cursor is not in a text box and no dialog is open; in a text box the key undoes the typing. An element or connection added from the diagram is created at once, so Undo does not remove it.
 
+**Delete** (or Backspace, which is the key labelled Delete on a Mac) takes the selected box, note or note line off the drawing at once, as **Remove from diagram** does; the element stays in the model, and **Undo** puts it back. It works wherever the cursor is except in a text box or while a dialog is open. After adding an element or typing a name, press **Escape** to leave the text box with the item still selected, then Delete. To delete the element itself use **Delete element** in the Selection card, which asks for its code. A connection is not removed from a drawing by the key: open the connection to delete it.
+
 ## Layers
 
 An element's own diagram shows its children. Double-click a box, or choose **Open inside**, to open its inside; elements added there become its children. The diagram of the system context shows the top-level elements.

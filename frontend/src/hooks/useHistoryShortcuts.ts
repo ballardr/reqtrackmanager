@@ -18,6 +18,7 @@
 import { useEffect } from "react";
 
 import { useLatest } from "./useLatest";
+import { isTextEntryTarget, overlayIsOpen } from "../utils/keyboardTargets";
 import { isApplePlatform } from "../utils/platform";
 
 /** What a key press asks of the history. */
@@ -41,17 +42,13 @@ export function historyAction(event: HistoryKeyEvent, apple: boolean): HistoryAc
   return null;
 }
 
-/** Elements that open over the page and own the keyboard while they are shown. */
-const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [aria-modal="true"]';
-
 /**
  * @param target Where the key press happened.
  * @param root The document to look for an open dialog or pop-over in.
  * @returns True when the key must be left alone: text is being typed, or a dialog, menu or pop-over is open.
  */
 export function historyShortcutBlocked(target: EventTarget | null, root: Document = document): boolean {
-  if (target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return true;
-  return root.querySelector(OVERLAY_SELECTOR) !== null;
+  return isTextEntryTarget(target) || overlayIsOpen(root);
 }
 
 /**

@@ -310,6 +310,13 @@ export interface GraphCanvasProps {
    */
   onDelete?: (selection: GraphCanvasSelection) => void;
   /**
+   * Where Delete and Backspace are heard. `"canvas"` (the default): only while focus is on the canvas. `"page"`: wherever the
+   * focus is on the page (the toolbar, a card, nowhere in particular), so a selection made from an outline or after a symbol
+   * was added at once is still deleted by the key. Either way the key is left alone in a text field, a select, a dialog or an
+   * open menu, and for a line's vertex handle (which removes only the vertex).
+   */
+  deleteKeyScope?: "canvas" | "page";
+  /**
    * Called once when a person drags one end of a line to another attach point of the same box (not in read-only mode),
    * with the end or ends that moved. The canvas stores nothing: the consumer keeps the point and passes it back as the
    * edge's `sourcePoint`/`targetPoint`. Dragging an end to a different box is ignored.

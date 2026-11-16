@@ -415,6 +415,81 @@ export const ReportsADeleteKeyOnTheSelection: Story = {
   },
 };
 
+/** A page around the canvas with a toolbar button, a text field and a dialog switch, so the delete key is tried from each place. */
+function DeleteScopeHost({ scope, onDelete }: { scope?: "canvas" | "page"; onDelete: () => void }) {
+  const [dialog, setDialog] = useState(false);
+  return (
+    <div className="stack">
+      <div className="row">
+        <button type="button" className="btn btn-sm" onClick={() => setDialog(true)}>Open dialog</button>
+        <input aria-label="Name" className="input" defaultValue="Sensor" />
+      </div>
+      <Host onDelete={onDelete} deleteKeyScope={scope} />
+      {dialog && <div role="dialog" aria-label="Confirm"><button type="button" onClick={() => setDialog(false)}>Close</button></div>}
+    </div>
+  );
+}
+
+/**
+ * With the page scope the delete key is heard wherever the focus is: after the selection was made from elsewhere the focus is
+ * on a toolbar button or nowhere, and the key still reaches the selection. A text field, a dialog and a modified key keep it.
+ */
+export const DeleteKeyHeardAnywhereOnThePage: Story = {
+  args: { onDelete: fn() },
+  render: (args) => <DeleteScopeHost scope="page" onDelete={args.onDelete as () => void} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const onDelete = args.onDelete as ReturnType<typeof fn>;
+    const node = await canvas.findByLabelText("Sensor, node");
+    await userEvent.keyboard("{Delete}");
+    await expect(onDelete).not.toHaveBeenCalled(); // nothing is selected yet
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(canvas.getByTestId("selection")).toHaveTextContent("node:sensor"));
+
+    canvas.getByRole("button", { name: "Open dialog" }).focus();
+    await userEvent.keyboard("{Delete}");
+    await expect(onDelete).toHaveBeenCalledTimes(1);
+    await expect(onDelete).toHaveBeenLastCalledWith({ kind: "node", id: "sensor" });
+
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.keyboard("{Backspace}");
+    await expect(onDelete).toHaveBeenCalledTimes(2);
+
+    canvas.getByRole("textbox", { name: "Name" }).focus();
+    await userEvent.keyboard("{Backspace}{Delete}");
+    await expect(onDelete).toHaveBeenCalledTimes(2); // the field keeps its keys
+    await expect(canvas.getByRole("textbox", { name: "Name" })).toHaveValue("Senso");
+
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.keyboard("{Shift>}{Delete}{/Shift}{Control>}{Backspace}{/Control}");
+    await expect(onDelete).toHaveBeenCalledTimes(2); // a modified key is not a delete
+
+    await userEvent.click(canvas.getByRole("button", { name: "Open dialog" }));
+    await userEvent.keyboard("{Delete}");
+    await expect(onDelete).toHaveBeenCalledTimes(2); // a dialog owns the keyboard while it is open
+  },
+};
+
+/** The default scope hears the key only on the canvas, as before, so a consumer that did not ask for the page scope is unchanged. */
+export const DeleteKeyOnTheCanvasOnlyByDefault: Story = {
+  args: { onDelete: fn() },
+  render: (args) => <DeleteScopeHost onDelete={args.onDelete as () => void} />,
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const onDelete = args.onDelete as ReturnType<typeof fn>;
+    const node = await canvas.findByLabelText("Sensor, node");
+    node.focus();
+    await userEvent.keyboard("{Enter}");
+    canvas.getByRole("button", { name: "Open dialog" }).focus();
+    await userEvent.keyboard("{Delete}");
+    await expect(onDelete).not.toHaveBeenCalled();
+    node.focus();
+    await userEvent.keyboard("{Delete}");
+    await expect(onDelete).toHaveBeenCalledTimes(1); // once, not once for each listener
+  },
+};
+
 /** A double-click asks the consumer to open the node; Enter stays selection only, and the canvas opens nothing itself. */
 export const OpensANodeOnDoubleClick: Story = {
   args: { onNodeOpen: fn() },
@@ -1493,7 +1568,7 @@ function DeleteKeyHost() {
     <GraphCanvas
       nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b", points }]} ariaLabel="Routes" showViewToggle={false}
       selected={SELECTED_LINE} onEdgePointsChange={(_id, next) => setPoints(next)}
-      onDelete={() => { document.body.dataset.deleted = "yes"; }}
+      onDelete={() => { document.body.dataset.deleted = "yes"; }} deleteKeyScope="page"
     />
   );
 }

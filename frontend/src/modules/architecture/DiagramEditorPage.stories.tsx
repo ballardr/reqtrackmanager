@@ -190,6 +190,43 @@ export const RemovingABoxLeavesTheElementInTheModel: Story = {
   },
 };
 
+/**
+ * The Delete key takes the selected box off the drawing from anywhere on the page but a text field, Undo puts it back, and the
+ * element stays in the model.
+ */
+export const TheDeleteKeyRemovesTheSelectedBoxFromAnywhereButATextField: Story = {
+  beforeEach: () => { spyOn(api, "delete").mockResolvedValue(undefined as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Orders");
+    const name = canvas.getByRole("textbox", { name: /^Name/ });
+    await userEvent.click(name);
+    await userEvent.keyboard("{Backspace}");
+    await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument(); // the field kept the key
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(canvas.getByLabelText("Orders, node")).toHaveFocus());
+    canvas.getByRole("button", { name: "Add to diagram" }).focus();
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => expect(canvas.queryByLabelText("Orders, node")).not.toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
+    await expect(await canvas.findByLabelText("Orders, node")).toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
+  },
+};
+
+/** The key on a selected connection says where a connection is deleted, since a drawing holds no copy of it to remove. */
+export const TheDeleteKeyOnAConnectionSaysWhereItIsDeleted: Story = {
+  beforeEach: () => { spyOn(api, "delete").mockResolvedValue(undefined as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await selectLine(canvas);
+    await userEvent.keyboard("{Delete}");
+    await expect(await within(document.body).findByText(/Open the connection to delete it/)).toBeInTheDocument();
+    await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
+  },
+};
+
 export const DeletingAnElementNeedsItsCodeTyped: Story = {
   beforeEach: () => { spyOn(api, "delete").mockResolvedValue(undefined as never); },
   play: async ({ canvasElement }) => {

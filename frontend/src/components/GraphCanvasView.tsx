@@ -27,7 +27,8 @@
  *   absolute coordinates, and moving a container reports every node inside it.
  * - Keep the canvas keyboard operable: nodes and connections take focus, Enter/Space selects, arrow keys move the
  *   selected node (React Flow's own handling, off in read-only mode), Alt with an arrow key resizes it and Delete or
- *   Backspace asks the consumer to delete it, each with a spoken name.
+ *   Backspace asks the consumer to delete it, each with a spoken name. With `deleteKeyScope="page"` the delete key is heard
+ *   wherever the focus is on the page, not only on the canvas.
  *
  * Design decisions:
  * - Labels are React text children (nodes) or React Flow's SVG text (connections), never markup. A symbol is an
@@ -72,6 +73,7 @@ import {
 
 import { useStrings } from "../context/TerminologyContext";
 import { useLatest } from "../hooks/useLatest";
+import { isTextEntryTarget, overlayIsOpen } from "../utils/keyboardTargets";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import {
@@ -595,6 +597,7 @@ export function GraphCanvasView({
   fitMaxZoom = 2,
   onNodesResize,
   onDelete,
+  deleteKeyScope = "canvas",
   onDropItem,
   onNodeOpen,
   onEdgeOpen,
@@ -1301,11 +1304,31 @@ export function GraphCanvasView({
       }));
       if (grid > 0) setMoved((m) => ({ ...m, [selection.id]: { x, y, baseX: base?.x ?? x, baseY: base?.y ?? y } }));
       onNodesResize?.([{ id: selection.id, x, y, width, height }]);
-    } else if (keyDelete && (event.key === "Delete" || event.key === "Backspace")) {
+    } else if (keyDelete && deleteKeyScope === "canvas" && (event.key === "Delete" || event.key === "Backspace")) {
       event.preventDefault();
       onDelete?.(selection);
     }
   };
+
+  const pageDelete = useLatest({ enabled: keyDelete && deleteKeyScope === "page", selection, onDelete });
+  useEffect(() => {
+    /**
+     * The delete key heard anywhere on the page: a plain Delete or Backspace with a selection, outside a text field, a dialog
+     * or a menu. A line's vertex handle takes the key for itself (it removes the vertex), so it is not heard here.
+     */
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      const current = pageDelete.current;
+      if (!current.enabled || !current.selection || event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (isTextEntryTarget(event.target) || overlayIsOpen()) return;
+      if (event.target instanceof HTMLElement && event.target.closest(".graph-waypoint")) return;
+      event.preventDefault();
+      current.onDelete?.(current.selection);
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [pageDelete]);
 
   const dropEnabled = onDropItem !== undefined && !readOnly;
   const allowDrop = (event: DragEvent) => {

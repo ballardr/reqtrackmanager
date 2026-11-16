@@ -655,7 +655,11 @@ export function DiagramEditorPage() {
     }
   }
 
-  /** Removes the selected box or note from the diagram (an undoable local edit; the element itself is never touched). */
+  /**
+   * The canvas's Delete key: removes the selected box, note, boundary box or leader from the diagram (an undoable local edit; the
+   * element itself is never touched, so there is no confirmation). A connection is a record of the model with no drawing-only
+   * form, so the key says where it is deleted instead of doing nothing.
+   */
   function removeSelected(chosen: GraphCanvasSelection) {
     if (!editable) return;
     if (chosen.kind === "leader") {
@@ -663,7 +667,10 @@ export function DiagramEditorPage() {
       setSelection(null);
       return;
     }
-    if (chosen.kind !== "node") return;
+    if (chosen.kind !== "node") {
+      showToast("A connection belongs to the model, so the Delete key does not remove it from a drawing. Open the connection to delete it.");
+      return;
+    }
     if (chosen.id.startsWith(NOTE_NODE_PREFIX)) editor.edit((l) => removeNote(l, chosen.id.slice(NOTE_NODE_PREFIX.length)));
     else if (chosen.id.startsWith(BOUNDARY_NODE_PREFIX)) editor.edit((l) => removeBoundary(l, chosen.id.slice(BOUNDARY_NODE_PREFIX.length)));
     else editor.edit((l) => removeBox(l, chosen.id));
@@ -902,7 +909,7 @@ export function DiagramEditorPage() {
                 }
                 void startConnection(source, target);
               }}
-              onDelete={removeSelected} onNodeOpen={openBoxInside}
+              onDelete={removeSelected} deleteKeyScope="page" onNodeOpen={openBoxInside}
               onDropItem={(payload, at) => {
                 if (payload.startsWith(PALETTE_TYPE_PREFIX)) void addElementAt(payload.slice(PALETTE_TYPE_PREFIX.length), at);
               }}

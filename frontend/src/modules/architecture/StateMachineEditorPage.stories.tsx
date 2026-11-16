@@ -607,6 +607,45 @@ export const TheDeleteKeyAsksBeforeDeletingATransition: Story = {
   },
 };
 
+/**
+ * The Delete key reaches a selected state wherever the focus is (here a toolbar button), asks first and names the state's code,
+ * and is left alone in the card's name field; Escape in that field returns the focus to the state so the key then reaches it.
+ */
+export const TheDeleteKeyReachesTheSelectedStateFromAnywhereButATextField: Story = {
+  beforeEach: () => { spyOn(api, "delete").mockResolvedValue({ transitions: 0, links: 0, version: 6 } as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Running");
+    canvas.getByRole("button", { name: "Add to diagram" }).focus();
+    await userEvent.keyboard("{Backspace}");
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(await dialog.findByRole("textbox")).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(api.delete).not.toHaveBeenCalled();
+
+    const name = canvas.getByRole("textbox", { name: /^Name/ });
+    await userEvent.click(name);
+    await userEvent.keyboard("{Backspace}");
+    await expect(name).toHaveValue("Runnin");
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await userEvent.keyboard("g{Escape}");
+    await waitFor(() => expect(canvas.getByLabelText("Running, node")).toHaveFocus());
+    await userEvent.keyboard("{Delete}");
+    await expect(await within(document.body).findByRole("dialog")).toBeInTheDocument();
+  },
+};
+
+/** The Delete button's tooltip names the key. */
+export const TheDeleteButtonTooltipNamesTheKey: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Running");
+    await userEvent.hover(await canvas.findByRole("button", { name: "Delete state…" }));
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Delete or Backspace");
+  },
+};
+
 /** A transition's vertices are set in the Selection card, shown in the Outline, and saved with the drawing. */
 export const VerticesOfATransitionAreSetInTheCardListedInTheOutlineAndSaved: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never); },

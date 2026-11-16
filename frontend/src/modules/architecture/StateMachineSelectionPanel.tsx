@@ -22,6 +22,7 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailCard } from "../../components/DetailCard";
 import { FieldCaption } from "../../components/FieldHelp";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
+import { returnFocusToCanvas } from "../../utils/canvasFocus";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, SIDE_POINTS, pointXY, type AttachPoint, type BoxGeometry } from "../../components/graphAttachPoints";
 import type { LineEnds } from "../../components/graphLineAnchors";
 import { suggestWaypoint } from "../../components/graphLinePath";
@@ -231,7 +232,7 @@ export function StateMachineSelectionPanel({
   }
 
   return (
-    <DetailCard heading="Selection">
+    <DetailCard heading="Selection" onKeyDown={(event) => returnFocusToCanvas(event, selection)}>
       {body}
     </DetailCard>
   );

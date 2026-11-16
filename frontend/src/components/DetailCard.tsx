@@ -10,7 +10,7 @@
  * card; `scripts/check_detail_cards.py` fails a file that puts a card directly inside a `DetailCard`. The
  * heading is a real `<h2>` and names the section for assistive technology.
  */
-import type { ReactNode } from "react";
+import type { KeyboardEventHandler, ReactNode } from "react";
 
 import { FieldHelp } from "./FieldHelp";
 
@@ -18,13 +18,14 @@ import { FieldHelp } from "./FieldHelp";
  * @param heading The card's heading (default "Details").
  * @param help Plain-language help for a heading that names a domain term; drawn as a `(?)` after the heading.
  * @param action A control on the heading's line, e.g. an `AddPopoverButton`.
+ * @param onKeyDown Hears key presses bubbling up from the card's controls (the editors' Selection cards return focus to the canvas on Escape).
  * @param children The card's content.
  */
 export function DetailCard({
-  heading = "Details", help, action, children,
-}: { heading?: string; help?: string; action?: ReactNode; children: ReactNode }) {
+  heading = "Details", help, action, onKeyDown, children,
+}: { heading?: string; help?: string; action?: ReactNode; onKeyDown?: KeyboardEventHandler<HTMLElement>; children: ReactNode }) {
   return (
-    <section className="card stack" aria-label={heading}>
+    <section className="card stack" aria-label={heading} onKeyDown={onKeyDown}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         {help ? (
           <div className="field-caption">

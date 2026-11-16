@@ -612,7 +612,7 @@ export function StateMachineEditorPage() {
                   }
                   if (noteKeyOf(target) === null) void addTransition(source, target);
                 }}
-                onDelete={deleteSelected}
+                onDelete={deleteSelected} deleteKeyScope="page"
                 onNodeOpen={(id) => {
                   const state = model.states.find((s) => s.id === id);
                   if (state && editable) { setFormError(null); setEditingState(state); }

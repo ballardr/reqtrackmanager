@@ -28,6 +28,9 @@ export interface SelectionAction {
   menu?: boolean;
 }
 
+/** What the delete key does for the selection, shown under the name of each action it repeats. */
+const DELETE_KEY_HELP = "Keyboard: Delete or Backspace with the item selected.";
+
 /** The common actions with their icons; each takes the card's own wording. */
 export const selectionAction = {
   /** Opens a record's page. */
@@ -43,11 +46,11 @@ export const selectionAction = {
   /** Starts a comment on the selection. */
   comment: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <MessageSquarePlus /> }),
   /** Takes the selection off the diagram without changing the model. */
-  remove: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <CircleMinus /> }),
+  remove: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <CircleMinus />, help: DELETE_KEY_HELP }),
   /** Deletes the selection (the caller confirms). */
-  delete: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Trash2 />, danger: true }),
+  delete: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <Trash2 />, danger: true, help: DELETE_KEY_HELP }),
   /** Selects the record that owns the selection (a leader's note). */
   owner: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <CornerUpLeft /> }),
   /** Removes a note. */
-  clear: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <X />, danger: true }),
+  clear: (label: string, onSelect: () => void): SelectionAction => ({ label, onSelect, icon: <X />, danger: true, help: DELETE_KEY_HELP }),
 };

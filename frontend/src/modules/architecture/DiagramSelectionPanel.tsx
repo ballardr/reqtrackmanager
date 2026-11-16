@@ -37,6 +37,7 @@ import { ActivityNote } from "../../components/ActivityNote";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
+import { returnFocusToCanvas } from "../../utils/canvasFocus";
 import { FieldCaption } from "../../components/FieldHelp";
 import { IconAction } from "../../components/IconAction";
 import { LabeledSelect } from "../../components/LabeledSelect";
@@ -415,7 +416,7 @@ export function DiagramSelectionPanel({
   }
 
   return (
-    <DetailCard heading="Selection">
+    <DetailCard heading="Selection" onKeyDown={(event) => returnFocusToCanvas(event, selection)}>
       {body}
       {deleting && (
         <ConfirmDialog
