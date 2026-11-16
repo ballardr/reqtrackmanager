@@ -289,7 +289,7 @@ def add_transition(client, token, project_id, machine_id, source_id, target_id, 
 
 
 def sound_machine(client, token, project_id, element_id, name="Modes") -> tuple[dict, dict[str, dict]]:
-    """A state machine diagram with no finding of either severity: Start (initial) to Running to Stop (final), Running
+    """A state machine diagram with no issue of either severity: Start (initial) to Running to Stop (final), Running
     ending on a `halt` event. Returns the diagram's record and its states by name."""
     machine = make_machine(client, token, project_id, element_id, name)
     start = add_state(client, token, project_id, machine["id"], "Start", kind="initial")
@@ -301,7 +301,7 @@ def sound_machine(client, token, project_id, element_id, name="Modes") -> tuple[
 
 
 def machine_model(client, token, project_id, machine_id, *, expect=200) -> dict:
-    """The model endpoint's body: the diagram, its states and transitions, and its findings."""
+    """The model endpoint's body: the diagram, its states and transitions, and its validation."""
     resp = client.get(f"{project_base(project_id)}/state-machine-diagrams/{machine_id}/model", headers=auth_headers(token))
     assert resp.status_code == expect, resp.text
     return resp.json()

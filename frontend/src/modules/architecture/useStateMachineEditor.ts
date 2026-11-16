@@ -6,16 +6,16 @@
  * loading, saving and conflict handling.
  *
  * Responsibilities:
- * - Load the model (diagram, states, transitions, findings) and read it again after a stored change, merging the result into
+ * - Load the model (diagram, states, transitions, issues) and read it again after a stored change, merging the result into
  *   the unsaved drawing so nothing is lost.
  * - Save the drawing (`save`), which quotes the diagram's `version`; a stale version sets `conflict` so the page offers a
  *   reload instead of overwriting a newer save.
  * - Run the writes that are stored at once (`write`: add or edit a state, add, edit or delete a transition, change the
- *   diagram's fields): each quotes the current version and is followed by a read, so the findings and counts are current.
+ *   diagram's fields): each quotes the current version and is followed by a read, so the issues and counts are current.
  *
  * Design decisions:
  * - Only the drawing (positions, sizes, nesting, attach points) is local until Save, as in the block diagram editor. A
- *   state's or transition's content is stored when its form is saved, because the findings depend on it and because a state
+ *   state's or transition's content is stored when its form is saved, because the issues depend on it and because a state
  *   needs its code, which only the server gives.
  * - The server answers a stale version and a refused move (for example an activation with errors) with the same status; only
  *   the stale version is a conflict, told apart by its message, so a refusal never offers to discard the person's work.
@@ -87,6 +87,10 @@ export function useStateMachineEditor(projectId: string, diagramId: string): Sta
   const [saving, setSaving] = useState(false);
   const request = useRef(0);
   const loaded = useRef(false);
+  // The model last read and the read in flight: a stored change quotes the version the last read gave, so a second one made
+  // while the read after the first is still running waits for it instead of quoting the version before the first.
+  const modelRef = useRef<StateMachineModel | null>(null);
+  const inflight = useRef<Promise<void> | null>(null);
 
   // The drawing as last rendered, so a read that resolves later can tell whether an edit was made while it was in flight.
   const latest = useRef(history.present);
@@ -99,9 +103,10 @@ export function useStateMachineEditor(projectId: string, diagramId: string): Sta
    */
   const read = useCallback((discard: boolean | StateMachineLayout): Promise<void> => {
     const mine = ++request.current;
-    return api.model(diagramId)
+    const reading: Promise<void> = api.model(diagramId)
       .then((data) => {
         if (mine !== request.current) return;
+        modelRef.current = data;
         setModel(data);
         setLoadError(null);
         const justSaved = typeof discard === "object" ? discard : null;
@@ -120,7 +125,10 @@ export function useStateMachineEditor(projectId: string, diagramId: string): Sta
       })
       .catch((err) => {
         if (mine === request.current) setLoadError(toErrorMessage(err, "This state machine diagram could not be found, or you do not have access to it."));
-      });
+      })
+      .finally(() => { if (inflight.current === reading) inflight.current = null; });
+    inflight.current = reading;
+    return reading;
   }, [api, diagramId]);
 
   useEffect(() => {
@@ -134,7 +142,8 @@ export function useStateMachineEditor(projectId: string, diagramId: string): Sta
     setSaving(true);
     setSaveError(null);
     try {
-      return await call(model.diagram.version);
+      while (inflight.current) await inflight.current;
+      return await call((modelRef.current ?? model).diagram.version);
     } catch (err) {
       if (isStaleVersion(err)) setConflict(true);
       else setSaveError(toErrorMessage(err, "Could not save the state machine diagram."));

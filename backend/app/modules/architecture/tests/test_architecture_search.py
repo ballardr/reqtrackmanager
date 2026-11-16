@@ -1,4 +1,4 @@
-"""Tests for finding elements and connections through the global search and the link finder: by code, name, port
+"""Tests for locating elements and connections through the global search and the link finder: by code, name, port
 name and protocol; archived and other projects' records stay out. Every test builds its own organisation."""
 
 from __future__ import annotations

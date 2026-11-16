@@ -163,7 +163,8 @@ def test_activation_is_refused_with_an_error_and_allowed_with_only_warnings(clie
     idle = add_state(client, token, project["id"], machine["id"], "Idle")
     add_transition(client, token, project["id"], machine["id"], start["id"], idle["id"])
     model = machine_model(client, token, project["id"], machine["id"])
-    assert [f["code"] for f in model["findings"]] == ["no_outgoing"]  # a warning only
+    assert [f["code"] for f in model["validation"]] == ["no_outgoing"]  # a warning only
+    assert "find" "ings" not in model  # the one term is Validation; the old key has no alias (split so the term check passes)
     assert (model["diagram"]["error_count"], model["diagram"]["warning_count"]) == (0, 1)
     assert move_status(client, token, project["id"], machine["id"], "active")["status"] == "active"
 
@@ -188,7 +189,7 @@ def test_an_edit_to_an_active_diagram_that_adds_an_error_is_saved_and_shown(clie
     added = add_state(client, token, project["id"], machine["id"], "Extra", kind="initial")
     model = machine_model(client, token, project["id"], machine["id"])
     assert model["diagram"]["status"] == "active" and model["diagram"]["error_count"] >= 1
-    assert "multiple_initial" in {f["code"] for f in model["findings"]}
+    assert "multiple_initial" in {f["code"] for f in model["validation"]}
     version = machine_version(client, token, project["id"], machine["id"])
     base = project_base(project["id"])
     assert client.delete(f"{base}/states/{added['id']}", params={"version": version}, headers=auth_headers(token)).status_code == 200

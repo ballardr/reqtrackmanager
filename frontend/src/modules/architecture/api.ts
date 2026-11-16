@@ -306,7 +306,7 @@ export const projectStateMachineApi = (projectId: string) => {
     list: (filters: StateMachineListFilters = {}) => api.get<StateMachineDiagram[]>(`${base}${listQuery(filters)}`),
     create: (values: StateMachineCreateValues) => api.post<StateMachineDiagram>(base, values),
     get: (id: string) => api.get<StateMachineDiagram>(`${base}/${id}`),
-    /** The diagram with its states, transitions and modelling findings. */
+    /** The diagram with its states, transitions and validation issues. */
     model: (id: string) => api.get<StateMachineModel>(`${base}/${id}/model`),
     update: (id: string, version: number, values: Partial<StateMachineFieldValues & DiagramSettingValues>) =>
       api.put<StateMachineDiagram>(`${base}/${id}`, { version, ...values }),

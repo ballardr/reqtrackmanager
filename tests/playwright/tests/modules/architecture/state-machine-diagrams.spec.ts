@@ -21,8 +21,16 @@ async function selectNode(page: Page, name: string) {
 /** The Selection card of the editor. */
 const selectionCard = (page: Page) => page.getByRole("region", { name: "Selection" });
 
-/** The Findings card of the editor. */
-const findingsCard = (page: Page) => page.getByRole("region", { name: "Findings" });
+/** The toolbar's Validation button; its accessible name carries the counts ("Validation: 1 error and 1 warning"). */
+const validationButton = (page: Page) => page.getByRole("button", { name: /^Validation:/ });
+
+/** Opens the Validation list and returns it. */
+async function openValidation(page: Page) {
+  await validationButton(page).click();
+  const list = page.getByRole("group", { name: "Validation issues" });
+  await expect(list).toBeVisible();
+  return list;
+}
 
 /** The canvas of the editor (the group named for the diagram; the toolbar's name starts the same way but is not a group). */
 const canvasOf = (page: Page) => page.locator('[role="group"][aria-label^="State machine diagram "]');
@@ -170,8 +178,11 @@ test.describe("System Architecture: state machine diagrams", () => {
     });
 
     await test.step("an empty diagram has an error, and activating it is refused with the reason", async () => {
-      await expect(findingsCard(page).getByText("1 error")).toBeVisible();
-      await expect(findingsCard(page).getByText(/no initial state at the top level/)).toBeVisible();
+      await expect(validationButton(page)).toHaveAccessibleName("Validation: 1 error");
+      const list = await openValidation(page);
+      await expect(list.getByText(/no initial state at the top level/)).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(list).toBeHidden();
       await page.getByRole("button", { name: "Change status", exact: true }).click();
       await clickMenuRow(page, "Move from Draft to Active");
       await expect(page.getByRole("alert").filter({ hasText: /cannot be activated until its errors are resolved/ })).toBeVisible();
@@ -186,19 +197,27 @@ test.describe("System Architecture: state machine diagrams", () => {
 
     await test.step("an initial state clears the error; a state nobody can reach or leave is a warning", async () => {
       await addState(page, "Initial state");
-      await expect(findingsCard(page).getByText("0 errors")).toBeVisible();
+      await expect(validationButton(page)).toHaveAccessibleName("Validation: no issues");
       await addState(page, "State", "Idle");
-      await expect(findingsCard(page).getByText("2 warnings")).toBeVisible();
-      await expect(findingsCard(page).getByText(/cannot be reached from the initial state/)).toBeVisible();
+      await expect(validationButton(page)).toHaveAccessibleName("Validation: 2 warnings");
+      const list = await openValidation(page);
+      await expect(list.getByText(/cannot be reached from the initial state/)).toBeVisible();
+      // A row selects its state, and the Selection card keeps one line that opens the list again.
+      await list.getByRole("button", { name: /cannot be reached from the initial state/ }).click();
+      await expect(list).toBeHidden();
+      await expect(selectionCard(page).getByText("Idle", { exact: false }).first()).toBeVisible();
+      await selectionCard(page).getByRole("button", { name: /^Show \d issues? in Validation$/ }).click();
+      await expect(page.getByRole("group", { name: "Validation issues" })).toBeVisible();
+      await page.keyboard.press("Escape");
     });
 
     await test.step("a transition from the initial state clears one warning, a loop on Idle clears the other", async () => {
       await selectNode(page, "Initial state");
       await addTransition(page, /Idle/);
-      await expect(findingsCard(page).getByText("1 warning")).toBeVisible();
+      await expect(validationButton(page)).toHaveAccessibleName("Validation: 1 warning");
       await selectNode(page, "Idle");
       await addTransition(page, /\(itself\)/, "poll");
-      await expect(findingsCard(page).getByText("0 warnings")).toBeVisible();
+      await expect(validationButton(page)).toHaveAccessibleName("Validation: no issues");
       await expect(page.getByLabel(/poll, connection from Idle to Idle/)).toBeVisible();
     });
 

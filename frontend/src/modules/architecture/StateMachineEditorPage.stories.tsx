@@ -118,6 +118,48 @@ export const MovingAStateEnablesSaveAndSendsTheDrawingWithTheVersion: Story = {
   },
 };
 
+/**
+ * A second save made while the read after the first is still running quotes the version the first save gave, not the one
+ * before it: the second save waits for the read (a stale version would be refused as a change by someone else).
+ */
+export const ASecondSaveDuringTheReadBackQuotesTheNewVersion: Story = {
+  beforeEach: () => {
+    let version = 5;
+    const quoted: number[] = [];
+    mockArchitectureReads({ elements: [buildElement()] });
+    const reads = api.get;
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      const result = await reads(path);
+      if (path.includes("/state-machine-diagrams/smd-1/model")) {
+        // The stored version after the read has run, which the slow read delivers late.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const model = result as ReturnType<typeof buildStateMachineModel>;
+        return { ...model, diagram: { ...model.diagram, version } };
+      }
+      return result;
+    });
+    spyOn(api, "put").mockImplementation(async (_path: string, body?: unknown) => {
+      quoted.push((body as { version: number }).version);
+      version += 1;
+      return buildStateMachine({ version }) as never;
+    });
+    (globalThis as { __quoted?: number[] }).__quoted = quoted;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Idle");
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    // Edit again at once, while the read after the first save is in flight, and save again.
+    canvas.getByLabelText("Idle, node").focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect((globalThis as { __quoted?: number[] }).__quoted).toEqual([5, 6]));
+  },
+};
+
 /** Line hops is a setting of the diagram: the gear's switch stores it with the version. */
 export const LineHopsIsStoredFromTheGear: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6, line_hops: true }) as never); },
@@ -687,37 +729,58 @@ export const NestingAStateFromTheSelectionCardIsAnUnsavedDrawingEdit: Story = {
   },
 };
 
-export const FindingsAreCountedListedAndSelectTheirState: Story = {
+const ISSUES = [
+  { severity: "error" as const, code: "initial_incoming", subject: "STE-000", message: "STE-000 is an initial state and has an incoming transition." },
+  { severity: "warning" as const, code: "unreachable", subject: "STE-003", message: "STE-003 cannot be reached from the initial state." },
+];
+
+/** The toolbar's Validation button counts the errors, opens the list, and a row selects its state. */
+export const ValidationIsCountedListedAndSelectsItsState: Story = {
   beforeEach: () => {
     mockArchitectureReads({
-      stateMachineModel: buildStateMachineModel({
-        diagram: buildStateMachine({ error_count: 1, warning_count: 1 }),
-        findings: [
-          { severity: "error", code: "initial_incoming", subject: "STE-000", message: "STE-000 is an initial state and has an incoming transition." },
-          { severity: "warning", code: "unreachable", subject: "STE-003", message: "STE-003 cannot be reached from the initial state." },
-        ],
-      }),
+      stateMachineModel: buildStateMachineModel({ diagram: buildStateMachine({ error_count: 1, warning_count: 1 }), validation: ISSUES }),
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const card = within(await canvas.findByRole("region", { name: "Findings" }));
-    await expect(card.getByText("1 error")).toBeInTheDocument();
-    await expect(card.getByText("1 warning")).toBeInTheDocument();
-    await expect(card.getByText(/has an incoming transition/)).toBeInTheDocument();
-    // The header carries the same counts, and a finding's code selects that state.
-    await userEvent.click(card.getByRole("button", { name: "STE-003" }));
+    const button = await canvas.findByRole("button", { name: "Validation: 1 error and 1 warning" });
+    await expect(button.textContent).toBe("Validation1"); // the visible word leads the accessible name
+    await userEvent.click(button);
+    const list = within(await within(document.body).findByRole("group", { name: "Validation issues" }));
+    await expect(list.getByText("1 error")).toBeInTheDocument();
+    await expect(list.getByText("1 warning")).toBeInTheDocument();
+    await expect(list.getByText(/has an incoming transition/)).toBeInTheDocument();
+    // A row selects its state and closes the list.
+    await userEvent.click(list.getByRole("button", { name: /STE-003 cannot be reached/ }));
     await expect(await within(await canvas.findByRole("region", { name: "Selection" })).findByText("STE-003 Final state", { selector: "strong" })).toBeInTheDocument();
-    await expect(within(canvas.getByRole("region", { name: "Selection" })).getByText(/cannot be reached/)).toBeInTheDocument();
+    await expect(within(document.body).queryByRole("group", { name: "Validation issues" })).not.toBeInTheDocument();
+    // The card keeps one line, never the list, and its button opens the list again.
+    const card = within(canvas.getByRole("region", { name: "Selection" }));
+    await expect(card.queryByText(/cannot be reached/)).not.toBeInTheDocument();
+    await userEvent.click(card.getByRole("button", { name: "Show 1 issue in Validation" }));
+    await expect(await within(document.body).findByRole("group", { name: "Validation issues" })).toBeInTheDocument();
   },
 };
 
-export const ASoundDiagramReportsNoFindings: Story = {
+export const ASoundDiagramReportsNothingAndShowsNoCount: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const card = within(await canvas.findByRole("region", { name: "Findings" }));
-    await expect(card.getByText("No findings.")).toBeInTheDocument();
-    await expect(card.getByText("0 errors")).toBeInTheDocument();
+    const button = await canvas.findByRole("button", { name: "Validation: no issues" });
+    await expect((button.textContent ?? "").trim()).toBe("Validation");
+    await userEvent.click(button);
+    await expect(await within(document.body).findByText("Nothing to report.")).toBeInTheDocument();
+    await expect(within(document.body).getByText("0 errors")).toBeInTheDocument();
+  },
+};
+
+/** The Validation button is the same height as the other toolbar buttons, with and without a count. */
+export const TheValidationButtonSharesTheToolbarHeight: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ stateMachineModel: buildStateMachineModel({ validation: ISSUES }) });
+  },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByRole("button", { name: "Validation: 1 error and 1 warning" });
+    await expect(buttonHeightViolations(canvasElement)).toEqual([]);
   },
 };
 

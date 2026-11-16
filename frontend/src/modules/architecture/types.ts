@@ -723,10 +723,10 @@ export const LABEL_POSITION_LABEL: Record<LabelPosition, string> = {
   inside: "Inside", left: "Left", right: "Right", above: "Above", below: "Below",
 };
 
-/** How serious a modelling finding is: an error blocks activation, a warning never does. */
-export type FindingSeverity = "error" | "warning";
+/** How serious a validation issue is: an error blocks activation, a warning never does. */
+export type ValidationSeverity = "error" | "warning";
 
-export const FINDING_SEVERITY_LABEL: Record<FindingSeverity, string> = { error: "Error", warning: "Warning" };
+export const VALIDATION_SEVERITY_LABEL: Record<ValidationSeverity, string> = { error: "Error", warning: "Warning" };
 
 /** Which kind of diagram a Diagrams-tab row is. */
 export type DiagramKind = "block" | "state_machine";
@@ -873,9 +873,9 @@ export interface TransitionFieldValues {
   description: string;
 }
 
-/** One modelling finding; `subject` is the code of the state or transition it concerns (empty for the whole diagram). */
-export interface StateMachineFinding {
-  severity: FindingSeverity;
+/** One validation issue; `subject` is the code of the state or transition it concerns (empty for the whole diagram). */
+export interface StateMachineValidationIssue {
+  severity: ValidationSeverity;
   code: string;
   subject: string;
   message: string;
@@ -888,7 +888,7 @@ export interface StateMachineModel {
   transitions: StateTransition[];
   /** The diagram's annotation notes with their leaders. */
   notes: DiagramNote[];
-  findings: StateMachineFinding[];
+  validation: StateMachineValidationIssue[];
 }
 
 /** One state's box and nesting as saved. */

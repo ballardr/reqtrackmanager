@@ -29,7 +29,6 @@ from app.modules.architecture.enums import (
     AttachPoint,
     Domain,
     ElementShape,
-    FindingSeverity,
     FolderKind,
     LabelPosition,
     LeaderKind,
@@ -41,6 +40,7 @@ from app.modules.architecture.enums import (
     PortDirection,
     RecordStatus,
     StateKind,
+    ValidationSeverity,
 )
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
@@ -979,18 +979,18 @@ class StateMachineDiagramUpdate(BaseModel):
     line_hops: bool | None = None
 
 
-class FindingOut(BaseModel):
-    """One modelling finding (`state_machine_checks`): `code` is a stable key, `subject` the code of the state or
+class ValidationIssueOut(BaseModel):
+    """One validation issue (`state_machine_checks`): `code` is a stable key, `subject` the code of the state or
     transition it concerns (empty for the diagram as a whole), and `message` the sentence shown."""
 
-    severity: FindingSeverity
+    severity: ValidationSeverity
     code: str
     subject: str
     message: str
 
 
 class StateMachineDiagramOut(ProjectScopedRow):
-    """A state machine diagram with its counts and finding counts. `element_code` / `element_name` are filled for an
+    """A state machine diagram with its counts and validation counts. `element_code` / `element_name` are filled for an
     element the viewer may read (the name is blank for one they may not)."""
 
     id: UUID
@@ -1172,7 +1172,7 @@ class StateMachineModel(BaseModel):
     states: list[StateOut]
     transitions: list[TransitionOut]
     notes: list[NoteOut] = Field(default_factory=list)
-    findings: list[FindingOut]
+    validation: list[ValidationIssueOut]
 
 
 class AllocationRequirementOut(BaseModel):

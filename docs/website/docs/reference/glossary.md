@@ -330,6 +330,10 @@ The three ways a module can supply its frontend UI: Tier A is compiled directly 
 
 The window opened from a record's Links panel that follows its links to any depth, as a tree or a map, split into upstream, downstream and related. See [Links and traceability → Tracing where a record comes from](../core-features/links-and-traceability.md#tracing-where-a-record-comes-from).
 
+#### Symbol label
+
+Text drawn with an initial state, final state or choice of a state machine diagram, up to 256 characters, so a branch can say what it decides (for example "Battery low?"). It breaks between words, never inside one. Its **Label position** is inside the symbol (which then grows to hold it), left, right, above or below it (which keeps the symbol's plain size). See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
 #### Transition
 
 An arrow between two states of a state machine diagram, labelled `event [guard] / action`. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
@@ -337,6 +341,10 @@ An arrow between two states of a state machine diagram, labelled `event [guard] 
 #### Two-factor authentication (2FA)
 
 An optional TOTP-based second authentication factor a user can enrol in for their own account. See [Core Features → Two-factor authentication](../core-features/two-factor-authentication.md).
+
+#### Validation
+
+The checks of a state machine diagram, listed from the **Validation** button in the editor's toolbar beside **Comment** and **Note**. The button shows a count (the errors, or else the warnings, or none) and opens a list of each **error** and **warning**; choosing one selects the state it concerns. An error stops the diagram becoming Active; a warning never does. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md#validation).
 
 #### Vertex
 

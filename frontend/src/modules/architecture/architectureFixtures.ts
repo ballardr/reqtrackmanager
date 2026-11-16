@@ -16,7 +16,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
   ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramLeader, DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
-  ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, RecordDiagram, StateMachineFinding, StateMachineModel, StateTransition,
+  ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, RecordDiagram, StateMachineValidationIssue, StateMachineModel, StateTransition,
   BaselineComparison,
   BaselineItem,
   BaselineView,
@@ -123,9 +123,9 @@ export function buildTransition(overrides: Partial<StateTransition> = {}): State
 
 /**
  * A small, sound state machine: an initial marker, Idle (entry and exit lines), Running (a self loop) and a final marker.
- * Pass `findings` to show the checks' answers on it.
+ * Pass `validation` to show the checks' answers on it.
  */
-export function buildStateMachineModel(overrides: Partial<StateMachineModel> & { findings?: StateMachineFinding[] } = {}): StateMachineModel {
+export function buildStateMachineModel(overrides: Partial<StateMachineModel> & { validation?: StateMachineValidationIssue[] } = {}): StateMachineModel {
   const states = overrides.states ?? [
     buildState({ id: "ste-0", unique_code: "STE-000", name: "Initial state", kind: "initial", x: 40, y: 56, width: 20, height: 20 }),
     buildState({ id: "ste-1", name: "Idle", entry_action: "stop motor", exit_action: "log", x: 120, y: 34 }),
@@ -138,7 +138,7 @@ export function buildStateMachineModel(overrides: Partial<StateMachineModel> & {
     buildTransition({ id: "trn-2", source_state_id: "ste-2", source_state_code: "STE-002", target_state_id: "ste-2", target_state_code: "STE-002", event: "tick", action: "adjust" }),
     buildTransition({ id: "trn-3", source_state_id: "ste-2", source_state_code: "STE-002", target_state_id: "ste-3", target_state_code: "STE-003", event: "stop" }),
   ];
-  return { diagram: buildStateMachine(), states, transitions, notes: [], findings: [], ...overrides };
+  return { diagram: buildStateMachine(), states, transitions, notes: [], validation: [], ...overrides };
 }
 
 export function buildViewNode(overrides: Partial<DiagramViewNode> = {}): DiagramViewNode {

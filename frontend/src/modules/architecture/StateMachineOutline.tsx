@@ -2,7 +2,7 @@
  * Module: modules/architecture/StateMachineOutline
  *
  * The state machine diagram editor's "Outline" tab: the text alternative to the canvas. The states are a tree (a composite
- * state holds its children), the transitions a table (from, to, event, condition (guard), action), and the findings follow. It follows the
+ * state holds its children), the transitions a table (from, to, event, condition (guard), action). It follows the
  * page: it is built from the model and the drawing being edited, so a state moved inside another shows under it before Save.
  *
  * Responsibilities:

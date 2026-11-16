@@ -103,7 +103,7 @@ def test_a_state_machine_diagram_round_trips_with_states_transitions_tags_and_a_
         (True, ""), (True, "halt"), (True, "tick"), (True, "again"),
     ]
     assert [t["source_point"] for t in model["transitions"]] == [None, None, "top", None]
-    assert machine_model(client, token, project["id"], machine["id"])["findings"] == model["findings"]
+    assert machine_model(client, token, project["id"], machine["id"])["validation"] == model["validation"]
     thread = client.get(
         f"{project_base(imported['id'])}/state-machine-diagrams/{copies[0]['id']}/comments", headers=auth_headers(token),
     ).json()

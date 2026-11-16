@@ -1,19 +1,19 @@
 """
 Module: modules.architecture.state_machine_checks
 
-The modelling checks of a state machine diagram: one function that returns every finding, read by the API (the editor,
+The modelling checks of a state machine diagram: one function that returns every issue, read by the API (the editor,
 the outline and the lists) and by the activation gate, so there is no second implementation in the browser.
 
 Responsibilities:
-- Return findings of two severities. An error blocks the move to `active` (an active state machine diagram with no
+- Return issues of two severities. An error blocks the move to `active` (an active state machine diagram with no
   single initial state, or with arrows the notation forbids, cannot be read unambiguously by the requirements and
   decisions that cite it); a warning never blocks.
-- Read the findings of many diagrams in two statements (`findings_by_diagram`), so a list stays flat.
+- Read the issues of many diagrams in two statements (`validation_by_diagram`), so a list stays flat.
 
 Design decisions:
 - The checks are a pure function of the states and transitions (`check`): no database access and no person, so the
   result is the same wherever it is computed.
-- A finding names its subject by state code (a transition's finding names its source state), never by a name or text.
+- An issue names its subject by state code (a transition's issue names its source state), never by a name or text.
 - With no top-level initial state the diagram has no entry point, so reachability is not reported (the error already
   says so and every state would otherwise be a warning).
 
@@ -30,13 +30,13 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.architecture.enums import FindingSeverity, StateKind
+from app.modules.architecture.enums import StateKind, ValidationSeverity
 from app.modules.architecture.models import ArchitectureState, ArchitectureTransition
 
 
 @dataclass(frozen=True)
-class Finding:
-    """One modelling finding.
+class ValidationIssue:
+    """One validation issue.
 
     Attributes:
         severity: Whether it blocks activation.
@@ -45,18 +45,18 @@ class Finding:
         message: The sentence shown to a person.
     """
 
-    severity: FindingSeverity
+    severity: ValidationSeverity
     code: str
     subject: str
     message: str
 
 
-def _error(code: str, subject: str, message: str) -> Finding:
-    return Finding(FindingSeverity.ERROR, code, subject, message)
+def _error(code: str, subject: str, message: str) -> ValidationIssue:
+    return ValidationIssue(ValidationSeverity.ERROR, code, subject, message)
 
 
-def _warning(code: str, subject: str, message: str) -> Finding:
-    return Finding(FindingSeverity.WARNING, code, subject, message)
+def _warning(code: str, subject: str, message: str) -> ValidationIssue:
+    return ValidationIssue(ValidationSeverity.WARNING, code, subject, message)
 
 
 def _reachable(
@@ -100,15 +100,15 @@ def _descendants(children: dict[uuid.UUID | None, list[uuid.UUID]], root: uuid.U
     return found
 
 
-def check(states: Sequence[ArchitectureState], transitions: Sequence[ArchitectureTransition]) -> list[Finding]:
-    """Every finding for one state machine diagram, errors first, each group in state code order.
+def check(states: Sequence[ArchitectureState], transitions: Sequence[ArchitectureTransition]) -> list[ValidationIssue]:
+    """Every issue for one state machine diagram, errors first, each group in state code order.
 
     Args:
         states: The diagram's states.
         transitions: The diagram's transitions.
 
     Returns:
-        The findings (empty when the diagram is sound).
+        The issues (empty when the diagram is sound).
     """
     by_id = {s.id: s for s in states}
     children: dict[uuid.UUID | None, list[uuid.UUID]] = defaultdict(list)
@@ -118,7 +118,7 @@ def check(states: Sequence[ArchitectureState], transitions: Sequence[Architectur
         parents[s.id] = s.parent_state_id if s.parent_state_id in by_id else None
     incoming: dict[uuid.UUID, int] = defaultdict(int)
     outgoing: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
-    errors: list[Finding] = []
+    errors: list[ValidationIssue] = []
     valid: list[ArchitectureTransition] = []
     for t in transitions:
         if t.source_state_id not in by_id or t.target_state_id not in by_id:
@@ -144,7 +144,7 @@ def check(states: Sequence[ArchitectureState], transitions: Sequence[Architectur
         if s.kind == StateKind.FINAL.value and outgoing.get(s.id):
             errors.append(_error("final_outgoing", s.unique_code, f"{s.unique_code} is a final state and has an outgoing transition."))
 
-    warnings: list[Finding] = []
+    warnings: list[ValidationIssue] = []
     reached = _reachable(by_id, children, outgoing, parents) if top_initial else None
     for s in sorted(states, key=lambda s: s.unique_code):
         kind, kids = s.kind, children.get(s.id, [])
@@ -170,8 +170,8 @@ def check(states: Sequence[ArchitectureState], transitions: Sequence[Architectur
     return [*errors, *warnings]
 
 
-def findings_by_diagram(db: Session, diagram_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, list[Finding]]:
-    """The findings of each diagram, reading every diagram's states and transitions in two statements."""
+def validation_by_diagram(db: Session, diagram_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, list[ValidationIssue]]:
+    """The issues of each diagram, reading every diagram's states and transitions in two statements."""
     ids = list(diagram_ids)
     if not ids:
         return {}

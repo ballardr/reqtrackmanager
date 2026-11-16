@@ -66,7 +66,7 @@ export const TheCanvasDrawsANoteNodeAndALeaderToEachDrawnTarget: Story = {
   play: async () => {
     const model = modelWith(buildNote({ title: "Why", text: "Wait", leaders: [TO_STATE, TO_LINE, TO_SPOT] }));
     const layout = layoutOf(model);
-    const nodes = canvasNodes(model, layout, { findings: [] });
+    const nodes = canvasNodes(model, layout, { issues: [] });
     expect(nodes.find((n) => n.id === "note:nt-1")).toMatchObject({ label: "Wait", title: "Why", caption: "Note" });
     expect(canvasLeaders(layout, model)).toMatchObject([
       { id: "ld-1", from: "note:nt-1", to: { kind: "node", id: "ste-1" } },

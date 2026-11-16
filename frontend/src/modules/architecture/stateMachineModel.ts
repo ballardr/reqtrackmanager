@@ -43,7 +43,7 @@ import {
 } from "./stateShapes";
 import { besideLabel, fitLabel } from "./symbolLabelLayout";
 import {
-  STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type LineRouteChange, type StateKind, type StateLayoutValues, type StateMachineFinding,
+  STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type LineRouteChange, type StateKind, type StateLayoutValues, type StateMachineValidationIssue,
   type StateMachineModel, type StateTransition, type TransitionPointsValues, type NoteValues,
 } from "./types";
 
@@ -375,8 +375,8 @@ export function transitionLabel(t: Pick<StateTransition, "event" | "guard" | "ac
 
 /** What the canvas needs besides the model and the layout. */
 export interface StateCanvasContext {
-  /** The findings, to tint a state an error or warning names. */
-  findings: readonly StateMachineFinding[];
+  /** The issues, to tint a state an error or warning names. */
+  issues: readonly StateMachineValidationIssue[];
   /** How a state's code is shown (the record-code display rule); the code itself by default. */
   codeOf?: (state: ArchitectureState) => string;
   /** Text shown on a note with no text yet; "Empty note" by default. */
@@ -385,10 +385,10 @@ export interface StateCanvasContext {
   noteCaption?: string;
 }
 
-/** The tone each state code's findings call for: an error wins over a warning. */
-function tonesBySubject(findings: readonly StateMachineFinding[]): Map<string, "danger" | "warning"> {
+/** The tone each state code's issues call for: an error wins over a warning. */
+function tonesBySubject(issues: readonly StateMachineValidationIssue[]): Map<string, "danger" | "warning"> {
   const found = new Map<string, "danger" | "warning">();
-  for (const f of findings) {
+  for (const f of issues) {
     if (!f.subject) continue;
     if (f.severity === "error") found.set(f.subject, "danger");
     else if (!found.has(f.subject)) found.set(f.subject, "warning");
@@ -400,7 +400,7 @@ function tonesBySubject(findings: readonly StateMachineFinding[]): Map<string, "
 export function canvasNodes(model: StateMachineModel, layout: StateMachineLayout, ctx: StateCanvasContext): GraphCanvasNode[] {
   const boxes = new Map(layout.boxes.map((b) => [b.id, b]));
   const holding = new Set(layout.boxes.flatMap((b) => (b.parent_state_id ? [b.parent_state_id] : [])));
-  const tones = tonesBySubject(ctx.findings);
+  const tones = tonesBySubject(ctx.issues);
   const depth = (state: ArchitectureState): number => {
     let found = 0;
     let at = boxes.get(state.id)?.parent_state_id ?? null;
@@ -516,7 +516,7 @@ export function canvasEdges(model: StateMachineModel, layout: StateMachineLayout
   }));
 }
 
-/** @returns The findings that name a state or transition code (or the diagram, with an empty code), for a Selection card. */
-export function findingsFor(findings: readonly StateMachineFinding[], subject: string): StateMachineFinding[] {
-  return findings.filter((f) => f.subject === subject);
+/** @returns The issues that name a state or transition code (or the diagram, with an empty code), for a Selection card. */
+export function issuesFor(issues: readonly StateMachineValidationIssue[], subject: string): StateMachineValidationIssue[] {
+  return issues.filter((f) => f.subject === subject);
 }

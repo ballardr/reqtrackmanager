@@ -108,11 +108,11 @@ The same button holds **Always show attach points**, off by default: a state the
 
 Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. A transition can be routed with **vertices** like a line on a block diagram (see [Block diagram editor](block-diagram-editor.md)): drag the dot on the middle of the selected line, or use the card's **Vertices** list and **Smooth curve** switch; a transition from a state to itself keeps its fixed loop. Transitions never draw over one another: a transition each way between two states, or a line back out of a choice, takes the next free attach points (see [Block diagram editor](block-diagram-editor.md)), and several loops on one state take its corners in turn. The Outline's **Vertices** column counts them. Changes are stored when the cursor leaves the card's fields, or with **Save**. Double-clicking a line opens the same fields in a dialog.
 
-## Checks
+## Validation
 
-The editor lists the findings of the checks beside the drawing. An **error** prevents the diagram from becoming Active; a **warning** never does.
+**Validation** in the toolbar, beside **Comment** and **Note**, shows how many **errors** the checks found (or, with none, how many **warnings**; with neither it shows no count) and opens a list of every one. A row that concerns a state selects it on the canvas, and a row about the whole diagram is plain text. A selected state or transition that has issues shows one line in the **Selection** card, **N issues**, which opens the list at that state. An error prevents the diagram from becoming Active; a warning never does.
 
-| Severity | Finding |
+| Severity | Issue |
 | --- | --- |
 | Error | No initial state at the top level; more than one initial state in a level; an initial state with an incoming transition; a final state with an outgoing transition |
 | Warning | A state that cannot be reached; a state that is not final and has no outgoing transition; two transitions from one state with the same event and no condition (guard); a choice with fewer than two outgoing transitions; a composite state with no initial state |

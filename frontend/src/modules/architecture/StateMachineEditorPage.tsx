@@ -4,11 +4,11 @@
  * One state machine diagram as a routed page and its editor
  * (`/projects/:projectId/modules/architecture/state-machine-diagrams/:diagramId`, also the target other records' links and
  * search results follow; `?state=` opens it with that state selected). The record header sits above four tabs (`?tab=`;
- * Drawing is the default): Drawing (toolbar, the shared graph canvas, the Selection card and the findings), Outline (states
+ * Drawing is the default): Drawing (toolbar, the shared graph canvas, the Selection card and the toolbar's Validation list), Outline (states
  * as a tree, transitions as a table), Comments and Configuration (the diagram's details). Links and Activity are in the aside.
  *
  * Editing model: what a state or transition *is* (name, kind, entry, exit and do lines, event, guard, action) is stored
- * at once by its form, because the findings and the state's code come from the server. What the drawing *looks like*
+ * at once by its form, because the validation and the state's code come from the server. What the drawing *looks like*
  * (a state's position, size and nesting, a transition's attach points) is edited locally with undo and redo and stored together
  * by Save, which quotes the diagram's version; a stale version offers a reload instead of overwriting a newer save. A state
  * is added at once, with a default name, by choosing it in the Add to diagram menu or dropping it on the canvas; it is then
@@ -22,7 +22,7 @@
  * server for its own drawing and text of the stored diagram, so a file shows what the editor shows.
  *
  * Design decisions:
- * - The findings are the server's (`state_machine_checks`); the page only displays them and tints the states they name.
+ * - The validation issues are the server's (`state_machine_checks`); the page only displays them (the toolbar's Validation list and the Selection card's one-line note) and tints the states they name.
  * - Comments are anchored to a state or a transition by its id and stored at once, never making the drawing look unsaved.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -62,7 +62,6 @@ import { blankStateValues, defaultStateName, diffStateFields, valuesFromState } 
 import { StateMachineAddMenu } from "./StateMachineAddMenu";
 import { StateMachineSettingsButton } from "./StateMachineSettingsButton";
 import { diffStateMachineFields, valuesFromStateMachine } from "./stateMachineFieldValues";
-import { StateMachineFindings } from "./StateMachineFindings";
 import { StateMachineFormModal } from "./StateMachineFormModal";
 import { DiagramExportMenu } from "./DiagramExportMenu";
 import { useDiagramExport } from "./useDiagramExport";
@@ -85,6 +84,7 @@ import { TransitionFormModal } from "./TransitionFormModal";
 import { blankTransitionValues, diffTransitionFields, valuesFromTransition } from "./transitionFields";
 import { useStateLabel } from "./useStateLabel";
 import { useStateMachineEditor } from "./useStateMachineEditor";
+import { ValidationButton } from "./ValidationButton";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureState, type StateFieldValues,
   type StateKind, type StateMachineFieldValues, type StateTransition, type TransitionFieldValues,
@@ -143,6 +143,8 @@ export function StateMachineEditorPage() {
   const [elements, setElements] = useState<ArchitectureElement[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  // The Validation list: open from the toolbar button or from a state's card (which marks that state's rows).
+  const [validation, setValidation] = useState<{ open: boolean; subject: string | null }>({ open: false, subject: null });
 
   // A link to a state (`?state=`, from a search result or the States list) opens the diagram with that state selected.
   const [searchParams] = useSearchParams();
@@ -174,7 +176,7 @@ export function StateMachineEditorPage() {
   }, [projectId, editingDiagram]);
 
   const kinds = useMemo(() => new Map((model?.states ?? []).map((s) => [s.id, s.kind])), [model]);
-  const nodes = useMemo(() => (model ? canvasNodes(model, layout, { findings: model.findings, codeOf: stateLabels.code }) : []), [model, layout, stateLabels]);
+  const nodes = useMemo(() => (model ? canvasNodes(model, layout, { issues: model.validation, codeOf: stateLabels.code }) : []), [model, layout, stateLabels]);
   const edges = useMemo(() => (model ? canvasEdges(model, layout) : []), [model, layout]);
   const lineEnds = useMemo(() => lineEndsOf(nodes, edges), [nodes, edges]);
   const leaders = useMemo(() => (model ? canvasLeaders(layout, model) : []), [model, layout]);
@@ -480,6 +482,16 @@ export function StateMachineEditorPage() {
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
       {tab === "drawing" && <NoteModeToggle on={placingNote} onChange={chooseNoteMode} disabled={!editable} />}
       {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={chooseCommentMode} />}
+      {model && (
+        <ValidationButton
+          issues={model.validation} open={validation.open} focusSubject={validation.subject}
+          onOpenChange={(open) => setValidation({ open, subject: null })}
+          onSelect={(code) => {
+            const state = model.states.find((st) => st.unique_code === code);
+            if (state) setSelection({ kind: "node", id: state.id });
+          }}
+        />
+      )}
       <StateMachineSettingsButton
         lineHops={diagram?.line_hops ?? false} disabled={!editable || editor.saving}
         onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
@@ -501,6 +513,7 @@ export function StateMachineEditorPage() {
         onPointsChange={(transition, change) => editor.edit((l) => setTransitionPoints(l, transition.id, change))}
         onConnect={(state, targetId) => void addTransition(state.id, targetId)}
         notes={noteHandlers}
+        onOpenValidation={(subject) => setValidation({ open: true, subject })}
         onComment={(target) => {
           // A transition has no position of its own here, so the comment starts at the middle of the states it joins.
           const line = target.kind === "edge" ? model.transitions.find((t) => t.id === target.id) : undefined;
@@ -510,17 +523,6 @@ export function StateMachineEditorPage() {
           setTabChoice("");
           commentLayer.setCommentMode(true);
           commentLayer.startAt(statePinPlaceOf(at, target, model, layout));
-        }}
-      />
-      <StateMachineFindings
-        findings={model.findings}
-        subjectLabel={(code) => {
-          const state = model.states.find((s) => s.unique_code === code);
-          return state ? stateLabels.code(state) : code;
-        }}
-        onSelect={(code) => {
-          const state = model.states.find((s) => s.unique_code === code);
-          if (state) setSelection({ kind: "node", id: state.id });
         }}
       />
     </div>

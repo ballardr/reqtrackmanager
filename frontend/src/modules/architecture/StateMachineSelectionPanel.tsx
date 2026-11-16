@@ -4,11 +4,11 @@
  * The state machine editor's "Selection" card: what the selected state or transition is and what can be done with it.
  * - A state: its fields, edited in place through the shared field group (name, kind, description, entry, exit and do lines; read-only
  *   text when the diagram cannot be edited), its tags (the shared `RecordTags`; a state sits in no component), its links, the
- *   findings that name it; Comment, Delete (confirmed, naming how many transitions and links go with it) and, for an ordinary
+ *   issues that name it; Comment, Delete (confirmed, naming how many transitions and links go with it) and, for an ordinary
  *   or marker state, "Inside": the state it sits inside, the keyboard route to dragging it into a frame. A state that holds
  *   others cannot become a marker. Double-clicking a state on the canvas opens the same fields in a dialog.
  * - A transition: its two states, event, condition (guard), action and description, edited in place through the shared field group (read-only
- *   text when the diagram cannot be edited), the findings that name it, the attach points of its two ends (the keyboard route to
+ *   text when the diagram cannot be edited), the issues that name it, the attach points of its two ends (the keyboard route to
  *   dragging a line's end); Comment and Delete. Double-clicking a line on the canvas opens the same fields in a dialog.
  * - A note or one of its leader lines: the shared note and leader forms (`StateMachineNoteCards`).
  * - Nothing selected: a short prompt.
@@ -40,10 +40,10 @@ import { TransitionSelectionFields } from "./TransitionSelectionFields";
 import { noteKeyOf } from "./noteModel";
 import { StateMachineNoteCards, type StateMachineNoteHandlers } from "./StateMachineNoteCards";
 import { useStateLabel } from "./useStateLabel";
-import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
+import { descendantIds, issuesFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import { markerAttachPoints, markerFrame } from "./stateShapes";
 import {
-  FINDING_SEVERITY_LABEL, LABEL_POSITION_LABEL, STATE_KIND_LABEL, type ArchitectureState, type LineRouteChange, type LineWaypoint, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
+  LABEL_POSITION_LABEL, STATE_KIND_LABEL, type ArchitectureState, type LineRouteChange, type LineWaypoint, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
 } from "./types";
 
 /** The geometry of a state's box as the canvas draws it, with the points a marker offers (its label's side is not one). */
@@ -74,11 +74,12 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param lineEnds The attach points a transition's ends use and would use if left automatic (`lineEndsOf`).
  * @param onPointsChange Sets the attach point of one or both ends of a transition (null is automatic); an unsaved drawing edit.
  * @param onComment Starts a comment on the selected state or transition.
+ * @param onOpenValidation Opens the Validation list at a state code, from the one-line note of a selection that has issues.
  * @param notes What a change to a selected note or leader does.
  */
 export function StateMachineSelectionPanel({
   projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onSaveTransition, focusTransition, onTransitionFocused, onDeleteState, onDeleteTransition, onParentChange,
-  lineEnds, onPointsChange, onComment, onConnect, notes,
+  lineEnds, onPointsChange, onComment, onOpenValidation, onConnect, notes,
 }: {
   projectId: string;
   model: StateMachineModel;
@@ -98,6 +99,7 @@ export function StateMachineSelectionPanel({
   lineEnds: (transitionId: string) => LineEnds | null;
   onPointsChange: (transition: StateTransition, change: LineRouteChange) => void;
   onComment: (target: { kind: "node" | "edge"; id: string }) => void;
+  onOpenValidation: (subject: string) => void;
   notes: StateMachineNoteHandlers;
 }) {
   const commentText = useStrings().canvasComments;
@@ -119,7 +121,7 @@ export function StateMachineSelectionPanel({
     const own = layout.boxes.find((b) => b.id === state.id);
     const blocked = new Set([state.id, ...descendantIds(layout, state.id)]);
     const parents = model.states.filter((s) => s.kind === "state" && !blocked.has(s.id));
-    const findings = findingsFor(model.findings, state.unique_code);
+    const issues = issuesFor(model.validation, state.unique_code);
     body = (
       <>
         <p>
@@ -154,7 +156,7 @@ export function StateMachineSelectionPanel({
             )}
           </>
         )}
-        <FindingList findings={findings} />
+        <ValidationNote issues={issues} subject={state.unique_code} onOpen={onOpenValidation} />
         <SelectionActions
           actions={[
             selectionAction.comment(commentText.commentOnBox, () => onComment({ kind: "node", id: state.id })),
@@ -185,8 +187,8 @@ export function StateMachineSelectionPanel({
     const to = model.states.find((s) => s.id === transition.target_state_id);
     const loop = transition.source_state_id === transition.target_state_id;
     const points = layout.points.find((p) => p.id === transition.id);
-    // A transition's own finding is the ambiguity of two transitions leaving the same state, named by that state's code.
-    const findings = findingsFor(model.findings, transition.source_state_code).filter((f) => f.code === "ambiguous");
+    // A transition's own issue is the ambiguity of two transitions leaving the same state, named by that state's code.
+    const issues = issuesFor(model.validation, transition.source_state_code).filter((f) => f.code === "ambiguous");
     body = (
       <>
         <p>
@@ -211,7 +213,7 @@ export function StateMachineSelectionPanel({
             {transition.description && <ActivityNote text={transition.description} />}
           </>
         )}
-        <FindingList findings={findings} />
+        <ValidationNote issues={issues} subject={transition.source_state_code} onOpen={onOpenValidation} />
         <SelectionActions
           actions={[
             selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: transition.id })),
@@ -238,13 +240,19 @@ export function StateMachineSelectionPanel({
   );
 }
 
-/** The findings that name the selection, shown inside the card so the person sees why a state is tinted. */
-function FindingList({ findings }: { findings: { severity: "error" | "warning"; message: string }[] }) {
-  if (findings.length === 0) return null;
+/**
+ * The validation issues that name the selection, as one line with a link that opens the toolbar's Validation list at that
+ * state, so the person sees why a state is tinted without the full list repeated here.
+ */
+function ValidationNote({ issues, subject, onOpen }: { issues: { severity: "error" | "warning" }[]; subject: string; onOpen: (subject: string) => void }) {
+  if (issues.length === 0) return null;
+  const errors = issues.filter((i) => i.severity === "error").length;
+  const count = `${issues.length} ${issues.length === 1 ? "issue" : "issues"}`;
   return (
-    <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-      {findings.map((f) => <li key={`${f.severity}:${f.message}`}>{FINDING_SEVERITY_LABEL[f.severity]}: {f.message}</li>)}
-    </ul>
+    <p className="row" style={{ margin: 0, gap: "var(--space-2)", alignItems: "center" }}>
+      <button type="button" className="btn btn-sm" aria-label={`Show ${count} in Validation`} onClick={() => onOpen(subject)}>{count}</button>
+      <span className="text-muted">{errors > 0 ? `${errors} ${errors === 1 ? "error" : "errors"}` : "warnings only"}</span>
+    </p>
   );
 }
 

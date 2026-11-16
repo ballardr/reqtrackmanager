@@ -7,7 +7,7 @@
  * kept.
  *
  * Design decisions:
- * - The draft and its commit are the shared `useSelectionDraft`; content is stored at once, not with the drawing (the findings and
+ * - The draft and its commit are the shared `useSelectionDraft`; content is stored at once, not with the drawing (the issues and
  *   the state's code come from the server).
  * - The Save button is always present and disabled while nothing has changed, so the card does not change size as the person types.
  */

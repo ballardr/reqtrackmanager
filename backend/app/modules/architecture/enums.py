@@ -177,8 +177,8 @@ class LabelPosition(str, enum.Enum):
     BELOW = "below"
 
 
-class FindingSeverity(str, enum.Enum):
-    """How serious a modelling finding on a state machine diagram is: an `ERROR` blocks activation, a `WARNING` never does."""
+class ValidationSeverity(str, enum.Enum):
+    """How serious a validation issue on a state machine diagram is: an `ERROR` blocks activation, a `WARNING` never does."""
 
     ERROR = "error"
     WARNING = "warning"

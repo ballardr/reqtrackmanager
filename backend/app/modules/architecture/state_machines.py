@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.modules.architecture import state_machine_checks as checks
 from app.modules.architecture.diagrams import _check_new_element, leaders_of, machine_notes_of, note_out, sync_notes
-from app.modules.architecture.enums import AttachPoint, FindingSeverity, LabelPosition, LeaderKind, RecordStatus, StateKind
+from app.modules.architecture.enums import AttachPoint, LabelPosition, LeaderKind, RecordStatus, StateKind, ValidationSeverity
 from app.modules.architecture.models import (
     ArchitectureDiagramNote,
     ArchitectureElement,
@@ -55,7 +55,6 @@ from app.modules.architecture.models import (
 )
 from app.modules.architecture.records import RuleError, _check_version, _detail, _forget, _touch
 from app.modules.architecture.schemas import (
-    FindingOut,
     NoteIn,
     StateCreate,
     StateMachineDiagramCreate,
@@ -67,6 +66,7 @@ from app.modules.architecture.schemas import (
     StateUpdate,
     TransitionIn,
     TransitionOut,
+    ValidationIssueOut,
     WaypointIn,
 )
 from app.modules.architecture.service import (
@@ -90,16 +90,16 @@ class ActivationRefused(RuleError):
     """The move to `active` was refused because the checks found errors.
 
     Attributes:
-        findings: The error findings, which the message lists.
+        issues: The error issues, which the message lists.
     """
 
-    def __init__(self, findings: Sequence[checks.Finding]) -> None:
+    def __init__(self, issues: Sequence[checks.ValidationIssue]) -> None:
         super().__init__(
             "This state machine diagram cannot be activated until its errors are resolved: "
-            + " ".join(f.message for f in findings),
+            + " ".join(f.message for f in issues),
             409,
         )
-        self.findings = list(findings)
+        self.issues = list(issues)
 
 
 # --- Lookups ---------------------------------------------------------------
@@ -200,14 +200,14 @@ def _audit_state(db: Session, state_id: uuid.UUID, action: str, actor: User, pro
 
 
 def require_sound(db: Session, diagram: ArchitectureStateMachineDiagram) -> None:
-    """Checks that the diagram has no error finding (the gate on the move to `active`).
+    """Checks that the diagram has no error issue (the gate on the move to `active`).
 
     Raises:
         ActivationRefused: 409 listing the errors.
     """
     errors = [
         f for f in checks.check(states_of(db, diagram.id), transitions_of(db, diagram.id))
-        if f.severity == FindingSeverity.ERROR
+        if f.severity == ValidationSeverity.ERROR
     ]
     if errors:
         raise ActivationRefused(errors)
@@ -272,7 +272,7 @@ def update_state_machine(
 def change_state_machine_status(
     db: Session, project: Any, actor: User, diagram_id: uuid.UUID, version: int, status: RecordStatus,
 ) -> ArchitectureStateMachineDiagram:
-    """Moves the diagram to `status`; the move to `active` needs a diagram without an error finding. The caller commits.
+    """Moves the diagram to `status`; the move to `active` needs a diagram without an error issue. The caller commits.
 
     Raises:
         RuleError: 404 if absent, 409 on a stale version, a move the map does not allow, or (`ActivationRefused`) errors.
@@ -749,9 +749,9 @@ def save_layout(
 # --- Reading ---------------------------------------------------------------
 
 
-def finding_out(finding: checks.Finding) -> FindingOut:
-    """A finding as the API gives it."""
-    return FindingOut(severity=finding.severity, code=finding.code, subject=finding.subject, message=finding.message)
+def issue_out(issue: checks.ValidationIssue) -> ValidationIssueOut:
+    """An issue as the API gives it."""
+    return ValidationIssueOut(severity=issue.severity, code=issue.code, subject=issue.subject, message=issue.message)
 
 
 def _element_info(db: Session, viewer: Viewer, element_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, tuple[str, str]]:
@@ -769,7 +769,7 @@ def _element_info(db: Session, viewer: Viewer, element_ids: Iterable[uuid.UUID])
 def state_machine_outs(
     db: Session, diagrams: Sequence[ArchitectureStateMachineDiagram], viewer: Viewer,
 ) -> list[StateMachineDiagramOut]:
-    """API shapes for `diagrams`: state and transition counts, finding counts and elements are read in bulk, so the cost
+    """API shapes for `diagrams`: state and transition counts, validation counts and elements are read in bulk, so the cost
     does not grow with the list."""
     ids = [d.id for d in diagrams]
 
@@ -782,20 +782,20 @@ def state_machine_outs(
         ).tuples().all())
 
     state_counts, transition_counts = counts(ArchitectureState), counts(ArchitectureTransition)
-    found = checks.findings_by_diagram(db, ids)
+    found = checks.validation_by_diagram(db, ids)
     elements = _element_info(db, viewer, (d.element_id for d in diagrams))
     out: list[StateMachineDiagramOut] = []
     for d in diagrams:
         code, name = elements.get(d.element_id, (None, None))
-        findings = found.get(d.id, [])
+        issues = found.get(d.id, [])
         out.append(StateMachineDiagramOut(
             id=d.id, project_id=d.project_id, unique_code=d.unique_code, name=d.name, description=d.description,
             element_id=d.element_id, element_code=code, element_name=name, line_hops=d.line_hops, status=d.status,
             allowed_status_moves=allowed_moves(d.status), version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             state_count=state_counts.get(d.id, 0), transition_count=transition_counts.get(d.id, 0),
-            error_count=sum(1 for f in findings if f.severity == FindingSeverity.ERROR),
-            warning_count=sum(1 for f in findings if f.severity == FindingSeverity.WARNING),
+            error_count=sum(1 for f in issues if f.severity == ValidationSeverity.ERROR),
+            warning_count=sum(1 for f in issues if f.severity == ValidationSeverity.WARNING),
         ))
     return out
 
@@ -854,14 +854,14 @@ def transition_outs(
 
 
 def model_of(db: Session, diagram: ArchitectureStateMachineDiagram, viewer: Viewer) -> StateMachineModel:
-    """The diagram with its states, transitions and findings, for the editor and the outline."""
+    """The diagram with its states, transitions and validation issues, for the editor and the outline."""
     states, transitions = states_of(db, diagram.id), transitions_of(db, diagram.id)
     notes = machine_notes_of(db, diagram.id)
     leaders = leaders_of(db, (n.id for n in notes))
     return StateMachineModel(
         diagram=state_machine_outs(db, [diagram], viewer)[0], states=state_outs(db, states, viewer),
         transitions=transition_outs(transitions, states, diagram.version),
-        notes=[note_out(n, leaders.get(n.id, ())) for n in notes], findings=[finding_out(f) for f in checks.check(states, transitions)],
+        notes=[note_out(n, leaders.get(n.id, ())) for n in notes], validation=[issue_out(f) for f in checks.check(states, transitions)],
     )
 
 

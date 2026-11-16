@@ -138,7 +138,7 @@ def add_state_machine_routes(router: APIRouter) -> None:
     def get_state_machine(
         project_id: uuid.UUID, diagram_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db),
     ):
-        """One state machine diagram's record, counts and finding counts."""
+        """One state machine diagram's record, counts and validation counts."""
         viewer = viewer_of(db, current_user, project_id)
         return out(db, as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id)), current_user, project_id)
 
@@ -146,7 +146,7 @@ def add_state_machine_routes(router: APIRouter) -> None:
     def get_model(
         project_id: uuid.UUID, diagram_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db),
     ):
-        """The diagram with its states, transitions and modelling findings, as the caller may read it."""
+        """The diagram with its states, transitions and validation issues, as the caller may read it."""
         viewer = viewer_of(db, current_user, project_id)
         diagram = as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id))
         return machines.model_of(db, diagram, viewer)

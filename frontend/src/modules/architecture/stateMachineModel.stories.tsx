@@ -86,11 +86,11 @@ export const MergingKeepsUnsavedGeometryAndFollowsTheModel: Story = {
 };
 
 /** Canvas nodes: markers are marker shapes with the kind as their label, a state holding others is a container, an error tints its state. */
-export const CanvasNodesUseMarkersContainersAndFindingTones: Story = {
+export const CanvasNodesUseMarkersContainersAndIssueTones: Story = {
   play: async () => {
     const nested = setParent(LAYOUT, "ste-1", "ste-2", KINDS);
     const nodes = canvasNodes(MODEL, nested, {
-      findings: [{ severity: "error", code: "x", subject: "STE-001", message: "m" }, { severity: "warning", code: "y", subject: "STE-001", message: "m" }, { severity: "warning", code: "z", subject: "STE-002", message: "m" }],
+      issues: [{ severity: "error", code: "x", subject: "STE-001", message: "m" }, { severity: "warning", code: "y", subject: "STE-001", message: "m" }, { severity: "warning", code: "z", subject: "STE-002", message: "m" }],
     });
     const byId = new Map(nodes.map((n) => [n.id, n]));
     await expect(byId.get("ste-0")).toMatchObject({ marker: true, label: "Initial state", width: 20, height: 20 });
@@ -109,7 +109,7 @@ export const ALabelledMarkerIsDrawnLargerAroundItsBoxWithItsText: Story = {
     const labelled = buildStateMachineModel({
       states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "  Power on " } : s)),
     });
-    const nodes = new Map(canvasNodes(labelled, layoutFromModel(labelled), { findings: [] }).map((n) => [n.id, n]));
+    const nodes = new Map(canvasNodes(labelled, layoutFromModel(labelled), { issues: [] }).map((n) => [n.id, n]));
     const stored = box(layoutFromModel(labelled), "ste-0");
     const drawn = nodes.get("ste-0")!;
     const layout = fitLabel("initial", "Power on")!;
@@ -132,14 +132,14 @@ export const ALabelBesideItsSymbolLeavesTheSymbolAtItsBoxAndPlacesTheText: Story
       states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "Power on", label_position: "right" as const } : s)),
     });
     const stored = box(layoutFromModel(beside), "ste-0");
-    const drawn = new Map(canvasNodes(beside, layoutFromModel(beside), { findings: [] }).map((n) => [n.id, n])).get("ste-0")!;
+    const drawn = new Map(canvasNodes(beside, layoutFromModel(beside), { issues: [] }).map((n) => [n.id, n])).get("ste-0")!;
     await expect(drawn).toMatchObject({ x: stored.x, y: stored.y, width: stored.width, height: stored.height, marker: true });
     await expect(drawn.markerText).toMatchObject({ lines: ["Power on"], onFill: false, block: { x: stored.width + 4, align: "left" } });
     await expect(drawn.symbolSvg).not.toContain('viewBox="0 0 52 52"');
     await expect(drawn.attachPoints).toEqual(["top", "bottom", "left"]);
     // A label inside leaves every side offered, and no label has no text block.
     const inside = buildStateMachineModel({ states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "Power on" } : s)) });
-    const innerNode = new Map(canvasNodes(inside, layoutFromModel(inside), { findings: [] }).map((n) => [n.id, n])).get("ste-0")!;
+    const innerNode = new Map(canvasNodes(inside, layoutFromModel(inside), { issues: [] }).map((n) => [n.id, n])).get("ste-0")!;
     await expect(innerNode.attachPoints).toEqual(["top", "right", "bottom", "left"]);
     await expect(innerNode.markerText?.block).toBeUndefined();
   },
@@ -154,7 +154,7 @@ export const AMovedSymbolStaysWhereItWasDroppedWhateverItsLabel: Story = {
     const layout = layoutFromModel(labelled);
     const stored = box(layout, "ste-0");
     const offsets = markerOffsets(labelled.states, layout);
-    const frame = canvasNodes(labelled, layout, { findings: [] }).find((n) => n.id === "ste-0")!;
+    const frame = canvasNodes(labelled, layout, { issues: [] }).find((n) => n.id === "ste-0")!;
     // Dropping the symbol without moving it returns the same box, however large the label made the drawing.
     const same = moveStates(layout, [{ id: "ste-0", x: frame.x!, y: frame.y! }], offsets);
     await expect(box(same, "ste-0")).toMatchObject({ x: stored.x, y: stored.y });

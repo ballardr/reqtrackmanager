@@ -22,7 +22,7 @@ Design decisions:
 - **Same geometry as the screen.** The boxes are the stored layout (absolute coordinates at any nesting), the attach points use
   the shared rule (`diagram_points`), the loop and the marker shapes the shared table, and the label rule the shared
   `transition_label`, so the file shows what the editor shows.
-- **Light-theme colours on a transparent background**, as the block diagram's file; the findings' tints are an editing aid and
+- **Light-theme colours on a transparent background**, as the block diagram's file; the issue tints are an editing aid and
   are not drawn.
 - A composite state shows its name and code only: its inside is where its child states are drawn.
 - **Deterministic.** Boxes and lines are drawn in the order of the model, parents first, so equal models give equal bytes.
