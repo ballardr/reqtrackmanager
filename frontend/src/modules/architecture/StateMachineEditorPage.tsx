@@ -78,6 +78,7 @@ import {
 } from "./noteModel";
 import { statePinAnchorOf, statePinDescriber, statePinPlaceOf } from "./stateMachineComments";
 import { StateMachineOutline } from "./StateMachineOutline";
+import { lineEndsOf } from "../../components/graphLineAnchors";
 import { StateMachineSelectionPanel } from "./StateMachineSelectionPanel";
 import type { TransitionFocusField } from "./TransitionFieldGroup";
 import { TransitionFormModal } from "./TransitionFormModal";
@@ -175,6 +176,7 @@ export function StateMachineEditorPage() {
   const kinds = useMemo(() => new Map((model?.states ?? []).map((s) => [s.id, s.kind])), [model]);
   const nodes = useMemo(() => (model ? canvasNodes(model, layout, { findings: model.findings, codeOf: stateLabels.code }) : []), [model, layout, stateLabels]);
   const edges = useMemo(() => (model ? canvasEdges(model, layout) : []), [model, layout]);
+  const lineEnds = useMemo(() => lineEndsOf(nodes, edges), [nodes, edges]);
   const leaders = useMemo(() => (model ? canvasLeaders(layout, model) : []), [model, layout]);
 
   // Comments are stored at once and apart from the drawing, so they never make it look unsaved.
@@ -495,6 +497,7 @@ export function StateMachineEditorPage() {
         onDeleteState={(state) => void askDeleteState(state)}
         onDeleteTransition={(transition) => setPendingDelete({ kind: "transition", transition })}
         onParentChange={(state, parentId) => editor.edit((l) => setParent(l, state.id, parentId, kinds))}
+        lineEnds={lineEnds}
         onPointsChange={(transition, change) => editor.edit((l) => setTransitionPoints(l, transition.id, change))}
         onConnect={(state, targetId) => void addTransition(state.id, targetId)}
         notes={noteHandlers}

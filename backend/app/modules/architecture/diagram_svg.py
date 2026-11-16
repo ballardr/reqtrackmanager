@@ -39,7 +39,6 @@ Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbo
 
 from __future__ import annotations
 
-import math
 import re
 import uuid
 from collections.abc import Mapping
@@ -58,6 +57,7 @@ from app.modules.architecture.diagram_box_fit import (
     drawn_box_size,
     fit_box,
 )
+from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_note_layout import (
@@ -68,7 +68,7 @@ from app.modules.architecture.diagram_note_layout import (
     drawn_size,
     note_lines,
 )
-from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy, route_points
+from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy
 from app.modules.architecture.diagram_symbol_label import text_width
 from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
@@ -375,32 +375,30 @@ class _Run:
 
 
 def _edge_runs(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut]) -> list[_Run]:
-    """The geometry of every drawn line, in the model's order: lines on a pair of boxes are spread sideways unless a person
-    routed them."""
-    rank: dict[frozenset, int] = {}
-    totals: dict[frozenset, int] = {}
-    for edge in edges:
-        key = frozenset((edge.source_element_id, edge.target_element_id))
-        totals[key] = totals.get(key, 0) + 1
+    """The geometry of every drawn line, in the model's order: the points each line meets its boxes at come from
+    `diagram_line_anchors` (no two lines share a path; lines left on the same points are spread sideways unless a person
+    routed them)."""
+    routes = {edge.id: _anchor_route(anchors, edge) for edge in edges}
+    placed = assign_line_anchors(
+        {str(box_id): AnchorBox(b.x, b.y, b.width, b.height) for box_id, b in boxes.items()},
+        [
+            AnchorLine(
+                edge.id, str(edge.source_element_id), str(edge.target_element_id),
+                routes[edge.id][0], routes[edge.id][1], tuple(routes[edge.id][2]),
+            )
+            for edge in edges
+        ],
+    )
     runs: list[_Run] = []
     for edge in edges:
         a, b = boxes.get(edge.source_element_id), boxes.get(edge.target_element_id)
-        if a is None or b is None:
+        anchor = placed.get(edge.id)
+        if a is None or b is None or anchor is None or anchor.loop_slot is not None:
             continue
-        key = frozenset((edge.source_element_id, edge.target_element_id))
-        index = rank.get(key, 0)
-        rank[key] = index + 1
-        offset = (index - (totals[key] - 1) / 2) * 16
-        first, last, vertices, smooth = _anchor_route(anchors, edge)
-        pa, pb = route_points((a.x, a.y, a.width, a.height), (b.x, b.y, b.width, b.height), first, last, vertices)
-        (x1, y1), (x2, y2) = point_xy((a.x, a.y, a.width, a.height), pa), point_xy((b.x, b.y, b.width, b.height), pb)
-        if not vertices:
-            length = math.hypot(x2 - x1, y2 - y1) or 1.0
-            nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
-            x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
-            middle = ((x1 + x2) / 2, (y1 + y2) / 2)
-        else:
-            middle = line_middle((x1, y1), vertices, (x2, y2))
+        _, _, vertices, smooth = routes[edge.id]
+        (x1, y1), (x2, y2) = point_xy((a.x, a.y, a.width, a.height), anchor.source), point_xy((b.x, b.y, b.width, b.height), anchor.target)
+        x1, y1, x2, y2 = x1 + anchor.shift[0], y1 + anchor.shift[1], x2 + anchor.shift[0], y2 + anchor.shift[1]
+        middle = line_middle((x1, y1), vertices, (x2, y2)) if vertices else ((x1 + x2) / 2, (y1 + y2) / 2)
         runs.append(_Run(edge, (x1, y1), vertices, (x2, y2), smooth, middle))
     return runs
 

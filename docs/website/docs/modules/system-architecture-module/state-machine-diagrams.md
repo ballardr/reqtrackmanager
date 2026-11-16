@@ -46,7 +46,7 @@ The diagrams use UML state machine notation, which is also the SysML state machi
 | Final state | Ringed dot |
 | Choice | Diamond; the conditions (guards) on its outgoing transitions decide the path |
 | Composite state | Frame that contains other states |
-| Transition | Arrow labelled `event [condition] / action`; a transition from a state to itself is drawn as a loop |
+| Transition | Arrow labelled `event [condition] / action`; a transition from a state to itself is drawn as a loop, and several loops on one state take its corners in turn |
 
 An initial state, final state or choice can carry a **symbol label**, up to 256 characters of text drawn with the symbol, so a branch can say what it decides ("Battery low?"). The text breaks between words, after a hyphen or at a line break typed in the field, never inside a word. A long remark reads better as a note. The screen, the SVG and PNG exports break the text at the same words; the full text is also in the Selection card and the Outline.
 
@@ -104,7 +104,7 @@ The same button holds **Always show attach points**, off by default: a state the
 
 ## Adding and editing transitions
 
-Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. A transition can be routed with **vertices** like a line on a block diagram (see [Block diagram editor](block-diagram-editor.md)): drag the dot on the middle of the selected line, or use the card's **Vertices** list and **Smooth curve** switch; a transition from a state to itself keeps its fixed loop. The Outline's **Vertices** column counts them. Changes are stored when the cursor leaves the card's fields, or with **Save**. Double-clicking a line opens the same fields in a dialog.
+Draw a line from one state to another, or select a state and choose a target in **Add transition to** (choosing the state itself draws a loop). The transition is added at once with no event, condition or action, selected in the **Selection** card, with the cursor in its **Event**; for a line leaving a choice the cursor is in **Condition (guard)**, because the lines leaving a choice are told apart by their conditions. The card edits the transition in place: its two states, event, condition (guard), action and description. A transition can be routed with **vertices** like a line on a block diagram (see [Block diagram editor](block-diagram-editor.md)): drag the dot on the middle of the selected line, or use the card's **Vertices** list and **Smooth curve** switch; a transition from a state to itself keeps its fixed loop. Transitions never draw over one another: a transition each way between two states, or a line back out of a choice, takes the next free attach points (see [Block diagram editor](block-diagram-editor.md)), and several loops on one state take its corners in turn. The Outline's **Vertices** column counts them. Changes are stored when the cursor leaves the card's fields, or with **Save**. Double-clicking a line opens the same fields in a dialog.
 
 ## Checks
 

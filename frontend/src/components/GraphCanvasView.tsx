@@ -85,14 +85,15 @@ import { nearBoxIds } from "./graphAttachProximity";
 import { lineHops, type HopLine } from "./graphLineHops";
 import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint } from "./graphLinePath";
 import { GraphNodeBadges } from "./GraphNodeBadges";
+import { DEFAULT_BOX_HEIGHT, DEFAULT_BOX_WIDTH, assignLineAnchors, canvasLines, type LineAnchor } from "./graphLineAnchors";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
 import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
 
 /** A node with no badges (one shared array, so an unchanged node keeps its data identity). */
 const NO_BADGES: readonly GraphNodeBadge[] = [];
 
-const DEFAULT_WIDTH = 160;
-const DEFAULT_HEIGHT = 64;
+const DEFAULT_WIDTH = DEFAULT_BOX_WIDTH;
+const DEFAULT_HEIGHT = DEFAULT_BOX_HEIGHT;
 /** The room (screen pixels) the opening view leaves beyond a marker label that lies outside its marker, on top of the label itself. */
 const FIT_MARGIN = 24;
 /** The smallest size a node can be resized to, by pointer or key, and the step of a key resize. */
@@ -285,8 +286,8 @@ function LeaderEndNode({ data }: NodeProps<Node<{ free: boolean }, "leaderEnd">>
 const NODE_TYPES = { graph: GraphNodeBox, leaderEnd: LeaderEndNode };
 
 /** The text of a line, one block per line break, drawn by HTML over the canvas (anchored by its middle, or by its bottom left corner). */
-function EdgeLabel({ text, at, corner }: { text: string; at: LoopPoint; corner?: boolean }) {
-  const place = corner ? "translate(0, -100%)" : "translate(-50%, -50%)";
+function EdgeLabel({ text, at, corner, align = "start" }: { text: string; at: LoopPoint; corner?: boolean; align?: "start" | "end" }) {
+  const place = corner ? (align === "end" ? "translate(-100%, -100%)" : "translate(0, -100%)") : "translate(-50%, -50%)";
   return (
     <EdgeLabelRenderer>
       <div className={corner ? "graph-edge-label graph-edge-label-corner nodrag nopan" : "graph-edge-label nodrag nopan"} style={{ transform: `${place} translate(${at.x}px, ${at.y}px)` }}>
@@ -322,6 +323,8 @@ interface RoutedEdgeData extends Record<string, unknown> {
   open: () => void;
   /** The path of a line that hops over another (`graphLineHops`); drawn instead of the line's own path except while a vertex is dragged. */
   hopPath?: string;
+  /** The sideways shift of the line's lane (`graphLineAnchors`), applied to both ends; none for a line with vertices. */
+  shift?: LinePoint;
 }
 
 /** How far the pointer must travel, in screen pixels, before a press on a segment's middle adds a vertex. */
@@ -339,8 +342,9 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
   const latest = useLatest(data);
   const stored = data?.points ?? [];
   const points = drag ?? stored;
-  const start = { x: sourceX, y: sourceY };
-  const end = { x: targetX, y: targetY };
+  const shift = data?.shift ?? NO_SHIFT;
+  const start = { x: sourceX + shift.x, y: sourceY + shift.y };
+  const end = { x: targetX + shift.x, y: targetY + shift.y };
   const middle = lineMiddle(start, points, end);
   const handles = Boolean(selected && data?.editable);
 
@@ -428,34 +432,43 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
 }
 
 /** A loop on one box: the path and label anchor come from `graphSelfLoop`, passed in `data`. */
-function GraphLoopEdge({ id, markerStart, markerEnd, style, data }: EdgeProps<Edge<{ path: string; label?: string; at: LoopPoint }, "loop">>) {
+function GraphLoopEdge({ id, markerStart, markerEnd, style, data }: EdgeProps<Edge<{ path: string; label?: string; at: LoopPoint; align: "start" | "end" }, "loop">>) {
   if (!data) return null;
   return (
     <>
       <BaseEdge id={id} path={data.path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
-      {data.label && <EdgeLabel text={data.label} at={data.at} corner />}
+      {data.label && <EdgeLabel text={data.label} at={data.at} corner align={data.align} />}
     </>
   );
 }
+
+const NO_SHIFT: LinePoint = { x: 0, y: 0 };
 
 const EDGE_TYPES = { multiline: GraphLineEdge, loop: GraphLoopEdge, routed: GraphRoutedEdge };
 
 type Box = BoxGeometry;
 
+/** Where a line's two ends are and its lane's shift: its attach points joined (`graphLineAnchors`), moved sideways by its lane. */
+function lineRun(from: Box, to: Box, anchor: LineAnchor): { start: LoopPoint; end: LoopPoint } {
+  const a = pointXY(from, anchor.source);
+  const b = pointXY(to, anchor.target);
+  return { start: { x: a.x + anchor.shift.x, y: a.y + anchor.shift.y }, end: { x: b.x + anchor.shift.x, y: b.y + anchor.shift.y } };
+}
+
 /** The middle of each drawn line, by edge id, from the attach points the line joins. */
-function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"]): Map<string, { x: number; y: number }> {
+function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"], anchors: ReadonlyMap<string, LineAnchor>): Map<string, { x: number; y: number }> {
   const middles = new Map<string, { x: number; y: number }>();
   for (const e of edges) {
     const from = boxes.get(e.source);
     const to = boxes.get(e.target);
-    if (!from || !to) continue;
-    if (e.source === e.target) {
-      middles.set(e.id, selfLoop(from).label);
+    const anchor = anchors.get(e.id);
+    if (!from || !to || !anchor) continue;
+    if (anchor.loopSlot !== undefined) {
+      middles.set(e.id, selfLoop(from, anchor.loopSlot).label);
       continue;
     }
-    const via = e.points ?? [];
-    const [a, b] = routeAttachPoints(from, to, e.sourcePoint, e.targetPoint, via);
-    middles.set(e.id, lineMiddle(pointXY(from, a), via, pointXY(to, b)));
+    const run = lineRun(from, to, anchor);
+    middles.set(e.id, lineMiddle(run.start, e.points ?? [], run.end));
   }
   return middles;
 }
@@ -822,28 +835,37 @@ export function GraphCanvasView({
     });
   }, [nodes, boxes, parents, depthOf, selection, text, resizable, readOnly]);
 
+  // Where every line meets its boxes, looking at all of them together so none draws over another (`graphLineAnchors`).
+  const anchors = useMemo<Map<string, LineAnchor>>(
+    () => assignLineAnchors(boxes, canvasLines(edges)),
+    [boxes, edges],
+  );
+
   const flowEdges = useMemo<Edge[]>(() => {
     return edges.flatMap<Edge>((e) => {
       const from = boxes.get(e.source);
       const to = boxes.get(e.target);
-      if (!from || !to) return [];
+      const anchor = anchors.get(e.id);
+      if (!from || !to || !anchor) return [];
       const direction = e.direction ?? "forward";
       const marker = { type: MarkerType.ArrowClosed, color: e.color };
-      const loop = e.source === e.target;
+      const loop = anchor.loopSlot !== undefined;
       // A loop's shape is fixed; React Flow only needs a handle that exists on the box (every box has "top").
       const via = e.points ?? [];
-      const [sourceHandle, targetHandle] = loop ? (["top", "top"] as const) : routeAttachPoints(from, to, e.sourcePoint, e.targetPoint, via);
+      const { source: sourceHandle, target: targetHandle } = anchor;
+      const laned = anchor.shift.x !== 0 || anchor.shift.y !== 0;
       const multiline = e.label !== undefined && e.label.includes("\n");
       // Every line of an editable canvas is drawn by the routed edge, so its label looks the same selected or not and a drag can add a vertex.
       const editable = !readOnly && !commenting && pointsEditable && e.routable !== false;
-      const routed = !loop && (via.length > 0 || (!readOnly && pointsEditable && e.routable !== false));
-      const shape = loop
-        ? { type: "loop", data: { path: selfLoopPath(selfLoop(from)), label: e.label, at: selfLoop(from).label } }
+      const routed = !loop && (via.length > 0 || laned || (!readOnly && pointsEditable && e.routable !== false));
+      const loopShape = loop ? selfLoop(from, anchor.loopSlot) : null;
+      const shape = loopShape
+        ? { type: "loop", data: { path: selfLoopPath(loopShape), label: e.label, at: loopShape.label, align: loopShape.align } }
         : routed
           ? {
             type: "routed",
             data: {
-              label: e.label, points: via, smooth: e.smooth === true, editable,
+              label: e.label, points: via, smooth: e.smooth === true, editable, shift: anchor.shift,
               onChange: (next: LinePoint[]) => onEdgePointsChange.current?.(e.id, next),
               grid: () => (snapRef.current.on ? snapRef.current.size : 0),
               open: () => onEdgeOpenRef.current?.(e.id),
@@ -865,7 +887,7 @@ export function GraphCanvasView({
         style: { stroke: e.color, strokeDasharray: e.dashed ? "6 4" : undefined },
       }];
     });
-  }, [edges, boxes, selection, labels, text, readOnly, commenting, onEdgeAnchorChange, pointsEditable, onEdgePointsChange, onEdgeOpenRef, snapRef]);
+  }, [edges, boxes, anchors, selection, labels, text, readOnly, commenting, onEdgeAnchorChange, pointsEditable, onEdgePointsChange, onEdgeOpenRef, snapRef]);
 
   /** Tells the consumer a leader's vertices changed, and the grid step a dragged vertex lands on right now (0 for none). */
   const leaderPointsChanged = useCallback((id: string, next: LinePoint[]) => onLeaderPointsChange.current?.(id, next), [onLeaderPointsChange]);
@@ -873,7 +895,7 @@ export function GraphCanvasView({
 
   /** The leaders whose node and target are on the canvas, as React Flow edges plus the small end nodes some of them need. */
   const flowLeaders = useMemo(() => {
-    const middles = edgeMiddles(boxes, edges);
+    const middles = edgeMiddles(boxes, edges, anchors);
     const built = leaders.flatMap<{ line: Edge; end?: Node<{ free: boolean }, "leaderEnd">; run: HopLine }>((l) => {
       const start = boxes.get(l.from);
       if (!start) return [];
@@ -919,12 +941,12 @@ export function GraphCanvasView({
       return [{ end, line: { ...common, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE }, run }];
     });
     return { ends: built.flatMap((b) => (b.end ? [b.end] : [])), lines: built.map((b) => b.line), runs: built.map((b) => b.run) };
-  }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, dotMarkerId, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow]);
+  }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, dotMarkerId, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow, anchors]);
 
   /** Where each pin is drawn: on its node's top-right corner or its line's middle, else at its own place. */
   const pinPlaces = useMemo<PinPlace[]>(() => {
     if (pins.length === 0) return [];
-    const middles = edgeMiddles(boxes, edges);
+    const middles = edgeMiddles(boxes, edges, anchors);
     return pins.map((pin) => {
       const anchor = pin.anchor;
       if (anchor?.kind === "node") {
@@ -936,7 +958,7 @@ export function GraphCanvasView({
       }
       return { pin, x: pin.x, y: pin.y, detached: anchor !== undefined };
     });
-  }, [pins, boxes, edges]);
+  }, [pins, boxes, edges, anchors]);
 
   /** The topmost node holding a canvas position (a pin dropped on it is anchored to it), else empty canvas. */
   const anchorAt = useCallback(
@@ -1185,13 +1207,13 @@ export function GraphCanvasView({
     for (const e of edges) {
       const from = boxes.get(e.source);
       const to = boxes.get(e.target);
-      if (!from || !to || e.source === e.target) continue;
-      const via = e.points ?? [];
-      const [a, b] = routeAttachPoints(from, to, e.sourcePoint, e.targetPoint, via);
-      runs.push({ id: e.id, start: pointXY(from, a), points: via, end: pointXY(to, b), smooth: e.smooth === true });
+      const anchor = anchors.get(e.id);
+      if (!from || !to || !anchor || anchor.loopSlot !== undefined) continue;
+      const run = lineRun(from, to, anchor);
+      runs.push({ id: e.id, start: run.start, points: e.points ?? [], end: run.end, smooth: e.smooth === true });
     }
     return lineHops([...runs, ...flowLeaders.runs]);
-  }, [hopsOn, edges, boxes, flowLeaders]);
+  }, [hopsOn, edges, boxes, anchors, flowLeaders]);
 
   const allEdges = useMemo<Edge[]>(() => {
     const all = [...flowEdges, ...flowLeaders.lines];

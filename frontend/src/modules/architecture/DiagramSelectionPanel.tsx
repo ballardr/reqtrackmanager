@@ -45,7 +45,8 @@ import { RecordTags } from "../../components/RecordTags";
 import { useStrings } from "../../context/TerminologyContext";
 import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
-import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, routeAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
+import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, type AttachPoint } from "../../components/graphAttachPoints";
+import type { LineEnds } from "../../components/graphLineAnchors";
 import { suggestWaypoint } from "../../components/graphLinePath";
 import { BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, anchorOf, boundaryOutsideName, boxFrame, leaderIsDrawn, leaderSummary, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
 import { NOTE_NODE_PREFIX, leaderVertexSuggestion, type EditorLeader, type EditorNote, type NoteLeaderTarget, type NotePatch } from "./noteModel";
@@ -102,6 +103,7 @@ function stateMachineActions(
  * @param realisedBy `{outer connection id: the connections that realise it}`.
  * @param edges The resolved lines.
  * @param anchors The attach points chosen for lines.
+ * @param lineEnds The attach points a line's ends use and would use if left automatic (`lineEndsOf`).
  * @param hidden The boxes a view switch hides (not offered as the other end of a connection).
  * @param editable False hides every action that changes the diagram or the model.
  * @param elements The elements the editor knows (their ports are listed for a selected box).
@@ -139,7 +141,7 @@ function stateMachineActions(
  * @param onComment Starts a comment on the selected box or line (the keyboard route to what a click in comment mode does); when absent no button is shown.
  */
 export function DiagramSelectionPanel({
-  projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
+  projectId, selection, boxes, notes, edges, anchors, lineEnds, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
   onAnchorChange, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
@@ -158,6 +160,7 @@ export function DiagramSelectionPanel({
   onComment?: (target: { kind: "node" | "edge"; id: string }) => void;
   edges: DiagramViewEdge[];
   anchors: DiagramAnchor[];
+  lineEnds: (edgeId: string) => LineEnds | null;
   hidden: ReadonlySet<string>;
   editable: boolean;
   onRemoveBox: (box: EditorBox) => void;
@@ -397,7 +400,7 @@ export function DiagramSelectionPanel({
           />
         )}
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
-          <LineEnds edge={edge} boxes={boxes} anchors={anchors} onChange={(change) => onAnchorChange(edge, change)} />
+          <LineEnds edge={edge} boxes={boxes} anchors={anchors} ends={lineEnds(edge.id)} onChange={(change) => onAnchorChange(edge, change)} />
         )}
         {editable && (edge.source_is_boundary || edge.target_is_boundary) && (
           <p className="text-muted">A line to a boundary box is placed automatically, so it has no attach points or vertices to set.</p>
@@ -481,21 +484,21 @@ function RealisesControl({
  * points. A line whose end is not a box of the layout offers nothing.
  */
 function LineEnds({
-  edge, boxes, anchors, onChange,
+  edge, boxes, anchors, ends, onChange,
 }: {
   edge: DiagramViewEdge;
   boxes: EditorBox[];
   anchors: DiagramAnchor[];
+  ends: LineEnds | null;
   onChange: (change: LineRouteChange) => void;
 }) {
   const from = boxes.find((b) => b.elementId === edge.source_element_id);
   const to = boxes.find((b) => b.elementId === edge.target_element_id);
-  if (!from || !to) return null;
+  if (!from || !to || !ends) return null;
   const chosen = anchorOf(anchors, edge.source_element_id, edge.target_element_id);
-  // What Automatic would give each end with the other end as it is now (the nearest vertex, when the line has any).
-  const sourceAutomatic = routeAttachPoints(from, to, null, chosen.targetPoint, chosen.points)[0];
-  const targetAutomatic = routeAttachPoints(from, to, chosen.sourcePoint, null, chosen.points)[1];
-  const [a, b] = routeAttachPoints(from, to, chosen.sourcePoint, chosen.targetPoint, chosen.points);
+  // What Automatic would give each end with the other end as it is now, looking at every other line of the diagram.
+  const [sourceAutomatic, targetAutomatic] = ends.automatic;
+  const [a, b] = ends.current;
   const newPoint = suggestWaypoint(pointXY(from, a), chosen.points, pointXY(to, b));
   const options = (automatic: AttachPoint) => [
     { value: "", label: `Automatic (${ATTACH_POINT_LABEL[automatic]})` },

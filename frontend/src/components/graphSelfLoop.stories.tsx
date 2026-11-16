@@ -8,6 +8,8 @@ import { SELF_LOOP_REACH, selfLoop, selfLoopPath } from "./graphSelfLoop";
 interface Case {
   name: string;
   box: [number, number, number, number];
+  slot: number;
+  align: "start" | "end";
   reach: number;
   loop: Record<"start" | "control1" | "control2" | "end" | "label", [number, number]>;
   path: string;
@@ -29,7 +31,8 @@ export const MatchesTheServersRuleOnEverySharedCase: Story = {
     const failures: string[] = [];
     for (const c of CASES) {
       const [x, y, width, height] = c.box;
-      const got = selfLoop({ x, y, width, height });
+      const got = selfLoop({ x, y, width, height }, c.slot);
+      if (got.align !== c.align) failures.push(`${c.name}: align ${got.align} is not ${c.align}`);
       for (const key of ["start", "control1", "control2", "end", "label"] as const) {
         const [ex, ey] = c.loop[key];
         if (Math.abs(got[key].x - ex) > 1e-9 || Math.abs(got[key].y - ey) > 1e-9) failures.push(`${c.name}: ${key}`);

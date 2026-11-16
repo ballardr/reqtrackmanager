@@ -78,7 +78,7 @@ Each phase ships everything its tables need in the same change: bundle section (
 | 20b | Review 9: a symbol label can sit inside, left, right, above or below its symbol | [x] |
 | 20c | Review 9: the state Selection card's save is "Save" (accessible names tell the two saves apart) | [x] |
 | 20d | Review 9: notes and note leaders in state machine diagrams, with a Note mode | [x] |
-| 20e | Review 9: lines never draw over each other; automatic anchors face each other and spread over free attach points, in both editors | [ ] |
+| 20e | Review 9: lines never draw over each other; automatic anchors face each other and spread over free attach points, in both editors | [x] |
 | 20f | Review 9: a symbol stays where it is dropped with Snap to grid off (a defect; reproduce first) | [ ] |
 | 20g | Review 9: the open entry of a menu tree takes the product's own colour, not the green accent | [ ] |
 | 20h | Review 9: the Delete key deletes the selected symbol, in both editors (a defect; reproduce first) | [ ] |

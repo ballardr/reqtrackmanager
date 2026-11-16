@@ -42,15 +42,17 @@ BOXES = [
 
 
 def loop_cases() -> list[dict]:
-    """Every loop case with the curve, the label position and the path the Python rule gives."""
+    """Every loop case with the curve, the label position and the path the Python rule gives: each box in the first slot, and
+    the first box in every slot of two rounds."""
     cases = []
-    for name, box in BOXES:
-        loop = self_loop(box)
+    for name, box, slot in [*[(name, box, 0) for name, box in BOXES], *[(f"{BOXES[0][0]}, slot {n}", BOXES[0][1], n) for n in range(1, 9)]]:
+        loop = self_loop(box, slot)
         cases.append({
-            "name": name, "box": list(box),
+            "name": name, "box": list(box), "slot": slot,
             "reach": SELF_LOOP_REACH,
-            "loop": {key: list(value) for key, value in loop.items()},
-            "path": self_loop_path(box),
+            "loop": {key: list(loop[key]) for key in ("start", "control1", "control2", "end", "label")},
+            "align": loop["align"],
+            "path": self_loop_path(box, slot),
         })
     return cases
 
@@ -87,6 +89,18 @@ def test_a_loop_leaves_the_top_side_and_returns_to_the_right_side_with_its_label
     # The label's bottom-left corner sits at this anchor, so the text rises above the box and clear of it.
     label_x, label_y = loop["label"]
     assert label_y < y and label_x > x + w / 2
+
+
+def test_loops_on_one_box_take_four_different_corners_and_then_reach_further_out():
+    box = (0.0, 0.0, 160.0, 64.0)
+    paths = [self_loop_path(box, slot) for slot in range(12)]
+    assert len(set(paths)) == 12
+    first, second, third, fourth = (self_loop(box, slot) for slot in range(4))
+    assert second["start"][1] == 64 and second["end"][0] == 160  # the bottom right
+    assert third["start"][1] == 64 and third["end"][0] == 0 and third["align"] == "end"  # the bottom left
+    assert fourth["start"][1] == 0 and fourth["end"][0] == 0  # the top left
+    assert first["align"] == "start"
+    assert self_loop(box, 4)["control2"][0] > first["control2"][0]
 
 
 def test_the_composite_frame_leaves_room_for_a_name_and_a_gap():

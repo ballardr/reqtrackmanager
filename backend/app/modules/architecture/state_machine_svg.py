@@ -32,12 +32,12 @@ Dependencies: `schemas` (the model), `state_shapes`, `diagram_points`, `diagram_
 
 from __future__ import annotations
 
-import math
 import uuid
 
+from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
-from app.modules.architecture.diagram_points import ATTACH_POINTS, point_xy, route_points
+from app.modules.architecture.diagram_points import ATTACH_POINTS, point_xy
 from app.modules.architecture.diagram_svg import (
     _ROOT,
     _drawn_notes,
@@ -209,53 +209,53 @@ def _label(lines: list[str], x: float, bottom: float, anchor: str) -> str:
     )
 
 
-_Entry = tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point]
+_Entry = tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point, str]
 
 
 def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut]) -> list[_Entry]:
     """Where each transition is drawn: `(transition, label lines, the loop's path or None, start, vertices, end, middle)`. A
-    transition whose state is not in the diagram is left out; parallel transitions between two states are spread sideways."""
-    totals: dict[frozenset, int] = {}
-    for t in transitions:
-        key = frozenset((t.source_state_id, t.target_state_id))
-        totals[key] = totals.get(key, 0) + 1
-    rank: dict[frozenset, int] = {}
+    transition whose state is not in the diagram is left out. The points each transition meets its states at come from
+    `diagram_line_anchors`: no two share a path, transitions left on the same points are spread sideways, and several loops
+    on one state take different corners."""
+    placed = assign_line_anchors(
+        {
+            str(state_id): AnchorBox(
+                *_box(state),
+                marker_attach_points(state.label, LabelPosition(state.label_position))
+                if StateKind(state.kind) is not StateKind.STATE else ATTACH_POINTS,
+            )
+            for state_id, state in boxes.items()
+        },
+        [
+            AnchorLine(
+                str(t.id), str(t.source_state_id), str(t.target_state_id), t.source_point, t.target_point, tuple((p.x, p.y) for p in t.points),
+            )
+            for t in transitions
+        ],
+    )
     entries: list[_Entry] = []
     for t in transitions:
         source, target = boxes.get(t.source_state_id), boxes.get(t.target_state_id)
-        if source is None or target is None:
+        anchor = placed.get(str(t.id))
+        if source is None or target is None or anchor is None:
             continue
         lines = [part for part in transition_label(t.event, t.guard, t.action).split("\n") if part]
-        if source.id == target.id:
+        if anchor.loop_slot is not None:
             box = _box(source)
-            entries.append((t, lines, self_loop_path(box), (0, 0), [], (0, 0), self_loop(box)["label"]))
+            loop = self_loop(box, anchor.loop_slot)
+            entries.append((t, lines, self_loop_path(box, anchor.loop_slot), (0, 0), [], (0, 0), loop["label"], loop["align"]))
             continue
-        key = frozenset((t.source_state_id, t.target_state_id))
-        index = rank.get(key, 0)
-        rank[key] = index + 1
-        offset = (index - (totals[key] - 1) / 2) * 16
-        a_marker, b_marker = StateKind(source.kind) is not StateKind.STATE, StateKind(target.kind) is not StateKind.STATE
         vertices: list[Point] = [(p.x, p.y) for p in t.points]
-        pa, pb = route_points(
-            _box(source), _box(target), t.source_point, t.target_point, vertices,
-            marker_attach_points(source.label, LabelPosition(source.label_position)) if a_marker else ATTACH_POINTS,
-            marker_attach_points(target.label, LabelPosition(target.label_position)) if b_marker else ATTACH_POINTS,
-        )
-        (x1, y1), (x2, y2) = point_xy(_box(source), pa), point_xy(_box(target), pb)
-        if vertices:
-            middle = line_middle((x1, y1), vertices, (x2, y2))
-        else:
-            length = math.hypot(x2 - x1, y2 - y1) or 1.0
-            nx, ny = -(y2 - y1) / length * offset, (x2 - x1) / length * offset
-            x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
-            middle = ((x1 + x2) / 2, (y1 + y2) / 2)
-        entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle))
+        (x1, y1), (x2, y2) = point_xy(_box(source), anchor.source), point_xy(_box(target), anchor.target)
+        x1, y1, x2, y2 = x1 + anchor.shift[0], y1 + anchor.shift[1], x2 + anchor.shift[0], y2 + anchor.shift[1]
+        middle = line_middle((x1, y1), vertices, (x2, y2)) if vertices else ((x1 + x2) / 2, (y1 + y2) / 2)
+        entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle, "start"))
     return entries
 
 
 def _hop_lines(entries: list[_Entry]) -> list[HopLine]:
     """The transitions that are lines (not loops) as hop candidates."""
-    return [HopLine(str(t.id), start, vertices, end, t.smooth) for t, _, loop, start, vertices, end, _ in entries if loop is None]
+    return [HopLine(str(t.id), start, vertices, end, t.smooth) for t, _, loop, start, vertices, end, _, _ in entries if loop is None]
 
 
 def _transitions(entries: list[_Entry], hops: dict[str, str]) -> tuple[str, str]:
@@ -263,11 +263,11 @@ def _transitions(entries: list[_Entry], hops: dict[str, str]) -> tuple[str, str]
     drawn along its hop path (`diagram_line_hops`)."""
     drawn: list[str] = []
     labels: list[str] = []
-    for t, lines, loop, (x1, y1), vertices, (x2, y2), (mx, my) in entries:
+    for t, lines, loop, (x1, y1), vertices, (x2, y2), (mx, my), align in entries:
         if loop is not None:
             drawn.append(f'<path d="{loop}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>')
             if lines:
-                labels.append(_label(lines, mx + 4, my - 4, "start"))
+                labels.append(_label(lines, mx + 4 if align == "start" else mx - 4, my - 4, align))
             continue
         if vertices or str(t.id) in hops:
             path = hops.get(str(t.id)) or line_path((x1, y1), vertices, (x2, y2), t.smooth)
@@ -305,7 +305,7 @@ def render_state_machine(model: StateMachineModel) -> str:
         boxes = {s.id: s for s in states}
         entries = _transition_entries(model.transitions, boxes)
         leader_runs = _leader_runs(
-            notes, {}, {}, [], {s.id: _box(s) for s in states}, {t.id: middle for t, _, _, _, _, _, middle in entries},
+            notes, {}, {}, [], {s.id: _box(s) for s in states}, {t.id: middle for t, _, _, _, _, _, middle, _ in entries},
         )
         hops: dict[str, str] = {}
         if model.diagram.line_hops:

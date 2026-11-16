@@ -83,6 +83,7 @@ import { blockPinDescriber, pinAnchorOf, pinPlaceOf } from "./diagramComments";
 import { DiagramFormModal } from "./DiagramFormModal";
 import { DiagramAddMenu } from "./DiagramAddMenu";
 import { DiagramOutline } from "./DiagramOutline";
+import { lineEndsOf } from "../../components/graphLineAnchors";
 import { DiagramSelectionPanel, type ElementEditorReference } from "./DiagramSelectionPanel";
 import { DiagramSettingsButton } from "./DiagramSettingsButton";
 import { DiagramTogglesPanel } from "./DiagramTogglesPanel";
@@ -375,6 +376,7 @@ export function DiagramEditorPage() {
     [resolved, layout, effectiveTheme],
   );
   const drawnEdgeIds = useMemo(() => new Set(edges.map((e) => e.id)), [edges]);
+  const lineEnds = useMemo(() => lineEndsOf(nodes, edges), [nodes, edges]);
   const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds), [layout, resolved, drawnEdgeIds]);
   // A connection just added is the selection once a line for it is drawn (a switch may hide it, which leaves it unselected).
   const newLine = selectConnection === null ? undefined
@@ -770,7 +772,7 @@ export function DiagramEditorPage() {
   const selectionColumn = (
     <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
       <DiagramSelectionPanel
-        projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} hidden={resolved.hidden} editable={editable}
+        projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} lineEnds={lineEnds} hidden={resolved.hidden} editable={editable}
         boundaries={layout.boundaries} connectionsById={connectionsById} realisedBy={realisedBy}
         onRemoveBoundary={(box) => { editor.edit((l) => removeBoundary(l, box.connectionId)); setSelection(null); }}
         onConnectBoundary={(box, elementId) => void startBoundaryConnection(box.connectionId, elementId)}

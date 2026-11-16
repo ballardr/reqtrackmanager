@@ -1822,3 +1822,124 @@ export const AMovedBoxTakesTheHopAway: Story = {
     await waitFor(() => expect(pathOf(canvasElement, "v")).not.toContain(" A "));
   },
 };
+
+/** The two end points of a line's path: its first and last coordinate pairs. */
+const endsOf = (root: HTMLElement, id: string) => {
+  const n = lineEnds(root, id);
+  return { start: [n[0], n[1]], end: [n[n.length - 2], n[n.length - 1]] };
+};
+
+const PAIR_NODES: GraphCanvasNode[] = [{ id: "a", label: "A", x: 0, y: 0 }, { id: "b", label: "B", x: 300, y: 0 }];
+
+/** A line each way between two boxes is drawn on two different paths, so neither hides the other. */
+export const ALineEachWayBetweenTwoBoxesTakesTwoPaths: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={PAIR_NODES} edges={[{ id: "go", source: "a", target: "b" }, { id: "back", source: "b", target: "a" }]}
+      ariaLabel="Both ways" showViewToggle={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => expect(lineEnds(canvasElement, "back").length).toBeGreaterThanOrEqual(4));
+    const go = endsOf(canvasElement, "go");
+    const back = endsOf(canvasElement, "back");
+    // The first line keeps the facing sides; the second takes the next free points, so neither shares an end with it.
+    expect(go.start).not.toEqual(back.end);
+    expect(go.end).not.toEqual(back.start);
+    expect(pathOf(canvasElement, "go")).not.toEqual(pathOf(canvasElement, "back"));
+  },
+};
+
+/** A choice with a line in, a line on and a line back to the block it came from: three different paths, none over another. */
+export const ALoopBackFromAChoiceIsNotDrawnOverTheLineIntoIt: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={[
+        { id: "block", label: "Block", x: 0, y: 0 },
+        { id: "choice", label: "Choice", x: 300, y: 20, width: 40, height: 40, marker: true },
+        { id: "next", label: "Next", x: 500, y: 0 },
+      ]}
+      edges={[
+        { id: "into", source: "block", target: "choice" }, { id: "on", source: "choice", target: "next" },
+        { id: "back", source: "choice", target: "block" },
+      ]}
+      ariaLabel="Choice" showViewToggle={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Next, node");
+    await waitFor(() => expect(lineEnds(canvasElement, "back").length).toBeGreaterThanOrEqual(4));
+    const paths = ["into", "on", "back"].map((id) => pathOf(canvasElement, id));
+    expect(new Set(paths).size).toBe(3);
+    const into = endsOf(canvasElement, "into");
+    const back = endsOf(canvasElement, "back");
+    expect(back.start).not.toEqual(into.end);
+  },
+};
+
+/** A point a person chose is kept, and an automatic line gives way to it. */
+export const AChosenAttachPointIsKeptAndAnAutomaticLineKeepsClearOfIt: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={PAIR_NODES}
+      edges={[
+        { id: "auto", source: "a", target: "b" },
+        { id: "fixed", source: "a", target: "b", sourcePoint: "right", targetPoint: "left" },
+      ]}
+      ariaLabel="Chosen" showViewToggle={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => expect(lineEnds(canvasElement, "fixed").length).toBeGreaterThanOrEqual(4));
+    const fixed = endsOf(canvasElement, "fixed");
+    // The right side of A (160 across, 32 down) and the left side of B (300 across).
+    // (React Flow starts a line at the outer edge of its handle, so a few units off the side.)
+    expect(fixed.start[0]).toBeCloseTo(160, -1);
+    expect(fixed.end[0]).toBeCloseTo(300, -1);
+    expect(endsOf(canvasElement, "auto").start).not.toEqual(fixed.start);
+  },
+};
+
+/** Lines that run out of attach points are spread into parallel lanes instead of lying on one another. */
+export const LinesThatShareBothEndsAreSpreadIntoLanes: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={PAIR_NODES}
+      edges={[
+        { id: "one", source: "a", target: "b", sourcePoint: "right", targetPoint: "left" },
+        { id: "two", source: "a", target: "b", sourcePoint: "right", targetPoint: "left" },
+      ]}
+      ariaLabel="Lanes" showViewToggle={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => expect(lineEnds(canvasElement, "two").length).toBeGreaterThanOrEqual(4));
+    const one = endsOf(canvasElement, "one");
+    const two = endsOf(canvasElement, "two");
+    // Level lines, one above the other by a lane's width, each still running from the right side to the left.
+    expect(one.start[1]).not.toBeCloseTo(two.start[1], 0);
+    expect(Math.abs(one.start[1] - two.start[1])).toBeCloseTo(16, 0);
+    expect(one.start[1]).toBeCloseTo(one.end[1], 0);
+  },
+};
+
+/** Several loops on one box take different corners, so none is drawn over another. */
+export const SeveralLoopsOnOneBoxTakeDifferentCorners: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={PAIR_NODES}
+      edges={[{ id: "l1", source: "a", target: "a", label: "first" }, { id: "l2", source: "a", target: "a", label: "second" }]}
+      ariaLabel="Loops" showViewToggle={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("A, node");
+    await waitFor(() => expect(pathOf(canvasElement, "l2")).not.toEqual(""));
+    expect(pathOf(canvasElement, "l1")).not.toEqual(pathOf(canvasElement, "l2"));
+    expect(within(canvasElement).getByText("first")).toBeTruthy();
+    expect(within(canvasElement).getByText("second")).toBeTruthy();
+  },
+};

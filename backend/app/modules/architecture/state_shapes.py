@@ -28,7 +28,7 @@ Dependencies: `enums` (the state kinds), `diagram_symbol_label` (the label's siz
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from app.modules.architecture.diagram_points import SIDE_POINTS
 from app.modules.architecture.diagram_symbol_label import (
@@ -189,32 +189,57 @@ def shape_table() -> dict[str, Any]:
     }
 
 
-def self_loop(box: tuple[float, float, float, float]) -> dict[str, Point]:
+class SelfLoopShape(TypedDict):
+    """A loop's cubic curve, its label point and the side of that point the text runs."""
+
+    start: Point
+    control1: Point
+    control2: Point
+    end: Point
+    label: Point
+    align: str
+
+
+def self_loop(box: tuple[float, float, float, float], slot: int = 0) -> SelfLoopShape:
     """The loop of a box: a cubic curve leaving the top side three quarters across and returning to the right side.
 
     Args:
         box: `(x, y, width, height)` of the box.
+        slot: Which corner the loop takes: 0 the top right (the default), then 1 the bottom right, 2 the bottom left and 3
+            the top left; from 4 the loops go round again, reaching further out each time.
 
     Returns:
-        `start`, `control1`, `control2`, `end` (the cubic's points) and `label` (the curve's middle: the bottom-left
-        corner of the label's text, so it rises above the box and clear of it).
+        `start`, `control1`, `control2`, `end` (the cubic's points), `label` (the curve's middle: the bottom-left corner of
+        the label's text, so it rises above the box and clear of it) and `align` (`start` when the text begins at the label
+        point, `end` when it ends there, for a loop on a left corner).
     """
     x, y, w, h = box
-    start = (x + 0.75 * w, y)
-    control1 = (x + 0.75 * w, y - SELF_LOOP_REACH)
-    control2 = (x + w + SELF_LOOP_REACH, y + 0.25 * h)
-    end = (x + w, y + 0.25 * h)
+    corner = slot % 4
+    reach = SELF_LOOP_REACH * (1 + slot // 4)
+    right = corner in (0, 1)
+    bottom = corner in (1, 2)
+    across = 0.75 if right else 0.25
+    down = 0.75 if bottom else 0.25
+    side_y = y + h if bottom else y
+    side_x = x + w if right else x
+    start = (x + across * w, side_y)
+    control1 = (x + across * w, side_y + reach if bottom else side_y - reach)
+    control2 = (side_x + reach if right else side_x - reach, y + down * h)
+    end = (side_x, y + down * h)
     # The point at t = 0.5 of a cubic Bezier is (P0 + 3 P1 + 3 P2 + P3) / 8.
     label = (
         (start[0] + 3 * control1[0] + 3 * control2[0] + end[0]) / 8,
         (start[1] + 3 * control1[1] + 3 * control2[1] + end[1]) / 8,
     )
-    return {"start": start, "control1": control1, "control2": control2, "end": end, "label": label}
+    return {
+        "start": start, "control1": control1, "control2": control2, "end": end, "label": label,
+        "align": "start" if right else "end",
+    }
 
 
-def self_loop_path(box: tuple[float, float, float, float]) -> str:
-    """The SVG path (`M … C …`) of a box's self loop, numbers rounded to two decimals."""
-    loop = self_loop(box)
+def self_loop_path(box: tuple[float, float, float, float], slot: int = 0) -> str:
+    """The SVG path (`M … C …`) of a box's self loop in `slot`, numbers rounded to two decimals."""
+    loop = self_loop(box, slot)
 
     def n(value: float) -> str:
         return f"{round(value, 2):.2f}".rstrip("0").rstrip(".")

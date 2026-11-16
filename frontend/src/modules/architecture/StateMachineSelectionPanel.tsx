@@ -22,7 +22,8 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailCard } from "../../components/DetailCard";
 import { FieldCaption } from "../../components/FieldHelp";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
-import { ATTACH_POINTS, ATTACH_POINT_LABEL, SIDE_POINTS, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry } from "../../components/graphAttachPoints";
+import { ATTACH_POINTS, ATTACH_POINT_LABEL, SIDE_POINTS, pointXY, type AttachPoint, type BoxGeometry } from "../../components/graphAttachPoints";
+import type { LineEnds } from "../../components/graphLineAnchors";
 import { suggestWaypoint } from "../../components/graphLinePath";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { LineVertexFields } from "./LineVertexFields";
@@ -69,13 +70,14 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param onConnect Starts a transition from a state to the state with the given id (the same state for a loop): the keyboard
  *   route to drawing a line between two states.
  * @param onParentChange Puts the state inside another (or at the top level with null); an unsaved drawing edit.
+ * @param lineEnds The attach points a transition's ends use and would use if left automatic (`lineEndsOf`).
  * @param onPointsChange Sets the attach point of one or both ends of a transition (null is automatic); an unsaved drawing edit.
  * @param onComment Starts a comment on the selected state or transition.
  * @param notes What a change to a selected note or leader does.
  */
 export function StateMachineSelectionPanel({
   projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onSaveTransition, focusTransition, onTransitionFocused, onDeleteState, onDeleteTransition, onParentChange,
-  onPointsChange, onComment, onConnect, notes,
+  lineEnds, onPointsChange, onComment, onConnect, notes,
 }: {
   projectId: string;
   model: StateMachineModel;
@@ -92,6 +94,7 @@ export function StateMachineSelectionPanel({
   onDeleteTransition: (transition: StateTransition) => void;
   onConnect: (state: ArchitectureState, targetId: string) => void;
   onParentChange: (state: ArchitectureState, parentId: string | null) => void;
+  lineEnds: (transitionId: string) => LineEnds | null;
   onPointsChange: (transition: StateTransition, change: LineRouteChange) => void;
   onComment: (target: { kind: "node" | "edge"; id: string }) => void;
   notes: StateMachineNoteHandlers;
@@ -216,7 +219,7 @@ export function StateMachineSelectionPanel({
         />
         {editable && from && to && !loop && (
           <EndPoints
-            from={from} to={to} layout={layout} sourcePoint={points?.source_point ?? null} targetPoint={points?.target_point ?? null}
+            from={from} to={to} layout={layout} ends={lineEnds(transition.id)} sourcePoint={points?.source_point ?? null} targetPoint={points?.target_point ?? null}
             vertices={points?.points ?? []} smooth={points?.smooth ?? false}
             onChange={(change) => onPointsChange(transition, change)}
           />
@@ -246,11 +249,12 @@ function FindingList({ findings }: { findings: { severity: "error" | "warning"; 
 
 /** The two attach-point selects of a transition between different states, and its vertices. */
 function EndPoints({
-  from, to, layout, sourcePoint, targetPoint, vertices, smooth, onChange,
+  from, to, layout, ends, sourcePoint, targetPoint, vertices, smooth, onChange,
 }: {
   from: ArchitectureState;
   to: ArchitectureState;
   layout: StateMachineLayout;
+  ends: LineEnds | null;
   sourcePoint: AttachPoint | null;
   targetPoint: AttachPoint | null;
   vertices: LineWaypoint[];
@@ -259,9 +263,9 @@ function EndPoints({
 }) {
   const a = geometry(layout, from);
   const b = geometry(layout, to);
-  const sourceAutomatic = routeAttachPoints(a, b, null, targetPoint, vertices)[0];
-  const targetAutomatic = routeAttachPoints(a, b, sourcePoint, null, vertices)[1];
-  const [first, last] = routeAttachPoints(a, b, sourcePoint, targetPoint, vertices);
+  if (!ends) return null;
+  const [sourceAutomatic, targetAutomatic] = ends.automatic;
+  const [first, last] = ends.current;
   const newPoint = suggestWaypoint(pointXY(a, first), vertices, pointXY(b, last));
   const offered = (state: ArchitectureState) => (isMarkerKind(state.kind) ? SIDE_POINTS : ATTACH_POINTS);
   const options = (state: ArchitectureState, automatic: AttachPoint) => [
