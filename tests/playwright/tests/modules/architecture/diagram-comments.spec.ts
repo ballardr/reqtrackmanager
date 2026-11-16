@@ -58,7 +58,7 @@ test.describe("System Architecture: diagram comments", () => {
       await composer.getByRole("button", { name: "Comment", exact: true }).click();
       expect((await stored).ok()).toBeTruthy();
       await expect(marker(page, 1)).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
       await expect(page.getByText("Unsaved changes.")).toHaveCount(0);
     });
 

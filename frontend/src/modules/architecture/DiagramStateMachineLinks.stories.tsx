@@ -159,7 +159,7 @@ export const UnsavedChangesAreConfirmedBeforeLeavingForAStateMachineDiagram: Sto
     const canvas = within(canvasElement);
     await select(canvas, "Firewall");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await userEvent.click(canvas.getByRole("button", { name: "Open state machine diagram" }));
     const dialog = await within(document.body).findByRole("dialog");
     expect(within(dialog).getByText("Leave this diagram?")).toBeInTheDocument();

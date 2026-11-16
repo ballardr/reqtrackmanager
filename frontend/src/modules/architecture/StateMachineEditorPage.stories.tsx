@@ -3,6 +3,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
+import { expectLabelInName } from "../../testing/labelInName";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
@@ -90,7 +91,7 @@ export const DrawsStatesMarkersAndTransitionsFromTheModel: Story = {
     await expect(canvas.getByLabelText("start [ready], connection from Idle to Running")).toBeInTheDocument();
     // A transition from a state to itself is a loop on that state.
     await expect(canvas.getByLabelText("tick / adjust, connection from Running to Running")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
     // A state shows its entry and exit lines in the box.
     await expect(within(canvas.getByLabelText("Idle, node")).getByText(/entry \/ stop motor/)).toBeInTheDocument();
     await expect(canvas.getByText("Describes", { exact: false })).toBeInTheDocument();
@@ -103,7 +104,7 @@ export const MovingAStateEnablesSaveAndSendsTheDrawingWithTheVersion: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.keyboard("{ArrowRight}{ArrowRight}");
-    const save = canvas.getByRole("button", { name: "Save" });
+    const save = canvas.getByRole("button", { name: "Save diagram" });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
@@ -135,11 +136,11 @@ export const UndoReturnsToTheSavedDrawing: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.keyboard("{ArrowDown}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled());
     await userEvent.click(canvas.getByRole("button", { name: "Redo" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
   },
 };
 
@@ -438,6 +439,21 @@ export const EditingAStateInTheCardStoresOnlyWhatChangedWhenTheFocusLeavesIt: St
   },
 };
 
+/** The editor's save reads "Save" and is named "Save diagram"; the state and transition cards read "Save" and keep their own names. */
+export const TheSaveButtonsReadSaveAndAreNamedForWhatTheyStore: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expectLabelInName(await canvas.findByRole("button", { name: "Save diagram" }), "Save", "Save diagram");
+    await select(canvas, "Idle");
+    await expectLabelInName(await canvas.findByRole("button", { name: "Save state" }), "Save", "Save state");
+    await expect(canvas.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    await openTab(canvas, "Outline");
+    await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
+    const card = within(await canvas.findByRole("group", { name: "Transition details" }));
+    await expectLabelInName(card.getByRole("button", { name: "Save transition" }), "Save", "Save transition");
+  },
+};
+
 /** Save state stores the same changes without leaving the field, and is unavailable while nothing has changed. */
 export const TheCardsSaveStateButtonStoresTheChanges: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildState({ entry_action: "stop fan" }) as never); },
@@ -605,7 +621,7 @@ export const VerticesOfATransitionAreSetInTheCardListedInTheOutlineAndSaved: Sto
     // The Outline follows the unsaved drawing: the transition now has one vertex.
     const row = canvas.getByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }).closest("tr") as HTMLElement;
     await waitFor(() => expect(within(row).getAllByRole("cell").slice(-1)[0]).toHaveTextContent("1"));
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${MACHINE}/layout`,
       expect.objectContaining({
@@ -622,7 +638,7 @@ export const NestingAStateFromTheSelectionCardIsAnUnsavedDrawingEdit: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Inside" }), "ste-2");
-    const save = canvas.getByRole("button", { name: "Save" });
+    const save = canvas.getByRole("button", { name: "Save diagram" });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
@@ -689,9 +705,9 @@ export const AStaleVersionOffersAReloadInsteadOfOverwriting: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.keyboard("{ArrowRight}");
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await expect(await canvas.findByRole("button", { name: "Reload state machine diagram" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
   },
 };
 
@@ -822,7 +838,7 @@ export const ExportingSavesAPendingDrawingFirst: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Idle");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await exportAs(canvas, "SVG image");
     await waitFor(() => expect(names).toHaveLength(1));
     const put = (api.put as unknown as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder[0];

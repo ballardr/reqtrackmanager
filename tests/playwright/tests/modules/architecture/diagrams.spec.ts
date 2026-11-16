@@ -64,7 +64,7 @@ test.describe("System Architecture: diagram editor", () => {
       await dialog.getByRole("button", { name: "Save and activate" }).click();
       await expect(page).toHaveURL(new RegExp(`/modules/architecture/diagrams/[0-9a-f-]+$`));
       await expect(page.getByRole("heading", { name: new RegExp(`Overview ${suffix}`) })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     });
 
     await test.step("add existing elements, see their connection before saving, then save", async () => {
@@ -79,10 +79,10 @@ test.describe("System Architecture: diagram editor", () => {
       // The line is drawn from the model data in the browser, so it is there before anything is stored. (A straight line has
       // no area, so it is attached rather than "visible".)
       await expect(page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true })).toBeAttached();
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
       await expect(page.getByLabel(`Connection from ${gateway} to ${orders}`, { exact: true })).toBeAttached();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     });
 
     await test.step("an element chosen in the Add menu is created at once, selected with its name focused, and renamed in the Selection card", async () => {
@@ -97,14 +97,14 @@ test.describe("System Architecture: diagram editor", () => {
       await card.getByRole("button", { name: "Save element" }).click();
       await expect(page.getByText("Element updated.")).toBeVisible();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
     });
 
     await test.step("the Configuration tab and the settings gear keep unsaved edits; the gear's setting is stored at once", async () => {
       await selectNode(page, queue);
       await page.keyboard.press("ArrowRight");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
       await page.getByRole("tab", { name: "Configuration" }).click();
       await expect(page).toHaveURL(/tab=configuration/);
       await expect(page.getByRole("toolbar", { name: "Diagram editing" })).toHaveCount(0);
@@ -116,22 +116,22 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(detail).toBeChecked();
       await page.keyboard.press("Escape");
       // The move made before the tab change and the setting is still pending.
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Undo" }).click();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     });
 
     await test.step("undo a move, then remove a box: the element stays in the model", async () => {
       await selectNode(page, queue);
       await page.keyboard.press("ArrowRight");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Undo" }).click();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
 
       await selectNode(page, queue);
       await page.getByRole("button", { name: "Remove from diagram" }).click();
       await expect(page.getByLabel(`${queue}, node`, { exact: true })).toHaveCount(0);
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
 
       await page.reload();
@@ -308,7 +308,7 @@ test.describe("System Architecture: diagram editor", () => {
 
     await selectNode(page, gateway);
     await page.keyboard.press("ArrowRight");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
     const alert = page.getByRole("alert").filter({ hasText: "Someone else saved this diagram" });
     await expect(alert).toBeVisible();
     await alert.getByRole("button", { name: "Reload diagram" }).click();
@@ -367,13 +367,13 @@ test.describe("System Architecture: diagram editor", () => {
     await test.step("Alt+arrow resizes, Delete takes the box off the diagram and Undo brings it back", async () => {
       await selectNode(page, orders);
       await page.keyboard.press("Alt+ArrowRight");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
       await page.keyboard.press("Delete");
       await expect(page.getByLabel(`${orders}, node`, { exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Undo" }).click();
       await page.getByRole("button", { name: "Undo" }).click();
       await expect(page.getByLabel(`${orders}, node`, { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     });
 
     await test.step("export downloads an SVG and the Mermaid text named after the diagram", async () => {
@@ -430,8 +430,8 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("choosing the start from the list is an unsaved edit that Save stores", async () => {
       await starts.selectOption("bottom");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
     });
 
@@ -449,7 +449,7 @@ test.describe("System Architecture: diagram editor", () => {
       await page.mouse.up();
       await expect(ends).toHaveValue("top");
       await expect(page.getByText(/Unsaved changes/)).toBeVisible();
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
     });
 
@@ -471,7 +471,7 @@ test.describe("System Architecture: diagram editor", () => {
     await test.step("choosing Automatic again removes the choice", async () => {
       await starts.selectOption("");
       await ends.selectOption("");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
       const view = await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
       expect(view.anchors).toEqual([]);
@@ -557,7 +557,7 @@ test.describe("System Architecture: diagram editor", () => {
       await page.getByRole("switch", { name: "Show notes" }).click();
       await expect(page).toHaveURL(/notes=0/);
       await expect(page.getByLabel(`${gateway}, node`, { exact: true }).getByText(note)).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
       await page.reload();
       await expect(page.getByLabel(`${gateway}, node`, { exact: true })).toBeVisible();
       await expect(page.getByLabel(`${gateway}, node`, { exact: true }).getByText(note)).toHaveCount(0);
@@ -579,9 +579,9 @@ test.describe("System Architecture: diagram editor", () => {
     /** Presses Save and waits for the layout write and the read-back that follows it, so a later read sees what was stored. */
     const saveLayout = async () => {
       const saved = page.waitForResponse((r) => r.url().endsWith(`/diagrams/${diagram.id}/layout`) && r.request().method() === "PUT");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       expect((await saved).ok()).toBeTruthy();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     };
     const stored = async () => (await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json()).notes;
 
@@ -705,7 +705,7 @@ test.describe("System Architecture: diagram editor", () => {
       await card.getByRole("textbox", { name: "Name", exact: true }).fill(filter);
       await card.getByRole("button", { name: "Save element" }).click();
       await expect(page.getByLabel(`${filter}, node`, { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
       const elements = await (await page.request.get(`${base}/elements`, { headers: adminHeaders })).json();
       const child = elements.find((e: { name: string }) => e.name === filter);
@@ -751,7 +751,7 @@ test.describe("System Architecture: diagram editor", () => {
       await clickMenuRow(page, new RegExp(`^${outer.unique_code} · ELM-\\d+ ${cloud}$`));
       await expect(box).toBeVisible();
       await expect(box).toContainText("Not covered");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       await expect(page.getByText("Diagram saved.").last()).toBeVisible();
     });
 

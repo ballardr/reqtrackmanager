@@ -66,9 +66,9 @@ export function ConnectionSelectionFields({
       {refused && <p role="alert" style={{ color: "var(--color-danger)" }}>A connection needs a type and two different elements.</p>}
       <button
         type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()}
+        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save connection"
       >
-        Save connection
+        Save
       </button>
     </div>
   );

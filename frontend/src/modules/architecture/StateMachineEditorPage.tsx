@@ -375,7 +375,7 @@ export function StateMachineEditorPage() {
       <EditHistoryButtons editable={editable} canUndo={editor.canUndo} canRedo={editor.canRedo} undo={editor.undo} redo={editor.redo} />
       <button
         type="button" className="btn btn-primary btn-sm" disabled={!editable || !dirty || editor.saving || editor.conflict}
-        onClick={() => void saveDrawing()}
+        onClick={() => void saveDrawing()} aria-label="Save diagram"
       >
         Save
       </button>

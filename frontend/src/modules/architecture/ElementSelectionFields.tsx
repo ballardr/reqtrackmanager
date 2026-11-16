@@ -75,9 +75,9 @@ export function ElementSelectionFields({
       {nameMissing && <p role="alert" style={{ color: "var(--color-danger)" }}>A name is required.</p>}
       <button
         type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()}
+        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save element"
       >
-        Save element
+        Save
       </button>
     </div>
   );

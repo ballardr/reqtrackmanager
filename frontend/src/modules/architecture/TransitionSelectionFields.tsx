@@ -53,9 +53,9 @@ export function TransitionSelectionFields({
       </FormGrid>
       <button
         type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()}
+        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save transition"
       >
-        Save transition
+        Save
       </button>
     </div>
   );

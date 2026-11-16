@@ -85,7 +85,7 @@ test.describe("System Architecture: vertices on lines", () => {
       await drag(page, from, { x: from.x, y: from.y - 110 });
       await expect(page.locator(".graph-waypoint")).toHaveCount(1);
       expect((await pathNumbers(page, edgeId)).length).toBe(6);
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
     });
 
     await test.step("the Selection card lists the vertex and moves it from its fields", async () => {
@@ -100,7 +100,7 @@ test.describe("System Architecture: vertices on lines", () => {
 
     await test.step("Save stores the route and a reload draws it", async () => {
       const saved = page.waitForResponse((r) => r.url().includes(`/diagrams/${diagram.id}/layout`) && r.request().method() === "PUT");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       expect((await saved).ok()).toBeTruthy();
       const view = await (await page.request.get(`${arch}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
       expect(view.anchors).toHaveLength(1);
@@ -183,7 +183,7 @@ test.describe("System Architecture: vertices on lines", () => {
     await drag(page, from, { x: from.x, y: from.y - 90 });
     await expect(page.locator(".graph-waypoint")).toHaveCount(1);
     const saved = page.waitForResponse((r) => r.url().includes(`/state-machine-diagrams/${machine.id}/layout`) && r.request().method() === "PUT");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
     expect((await saved).ok()).toBeTruthy();
 
     const model = await (await page.request.get(`${arch}/state-machine-diagrams/${machine.id}/model`, { headers: adminHeaders })).json();

@@ -51,7 +51,7 @@ test.describe("System Architecture: notes with no tone and Note mode", () => {
     await page.getByRole("textbox", { name: "Note text" }).fill("Plain label");
     await page.getByRole("combobox", { name: "Tone" }).selectOption("none");
     const saved = page.waitForResponse((r) => r.url().includes(`/diagrams/${diagram.id}/layout`) && r.request().method() === "PUT");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
     expect((await saved).ok()).toBeTruthy();
 
     await page.reload();

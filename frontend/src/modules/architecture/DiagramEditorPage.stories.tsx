@@ -4,6 +4,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api, ApiError } from "../../api/client";
 import { buildPlace, openPlacementPicker } from "../../testing/placementsFixtures";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
+import { expectLabelInName } from "../../testing/labelInName";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
@@ -96,9 +97,21 @@ export const DrawsBoxesAndLinesFromTheModelData: Story = {
     await expect(await canvas.findByLabelText("Gateway, node")).toBeInTheDocument();
     await expect(canvas.getByLabelText("Orders, node")).toBeInTheDocument();
     await expect(await canvas.findByLabelText("Connection from Gateway to Orders")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
     await openTab(canvas, "Configuration");
     await expect(await canvas.findByRole("switch", { name: "Security devices" })).toBeChecked();
+  },
+};
+
+/** The editor's save reads "Save" and is named "Save diagram"; the element and connection cards read "Save" and keep their own names. */
+export const TheSaveButtonsReadSaveAndAreNamedForWhatTheyStore: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expectLabelInName(await canvas.findByRole("button", { name: "Save diagram" }), "Save", "Save diagram");
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expectLabelInName(await panel.findByRole("button", { name: "Save element" }), "Save", "Save element");
+    await expect(canvas.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   },
 };
 
@@ -108,7 +121,7 @@ export const MovingABoxEnablesSaveAndSendsTheLayoutWithTheVersion: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}{ArrowRight}");
-    const save = canvas.getByRole("button", { name: "Save" });
+    const save = canvas.getByRole("button", { name: "Save diagram" });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
@@ -126,11 +139,11 @@ export const UndoReturnsToTheSavedLayout: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowDown}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled());
     await userEvent.click(canvas.getByRole("button", { name: "Redo" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
   },
 };
 
@@ -149,13 +162,13 @@ export const ASaveStaysSavedWhenALaterReadSupersedesItsReadBack: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     await userEvent.click(await openSettings(canvas));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
     // What was saved is the baseline, so nothing is left to save and undoing the move is still possible.
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled());
   },
 };
 
@@ -169,7 +182,7 @@ export const RemovingABoxLeavesTheElementInTheModel: Story = {
     await select(canvas, "Orders");
     await userEvent.click(await canvas.findByRole("button", { name: "Remove from diagram" }));
     await waitFor(() => expect(canvas.queryByLabelText("Orders, node")).not.toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalled());
     const body = (api.put as unknown as { mock: { calls: [string, { placements: { element_id: string }[] }][] } }).mock.calls[0][1];
     expect(body.placements.map((p) => p.element_id)).not.toContain("el-2");
@@ -198,12 +211,12 @@ export const AStaleVersionOffersAReloadInsteadOfOverwriting: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     const alert = await canvas.findByRole("alert");
     await expect(alert).toHaveTextContent(/Someone else saved this diagram/);
     await expect(within(alert).getByRole("button", { name: "Reload diagram" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
   },
 };
 
@@ -308,7 +321,7 @@ export const ChoosingALineEndInTheSelectionCardIsStoredWithTheLayout: Story = {
     await expect(panel.getByRole("combobox", { name: "Line ends at" })).toHaveDisplayValue("Automatic (Left)");
     await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line starts at" }), "Bottom");
     await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Bottom");
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
@@ -337,7 +350,7 @@ export const VerticesAreAddedPositionedAndRemovedInTheSelectionCard: Story = {
     await expect(panel.getByRole("spinbutton", { name: "Vertex 1 X" })).toHaveValue(210);
     await expect(panel.getByRole("switch", { name: "Smooth curve" })).toBeEnabled();
     await userEvent.click(panel.getByRole("switch", { name: "Smooth curve" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
@@ -368,7 +381,7 @@ export const ResettingVerticesStraightensTheLineAndDropsTheAnchor: Story = {
     await expect(panel.queryByRole("spinbutton", { name: "Vertex 2 X" })).not.toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Reset vertices" }));
     await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({ anchors: [] })));
   },
 };
@@ -405,10 +418,10 @@ export const ChoosingAutomaticAgainRemovesTheAnchor: Story = {
     const panel = await selectLine(canvas);
     await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Top");
     await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line starts at" }), "Automatic (Right)");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
     await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Top");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled());
   },
 };
 
@@ -424,7 +437,7 @@ export const RemovingABoxDropsTheAnchorsOfItsLines: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Orders");
     await userEvent.click(await canvas.findByRole("button", { name: "Remove from diagram" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({ anchors: [] })));
   },
 };
@@ -462,7 +475,7 @@ export const AddingAnElementDrawsItsConnectionsBeforeSaving: Story = {
     await userEvent.click(dialog.getByRole("button", { name: "Add selected (1)" }));
     await expect(await canvas.findByLabelText("Cache, node")).toBeInTheDocument();
     await expect(await canvas.findByLabelText("Connection from Gateway to Cache")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
     await expect(canvas.getByRole("status")).toHaveTextContent("Unsaved changes.");
   },
 };
@@ -487,7 +500,7 @@ export const AnElementIsCreatedAtOnceNamedForItsTypeAndSelected: Story = {
     await waitFor(() => expect(name).toHaveFocus());
     await expect(name).toHaveValue("Queue worker");
     await expect(requiredCaptions(await canvas.findByRole("group", { name: "Element details" }))).toEqual(["Name", "Element type"]);
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
   },
 };
 
@@ -499,7 +512,7 @@ export const ARefusedElementCreateAddsNothingAndSaysWhy: Story = {
     await addFromMenu(canvas, "Service");
     await expect(await within(document.body).findByText("You may not create elements in this project.")).toBeInTheDocument();
     await expect(canvas.queryByLabelText("Service 1, node")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
   },
 };
 
@@ -654,7 +667,7 @@ export const ANoteIsGivenAToneAndALeaderToABoxAndBothAreSaved: Story = {
     await expect(await noteField(canvas, "End style")).toHaveDisplayValue("Arrow");
     await userEvent.selectOptions(await noteField(canvas, "End style"), "dot");
     await userEvent.selectOptions(await noteField(canvas, "Starts at"), "right");
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
@@ -998,7 +1011,7 @@ export const TheDeleteKeyTakesTheSelectedBoxOffTheDiagramOnly: Story = {
     await select(canvas, "Orders");
     await userEvent.keyboard("{Delete}");
     await waitFor(() => expect(canvas.queryByLabelText("Orders, node")).not.toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
     await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
     await expect(await canvas.findByLabelText("Orders, node")).toBeInTheDocument();
     expect(api.delete).not.toHaveBeenCalled();
@@ -1073,7 +1086,7 @@ export const ExportingSavesAPendingLayoutFirst: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await exportAs(canvas, "SVG image");
     await waitFor(() => expect(names).toHaveLength(1));
     const put = (api.put as unknown as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder[0];
@@ -1207,7 +1220,7 @@ export const ADisplayNoteIsDrawnInsideItsBoxAndTheGearHidesItWithoutSaving: Stor
     // A viewer's choice: nothing is stored and the layout is not made unsaved.
     await expect(api.put).not.toHaveBeenCalled();
     await expect(api.post).not.toHaveBeenCalled();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
     // The note is still read in full from the Selection card.
     await select(canvas, "Gateway");
     await expect(await canvas.findByText("Public entry point.")).toBeInTheDocument();
@@ -1219,12 +1232,12 @@ export const UnsavedEditsAndTheSelectionSurviveAChangeOfTab: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     await openTab(canvas, "Configuration");
     await expect(await canvas.findByText(/unsaved changes; they are kept/)).toBeInTheDocument();
     await openTab(canvas, "Drawing");
     await expect(await canvas.findByLabelText("Gateway, node")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
     await expect(canvas.getByRole("status")).toHaveTextContent("Unsaved changes.");
     await expect(await canvas.findByRole("region", { name: "Selection" })).toHaveTextContent(/Gateway/);
   },
@@ -1238,23 +1251,23 @@ export const AnEditMadeWhileASaveIsReadBackIsKept: Story = {
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     // Hold the reads that follow a save, so a second move can be made while the stored layout is being read back.
     const spy = api.get as unknown as { getMockImplementation: () => (...args: unknown[]) => Promise<unknown>; mockImplementation: (fn: unknown) => void };
     const original = spy.getMockImplementation();
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     spy.mockImplementation(async (...args: unknown[]) => { await gate; return original(...args); });
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalled());
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
     release();
     await waitFor(() => expect(canvas.getByRole("status")).toHaveTextContent("Unsaved changes."));
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
     // Only the second move is unsaved: undoing it returns to what was stored.
     await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled());
   },
 };
 
@@ -1264,7 +1277,7 @@ export const EditingABoxInTheSelectionCardStoresTheElementAndKeepsPendingLayoutE
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect(panel.queryByRole("button", { name: "Edit element" })).not.toBeInTheDocument();
     const name = await panel.findByRole("textbox", { name: "Name" });
@@ -1276,7 +1289,7 @@ export const EditingABoxInTheSelectionCardStoresTheElementAndKeepsPendingLayoutE
     ));
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     // The move made before the edit is still waiting to be saved.
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
   },
 };
 
@@ -1305,7 +1318,7 @@ export const EditingALinesConnectionInTheSelectionCardStoresItAndKeepsPendingLay
     const canvas = within(canvasElement);
     await select(canvas, "Gateway");
     await userEvent.keyboard("{ArrowRight}");
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled());
     const panel = await selectLine(canvas);
     await expect(panel.queryByRole("button", { name: "Edit CON-001" })).not.toBeInTheDocument();
     const protocol = await panel.findByLabelText(/^Protocol/);
@@ -1315,7 +1328,7 @@ export const EditingALinesConnectionInTheSelectionCardStoresItAndKeepsPendingLay
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/connections/con-1`, { protocol: "HTTP/2", version: 1 }));
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     // The move made before the edit is still waiting to be saved.
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeEnabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
   },
 };
 
@@ -1452,7 +1465,7 @@ export const TheAddMenuOffersTheOuterConnectionsAndDrawsTheChosenOne: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Add to diagram" }));
     await expect(within(document.body).queryByRole("menuitem", { name: "CON-009 · ELM-008 Cloud" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({ boundaries: [expect.objectContaining({ connection_id: "con-9" })] }),
@@ -1537,7 +1550,7 @@ export const PinnedCommentsShowAsMarkersAndNeverMakeTheLayoutDirty: Story = {
     const thread = within(await within(document.body).findByRole("dialog", { name: "Comment thread" }));
     await expect(thread.getByText("Needs rate limiting.")).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
     await expect(canvas.queryByText("Unsaved changes.")).toBeNull();
   },
 };

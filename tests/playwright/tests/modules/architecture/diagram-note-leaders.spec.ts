@@ -40,9 +40,9 @@ async function addNote(page: Page, text: string): Promise<Locator> {
 
 async function saveLayout(page: Page) {
   const saved = page.waitForResponse((r) => r.url().includes("/layout") && r.request().method() === "PUT");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Save diagram", exact: true }).click();
   expect((await saved).ok()).toBeTruthy();
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
 }
 
 /** The middle of an element on the screen. */

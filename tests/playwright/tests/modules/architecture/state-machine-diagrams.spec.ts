@@ -219,7 +219,10 @@ test.describe("System Architecture: state machine diagrams", () => {
       await selectNode(page, "Idle");
       await selectionCard(page).getByLabel("Entry action").fill("stop motor");
       const stored = page.waitForResponse((r) => /\/states\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
-      await selectionCard(page).getByRole("button", { name: "Save state" }).click();
+      const saveState = selectionCard(page).getByRole("button", { name: "Save state" });
+      await expect(saveState).toHaveText("Save");
+      await expect(page.getByRole("button", { name: "Save diagram" })).toHaveText("Save");
+      await saveState.click();
       expect((await stored).ok()).toBeTruthy();
       await page.reload();
       await selectNode(page, "Idle");
@@ -558,8 +561,8 @@ test.describe("System Architecture: state machine diagrams", () => {
     const before = await stored();
     await selectNode(page, "Choice");
     await page.keyboard.press("ArrowRight");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     await expect.poll(async () => (await stored()).x).not.toBe(before.x);
     const after = await stored();
     // A key press moves the drawing by a few units; the symbol is about 130 units wide, so a jump by half its growth would be over 50.
@@ -580,19 +583,19 @@ test.describe("System Architecture: state machine diagrams", () => {
     await test.step("moving a state is an unsaved drawing edit; Undo returns to the saved drawing", async () => {
       await selectNode(page, "Idle");
       await page.keyboard.press("ArrowRight");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Undo" }).click();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     });
 
     await test.step("choosing Inside nests the state; Save stores the nesting and a reload keeps it", async () => {
       await selectNode(page, "Idle");
       await selectionCard(page).getByLabel("Inside").selectOption({ label: await insideLabel(page, "Active") });
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeEnabled();
       const saved = page.waitForResponse((r) => r.url().endsWith("/layout") && r.request().method() === "PUT");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
       expect((await saved).ok()).toBeTruthy();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
       await page.reload();
       await expect(page.getByLabel("Idle, node", { exact: true })).toBeVisible();
       const model = await (await page.request.get(`${base}/state-machine-diagrams/${diagram.id}/model`, { headers: adminHeaders })).json();
@@ -703,7 +706,7 @@ test.describe("System Architecture: state machine diagrams", () => {
       await composer.getByRole("button", { name: "Comment", exact: true }).click();
       expect((await stored).ok()).toBeTruthy();
       await expect(page.getByRole("button", { name: /Comment thread by .*, 1 comment/ })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save diagram", exact: true })).toBeDisabled();
     });
 
     await test.step("a second person opens the thread from the Comments tab", async () => {
