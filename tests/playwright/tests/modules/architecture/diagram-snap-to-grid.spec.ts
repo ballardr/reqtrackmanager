@@ -158,4 +158,83 @@ test.describe("System Architecture: snap to grid", () => {
       expect(onGrid(free.x) && onGrid(free.y)).toBe(false);
     });
   });
+
+  test("with Snap to grid off, every kind of symbol is stored where it is dropped, with the invert key's release lost or not", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchDropSm", true, "System Architecture");
+    const arch = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, arch, adminHeaders, `Gateway ${suffix}`);
+    const created = await page.request.post(`${arch}/state-machine-diagrams`, { headers: adminHeaders, data: { name: `Drops ${suffix}`, element_id: elementId } });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const diagram = await created.json();
+    // Every symbol starts on a grid line, so a snapped drop would end on one too.
+    const kinds: { name: string; kind: string; x: number; y: number; width: number; height: number }[] = [
+      { name: "Idle", kind: "state", x: 0, y: 0, width: 160, height: 64 },
+      { name: "Branch", kind: "choice", x: 240, y: 0, width: 36, height: 36 },
+      { name: "Start", kind: "initial", x: 340, y: 0, width: 20, height: 20 },
+      { name: "Stop", kind: "final", x: 420, y: 0, width: 28, height: 28 },
+    ];
+    let version: number = diagram.version;
+    const ids: Record<string, string> = {};
+    for (const symbol of kinds) {
+      const added = await page.request.post(`${arch}/state-machine-diagrams/${diagram.id}/states`, { headers: adminHeaders, data: { version, ...symbol } });
+      expect(added.ok(), await added.text()).toBeTruthy();
+      ids[symbol.name] = (await added.json()).id;
+      version += 1;
+    }
+    const node = (name: string) => page.locator(`.react-flow__node[data-id="${ids[name]}"]`);
+    const at = (name: string) => node(name).evaluate((el) => {
+      const match = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\s*\)/.exec((el as HTMLElement).style.transform);
+      if (!match) throw new Error("no transform");
+      return { x: Number(match[1]), y: Number(match[2]) };
+    });
+    const drag = async (name: string, dx: number, dy: number) => {
+      const zoom = await zoomOf(page);
+      const box = (await node(name).boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + (dx * zoom) / 2, y + (dy * zoom) / 2, { steps: 5 });
+      await page.mouse.move(x + dx * zoom, y + dy * zoom, { steps: 5 });
+      await page.mouse.up();
+    };
+
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    await expect(node("Idle")).toBeVisible();
+    await expect(page.locator(".react-flow__background")).toHaveCount(0);
+
+    const dropped: Record<string, { x: number; y: number }> = {};
+    await test.step("each symbol lands off the grid, by the same amount", async () => {
+      for (const symbol of kinds) {
+        const before = await at(symbol.name);
+        await drag(symbol.name, 37, 31);
+        const after = await at(symbol.name);
+        dropped[symbol.name] = after;
+        expect(onGrid(after.x) || onGrid(after.y), `${symbol.name} ${after.x},${after.y}`).toBe(false);
+        expect(Math.round(after.x - before.x) % 20, symbol.name).not.toBe(0);
+      }
+      const shifts = kinds.map((k) => Math.round(dropped[k.name].x - k.x));
+      expect(new Set(shifts).size, `shifts ${shifts}`).toBe(1);
+    });
+
+    await test.step("a Shift key-up the page never received does not make the next drop snap", async () => {
+      await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", shiftKey: true })));
+      await drag("Branch", 23, 17);
+      const after = await at("Branch");
+      expect(onGrid(after.x) || onGrid(after.y), `${after.x},${after.y}`).toBe(false);
+      dropped.Branch = after;
+    });
+
+    await test.step("saved and reloaded, every symbol is where it was dropped", async () => {
+      await page.getByRole("button", { name: "Save diagram" }).click();
+      await expect(page.getByRole("button", { name: "Save diagram" })).toBeDisabled();
+      await page.reload();
+      await expect(node("Idle")).toBeVisible();
+      for (const symbol of kinds) {
+        const stored = await at(symbol.name);
+        expect(Math.abs(stored.x - dropped[symbol.name].x), symbol.name).toBeLessThanOrEqual(1);
+        expect(Math.abs(stored.y - dropped[symbol.name].y), symbol.name).toBeLessThanOrEqual(1);
+      }
+    });
+  });
 });

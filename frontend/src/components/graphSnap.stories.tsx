@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
+import { invertKeyHeld, snapApplies, snapCoordinate, snapResize } from "./graphSnap";
 
 function Host() {
   return <p>Runs the canvas's grid rule over its cases.</p>;
@@ -72,5 +72,19 @@ export const TheInvertKeyActsOnlyDuringAGesture: Story = {
     // Held with no pointer gesture (a key-driven move): the setting alone decides.
     await expect(snapApplies(false, true, false)).toBe(false);
     await expect(snapApplies(true, true, false)).toBe(true);
+  },
+};
+
+/** A modifier invert key is read from the event's flags, so a stale earlier state cannot matter; any other key has no flag. */
+export const ReadsTheInvertKeyFromTheEventFlags: Story = {
+  play: async () => {
+    const none = { shiftKey: false, altKey: false, ctrlKey: false, metaKey: false };
+    await expect(invertKeyHeld({ ...none, shiftKey: true }, "Shift")).toBe(true);
+    await expect(invertKeyHeld(none, "Shift")).toBe(false);
+    await expect(invertKeyHeld({ ...none, shiftKey: true }, "Alt")).toBe(false);
+    await expect(invertKeyHeld({ ...none, altKey: true }, "Alt")).toBe(true);
+    await expect(invertKeyHeld({ ...none, ctrlKey: true }, "Control")).toBe(true);
+    await expect(invertKeyHeld({ ...none, metaKey: true }, "Meta")).toBe(true);
+    await expect(invertKeyHeld({ ...none, shiftKey: true }, "x")).toBeUndefined();
   },
 };

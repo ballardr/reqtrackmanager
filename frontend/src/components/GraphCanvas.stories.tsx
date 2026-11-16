@@ -935,7 +935,7 @@ const SNAP = { snapGrid: 20, snapInvertKey: "Shift" } as const;
  * The drag lands a few units short of the request (React Flow starts it after a small threshold), so the callers choose
  * distances that stay clear of a grid boundary and assert on the grid, not on an exact free position.
  */
-async function dragBy(canvasElement: HTMLElement, name: string, dx: number, dy: number, onMove: ReturnType<typeof fn>) {
+async function dragBy(canvasElement: HTMLElement, name: string, dx: number, dy: number, onMove: ReturnType<typeof fn>, user: { pointer: (actions: Parameters<typeof userEvent.pointer>[0]) => Promise<unknown> } = userEvent) {
   const canvas = within(canvasElement);
   const node = await canvas.findByLabelText(name);
   const frame = node.closest(".react-flow__node") as HTMLElement;
@@ -948,7 +948,7 @@ async function dragBy(canvasElement: HTMLElement, name: string, dx: number, dy: 
   const py = dy * zoom;
   const steps = 8;
   const along = (i: number) => ({ clientX: x + (px * i) / steps, clientY: y + (py * i) / steps });
-  await userEvent.pointer([
+  await user.pointer([
     { keys: "[MouseLeft>]", target: node, coords: along(0) },
     ...Array.from({ length: steps }, (_, i) => ({ target: node, coords: along(i + 1) })),
     // A move is applied one event late, so the last position is repeated before the button is released.
@@ -1004,9 +1004,11 @@ export const TheInvertKeyReversesTheSettingForOneDrag: Story = {
   args: { onNodesMove: fn() },
   render: (args) => <Host {...SNAP} snapOn={false} onNodesMove={args.onNodesMove} />,
   play: async ({ canvasElement, args }) => {
-    await userEvent.keyboard("{Shift>}");
-    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
-    await userEvent.keyboard("{/Shift}");
+    // One user-event instance, so the pointer events carry the key held (a real browser does the same).
+    const user = userEvent.setup();
+    await user.keyboard("{Shift>}");
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>, user);
+    await user.keyboard("{/Shift}");
     expect(last).toMatchObject({ id: "cloud", x: 580, y: 60 });
     // The key held for a move over a box does not start a box selection: only the dragged node is reported.
     const calls = (args.onNodesMove as ReturnType<typeof fn>).mock.calls as { id: string }[][][];
@@ -1018,11 +1020,31 @@ export const TheInvertKeySuspendsSnappingForOneDrag: Story = {
   args: { onNodesMove: fn() },
   render: (args) => <Host {...SNAP} snapOn onNodesMove={args.onNodesMove} />,
   play: async ({ canvasElement, args }) => {
-    await userEvent.keyboard("{Shift>}");
-    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
-    await userEvent.keyboard("{/Shift}");
+    // One user-event instance, so the pointer events carry the key held (a real browser does the same).
+    const user = userEvent.setup();
+    await user.keyboard("{Shift>}");
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>, user);
+    await user.keyboard("{/Shift}");
     expect(last.x % 20).not.toBe(0);
     expect(last.y % 20).not.toBe(0);
+  },
+};
+
+/**
+ * A key-up the page never received (an operating system screenshot shortcut swallows it) must not leave the invert key
+ * counted as held: the next drag, made with no key down, follows the setting. Snapping off stays off.
+ */
+export const ALostKeyUpDoesNotLeaveTheInvertKeyHeld: Story = {
+  args: { onNodesMove: fn() },
+  render: (args) => <Host {...SNAP} snapOn={false} onNodesMove={args.onNodesMove} />,
+  play: async ({ canvasElement, args }) => {
+    await within(canvasElement).findByLabelText("Cloud service, node");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", shiftKey: true }));
+    const last = await dragBy(canvasElement, "Cloud service, node", 27, 59, args.onNodesMove as ReturnType<typeof fn>);
+    expect(last.x % 20).not.toBe(0);
+    expect(last.y % 20).not.toBe(0);
+    // The key does still invert while it is really down.
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", shiftKey: false }));
   },
 };
 

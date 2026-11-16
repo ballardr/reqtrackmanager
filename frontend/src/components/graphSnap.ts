@@ -6,6 +6,8 @@
  * Responsibilities:
  * - Snap one coordinate, and the edges a resize moved, to a grid of a given size.
  * - Say whether snapping applies to a move: the person's setting, inverted while the invert key is held during a drag or resize.
+ * - Read whether the invert key is held from an event's own modifier flags, so a key-up the page never received cannot leave it
+ *   counted as held (a screenshot shortcut swallows it, and snapping would then follow the opposite of the setting).
  *
  * Design decisions:
  * - The grid is in absolute canvas coordinates, so a box nested inside a container snaps to the same grid as one at the top
@@ -78,4 +80,30 @@ export function snapResize(before: SnapBox, after: SnapBox, size: number, minWid
  */
 export function snapApplies(setting: boolean, invertHeld: boolean, gesture: boolean): boolean {
   return setting !== (invertHeld && gesture);
+}
+
+/** The modifier flags every keyboard and pointer event carries. */
+export interface ModifierFlags {
+  shiftKey: boolean;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}
+
+/**
+ * Whether the invert key is held, read from an event's modifier flags.
+ *
+ * @param event Any keyboard or pointer event (or an object with its modifier flags).
+ * @param key The invert key's `KeyboardEvent.key` value (`Shift`, `Alt`, `Control` or `Meta`).
+ * @returns True or false for a modifier key, whatever earlier events said; undefined for any other key, which has no flag
+ *   and is tracked from its key-down and key-up events instead.
+ */
+export function invertKeyHeld(event: ModifierFlags, key: string): boolean | undefined {
+  switch (key) {
+    case "Shift": return event.shiftKey;
+    case "Alt": return event.altKey;
+    case "Control": return event.ctrlKey;
+    case "Meta": return event.metaKey;
+    default: return undefined;
+  }
 }

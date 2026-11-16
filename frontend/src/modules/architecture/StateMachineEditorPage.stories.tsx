@@ -1063,3 +1063,120 @@ export const AnArchivedDiagramCannotPlaceOrEditNotes: Story = {
     await expect(canvas.queryByRole("button", { name: "Add leader" })).toBeNull();
   },
 };
+
+/** Drags the node `id` by `dx`, `dy` screen pixels and returns how far its drawn frame moved. */
+async function dragNode(canvasElement: HTMLElement, id: string, dx: number, dy: number) {
+  const frameOf = () => canvasElement.querySelector(`.react-flow__node[data-id="${id}"]`) as HTMLElement;
+  const before = frameOf().getBoundingClientRect();
+  const x = before.left + before.width / 2;
+  const y = before.top + before.height / 2;
+  const steps = 8;
+  const along = (i: number) => ({ clientX: x + (dx * i) / steps, clientY: y + (dy * i) / steps });
+  await userEvent.pointer([
+    { keys: "[MouseLeft>]", target: frameOf(), coords: along(0) },
+    ...Array.from({ length: steps }, (_, i) => ({ target: frameOf(), coords: along(i + 1) })),
+    { target: frameOf(), coords: along(steps) },
+    { keys: "[/MouseLeft]", target: frameOf(), coords: along(steps) },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const after = frameOf().getBoundingClientRect();
+  return { dx: Math.round(after.left - before.left), dy: Math.round(after.top - before.top) };
+}
+
+/**
+ * With Snap to grid off, a dropped symbol is stored where the pointer put it: the one rule for a choice, an initial and a final
+ * symbol (plain, labelled inside and labelled beside), an ordinary state and a state inside a frame. Every box starts on the
+ * grid and is moved by an amount that is not a grid step, so a snapped result would be a multiple of 20.
+ */
+export const WithSnapOffEverySymbolIsStoredWhereItIsDropped: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      stateMachineModel: buildStateMachineModel({
+        states: [
+          buildState({ id: "a", unique_code: "STE-010", name: "Plain choice", kind: "choice", x: 40, y: 40, width: 36, height: 36 }),
+          buildState({ id: "b", unique_code: "STE-011", name: "Inside choice", kind: "choice", x: 240, y: 40, width: 36, height: 36, label: "Battery low?" }),
+          buildState({ id: "c", unique_code: "STE-012", name: "Right choice", kind: "choice", x: 440, y: 40, width: 36, height: 36, label: "Battery low?", label_position: "right" }),
+          buildState({ id: "d", unique_code: "STE-013", name: "Inside initial", kind: "initial", x: 40, y: 240, width: 20, height: 20, label: "Go" }),
+          buildState({ id: "h", unique_code: "STE-017", name: "Plain initial", kind: "initial", x: 120, y: 240, width: 20, height: 20 }),
+          buildState({ id: "i", unique_code: "STE-018", name: "Plain final", kind: "final", x: 160, y: 240, width: 28, height: 28 }),
+          buildState({ id: "e", unique_code: "STE-014", name: "Frame", x: 240, y: 200, width: 720, height: 420 }),
+          buildState({ id: "f", unique_code: "STE-015", name: "Inner", x: 280, y: 260, parent_state_id: "e", parent_state_code: "STE-014" }),
+          buildState({ id: "g", unique_code: "STE-016", name: "Inner final", kind: "final", x: 460, y: 300, width: 28, height: 28, parent_state_id: "e", parent_state_code: "STE-014" }),
+          buildState({ id: "j", unique_code: "STE-019", name: "Loose", x: 40, y: 340 }),
+        ],
+        transitions: [],
+      }),
+    });
+    spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Frame, node");
+    // The view fits itself to the nodes once they are measured; drag only after it has settled. The frame is large enough that
+    // no drag reaches its edge (a state inside a frame cannot be dragged out of it).
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const ids = ["a", "b", "c", "d", "h", "i", "j", "f", "g"];
+    for (const id of ids) await dragNode(canvasElement, id, 37, 31);
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${MACHINE}/layout`, expect.anything()));
+    const sent = (api.put as unknown as ReturnType<typeof fn>).mock.calls.find((call) => call[0] === `${MACHINE}/layout`)![1] as { states: { id: string; x: number; y: number }[] };
+    for (const id of ids) {
+      const stored = sent.states.find((s) => s.id === id)!;
+      // Moved by about the pointer's distance (less the first step React Flow spends starting the drag), never onto a grid line.
+      await expect(stored.x % 20).not.toBe(0);
+      await expect(stored.y % 20).not.toBe(0);
+    }
+    // Every symbol moved by the same amount: the kind makes no difference.
+    const moved = ids.map((id) => {
+      const stored = sent.states.find((s) => s.id === id)!;
+      const start = { a: [40, 40], b: [240, 40], c: [440, 40], d: [40, 240], h: [120, 240], i: [160, 240], j: [40, 340], f: [280, 260], g: [460, 300] }[id]!;
+      return [stored.x - start[0], stored.y - start[1]];
+    });
+    for (const delta of moved) await expect(delta).toEqual(moved[0]);
+  },
+};
+
+/**
+ * A symbol whose label inside it makes its drawn frame larger than its stored box (the frame grows around the box's centre) is
+ * dragged by the pointer's distance each time, with Snap to grid off, on and off again: it never drifts up and to the left by
+ * half the growth, as it did when the frame's corner was stored as the box.
+ */
+export const ALabelledSymbolMovesByTheDragWhateverTheSnapSetting: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      stateMachineModel: buildStateMachineModel({
+        states: [
+          buildState({ id: "b", unique_code: "STE-011", name: "Inside choice", kind: "choice", x: 240, y: 200, width: 36, height: 36, label: "Battery low enough to charge?" }),
+          buildState({ id: "k", unique_code: "STE-012", name: "Inside final", kind: "final", x: 640, y: 200, width: 28, height: 28, label: "Landed" }),
+        ],
+        transitions: [],
+      }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Choice, node");
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const frames = (id: string) => (canvasElement.querySelector(`.react-flow__node[data-id="${id}"]`) as HTMLElement).getBoundingClientRect();
+    // The frame is larger than the stored box (36 units), which is what made the stored corner differ from the box.
+    await expect(frames("b").width).toBeGreaterThan(60);
+    const free: { dx: number; dy: number }[] = [];
+    for (const snapOn of [false, true, false]) {
+      try {
+        localStorage.setItem("reqtrack.canvasSnapToGrid", snapOn ? "1" : "0");
+        window.dispatchEvent(new StorageEvent("storage", { key: "reqtrack.canvasSnapToGrid" }));
+      } catch { /* storage may be blocked; the next drag then uses the setting as it is */ }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      for (const id of ["b", "k"]) {
+        const moved = await dragNode(canvasElement, id, 61, 43);
+        if (!snapOn) free.push(moved);
+      }
+    }
+    // Free drags move by the pointer's distance (less the first step React Flow spends starting a drag), every time.
+    for (const moved of free) {
+      await expect(Math.abs(moved.dx - free[0].dx)).toBeLessThanOrEqual(2);
+      await expect(Math.abs(moved.dy - free[0].dy)).toBeLessThanOrEqual(2);
+    }
+    await expect(free[0].dx).toBeGreaterThan(40);
+  },
+};

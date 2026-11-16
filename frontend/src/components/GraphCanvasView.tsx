@@ -87,7 +87,7 @@ import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, seg
 import { GraphNodeBadges } from "./GraphNodeBadges";
 import { DEFAULT_BOX_HEIGHT, DEFAULT_BOX_WIDTH, assignLineAnchors, canvasLines, type LineAnchor } from "./graphLineAnchors";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
-import { snapApplies, snapCoordinate, snapResize } from "./graphSnap";
+import { invertKeyHeld, snapApplies, snapCoordinate, snapResize } from "./graphSnap";
 
 /** A node with no badges (one shared array, so an unchanged node keeps its data identity). */
 const NO_BADGES: readonly GraphNodeBadge[] = [];
@@ -651,8 +651,16 @@ export function GraphCanvasView({
   const pointsEditable = onEdgePointsChangeProp !== undefined;
   useEffect(() => {
     if (snapGrid === undefined || snapInvertKey === undefined) return undefined;
-    const press = (event: globalThis.KeyboardEvent) => { if (event.key === snapInvertKey) setInvertHeld(true); };
-    const release = (event: globalThis.KeyboardEvent) => { if (event.key === snapInvertKey) setInvertHeld(false); };
+    // A modifier is read from the event's own flags, which are right even when an earlier key-up was never received (an
+    // operating system screenshot shortcut swallows it); any other key is tracked from its key-down and key-up events.
+    const track = (down: boolean) => (event: globalThis.KeyboardEvent | globalThis.MouseEvent) => {
+      const held = invertKeyHeld(event, snapInvertKey);
+      if (held !== undefined) setInvertHeld(held);
+      else if ("key" in event && event.key === snapInvertKey) setInvertHeld(down);
+    };
+    const press = track(true);
+    const release = track(false);
+    const sync = track(false);
     const clear = () => { setInvertHeld(false); setGesture(false); };
     const endGesture = () => setGesture(false);
     window.addEventListener("keydown", press);
@@ -660,12 +668,16 @@ export function GraphCanvasView({
     window.addEventListener("blur", clear);
     window.addEventListener("pointerup", endGesture);
     window.addEventListener("pointercancel", endGesture);
+    window.addEventListener("mousedown", sync, true);
+    window.addEventListener("mousemove", sync, true);
     return () => {
       window.removeEventListener("keydown", press);
       window.removeEventListener("keyup", release);
       window.removeEventListener("blur", clear);
       window.removeEventListener("pointerup", endGesture);
       window.removeEventListener("pointercancel", endGesture);
+      window.removeEventListener("mousedown", sync, true);
+      window.removeEventListener("mousemove", sync, true);
     };
   }, [snapGrid, snapInvertKey]);
 
