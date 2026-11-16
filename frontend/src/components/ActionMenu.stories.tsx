@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Download, Pencil } from "lucide-react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { contrastRatio } from "../utils/color";
 import { ActionMenu } from "./ActionMenu";
 
 const meta: Meta<typeof ActionMenu> = {
@@ -286,4 +287,46 @@ export const AClickOnASurfaceThatStopsMouseDownClosesTheMenu: Story = {
     await waitFor(() => expect(within(document.body).queryByRole("menu")).not.toBeInTheDocument());
     await expect(trigger).toHaveFocus();
   },
+};
+
+/** A computed `rgb(r, g, b)` colour as `#rrggbb`, for `contrastRatio`. */
+function rgbToHex(rgb: string): string {
+  const parts = rgb.match(/\d+/g)?.slice(0, 3).map(Number) ?? [0, 0, 0];
+  return `#${parts.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** The colour a token resolves to on the page, as `#rrggbb`. */
+function tokenHex(name: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${name})`;
+  document.body.appendChild(probe);
+  const hex = rgbToHex(getComputedStyle(probe).color);
+  probe.remove();
+  return hex;
+}
+
+/** The open entry of a tree takes the product's selected-state colour (the primary slate, in a heavier weight), never
+ * the green accent, and is readable on the menu's surface in the active theme. */
+async function expectOpenEntryUsesPrimary(canvasElement: HTMLElement): Promise<void> {
+  await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+  const parent = within(document.body).getByRole("menuitem", { name: "Download items" });
+  await expect(parent).toHaveAttribute("aria-expanded", "true");
+  const colour = rgbToHex(getComputedStyle(parent).color);
+  await expect(colour).toBe(tokenHex("--color-primary"));
+  await expect(colour).not.toBe(tokenHex("--color-accent"));
+  await expect(Number(getComputedStyle(parent).fontWeight)).toBeGreaterThanOrEqual(600);
+  const surface = rgbToHex(getComputedStyle(parent.closest(".popover-menu") ?? document.body).backgroundColor);
+  await expect(contrastRatio(colour, surface)).toBeGreaterThanOrEqual(4.5);
+}
+
+export const TheOpenEntryTakesTheProductColourInLightTheme: Story = {
+  args: { items: submenuItems() },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => expectOpenEntryUsesPrimary(canvasElement),
+};
+
+export const TheOpenEntryTakesTheProductColourInDarkTheme: Story = {
+  args: { items: submenuItems() },
+  globals: { theme: "dark" },
+  play: async ({ canvasElement }) => expectOpenEntryUsesPrimary(canvasElement),
 };

@@ -2805,10 +2805,11 @@ td:has(> .disclosure-toggle) {
 }
 
 /* A parent row (an item with `children`, or a group of several items): a chevron that turns down while it is
-   open, and the accent colour on the open entry. Its rows follow in `.menu-tree-group`, indented under a thin
-   guide line. */
+   open, and the product's selected-state colour (the primary slate, with a heavier weight) on the open entry; the
+   accent colour is for focus and selection outlines, never a menu's text. Its rows follow in `.menu-tree-group`,
+   indented under a thin guide line. */
 .menu-parent[aria-expanded="true"] {
-  color: var(--color-accent);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
