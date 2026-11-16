@@ -16,8 +16,9 @@
  * - A line: the connections behind it (a rolled-up or merged line stands for several), for a bridged line the hidden
  *   elements it passes through, and the attach points of its two ends (Automatic or one of the box's eight points), the
  *   keyboard route to dragging a line's end. A line that stands for one connection of this project edits it in place
- *   (`ConnectionSelectionFields`, the shared connection field group); each connection of a line that stands for several has an Edit
- *   button that opens the shared connection form (`onEditConnection`); one shared from another project is listed without it.
+ *   (`ConnectionSelectionFields`, the shared connection field group); a line that stands for several lists them as compact rows
+ *   (`ConnectionSummaryList`), each with an Edit button that opens the shared connection form (`onEditConnection`); one shared
+ *   from another project is listed without it.
  * - A box can also start a connection to another box from a list ("Connect to"), the keyboard route to what dragging a
  *   line between two boxes does.
  * - A boundary box (an outer connection of the diagram's element): the connection, the element outside, its direction and
@@ -26,7 +27,7 @@
  * - A line that stands for one connection also offers "Realises": the outer connections (the boundary boxes on this diagram)
  *   it is marked as realising, each removable, and a list to add another; the change is stored at once.
  * A box the viewer cannot read shows its code only and offers no actions beyond removing it from the diagram.
- * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set); a table row's
+ * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set); a connection row's
  * Edit and a realised connection's Remove are the same `IconAction`.
  */
 import { Pencil, X } from "lucide-react";
@@ -56,6 +57,7 @@ import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
 import { ARCHITECTURE_HELP } from "./help";
 import { ConnectionSelectionFields } from "./ConnectionSelectionFields";
+import { ConnectionSummaryList } from "./ConnectionSummaryList";
 import { ElementSelectionFields } from "./ElementSelectionFields";
 import { LineVertexFields } from "./LineVertexFields";
 import { PortList } from "./PortList";
@@ -364,28 +366,12 @@ export function DiagramSelectionPanel({
         {edge.hops.length > 0 && (
           <p className="text-muted">Passes through: {edge.hops.map((h) => `${h.unique_code} ${h.name}`).join(", ")}</p>
         )}
-        <table className="table">
-          <thead>
-            <tr><th scope="col">Code</th><th scope="col">Type</th><th scope="col">From</th><th scope="col">To</th>{editable && <th scope="col"><span className="sr-only">Actions</span></th>}</tr>
-          </thead>
-          <tbody>
-            {edge.connections.map((c) => (
-              <tr key={c.id}>
-                <td><Link to={`${base}/connections/${c.id}`}>{formatCode.code(c.unique_code, c.from_project_code)}</Link></td>
-                <td>{c.connection_type_name}{c.protocol ? ` · ${c.protocol}` : ""}</td>
-                <td>{c.source_element_name || c.source_element_code}</td>
-                <td>{c.target_element_name || c.target_element_code}</td>
-                {editable && (
-                  <td>
-                    {c.project_id === projectId && ownConnection === null && (
-                      <IconAction label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}><Pencil /></IconAction>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ConnectionSummaryList
+          connections={edge.connections} label="Connections of this line" codeOf={(c) => formatCode.code(c.unique_code, c.from_project_code)}
+          linkTo={(c) => `${base}/connections/${c.id}`}
+          actionsOf={(c) => editable && c.project_id === projectId && ownConnection === null
+            ? <IconAction label={`Edit ${c.unique_code}`} onClick={() => onEditConnection(c)}><Pencil /></IconAction> : null}
+        />
         <SelectionActions actions={[onComment && selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: edge.id }))]} />
         {ownConnection && (
           <ConnectionSelectionFields

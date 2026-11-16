@@ -39,7 +39,9 @@ export const ShowsPortsChildrenConnectionsAndSharing: Story = {
     await expect(canvas.getByRole("link", { name: "Platform" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/elements/el-0`);
     await expect(canvas.getByLabelText("Port name", { selector: "input:not([placeholder])" })).toHaveValue("HTTPS API");
     await expect(await canvas.findByRole("link", { name: /ELM-002 Rate limiter/ })).toBeInTheDocument();
-    await expect(canvas.getByRole("link", { name: /CON-001 Client traffic/ })).toBeInTheDocument();
+    const connections = within(canvas.getByRole("list", { name: "Connections of this element" }));
+    await expect(connections.getByRole("link", { name: "CON-001" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/connections/con-1`);
+    await expect(connections.getByText("Client traffic")).toBeInTheDocument();
     await expect(await canvas.findByText("Shared infrastructure · 1 grant")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Change status" })).toBeInTheDocument();
     // The display note (drawn in the box) is shown apart from the description.

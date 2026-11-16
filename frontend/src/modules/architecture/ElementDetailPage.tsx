@@ -38,6 +38,7 @@ import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { useCreateConnection } from "./useCreateConnection";
 import { useCreateElement } from "./useCreateElement";
 import { ConnectionFormModal } from "./ConnectionFormModal";
+import { ConnectionSummaryList } from "./ConnectionSummaryList";
 import { ElementFormModal } from "./ElementFormModal";
 import { ElementSharingCard } from "./ElementSharingCard";
 import { AllocationPanel } from "./AllocationPanel";
@@ -239,16 +240,11 @@ export function ElementDetailPage() {
 
         <DetailCard heading="Connections" action={<button className="btn" onClick={() => { connectionForm.clearError(); setConnecting(true); }}>New connection</button>}>
           {connections.length === 0 ? <p className="text-muted" style={{ margin: 0 }}>No connections.</p> : (
-            <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }} className="stack">
-              {connections.map((c) => (
-                <li key={c.id}>
-                  <Link to={`/projects/${projectId}/modules/architecture/connections/${c.id}`}>
-                    <ScopedRecordCode record={{ unique_code: c.unique_code, from_project_code: c.from_project_code }} /> {c.name || `${c.source_element_name} → ${c.target_element_name}`}
-                  </Link>{" "}
-                  <span className="text-muted">{c.connection_type_name} · {c.source_element_name} → {c.target_element_name}</span>
-                </li>
-              ))}
-            </ul>
+            <ConnectionSummaryList
+              connections={connections} label="Connections of this element" showName
+              codeOf={(c) => <ScopedRecordCode record={{ unique_code: c.unique_code, from_project_code: c.from_project_code }} />}
+              linkTo={(c) => `/projects/${projectId}/modules/architecture/connections/${c.id}`}
+            />
           )}
         </DetailCard>
 

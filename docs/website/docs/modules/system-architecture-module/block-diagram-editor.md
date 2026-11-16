@@ -57,6 +57,8 @@ flowchart TB
 
 A **view switch** shows or hides elements and connections by rule (type, domain or tag) or by choice, for example "Security devices". Anyone viewing the diagram can flip a switch without saving. Where an element is hidden between two others, a **bridged line** (dashed) joins the two. A line between boxes that stands for connections between elements inside them is a **roll-up**.
 
+A line that stands for several connections (two connections between the same pair of boxes while connection detail is off, or a bridged or rolled-up line) is listed in the Selection card as one compact row per connection: the code, type and protocol, then the two ends, with an **Edit** button for a connection of this project that opens its form. The card never draws a wide table, so it stays readable in a narrow window.
+
 ## Outline
 
 The **Outline** lists what the drawing shows as text: the elements as a tree or a table (type, parent, display note, description and the state machine diagrams of each), the outer connections with their direction and coverage, the notes, and the lines with their direction, type, the number of connections each stands for and its **Route**:
