@@ -245,6 +245,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
           elementTypes={reference.elementTypes} connectionTypes={reference.connectionTypes} candidates={elements}
           symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)} orgUsers={reference.orgUsers}
           organizationId={project.organization_id} projectId={projectId} error={createForm.error}
+          onSymbolsChanged={reference.reloadSymbols}
           onCancel={() => { setCreating(false); createForm.clearError(); }} onSave={createForm.create}
         />
       )}

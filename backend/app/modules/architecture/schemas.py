@@ -50,10 +50,12 @@ _HEX_COLOR = r"^#[0-9A-Fa-f]{6}$"
 
 
 class CapabilitiesOut(BaseModel):
-    """What the caller may do in a project beyond reading, so a screen offers only the actions that will be accepted.
+    """What the caller may do in a project or an organisation beyond reading, so a screen offers only the actions that
+    will be accepted.
 
     Attributes:
-        manage_types: May change the project's element and connection types and symbols (`architecture_admin`).
+        manage_types: May change the project's (`architecture_admin`) or the organisation's (`architecture_org_admin`)
+            element and connection types and symbols.
     """
 
     manage_types: bool

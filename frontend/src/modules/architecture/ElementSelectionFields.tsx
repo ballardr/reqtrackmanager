@@ -34,9 +34,10 @@ import { useSelectionDraft } from "./useSelectionDraft";
  * @param autoFocusName True to select the name when the card first appears (an element just added).
  * @param onFocused Called once the name has taken the focus, so the request is not repeated.
  * @param onSave Stores the changed fields; resolves true when stored.
+ * @param onSymbolsChanged Called after the symbol picker uploads a symbol, so the caller reloads `symbols`.
  */
 export function ElementSelectionFields({
-  element, elementTypes, candidates, symbols, symbolUrl, orgUsers, organizationId, projectId, autoFocusName, onFocused, onSave,
+  element, elementTypes, candidates, symbols, symbolUrl, orgUsers, organizationId, projectId, autoFocusName, onFocused, onSave, onSymbolsChanged,
 }: {
   element: ArchitectureElement;
   elementTypes: ElementType[];
@@ -49,6 +50,7 @@ export function ElementSelectionFields({
   autoFocusName: boolean;
   onFocused: () => void;
   onSave: (changed: Partial<ElementFieldValues>) => Promise<boolean>;
+  onSymbolsChanged?: () => void;
 }) {
   const { draft, set, hasChanges, refused: nameMissing, commit } = useSelectionDraft<ElementFieldValues>({
     stored: valuesFromElement(element), diff: diffElementFields, normalise: (v) => ({ ...v, name: v.name.trim() }),
@@ -70,6 +72,7 @@ export function ElementSelectionFields({
         <ElementFields
           values={draft} onChange={set} elementTypes={elementTypes} parents={parents} symbols={symbols} symbolUrl={symbolUrl}
           orgUsers={orgUsers} organizationId={organizationId} projectId={projectId} saved={element} autoFocusName={autoFocusName}
+          onSymbolsChanged={onSymbolsChanged}
         />
       </FormGrid>
       {nameMissing && <p role="alert" style={{ color: "var(--color-danger)" }}>A name is required.</p>}

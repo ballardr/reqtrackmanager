@@ -44,13 +44,14 @@ export interface ElementCreateExtras {
  * @param orgUsers Organisation members offered as owner.
  * @param organizationId The owning organisation.
  * @param projectId The owning project; omit for an organisation element (no links, tags or project groups).
+ * @param onSymbolsChanged Called after a symbol is uploaded from the picker, so the caller reloads `symbols`.
  * @param defaultParentId A parent to preselect for a new element (the element it is added under).
  * @param error A save error to show.
  * @param onSave Called with the values and, for a new element, the extras.
  */
 export function ElementFormModal({
   initial, elementTypes, connectionTypes, candidates, symbols, symbolUrl, orgUsers, organizationId, projectId,
-  defaultParentId = null, error, onCancel, onSave,
+  defaultParentId = null, error, onCancel, onSave, onSymbolsChanged,
 }: {
   initial?: ArchitectureElement;
   elementTypes: ElementType[];
@@ -65,6 +66,7 @@ export function ElementFormModal({
   error?: string | null;
   onCancel: () => void;
   onSave: (values: ElementFieldValues, extras: ElementCreateExtras) => void;
+  onSymbolsChanged?: () => void;
 }) {
   const [values, setValues] = useState<ElementFieldValues>(() =>
     initial ? valuesFromElement(initial) : blankElementValues(elementTypes[0]?.id ?? "", defaultParentId));
@@ -92,6 +94,7 @@ export function ElementFormModal({
           <ElementFields
             values={values} onChange={set} elementTypes={elementTypes} parents={parents} symbols={symbols} symbolUrl={symbolUrl}
             orgUsers={orgUsers} organizationId={organizationId} projectId={projectId} saved={initial}
+            onSymbolsChanged={onSymbolsChanged}
           />
           {!initial && (
             <FormGridFull>

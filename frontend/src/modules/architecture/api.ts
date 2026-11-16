@@ -138,9 +138,10 @@ function vocabulary<Row, Values>(path: string) {
 export const elementTypeApi = vocabulary<ElementType, ElementTypeValues>("element-types");
 export const connectionTypeApi = vocabulary<ConnectionType, ConnectionTypeValues>("connection-types");
 
-/** What the caller may change in a project (`GET .../capabilities`), so a screen offers only actions that will be accepted. */
+/** What the caller may change in a project or an organisation (`GET .../capabilities`), so a screen offers only actions that will be accepted. */
 export const capabilitiesApi = {
   get: (projectId: string) => api.get<{ manage_types: boolean }>(`${projectBase(projectId)}/capabilities`),
+  orgGet: (organizationId: string) => api.get<{ manage_types: boolean }>(`${orgBase(organizationId)}/capabilities`),
 };
 
 /** The symbol library of a project or an organisation (an upload is a file, so there is no JSON create). */

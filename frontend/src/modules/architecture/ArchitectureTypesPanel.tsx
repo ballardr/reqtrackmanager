@@ -217,6 +217,8 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
           initial={editing === "new" ? undefined : editing}
           symbols={symbols}
           symbolUrl={symbolUrl}
+          scope={scope}
+          onSymbolsChanged={reload}
           connectionTypes={kind === "connection" ? (rows as ConnectionType[]) : connectionTypes}
           error={formError}
           onCancel={() => { setEditing(null); setFormError(null); }}

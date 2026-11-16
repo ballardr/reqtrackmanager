@@ -9,16 +9,16 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { DefinitionList } from "../../components/DefinitionList";
-import { UploadField } from "../../components/FormFields";
 import { RestoreOrgDefaultsButton, type HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { blockedError } from "../../utils/blockedError";
 import { orgSymbolUrl, projectSymbolUrl, symbolApi } from "./api";
-import { ARCHITECTURE_HELP } from "./help";
 import { SymbolImage } from "./SymbolImage";
+import { SymbolUploadField } from "./SymbolUploadField";
 import type { TypesScope } from "./ArchitectureTypesPanel";
 import type { ArchitectureSymbol } from "./types";
+import { useSymbolUpload } from "./useSymbolUpload";
 
 /** @param scope The project or organisation whose library is managed. */
 export function SymbolLibraryPanel({ scope }: { scope: TypesScope }) {
@@ -26,9 +26,9 @@ export function SymbolLibraryPanel({ scope }: { scope: TypesScope }) {
   const [symbols, setSymbols] = useState<ArchitectureSymbol[] | null>(null);
   const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
+  const uploading = useSymbolUpload(scope, reload);
   const scopeId = scope.kind === "project" ? scope.projectId : scope.organizationId;
   const urlFor = (id: string) => (scope.kind === "project" ? projectSymbolUrl(scopeId, id) : orgSymbolUrl(scopeId, id));
 
@@ -51,26 +51,9 @@ export function SymbolLibraryPanel({ scope }: { scope: TypesScope }) {
   /** Not renamed here: a built-in drawing, or (in a project) an organisation's symbol. */
   const isReadOnly = (symbol: ArchitectureSymbol) => symbol.is_builtin || (scope.kind === "project" && symbol.project_id === null);
 
-  async function upload(file: File) {
-    setUploadError(null);
-    try {
-      await (scope.kind === "project" ? symbolApi.projectUpload(scopeId, file) : symbolApi.orgUpload(scopeId, file));
-      showToast("Symbol uploaded.");
-      reload();
-    } catch (err) {
-      setUploadError(toErrorMessage(err, "Could not upload the symbol."));
-    }
-  }
-
   return (
     <div className="stack">
-      <UploadField
-        id="architecture-symbol-upload" label="Upload a symbol" accept=".svg,image/svg+xml,.eps,.pdf"
-        help={ARCHITECTURE_HELP.symbolUpload} onSelect={(file) => void upload(file)}
-      >
-        Choose a file
-      </UploadField>
-      {uploadError && <div role="alert" style={{ color: "var(--color-danger)" }}>{uploadError}</div>}
+      <SymbolUploadField id="architecture-symbol-upload" state={uploading} />
       <DefinitionList<ArchitectureSymbol>
         layout="grid"
         items={symbols}

@@ -186,7 +186,7 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
           initial={editing === "new" ? undefined : editing}
           elementTypes={elementTypes} connectionTypes={connectionTypes} candidates={elements}
           symbols={symbols} symbolUrl={(id) => orgSymbolUrl(orgId, id)} orgUsers={orgUsers} organizationId={orgId}
-          error={formError} onCancel={() => { setEditing(null); setFormError(null); }} onSave={save}
+          error={formError} onCancel={() => { setEditing(null); setFormError(null); }} onSave={save} onSymbolsChanged={reload}
         />
       )}
     </div>

@@ -310,6 +310,10 @@ The most storage an organisation may use for its files and stored report outputs
 
 A server role, granted by a server administrator, that permanently deletes an organisation and all of its data after its name is typed to confirm. It holds no other power: it cannot create, suspend or read records. Independent of the Platform subscription manager. See [Server administration](../workflows/server-administration.md#server-roles).
 
+#### Symbol
+
+A drawing from the System Architecture symbol library (a sanitised SVG, or one of the built-in drawings) that an element or an element type shows in its box. Chosen from a List or a Gallery in the form, where a person who may change the library can also upload a new one. See [Elements, ports and connections](../modules/system-architecture-module/elements-ports-and-connections.md).
+
 #### Task (change request task)
 
 A short follow-up item tied to a change request, with an optional assignee and due date. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).

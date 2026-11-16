@@ -113,6 +113,8 @@ export const ARCHITECTURE_HELP = {
   baselineCompareWith: "The live model compares the baseline with the architecture as it stands now. Another baseline compares the two as they were taken. In both, a record only in the baseline you are viewing is Removed, a record only in the other side is Added.",
   baselineKind: "Stage: written automatically when a stage entered a locked phase.\nManual: taken on request, with no stage.",
   symbolUpload: "An SVG drawing (or an EPS or PDF when conversion is available). It is sanitised on upload. Upload only artwork the organisation is licensed to use.",
+  symbolPickerUpload: "Adds a drawing to the symbol library and chooses it here. The library is shared: everyone in this project (or organisation) can then choose it, not only this record. In a project that uses its parent's library, the first upload copies the parent's symbols into this project. The choice is saved with the form. Rename or remove the symbol later in the Symbols settings.",
+  symbolPickerView: "How the symbols are listed.\nList: a drop-down of symbol names.\nGallery: a scrolling grid that shows each drawing, with a filter by name.",
 } as const;
 
 /** A domain term that appears as a heading, column header or Selection card label, with its plain-language help. */

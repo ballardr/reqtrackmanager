@@ -29,9 +29,10 @@ import type { ArchitectureElement, ArchitectureSymbol, ElementFieldValues, Eleme
  * @param projectId The owning project (omit for an organisation element), for project groups.
  * @param saved The element being edited, so its owner shows by name until changed.
  * @param autoFocusName True to select the name when the group first appears (an element just added to a diagram).
+ * @param onSymbolsChanged Called after the symbol picker uploads a symbol, so the caller reloads `symbols`.
  */
 export function ElementFields({
-  values, onChange, elementTypes, parents, symbols, symbolUrl, orgUsers, organizationId, projectId, saved, autoFocusName = false,
+  values, onChange, elementTypes, parents, symbols, symbolUrl, orgUsers, organizationId, projectId, saved, autoFocusName = false, onSymbolsChanged,
 }: {
   values: ElementFieldValues;
   onChange: <K extends keyof ElementFieldValues>(key: K, value: ElementFieldValues[K]) => void;
@@ -44,6 +45,7 @@ export function ElementFields({
   projectId?: string;
   saved?: ArchitectureElement;
   autoFocusName?: boolean;
+  onSymbolsChanged?: () => void;
 }) {
   const formatCode = useRecordCode();
   return (
@@ -75,6 +77,7 @@ export function ElementFields({
       <SymbolPicker
         help={ARCHITECTURE_HELP.elementSymbol} label="Symbol" symbols={symbols} value={values.symbol_id}
         onChange={(next) => onChange("symbol_id", next)} urlFor={symbolUrl} emptyLabel="Use the type's symbol"
+        scope={projectId ? { kind: "project", projectId } : { kind: "org", organizationId }} onSymbolsChanged={onSymbolsChanged}
       />
       <FormGridFull>
         <TextAreaField

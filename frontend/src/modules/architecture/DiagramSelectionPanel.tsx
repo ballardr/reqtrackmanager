@@ -74,6 +74,8 @@ export interface ElementEditorReference {
   symbolUrl: (symbolId: string) => string;
   orgUsers: OrgUser[];
   organizationId: string;
+  /** Reloads `symbols` after the symbol picker uploaded one. */
+  onSymbolsChanged?: () => void;
 }
 
 /**
@@ -243,7 +245,7 @@ export function DiagramSelectionPanel({
             key={`fields-${element.id}`} element={element} elementTypes={editorFields.elementTypes} symbols={editorFields.symbols}
             candidates={elements.filter((e) => !e.shared)} symbolUrl={editorFields.symbolUrl} orgUsers={editorFields.orgUsers}
             organizationId={editorFields.organizationId} projectId={projectId} autoFocusName={focusNew === element.id}
-            onFocused={onFocused} onSave={(changed) => onSaveElement(element, changed)}
+            onFocused={onFocused} onSave={(changed) => onSaveElement(element, changed)} onSymbolsChanged={editorFields.onSymbolsChanged}
           />
         )}
         {element && !box.locked && (

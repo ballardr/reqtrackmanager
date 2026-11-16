@@ -16,6 +16,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { TreeSelectField } from "../../components/TreeSelectField";
 import { labelOptions } from "../../utils/labelOptions";
+import type { TypesScope } from "./ArchitectureTypesPanel";
 import { connectionTypeNodes, cycleReasons } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import { SymbolPicker } from "./SymbolPicker";
@@ -61,17 +62,21 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
  * @param initial The type being edited; omit to create.
  * @param symbols The symbols an element type may use (ignored for a connection type).
  * @param symbolUrl The API path of a symbol's content, for the preview.
+ * @param scope The project or organisation the type belongs to, for the symbol picker's upload.
+ * @param onSymbolsChanged Called after a symbol is uploaded from the picker, so the caller reloads `symbols`.
  * @param connectionTypes The connection types a connection type may sit under, or an element type may suggest.
  * @param error A save error to show.
  * @param onSave Called with the values for the kind.
  */
 export function TypeFormModal({
-  kind, initial, symbols = [], symbolUrl = () => "", connectionTypes = [], error, onCancel, onSave,
+  kind, initial, symbols = [], symbolUrl = () => "", scope, onSymbolsChanged, connectionTypes = [], error, onCancel, onSave,
 }: {
   kind: "element" | "connection";
   initial?: ElementType | ConnectionType;
   symbols?: ArchitectureSymbol[];
   symbolUrl?: (symbolId: string) => string;
+  scope?: TypesScope;
+  onSymbolsChanged?: () => void;
   connectionTypes?: ConnectionType[];
   error?: string | null;
   onCancel: () => void;
@@ -126,6 +131,7 @@ export function TypeFormModal({
               <SymbolPicker
                 help={ARCHITECTURE_HELP.typeSymbol} label="Symbol" symbols={symbols} value={draft.symbol_id}
                 onChange={(next) => set("symbol_id", next)} urlFor={symbolUrl} emptyLabel="Draw the shape"
+                scope={scope} onSymbolsChanged={onSymbolsChanged}
               />
             </FormGridFull>
           )}

@@ -15,6 +15,7 @@ The architecture of a product is recorded as **elements** (its parts) and **conn
 | [Connection](../../reference/glossary.md#connection) | A link between two elements (`CON-001`) |
 | [Connection type](../../reference/glossary.md#connection-type) | The kind of interface, such as REST API or I2C bus |
 | [Display note](../../reference/glossary.md#display-note) | A short line drawn inside an element's box on every diagram |
+| [Symbol](../../reference/glossary.md#symbol) | A drawing from the symbol library, shown in an element's box |
 
 ```mermaid
 flowchart LR
@@ -30,6 +31,10 @@ flowchart LR
 ## Elements
 
 An element has a name, a description, a type (which sets how it is drawn), an optional parent, an owner and a status. Parents form a tree up to 12 levels deep: a diagram can show a parent as one box, or open it to show its children. An element belongs to a project or to the organisation; an organisation element can be shared with projects through collections.
+
+The **symbol** field chooses the drawing shown in the element's box; left empty, the element uses its type's symbol. The field has two views, switched with the **List** and **Gallery** buttons beside it (the choice is remembered in the browser). **List** is a drop-down of symbol names. **Gallery** opens a scrolling grid that shows every drawing, with a filter by name and a **None** tile that returns to the default. In the grid, the arrow keys move between tiles, Enter or Space chooses, and Escape closes it.
+
+A person with the Architecture Admin role (Architecture Org Admin for an organisation's elements and types) also sees **Upload a symbol** under the field. The file is sanitised, added to the shared symbol library of the project (or organisation) for everyone, and chosen in the form; the choice is saved with the form. Rename or remove the symbol later under **Symbols** in the settings. Everyone else sees the field without the upload, and the server refuses an upload from them.
 
 The **display note** is one line, up to 500 characters, drawn inside the element's box. It is separate from the description, which is for the record, reports and search.
 

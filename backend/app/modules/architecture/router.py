@@ -11,13 +11,20 @@ RBAC: the `architecture_type` sub-component to read; every change needs
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.user import User
+from app.modules.architecture import _shared as sh
 from app.modules.architecture import symbol_routes, vocabulary_routes
 from app.modules.architecture.collection_routes import add_org_collection_routes
 from app.modules.architecture.folder_routes import add_org_folder_routes
 from app.modules.architecture.record_routes import add_org_record_routes
 from app.modules.architecture.schemas import (
+    CapabilitiesOut,
     ConnectionTypeCreate,
     ConnectionTypeOut,
     ConnectionTypeUpdate,
@@ -41,6 +48,18 @@ router = APIRouter(
 )
 
 _require_view = require_org_subcomponent_enabled(ARCHITECTURE_MODULE_KEY, TYPE_SUBCOMPONENT_KEY)
+
+
+@router.get("/capabilities", response_model=CapabilitiesOut)
+def get_org_capabilities(organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """What the caller may change in this organisation (today whether they may manage its default types and symbols),
+    for screens that show an action only to someone it will work for. Open to anyone who may read the organisation's
+    types; the actions themselves still enforce `architecture_org_admin`."""
+    try:
+        sh.require_architecture_org_admin(db, current_user, organization_id=organization_id)
+    except HTTPException:
+        return CapabilitiesOut(manage_types=False)
+    return CapabilitiesOut(manage_types=True)
 
 vocabulary_routes.add_org_routes(
     router, path="element-types", vocabulary=ELEMENT_TYPES, create_schema=ElementTypeCreate,

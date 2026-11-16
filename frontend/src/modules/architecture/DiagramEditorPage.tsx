@@ -722,7 +722,7 @@ export function DiagramEditorPage() {
 
   const elementEditor: ElementEditorReference | null = reference.project ? {
     elementTypes, symbols: reference.symbols, symbolUrl: (id) => projectSymbolUrl(projectId, id), orgUsers: reference.orgUsers,
-    organizationId: reference.project.organization_id,
+    organizationId: reference.project.organization_id, onSymbolsChanged: reference.reloadSymbols,
   } : null;
   const placed = new Set(layout.boxes.map((b) => b.elementId));
   const candidates = elements.filter((e) => !placed.has(e.id) && !e.is_archived && !isOutOfUse(e.status));

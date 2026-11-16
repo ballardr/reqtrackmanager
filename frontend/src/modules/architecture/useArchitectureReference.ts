@@ -20,6 +20,8 @@ export interface ArchitectureReference {
   connectionTypes: ConnectionType[];
   symbols: ArchitectureSymbol[];
   loaded: boolean;
+  /** Reads the symbol library again (after the picker uploaded a symbol). */
+  reloadSymbols: () => void;
 }
 
 /**
@@ -41,6 +43,12 @@ export function useArchitectureReference(projectId: string): ArchitectureReferen
   }, [projectId]);
   useEffect(() => load(), [load]);
 
+  const reloadSymbols = useCallback(() => {
+    symbolApi.projectList(projectId).then((symbols) => {
+      setLists((current) => (current && current.projectId === projectId ? { ...current, symbols } : current));
+    }).catch(() => undefined);
+  }, [projectId]);
+
   const ready = lists?.projectId === projectId ? lists : null;
   return {
     project,
@@ -49,5 +57,6 @@ export function useArchitectureReference(projectId: string): ArchitectureReferen
     connectionTypes: ready?.connection ?? [],
     symbols: ready?.symbols ?? [],
     loaded: ready !== null && project !== null && orgUsers !== null,
+    reloadSymbols,
   };
 }

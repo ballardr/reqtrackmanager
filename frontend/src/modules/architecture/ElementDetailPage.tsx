@@ -263,7 +263,7 @@ export function ElementDetailPage() {
         <ElementFormModal
           initial={element} elementTypes={reference.elementTypes} connectionTypes={reference.connectionTypes} candidates={owned}
           symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)} orgUsers={reference.orgUsers}
-          organizationId={project.organization_id} projectId={projectId} error={formError}
+          organizationId={project.organization_id} projectId={projectId} error={formError} onSymbolsChanged={reference.reloadSymbols}
           onCancel={() => { setEditing(false); setFormError(null); }} onSave={saveEdit}
         />
       )}
@@ -272,6 +272,7 @@ export function ElementDetailPage() {
           elementTypes={reference.elementTypes} connectionTypes={reference.connectionTypes} candidates={owned}
           symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)} orgUsers={reference.orgUsers}
           organizationId={project.organization_id} projectId={projectId} defaultParentId={element.id} error={childForm.error}
+          onSymbolsChanged={reference.reloadSymbols}
           onCancel={() => { setAddingChild(false); childForm.clearError(); }} onSave={childForm.create}
         />
       )}

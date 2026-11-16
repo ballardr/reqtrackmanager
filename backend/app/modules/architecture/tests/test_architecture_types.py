@@ -193,6 +193,16 @@ def test_capabilities_say_whether_the_caller_may_manage_types(client, admin_toke
     assert client.get(url, headers=auth_headers(token)).json() == {"manage_types": True}
 
 
+def test_organisation_capabilities_say_whether_the_caller_may_manage_the_defaults(client, admin_token):
+    org, project, token = setup(client, admin_token, "Arch org capabilities")
+    user_id, member = add_member(client, token, org["id"], project["id"], "arch-org-capable@example.com")
+    url = f"{org_base(org['id'])}/capabilities"
+    assert client.get(url, headers=auth_headers(member)).json() == {"manage_types": False}
+    grant_org_role(client, token, org["id"], user_id, "architecture_org_admin")
+    assert client.get(url, headers=auth_headers(member)).json() == {"manage_types": True}
+    assert client.get(url, headers=auth_headers(token)).json() == {"manage_types": True}
+
+
 def test_another_organisations_rows_are_not_found(client, admin_token):
     org_a, _project_a, token_a = setup(client, admin_token, "Arch tenant A")
     org_b, _project_b, token_b = setup(client, admin_token, "Arch tenant B")

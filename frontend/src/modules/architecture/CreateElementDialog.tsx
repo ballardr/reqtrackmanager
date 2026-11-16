@@ -40,6 +40,7 @@ export function CreateElementDialog({ projectId, onCreated, onCancel }: LinkedRe
       elementTypes={reference.elementTypes} connectionTypes={reference.connectionTypes} candidates={candidates}
       symbols={reference.symbols} symbolUrl={(id) => projectSymbolUrl(projectId, id)} orgUsers={reference.orgUsers}
       organizationId={project.organization_id} projectId={projectId} error={form.error} onCancel={onCancel} onSave={form.create}
+      onSymbolsChanged={reference.reloadSymbols}
     />
   );
 }
