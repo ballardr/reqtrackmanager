@@ -18,7 +18,7 @@
  */
 import type { PinAnchorKind, PlaceInput } from "../../api/recordComments";
 import type { GraphPointAnchor } from "../../components/GraphCanvas";
-import type { EditorBox } from "./diagramEditorModel";
+import { boxFrame, type EditorBox } from "./diagramEditorModel";
 import type { DiagramViewEdge } from "./types";
 
 /** How a drawing names the box or line a stored pin is anchored to, for the Comments tab (one per kind of diagram). */
@@ -81,7 +81,7 @@ export function pinPlaceOf(
   const free: PlaceInput = { anchor_kind: "none", anchor_key: null, x: Math.round(position.x), y: Math.round(position.y) };
   if (anchor.kind === "node") {
     const box = boxes.find((b) => b.elementId === anchor.id);
-    return box ? { anchor_kind: "node", anchor_key: box.elementId, x: Math.round(box.x + box.width), y: Math.round(box.y) } : free;
+    return box ? { anchor_kind: "node", anchor_key: box.elementId, x: Math.round(box.x + boxFrame(box).width), y: Math.round(box.y) } : free;
   }
   if (anchor.kind === "edge") {
     const connection = edges.find((e) => e.id === anchor.id)?.connections[0];

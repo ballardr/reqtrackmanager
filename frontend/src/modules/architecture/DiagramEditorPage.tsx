@@ -72,7 +72,7 @@ import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
   addBoundaries, addBoxes, addNote, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
   canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
-  setLineAnchor, noteFrame, updateNote, addLeader, newLeader, newLeaderKey, patchLeader, removeLeader, setLeaderTarget, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT,
+  setLineAnchor, noteFrame, boxFrame, lockedBoxLabel, updateNote, addLeader, newLeader, newLeaderKey, patchLeader, removeLeader, setLeaderTarget, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT,
   MAX_NOTE_LEADERS, NOTE_NODE_PREFIX, NOTE_WIDTH, type EditorLeader, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
@@ -368,7 +368,7 @@ export function DiagramEditorPage() {
   const effectiveTheme = resolveEffectiveTheme(theme);
   const nodes = useMemo(
     () => canvasNodes(layout, {
-      theme: effectiveTheme, symbolSvg, lockedLabel: (code) => `${code} (not visible)`, emptyNote: "Empty note", noteCaption: "Note",
+      theme: effectiveTheme, symbolSvg, lockedLabel: lockedBoxLabel, emptyNote: "Empty note", noteCaption: "Note",
       hidden: resolved.hidden, covered: new Set(realisedBy.keys()), coverageLabel: (isCovered) => (isCovered ? "Covered" : "Not covered"),
       showNotes, badges: badgesOf,
     }),
@@ -391,7 +391,8 @@ export function DiagramEditorPage() {
     ? { kind: "edge", id: newLine.id }
     : picked ?? (linkedBox ? { kind: "node", id: linkedBox.elementId } : null);
   // The canvas moves the view when `key` changes, so the same key while the box is dragged afterwards does not move it again.
-  const selectCenter = linkedBox ? { x: linkedBox.x + linkedBox.width / 2, y: linkedBox.y + linkedBox.height / 2, key: 1 } : undefined;
+  const linkedFrame = linkedBox ? boxFrame(linkedBox) : undefined;
+  const selectCenter = linkedBox && linkedFrame ? { x: linkedBox.x + linkedFrame.width / 2, y: linkedBox.y + linkedFrame.height / 2, key: 1 } : undefined;
 
 
 
@@ -783,7 +784,11 @@ export function DiagramEditorPage() {
           const line = target.kind === "edge" ? resolved.edges.find((e) => e.id === target.id) : undefined;
           const from = layout.boxes.find((b) => b.elementId === line?.source_element_id);
           const to = layout.boxes.find((b) => b.elementId === line?.target_element_id);
-          const at = from && to ? { x: (from.x + from.width / 2 + to.x + to.width / 2) / 2, y: (from.y + from.height / 2 + to.y + to.height / 2) / 2 } : { x: 0, y: 0 };
+          const fromFrame = from ? boxFrame(from) : undefined;
+          const toFrame = to ? boxFrame(to) : undefined;
+          const at = from && to && fromFrame && toFrame
+            ? { x: (from.x + fromFrame.width / 2 + to.x + toFrame.width / 2) / 2, y: (from.y + fromFrame.height / 2 + to.y + toFrame.height / 2) / 2 }
+            : { x: 0, y: 0 };
           setTabChoice("");
           chooseCommentMode(true);
           commentLayer.startAt(pinPlaceOf(at, target, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)));

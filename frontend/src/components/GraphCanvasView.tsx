@@ -121,6 +121,10 @@ type NodeData = {
   badges: readonly GraphNodeBadge[];
   body?: string;
   symbol: string | null;
+  symbolHeight?: number;
+  minWidth: number;
+  minHeight: number;
+  fitted: boolean;
   accent?: string;
   dashed?: boolean;
   inset?: number;
@@ -238,6 +242,7 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
     data.placeholder ? "graph-node-placeholder" : "",
     data.inset !== undefined ? "graph-node-inset" : "",
+    data.fitted ? "graph-node-fitted" : "",
   ].filter(Boolean).join(" ");
   const style: Record<string, string | number> = {};
   if (data.accent) style["--graph-node-accent"] = data.accent;
@@ -246,8 +251,13 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     <>
     <div className={classes} style={Object.keys(style).length > 0 ? (style as CSSProperties) : undefined}>
       {shaped && <NodeOutline outline={data.outline} />}
-      {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
-      {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
+      {data.resizable && <NodeResizer isVisible={selected} minWidth={data.minWidth} minHeight={data.minHeight} />}
+      {data.symbol && (
+        <img
+          className={data.symbolHeight !== undefined ? "graph-node-symbol graph-node-symbol-fixed" : "graph-node-symbol"} src={data.symbol} alt=""
+          style={data.symbolHeight !== undefined ? { height: data.symbolHeight, width: data.symbolHeight } : undefined}
+        />
+      )}
       <span className={data.body ? "graph-node-text graph-node-text-body" : "graph-node-text"}>
         {data.title && <span className="graph-node-title">{data.title}</span>}
         {data.label && <span className="graph-node-label">{data.label}</span>}
@@ -803,7 +813,8 @@ export function GraphCanvasView({
         selected: selection?.kind === "node" && selection.id === n.id,
         ariaLabel: text.nodeAria(nodeName(n)),
         data: {
-          label: n.label, title: n.title, textAlign: n.textAlign, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
+          label: n.label, title: n.title, textAlign: n.textAlign, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null, symbolHeight: n.symbolHeight,
+          minWidth: n.minWidth ?? MIN_WIDTH, minHeight: n.minHeight ?? MIN_HEIGHT, fitted: n.minHeight !== undefined,
           accent: n.accent, dashed: n.dashed, inset: n.inset, outline: n.outline ?? "rectangle", tone: n.tone, placeholder: n.placeholder,
           resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, markerText: n.marker ? n.markerText : undefined, container: n.container === true,
         },
@@ -1059,7 +1070,7 @@ export function GraphCanvasView({
             const grid = { size: snapRef.current.size, on: resizeSnapped.current[c.id] ?? snapRef.current.on };
             delete resizeSnapped.current[c.id];
             const before = { x: n.x, y: n.y, width: n.width ?? DEFAULT_WIDTH, height: n.height ?? DEFAULT_HEIGHT };
-            const final = grid.on ? snapResize(before, reached, grid.size, MIN_WIDTH, MIN_HEIGHT) : reached;
+            const final = grid.on ? snapResize(before, reached, grid.size, n.minWidth ?? MIN_WIDTH, n.minHeight ?? MIN_HEIGHT) : reached;
             if (grid.on) {
               patch[c.id] = { x: final.x, y: final.y, baseX: n.x, baseY: n.y };
               sizePatch[c.id] = { width: final.width, height: final.height, baseWidth: n.width ?? DEFAULT_WIDTH, baseHeight: n.height ?? DEFAULT_HEIGHT };
@@ -1240,14 +1251,16 @@ export function GraphCanvasView({
       const stepWidth = grid > 0 ? Math.sign(step.width) * grid : step.width;
       const stepHeight = grid > 0 ? Math.sign(step.height) * grid : step.height;
       const at = boxes.get(selection.id) ?? node.position;
+      const base = nodes.find((n) => n.id === selection.id);
+      const minWidth = base?.minWidth ?? MIN_WIDTH;
+      const minHeight = base?.minHeight ?? MIN_HEIGHT;
       const before = { x: Math.round(at.x), y: Math.round(at.y), width: Math.round(node.width ?? DEFAULT_WIDTH), height: Math.round(node.height ?? DEFAULT_HEIGHT) };
       const resized = {
         ...before,
-        width: Math.max(MIN_WIDTH, before.width + stepWidth),
-        height: Math.max(MIN_HEIGHT, before.height + stepHeight),
+        width: Math.max(minWidth, before.width + stepWidth),
+        height: Math.max(minHeight, before.height + stepHeight),
       };
-      const { x, y, width, height } = grid > 0 ? snapResize(before, resized, grid, MIN_WIDTH, MIN_HEIGHT) : resized;
-      const base = nodes.find((n) => n.id === selection.id);
+      const { x, y, width, height } = grid > 0 ? snapResize(before, resized, grid, minWidth, minHeight) : resized;
       setSized((m) => ({
         ...m,
         [selection.id]: { width, height, baseWidth: base?.width ?? DEFAULT_WIDTH, baseHeight: base?.height ?? DEFAULT_HEIGHT },

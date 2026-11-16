@@ -22,6 +22,7 @@
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode, GraphNodeBadge } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
 import { reverseRoute, suggestWaypoint } from "../../components/graphLinePath";
+import { SYMBOL_HEIGHT, drawnBoxSize, fitBox } from "./elementBoxFit";
 import { NOTE_PADDING, drawnSize } from "./noteLayout";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
@@ -555,6 +556,42 @@ export function removeNote(layout: EditorLayout, key: string): EditorLayout {
   return { ...layout, notes: layout.notes.filter((n) => n.key !== key) };
 }
 
+/** The label a box the viewer cannot read is drawn with (the page passes the same text to `canvasNodes`). */
+export function lockedBoxLabel(code: string): string {
+  return `${code} (not visible)`;
+}
+
+/** The small line under a box's name: its code and its type. */
+function boxCaption(box: Pick<EditorBox, "unique_code" | "element_type_name">): string {
+  return `${box.unique_code} · ${box.element_type_name}`;
+}
+
+/**
+ * The size a box is drawn at: the stored size, made larger where its symbol, code and name need it (`elementBoxFit`). The stored
+ * size is never rewritten (a symbol changed on an element's type reaches boxes on diagrams nobody has open), so every reader of a
+ * box's geometry (the canvas, the lines' attach points, the free slot, the exports) reads this.
+ *
+ * @param box The box.
+ * @param lockedLabel The text a locked box draws, for a caller that draws its own.
+ * @returns The width and height the box is drawn at.
+ */
+export function boxFrame(
+  box: Pick<EditorBox, "unique_code" | "name" | "element_type_name" | "symbol_id" | "locked" | "width" | "height">,
+  lockedLabel: (code: string) => string = lockedBoxLabel,
+): { width: number; height: number } {
+  if (box.locked) return drawnBoxSize(false, "", lockedLabel(box.unique_code), box.width, box.height);
+  return drawnBoxSize(box.symbol_id !== null, boxCaption(box), box.name, box.width, box.height);
+}
+
+/** @returns The least size a resize may make a box (what its content needs at the width it is drawn at). */
+function boxMinimum(box: Parameters<typeof boxFrame>[0], lockedLabel: (code: string) => string): { minWidth: number; minHeight: number } {
+  const frame = boxFrame(box, lockedLabel);
+  const fit = box.locked
+    ? fitBox(false, "", lockedLabel(box.unique_code), frame.width)
+    : fitBox(box.symbol_id !== null, boxCaption(box), box.name, frame.width);
+  return { minWidth: fit.minWidth, minHeight: fit.minHeight };
+}
+
 /**
  * The first free slot of a grid, for a box added without a drop position.
  *
@@ -563,7 +600,9 @@ export function removeNote(layout: EditorLayout, key: string): EditorLayout {
  * @param columns Boxes per row of the grid.
  */
 export function nextFreePosition(layout: EditorLayout, index = 0, columns = 4): { x: number; y: number } {
-  const taken = [...layout.boxes, ...layout.notes.map((n) => ({ x: n.x, y: n.y, ...noteFrame(n) })), ...layout.boundaries];
+  const taken = [
+    ...layout.boxes.map((b) => ({ x: b.x, y: b.y, ...boxFrame(b) })), ...layout.notes.map((n) => ({ x: n.x, y: n.y, ...noteFrame(n) })), ...layout.boundaries,
+  ];
   const hits = (x: number, y: number) =>
     taken.some((t) => x < t.x + t.width && t.x < x + BOX_WIDTH && y < t.y + t.height && t.y < y + BOX_HEIGHT);
   let free = -1;
@@ -659,10 +698,11 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
   const boxes = layout.boxes.filter((b) => !ctx.hidden.has(b.elementId)).map<GraphCanvasNode>((b) => ({
     id: b.elementId,
     label: b.locked ? ctx.lockedLabel(b.unique_code) : b.name,
-    caption: b.locked ? undefined : `${b.unique_code} · ${b.element_type_name}`,
+    caption: b.locked ? undefined : boxCaption(b),
     body: ctx.showNotes && !b.locked && b.display_note ? b.display_note : undefined,
-    x: b.x, y: b.y, width: b.width, height: b.height,
+    x: b.x, y: b.y, ...boxFrame(b, ctx.lockedLabel), ...boxMinimum(b, ctx.lockedLabel),
     symbolSvg: b.symbol_id && !b.locked ? ctx.symbolSvg(b.symbol_id) : undefined,
+    symbolHeight: b.symbol_id && !b.locked ? SYMBOL_HEIGHT : undefined,
     accent: pick(b.color_light, b.color_dark, ctx.theme),
     dashed: b.locked || isOutOfUse(b.status),
     badges: b.locked ? undefined : ctx.badges(b.elementId),
@@ -822,7 +862,10 @@ export function leaderVertexSuggestion(note: EditorNote, leader: EditorLeader, b
   if (target?.kind === "point") end = { x: target.x, y: target.y };
   else if (target?.kind === "element") {
     const box = boxes.find((b) => b.elementId === target.elementId);
-    if (box) end = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    if (box) {
+      const size = boxFrame(box);
+      end = { x: box.x + size.width / 2, y: box.y + size.height / 2 };
+    }
   }
   return suggestWaypoint(start, leader.points, end);
 }

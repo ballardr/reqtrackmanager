@@ -5,7 +5,9 @@ Renders a resolved diagram (`schemas.DiagramView`) as one SVG document, for the 
 part, so a document shows what the screen shows.
 
 Responsibilities:
-- Draw each visible node as its symbol or its type's shape, its code and name, and its ports as small tabs.
+- Draw each visible node as its symbol or its type's shape, its code and name, and its ports as small tabs, at the size its
+  content needs when the stored size is smaller (`diagram_box_fit`: the symbol at a fixed height, the code line and every line
+  of the name, none cut with an ellipsis), so a line attaches to the frame that is drawn.
 - Draw each line between two attach points of its boxes (the ones a person chose, else the nearest pair; see
   `diagram_points`), dashed when indirect, with an arrowhead when it has one direction, a count
   when several connections collapse into it, and (with connection detail on) its type and protocol.
@@ -32,7 +34,7 @@ Design decisions:
 - A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
 
 Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points),
-`diagram_note_layout` (a note's lines and frame), `diagram_line_path`, `diagram_line_hops`.
+`diagram_note_layout` (a note's lines and frame), `diagram_box_fit` (a box's frame), `diagram_line_path`, `diagram_line_hops`.
 """
 
 from __future__ import annotations
@@ -46,6 +48,15 @@ from xml.sax.saxutils import escape
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.architecture.diagram_box_fit import (
+    CAPTION_LINE_HEIGHT,
+    INSET_Y,
+    NAME_LINE_HEIGHT,
+    SYMBOL_GAP,
+    SYMBOL_HEIGHT,
+    drawn_box_size,
+    fit_box,
+)
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_note_layout import (
@@ -226,6 +237,27 @@ def _shape(shape: str, x: float, y: float, w: float, h: float, color: str) -> st
     return f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" {style}/>'
 
 
+def _caption(node: ViewNode) -> str:
+    """The small line a box is measured with: its code and its type (the screen draws both, an export only the code, so the
+    frame is the same in each)."""
+    return f"{node.unique_code} · {node.element_type_name}" if node.element_type_name else node.unique_code
+
+
+def _framed_nodes(nodes: list[ViewNode], symbols: dict[uuid.UUID, str]) -> list[ViewNode]:
+    """The nodes with the size each is drawn at (`diagram_box_fit.drawn_box_size`: the stored size, larger where its symbol, code
+    and name need it), so every later step, a line's attach points included, reads one frame. A locked node is measured on the
+    code it draws."""
+    framed: list[ViewNode] = []
+    for n in nodes:
+        if n.locked:
+            width, height = drawn_box_size(False, "", n.unique_code, n.width, n.height)
+        else:
+            has_symbol = n.symbol_id is not None and n.symbol_id in symbols
+            width, height = drawn_box_size(has_symbol, _caption(n), n.name, n.width, n.height)
+        framed.append(n.model_copy(update={"width": width, "height": height}))
+    return framed
+
+
 def _node(node: ViewNode, symbols: dict[uuid.UUID, str]) -> str:
     """One node: outline or symbol, then its code, name and port tabs."""
     x, y, w, h = node.x, node.y, node.width, node.height
@@ -242,26 +274,27 @@ def _node(node: ViewNode, symbols: dict[uuid.UUID, str]) -> str:
     drawing = symbols.get(node.symbol_id) if node.symbol_id else None
     group = None
     if drawing is not None:
-        size = max(min(h - 28, w * 0.5, 56), 16)
-        group = _symbol_group(drawing, x + w / 2 - size / 2, y + 6, size)
+        group = _symbol_group(drawing, x + w / 2 - SYMBOL_HEIGHT / 2, y + INSET_Y, SYMBOL_HEIGHT)
+    lines = fit_box(group is not None, _caption(node), node.name, w).lines
     if group is not None:
         parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="6" fill="#FFFFFF" fill-opacity="0.92" '
                      f'stroke="{color}" stroke-width="2"/>')
         parts.append(f'<g color="{color}" style="color:{color}">{group}</g>')
-        text_y = y + 6 + size + 12
+        top = y + INSET_Y + SYMBOL_HEIGHT + SYMBOL_GAP
     else:
         parts.append(_shape(node.shape, x, y, w, h, color))
-        text_y = y + 16 if node.display_note else (y + h / 2 - 4 if node.name else y + h / 2)
+        block = CAPTION_LINE_HEIGHT + len(lines) * NAME_LINE_HEIGHT
+        top = y + INSET_Y if node.display_note else y + (h - block) / 2
     parts.append(
-        f'<text x="{x + w / 2:.1f}" y="{text_y:.1f}" text-anchor="middle" font-size="10" fill="#64748B">{_text(node.unique_code)}</text>'
+        f'<text x="{x + w / 2:.1f}" y="{top + CAPTION_LINE_HEIGHT - 3:.1f}" text-anchor="middle" font-size="10" fill="#64748B">'
+        f"{_text(node.unique_code)}</text>"
     )
-    name_lines = _wrap(node.name, max(int(w / 7), 6), 2)
-    for i, line in enumerate(name_lines):
+    for i, line in enumerate(lines):
         parts.append(
-            f'<text x="{x + w / 2:.1f}" y="{text_y + 13 + i * 13:.1f}" text-anchor="middle" font-size="12" font-weight="600" '
-            f'fill="{_TEXT_COLOR}">{_text(line)}</text>'
+            f'<text x="{x + w / 2:.1f}" y="{top + CAPTION_LINE_HEIGHT + 12 + i * NAME_LINE_HEIGHT:.1f}" text-anchor="middle" '
+            f'font-size="12" font-weight="600" fill="{_TEXT_COLOR}">{_text(line)}</text>'
         )
-    note_top = text_y + 13 + len(name_lines) * 13 + 2
+    note_top = top + CAPTION_LINE_HEIGHT + len(lines) * NAME_LINE_HEIGHT + 2
     room = int((y + h - 10 - note_top) // 12) + 1
     for i, line in enumerate(_note_lines(node.display_note, max(int(w / 6), 6), room)):
         parts.append(
@@ -567,6 +600,7 @@ def render_diagram(db: Session, view: DiagramView) -> str:
                 symbols[row.id] = symbol_svg(db, row)
             except LookupError:
                 continue
+    visible = _framed_nodes(visible, symbols)
     boxes: dict[uuid.UUID, ViewNode | ViewBoundary] = {n.element_id: n for n in visible}
     boxes.update({b.id: b for b in view.boundaries})
     drawn_edges = [e for e in view.edges if e.source_element_id in boxes and e.target_element_id in boxes]

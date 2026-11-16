@@ -106,6 +106,14 @@ export interface GraphCanvasNode {
   height?: number;
   /** Server-sanitised SVG markup drawn on the node; a second sanitising pass runs before it is shown. */
   symbolSvg?: string;
+  /**
+   * The height in canvas units the symbol is drawn at (it keeps its proportions inside a square of that side and never shrinks), so
+   * a consumer that sizes the box from its content can reserve exactly that room. Without it the symbol takes up to 60% of the box.
+   */
+  symbolHeight?: number;
+  /** The least size a resize may make the node (the content's need); defaults to 80 x 40. */
+  minWidth?: number;
+  minHeight?: number;
   /** A CSS colour for the node's accent edge. */
   accent?: string;
   /** Draws the border dashed (a placeholder or hidden-for-this-viewer node). */

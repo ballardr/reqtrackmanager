@@ -104,7 +104,7 @@ A short line of text, up to 500 characters, drawn inside an element's box on eve
 
 #### Element
 
-A part of the product: a service, a board, a datastore. It has a code (`ELM-001`), a type, an optional parent and any number of [ports](#port). Elements are drawn as boxes on block diagrams. See [Elements, ports and connections](../modules/system-architecture-module/elements-ports-and-connections.md).
+A part of the product: a service, a board, a datastore. It has a code (`ELM-001`), a type, an optional parent and any number of [ports](#port). Elements are drawn as boxes on block diagrams, each at least as large as its symbol, code and name need. See [Elements, ports and connections](../modules/system-architecture-module/elements-ports-and-connections.md).
 
 #### Enablement
 

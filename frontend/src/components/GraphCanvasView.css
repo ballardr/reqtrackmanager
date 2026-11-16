@@ -117,6 +117,18 @@
   object-fit: contain;
 }
 
+/* A node whose consumer sized it to its content (a minimum size was given) never squeezes its text: the room is reserved. */
+.graph-node-fitted > .graph-node-text:not(.graph-node-text-body) {
+  flex: 0 0 auto;
+}
+
+/* A symbol with a fixed side (its consumer reserved exactly that room, so it never shrinks). */
+.graph-node-symbol-fixed {
+  flex: 0 0 auto;
+  max-width: none;
+  max-height: none;
+}
+
 .graph-node-text {
   display: flex;
   flex-direction: column;
