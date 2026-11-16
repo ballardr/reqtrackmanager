@@ -47,10 +47,8 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, routeAttachPoints, type AttachPoint } from "../../components/graphAttachPoints";
 import { suggestWaypoint } from "../../components/graphLinePath";
-import {
-  BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, leaderIsDrawn, leaderSummary,
-  leaderVertexSuggestion, type EditorBoundary, type EditorBox, type EditorLeader, type EditorNote, type NoteLeaderTarget, type NotePatch,
-} from "./diagramEditorModel";
+import { BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, anchorOf, boundaryOutsideName, boxFrame, leaderIsDrawn, leaderSummary, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
+import { NOTE_NODE_PREFIX, leaderVertexSuggestion, type EditorLeader, type EditorNote, type NoteLeaderTarget, type NotePatch } from "./noteModel";
 import { boxName } from "./diagramOutlineModel";
 import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
@@ -322,9 +320,19 @@ export function DiagramSelectionPanel({
     if (found) {
       body = (
         <DiagramLeaderEditor
-          key={found.leader.key} leader={found.leader} index={found.index} editable={editable} boxes={drawnBoxes}
-          connections={[...drawnConnections.values()]} drawn={leaderIsDrawn(found.leader, drawnBoxIds, edges, drawnEdgeIds)}
-          newPoint={leaderVertexSuggestion(found.note, found.leader, boxes)}
+          key={found.leader.key} leader={found.leader} index={found.index} editable={editable}
+          targets={[
+            ...drawnBoxes.map((b) => ({ value: `element:${b.elementId}`, label: `Box: ${boxName(b)}` })),
+            ...[...drawnConnections.values()].map((c) => ({ value: `connection:${c.id}`, label: `Connection: ${c.unique_code}${c.name ? ` ${c.name}` : ""}` })),
+          ]}
+          drawn={leaderIsDrawn(found.leader, drawnBoxIds, edges, drawnEdgeIds)}
+          newPoint={leaderVertexSuggestion(found.note, found.leader, (target) => {
+            const target_box = target.kind === "element" ? boxes.find((b) => b.elementId === target.elementId) : undefined;
+            if (target.kind === "point") return { x: target.x, y: target.y };
+            if (!target_box) return null;
+            const size = boxFrame(target_box);
+            return { x: target_box.x + size.width / 2, y: target_box.y + size.height / 2 };
+          })}
           onTarget={(target) => onLeaderTarget(found.leader.key, target)} onChange={(change) => onLeaderChange(found.leader.key, change)}
           onOpenNote={() => onSelectNote(found.note.key)} onRemove={() => onRemoveLeader(found.leader.key)}
         />

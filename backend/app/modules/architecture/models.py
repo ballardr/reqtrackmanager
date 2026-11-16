@@ -617,10 +617,13 @@ class ArchitectureDiagramPlacement(UUIDPKMixin, TimestampMixin, Base):
 
 class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     """An annotation on a diagram: a plain-text block with a tone. It is the only shape with no element behind it. Never
-    rendered as markup. What it points at is its leaders (`ArchitectureNoteLeader`), none or several.
+    rendered as markup. What it points at is its leaders (`ArchitectureNoteLeader`), none or several. A note belongs to a
+    block diagram or to a state machine diagram, exactly one.
 
     Attributes:
-        diagram_id: The diagram; deleting it removes its notes.
+        diagram_id: The block diagram, or `None` for a note of a state machine diagram; deleting it removes its notes.
+        state_machine_diagram_id: The state machine diagram, or `None` for a note of a block diagram; deleting it removes its
+            notes.
         text: The note's text.
         x / y / width / height: The block in diagram units.
         sort_order: Order among the diagram's notes.
@@ -635,10 +638,16 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("text_align IN ('left', 'center', 'right')", name="ck_architecture_diagram_notes_text_align"),
         CheckConstraint("size_mode IN ('automatic', 'manual')", name="ck_architecture_diagram_notes_size_mode"),
+        CheckConstraint(
+            "(diagram_id IS NULL) <> (state_machine_diagram_id IS NULL)", name="ck_architecture_diagram_notes_one_owner"
+        ),
     )
 
-    diagram_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    diagram_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    state_machine_diagram_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), nullable=True, index=True
     )
     text: Mapped[str] = mapped_column(Text, default="")
     x: Mapped[float] = mapped_column(Float, default=0.0)
@@ -653,14 +662,16 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
-    """A line drawn from an annotation note to what it describes: a placed element's box, a connection's drawn line or a free
-    point. A note has none or several. Deleting the target element or connection deletes its leader (the note stays).
+    """A line drawn from an annotation note to what it describes: a placed element's box, a connection's drawn line, a state
+    or transition of a state machine diagram, or a free point. A note has none or several. Deleting the target deletes its
+    leader (the note stays).
 
     Attributes:
         note_id: The note; deleting it removes its leaders.
         sort_order: Order among the note's leaders.
         kind: A `LeaderKind` value (never `none`). `element_id` is set only for `element`, `connection_id` only for
-            `connection` and `x`/`y` (both) only for `point`.
+            `connection`, `state_id` only for `state`, `transition_id` only for `transition` and `x`/`y` (both) only for
+            `point`.
         start_point: An `AttachPoint` value of the note's block the line leaves from, or `None` for the nearest point.
         points: The line's vertices as `{x, y}` in canvas units, in order from the note to its end.
         smooth: True to draw a curve through the vertices, false for straight segments.
@@ -669,9 +680,12 @@ class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "architecture_note_leaders"
     __table_args__ = (
-        CheckConstraint("kind IN ('element', 'connection', 'point')", name="ck_architecture_note_leaders_kind"),
+        CheckConstraint(
+            "kind IN ('element', 'connection', 'state', 'transition', 'point')", name="ck_architecture_note_leaders_kind"
+        ),
         CheckConstraint(
             "(kind = 'element') = (element_id IS NOT NULL) AND (kind = 'connection') = (connection_id IS NOT NULL)"
+            " AND (kind = 'state') = (state_id IS NOT NULL) AND (kind = 'transition') = (transition_id IS NOT NULL)"
             " AND (kind = 'point') = (x IS NOT NULL AND y IS NOT NULL) AND (kind = 'point' OR (x IS NULL AND y IS NULL))",
             name="ck_architecture_note_leaders_target",
         ),
@@ -691,6 +705,12 @@ class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
     )
     connection_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    state_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    transition_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_transitions.id", ondelete="CASCADE"), nullable=True, index=True
     )
     x: Mapped[float | None] = mapped_column(Float, nullable=True)
     y: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { DiagramNoteEditor } from "./DiagramNoteEditor";
-import { newNote, type EditorNote, type NotePatch } from "./diagramEditorModel";
+import { newNote, type EditorNote, type NotePatch } from "./noteModel";
 
 /** Hosts the note card with real state, as the Selection card does, and reports each change it makes. */
 function Host({ initial, editable = true, onChange }: { initial: EditorNote; editable?: boolean; onChange: (patch: NotePatch) => void }) {

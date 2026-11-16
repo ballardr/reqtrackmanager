@@ -135,7 +135,7 @@ def _note_leaders(
     a connection of the project (drawn only when a line of the diagram stands for it) or a free point, with a start point,
     vertices and styles on some. With `forced` the kind follows `order` (a box, a connection, a point), so the project's
     first diagram always has one of each, the first of them routed and starting at a chosen point."""
-    blank: dict[str, Any] = {"element_id": None, "connection_id": None, "x": None, "y": None}
+    blank: dict[str, Any] = {"element_id": None, "connection_id": None, "state_id": None, "transition_id": None, "x": None, "y": None}
     roll = (order + 0.5) / 3 * 0.75 if forced else rng.random()
     kinds: list[str] = []
     if roll < 0.3 and placed:
@@ -475,7 +475,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
         for order in range(3 if index == 0 else rng.choice((0, 1, 1, 2))):
             note_id = batch.new_id()
             batch.satellite(ArchitectureDiagramNote, {
-                "id": note_id, "diagram_id": record_id, "text": textgen.title(rng), "x": float(order * 180),
+                "id": note_id, "diagram_id": record_id, "state_machine_diagram_id": None, "text": textgen.title(rng), "x": float(order * 180),
                 "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "tone": rng.choice(_NOTE_TONES),
                 "title": textgen.title(rng), "text_align": rng.choice(_NOTE_ALIGNS), "size_mode": rng.choice(_NOTE_SIZE_MODES),
                 "created_at": created, "updated_at": created,
@@ -540,6 +540,40 @@ def generate_state_machines(ctx: PerfProjectContext) -> dict[str, int]:
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}
 
 
+def _state_note_leaders(
+    rng: random.Random, states: list[uuid.UUID], transitions: list[uuid.UUID], order: int, *, forced: bool,
+) -> list[dict[str, Any]]:
+    """The leaders of a generated state machine note, as rows without their id and note: none, or up to two lines to a state, a
+    transition of the diagram or a free point, with a start point, vertices and styles on some. With `forced` the kind follows
+    `order` (a state, a transition, a point), so the project's first state machine diagram always has one of each."""
+    blank: dict[str, Any] = {"state_id": None, "transition_id": None, "element_id": None, "connection_id": None, "x": None, "y": None}
+    roll = (order + 0.5) / 3 * 0.75 if forced else rng.random()
+    kinds: list[str] = []
+    if roll < 0.3 and states:
+        kinds.append("state")
+    elif roll < 0.55 and transitions:
+        kinds.append("transition")
+    elif roll < 0.75:
+        kinds.append("point")
+    if kinds and not forced and rng.random() < 0.15:
+        kinds.append("point")
+    rows: list[dict[str, Any]] = []
+    for slot, kind in enumerate(kinds):
+        target = (
+            {"state_id": rng.choice(states)} if kind == "state"
+            else {"transition_id": rng.choice(transitions)} if kind == "transition"
+            else {"x": float(order * 180 + 80 + slot * 40), "y": -200.0}
+        )
+        routed = (forced and order == 0) or rng.random() < _ROUTED_LINES
+        rows.append({
+            **blank, **target, "sort_order": slot, "kind": kind,
+            "start_point": rng.choice(_ATTACH_POINTS) if (forced and order == 0) or rng.random() < 0.3 else None,
+            "points": _route(rng, order) if routed else [], "smooth": rng.random() < 0.3,
+            "start_style": rng.choice(("none", "none", "dot")), "end_style": rng.choice(("arrow", "arrow", "dot", "none")),
+        })
+    return rows
+
+
 _STATE_NAMES = ("Idle", "Starting", "Running", "Degraded", "Stopping", "Fault", "Updating", "Standby", "Calibrating", "Recovering")
 _EVENTS = ("start", "stop", "timeout", "fault", "reset", "ready", "")
 #: The most states one generated state machine diagram gets (the first diagram is the largest).
@@ -594,11 +628,14 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                 creator=rng.choice(ctx.user_ids), at=at_between(rng, stamp), title=name, detail={"kind": kind},
             )
             made.append((record_id, kind))
+        transition_ids: list[uuid.UUID] = []
         for order, ((source, _source_kind), (target, _target_kind)) in enumerate(zip(made, made[1:], strict=False)):
             if made[order][1] == "final":
                 continue
+            transition_id = batch.new_id()
+            transition_ids.append(transition_id)
             batch.satellite(ArchitectureTransition, {
-                "id": batch.new_id(), "state_machine_diagram_id": machine_id, "source_state_id": source,
+                "id": transition_id, "state_machine_diagram_id": machine_id, "source_state_id": source,
                 "target_state_id": target, "event": rng.choice(_EVENTS), "guard": "ready" if rng.random() < 0.2 else "",
                 "action": f"do_{order}()" if rng.random() < 0.3 else "", "description": "", "sort_order": order,
                 "source_point": rng.choice(_ATTACH_POINTS) if rng.random() < 0.1 else None,
@@ -606,6 +643,18 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                 "created_at": stamp, "updated_at": stamp,
             })
         ordinary_ids = [state_id for state_id, state_kind in made if state_kind == "state"]
+        for order in range(3 if index == 0 else rng.choice((0, 1, 1, 2))):
+            note_id = batch.new_id()
+            batch.satellite(ArchitectureDiagramNote, {
+                "id": note_id, "diagram_id": None, "state_machine_diagram_id": machine_id, "text": textgen.title(rng), "x": float(order * 180),
+                "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "tone": rng.choice(_NOTE_TONES),
+                "title": textgen.title(rng), "text_align": rng.choice(_NOTE_ALIGNS), "size_mode": rng.choice(_NOTE_SIZE_MODES),
+                "created_at": stamp, "updated_at": stamp,
+            })
+            for leader in _state_note_leaders(rng, ordinary_ids, transition_ids, order, forced=index == 0):
+                batch.satellite(ArchitectureNoteLeader, {
+                    "id": batch.new_id(), "note_id": note_id, "created_at": stamp, "updated_at": stamp, **leader,
+                })
         for extra in range(min(len(ordinary_ids), 3)):
             batch.satellite(ArchitectureTransition, {
                 "id": batch.new_id(), "state_machine_diagram_id": machine_id, "source_state_id": ordinary_ids[extra],

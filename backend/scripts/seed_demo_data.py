@@ -2716,6 +2716,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         response.raise_for_status()
         states[name] = response.json()["id"]
         version = response.json()["state_machine_diagram_version"]
+    lines: dict[tuple[str, str], str] = {}
     for source, target, fields in (
         ("Start", "Self-test", {}),
         ("Self-test", "Flying", {"event": "checks passed", "guard": "gps fix"}),
@@ -2734,7 +2735,22 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
             json={"version": version, "source_state_id": states[source], "target_state_id": states[target], **fields},
         )
         response.raise_for_status()
+        lines[(source, target)] = response.json()["id"]
         version = response.json()["state_machine_diagram_version"]
+    # Notes explain the drawing: one at the Failsafe state and one at the battery check's line, with a free note beside the start.
+    noted = httpx.put(
+        f"{base}/state-machine-diagrams/{machine_id}/layout", headers=headers, timeout=30,
+        json={"version": version, "states": [], "transitions": [], "notes": [
+            {"title": "Fail safe", "text": "Cuts the motors and holds the airframe level.", "tone": "danger", "x": 200, "y": 420,
+             "size_mode": "automatic",
+             "leaders": [{"kind": "state", "state_id": states["Failsafe"], "start_point": "right"}]},
+            {"text": "Checked every 10 s while hovering.", "tone": "info", "x": 760, "y": 360, "size_mode": "automatic",
+             "leaders": [{"kind": "transition", "transition_id": lines[("Hovering", "Battery check")]}]},
+            {"text": "Power-on self-test", "tone": "none", "x": -20, "y": 40, "size_mode": "automatic"},
+        ]},
+    )
+    noted.raise_for_status()
+    version = noted.json()["version"]
     httpx.post(
         f"{base}/state-machine-diagrams/{machine_id}/status", headers=headers, timeout=30,
         json={"version": version, "status": "active"},

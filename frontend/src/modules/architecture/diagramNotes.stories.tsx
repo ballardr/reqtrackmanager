@@ -2,11 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
 import { buildConnection, buildDiagramView, buildLeader, buildNote, buildViewEdge } from "./architectureFixtures";
-import {
-  addLeader, canvasEdges, canvasLeaders, canvasNodes, commit, findLeader, isDirty, layoutFromView, layoutToSave, leaderIsDrawn, leaderOf,
-  leaderSummary, leaderTargetFields, newLeader, newNote, noteLeadersSummary, patchLeader, removeLeader, setLeaderTarget, startHistory,
-  updateNote, type EditorLayout,
-} from "./diagramEditorModel";
+import { canvasEdges, canvasLeaders, canvasNodes, commit, isDirty, layoutFromView, layoutToSave, leaderIsDrawn, leaderSummary, noteLeadersSummary, startHistory, type EditorLayout } from "./diagramEditorModel";
+import { addLeader, findLeader, leaderOf, leaderTargetFields, newLeader, newNote, patchLeader, removeLeader, setLeaderTarget, updateNote } from "./noteModel";
 
 function Host() {
   return <p>Annotation notes: tone and their leader lines (what each ends at, its route and its ends), as the editor keeps them.</p>;
@@ -208,6 +205,11 @@ export const ANewNoteIsNeutralWithNoLeader: Story = {
     expect(newLeader("new-leader-1", { kind: "point", x: 1, y: 2 })).toMatchObject({
       id: null, kind: "point", x: 1, y: 2, start_point: null, points: [], smooth: false, start_style: "none", end_style: "arrow",
     });
-    expect(leaderTargetFields({ kind: "element", elementId: "el-1" })).toEqual({ kind: "element", element_id: "el-1", connection_id: null, x: null, y: null });
+    expect(leaderTargetFields({ kind: "element", elementId: "el-1" })).toEqual({
+      kind: "element", element_id: "el-1", connection_id: null, state_id: null, transition_id: null, x: null, y: null,
+    });
+    expect(leaderTargetFields({ kind: "state", stateId: "ste-1" })).toEqual({
+      kind: "state", element_id: null, connection_id: null, state_id: "ste-1", transition_id: null, x: null, y: null,
+    });
   },
 };

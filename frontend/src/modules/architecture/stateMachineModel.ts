@@ -29,10 +29,14 @@
  *   by the canvas as the frame's new corner is turned back into the stored box (`markerOffsets`), and the symbol stays where it
  *   was dropped.
  */
-import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
+import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
 import {
   commitStep, isDirtyBy, redoStep, refreshPresentOf, startHistoryOf, undoStep, type History as HistoryOf,
 } from "../../utils/editHistory";
+import {
+  canvasNoteNodes, dropLeadersWithout, leaderOf, moveNotes, noteFromView, noteLeaderLines, noteToValues, notesSignature, resizeNotes, type EditorLeader,
+  type EditorNote,
+} from "./noteModel";
 import {
   COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING, LABEL_ON_FILL_KINDS, labelledSvg, markerAttachPoints, markerFrame, STATE_DEFAULT_SIZE, STATE_MARKERS,
   type StateMarkerKind,
@@ -40,7 +44,7 @@ import {
 import { besideLabel, fitLabel } from "./symbolLabelLayout";
 import {
   STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type LineRouteChange, type StateKind, type StateLayoutValues, type StateMachineFinding,
-  type StateMachineModel, type StateTransition, type TransitionPointsValues,
+  type StateMachineModel, type StateTransition, type TransitionPointsValues, type NoteValues,
 } from "./types";
 
 /** One state's box and nesting. */
@@ -54,13 +58,14 @@ export interface StateBox {
   parent_state_id: string | null;
 }
 
-/** The drawing: every state's box and the attach points chosen for transitions. */
+/** The drawing: every state's box, the attach points chosen for transitions and the diagram's notes with their leaders. */
 export interface StateMachineLayout {
   boxes: StateBox[];
   points: TransitionPointsValues[];
+  notes: EditorNote[];
 }
 
-export const EMPTY_STATE_LAYOUT: StateMachineLayout = { boxes: [], points: [] };
+export const EMPTY_STATE_LAYOUT: StateMachineLayout = { boxes: [], points: [], notes: [] };
 
 /** Gap left between states when new ones are placed in a grid. */
 const GRID_GAP = 40;
@@ -95,30 +100,39 @@ export function layoutFromModel(model: StateMachineModel): StateMachineLayout {
     points: model.transitions.map((t) => ({
       id: t.id, source_point: t.source_point, target_point: t.target_point, points: t.points, smooth: t.smooth,
     })),
+    notes: model.notes.map(noteFromView),
   };
 }
 
 /**
  * Merges a freshly read model into the layout being edited: a state or transition still present keeps its local geometry,
- * nesting and attach points; a new one takes the server's; one the server no longer has is dropped.
+ * nesting and attach points; a new one takes the server's; one the server no longer has is dropped. The notes stay as edited
+ * (they change only by a save), except that a leader to a state or transition the server no longer has is dropped with it.
  */
 export function mergeModel(local: StateMachineLayout, model: StateMachineModel): StateMachineLayout {
   const fresh = layoutFromModel(model);
   const boxes = new Map(local.boxes.map((b) => [b.id, b]));
   const points = new Map(local.points.map((p) => [p.id, p]));
-  return {
-    boxes: fresh.boxes.map((b) => boxes.get(b.id) ?? b),
-    points: fresh.points.map((p) => points.get(p.id) ?? p),
-  };
+  return dropLeadersWithout(
+    {
+      boxes: fresh.boxes.map((b) => boxes.get(b.id) ?? b),
+      points: fresh.points.map((p) => points.get(p.id) ?? p),
+      notes: local.notes,
+    },
+    new Set(model.states.map((x) => x.id)), new Set(model.transitions.map((t) => t.id)),
+  );
 }
 
 /** @param layout The layout to save. @returns The request bodies of the layout save. */
-export function layoutToSave(layout: StateMachineLayout): { states: StateLayoutValues[]; transitions: TransitionPointsValues[] } {
+export function layoutToSave(
+  layout: StateMachineLayout,
+): { states: StateLayoutValues[]; transitions: TransitionPointsValues[]; notes: NoteValues[] } {
   return {
     states: layout.boxes.map((b) => ({
       id: b.id, x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed, parent_state_id: b.parent_state_id,
     })),
     transitions: layout.points,
+    notes: layout.notes.map(noteToValues),
   };
 }
 
@@ -128,6 +142,7 @@ export function layoutSignature(layout: StateMachineLayout): string {
   return JSON.stringify([
     [...states].sort((a, b) => a.id.localeCompare(b.id)),
     [...transitions].sort((a, b) => a.id.localeCompare(b.id)),
+    notesSignature(layout.notes),
   ]);
 }
 
@@ -169,7 +184,7 @@ export function moveStates(
 ): StateMachineLayout {
   const to = new Map(moves.map((m) => [m.id, m]));
   return {
-    ...layout,
+    ...moveNotes(layout, moves),
     boxes: layout.boxes.map((b) => {
       const move = to.get(b.id);
       if (!move) return b;
@@ -184,7 +199,7 @@ export function resizeStates(
   layout: StateMachineLayout, changes: { id: string; x: number; y: number; width: number; height: number }[],
 ): StateMachineLayout {
   const to = new Map(changes.map((c) => [c.id, c]));
-  return { ...layout, boxes: layout.boxes.map((b) => (to.has(b.id) ? { ...b, ...to.get(b.id)! } : b)) };
+  return { ...resizeNotes(layout, changes), boxes: layout.boxes.map((b) => (to.has(b.id) ? { ...b, ...to.get(b.id)! } : b)) };
 }
 
 /** Adds the box of a state that was just created (the model read after it holds the same box). */
@@ -364,6 +379,10 @@ export interface StateCanvasContext {
   findings: readonly StateMachineFinding[];
   /** How a state's code is shown (the record-code display rule); the code itself by default. */
   codeOf?: (state: ArchitectureState) => string;
+  /** Text shown on a note with no text yet; "Empty note" by default. */
+  emptyNote?: string;
+  /** The caption of a note; "Note" by default. */
+  noteCaption?: string;
 }
 
 /** The tone each state code's findings call for: an error wins over a warning. */
@@ -391,7 +410,7 @@ export function canvasNodes(model: StateMachineModel, layout: StateMachineLayout
     }
     return found;
   };
-  return [...model.states].sort((a, b) => depth(a) - depth(b)).map<GraphCanvasNode>((state) => {
+  const states = [...model.states].sort((a, b) => depth(a) - depth(b)).map<GraphCanvasNode>((state) => {
     const box = boxes.get(state.id) ?? boxOfState(state);
     const parentId = box.parent_state_id && boxes.has(box.parent_state_id) ? box.parent_state_id : undefined;
     if (isMarkerKind(state.kind)) {
@@ -415,6 +434,76 @@ export function canvasNodes(model: StateMachineModel, layout: StateMachineLayout
       tone: tones.get(state.unique_code),
     };
   });
+  return [...states, ...canvasNoteNodes(layout.notes, ctx.emptyNote ?? "Empty note", ctx.noteCaption ?? "Note")];
+}
+
+/**
+ * @param layout The drawing being edited.
+ * @param model The model as read (a leader to a state or transition it does not hold is not drawn).
+ * @returns The canvas leader lines of the notes: a state's box, a transition's line or a free point.
+ */
+export function canvasLeaders(layout: StateMachineLayout, model: StateMachineModel): GraphCanvasLeader[] {
+  const states = new Set(model.states.map((x) => x.id));
+  const transitions = new Set(model.transitions.map((t) => t.id));
+  return noteLeaderLines(layout.notes, (target) => {
+    if (target.kind === "state") return states.has(target.stateId) ? { kind: "node", id: target.stateId } : null;
+    if (target.kind === "transition") return transitions.has(target.transitionId) ? { kind: "edge", id: target.transitionId } : null;
+    return target.kind === "point" ? { kind: "point", x: target.x, y: target.y } : null; // a block diagram's targets are not drawn here
+  });
+}
+
+/**
+ * @param model The model as read (it names the two states).
+ * @param transition A transition.
+ * @param codeOf How a state's code is shown.
+ * @returns "STE-001 Idle to STE-002 Running (start)" for lists and the Outline.
+ */
+export function transitionName(model: StateMachineModel, transition: StateTransition, codeOf: (code: string) => string = (code) => code): string {
+  const end = (id: string, code: string) => [codeOf(code), model.states.find((x) => x.id === id)?.name].filter(Boolean).join(" ");
+  const ends = `${end(transition.source_state_id, transition.source_state_code)} to ${end(transition.target_state_id, transition.target_state_code)}`;
+  return transition.event ? `${ends} (${transition.event})` : ends;
+}
+
+/**
+ * Whether a leader's target is on the diagram: a state or transition the model holds, or a free point (always).
+ *
+ * @param leader The leader.
+ * @param model The model as read.
+ */
+export function leaderIsDrawn(leader: EditorLeader, model: StateMachineModel): boolean {
+  const target = leaderOf(leader);
+  if (target?.kind === "state") return model.states.some((x) => x.id === target.stateId);
+  if (target?.kind === "transition") return model.transitions.some((t) => t.id === target.transitionId);
+  return target?.kind === "point";
+}
+
+/**
+ * What a leader ends at, in words, for lists and the Outline.
+ *
+ * @param leader The leader.
+ * @param model The model as read.
+ * @param codeOf How a record code is shown.
+ * @returns "STE-001 Idle", "transition STE-001 to STE-002 (start)" or "a spot".
+ */
+export function leaderSummary(leader: EditorLeader, model: StateMachineModel, codeOf: (code: string) => string = (code) => code): string {
+  const target = leaderOf(leader);
+  if (target?.kind === "state") {
+    const found = model.states.find((x) => x.id === target.stateId);
+    return found ? `${codeOf(found.unique_code)} ${found.name}` : "a state that is no longer on this diagram";
+  }
+  if (target?.kind === "transition") {
+    const found = model.transitions.find((t) => t.id === target.transitionId);
+    return found ? `transition ${transitionName(model, found, codeOf)}` : "a transition that is no longer on this diagram";
+  }
+  return "a spot";
+}
+
+/** @param model The model as read. @param codeOf How a record code is shown. @returns The "Points at" options: every state and every transition. */
+export function leaderTargetOptions(model: StateMachineModel, codeOf: (code: string) => string = (code) => code): { value: string; label: string }[] {
+  return [
+    ...model.states.map((x) => ({ value: `state:${x.id}`, label: `State: ${codeOf(x.unique_code)} ${x.name}` })),
+    ...model.transitions.map((t) => ({ value: `transition:${t.id}`, label: `Transition: ${transitionName(model, t, codeOf)}` })),
+  ];
 }
 
 /** @returns The canvas lines for the model's transitions, with the layout's attach points. */

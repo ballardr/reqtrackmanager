@@ -20,10 +20,12 @@ import { DetailCard } from "../../components/DetailCard";
 import { HelpHeader } from "../../components/HelpHeader";
 import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
-import { actionLines, stateTree, type StateMachineLayout } from "./stateMachineModel";
+import { actionLines, leaderIsDrawn, leaderSummary, stateTree, type StateMachineLayout } from "./stateMachineModel";
+import { useRecordCode } from "../../hooks/useRecordCode";
 import { useStateLabel } from "./useStateLabel";
 import { LABEL_POSITION_LABEL, STATE_KIND_LABEL, type StateMachineModel } from "./types";
 import { ARCHITECTURE_HELP } from "./help";
+import { NotesOutlineSection } from "./NotesOutlineSection";
 
 /**
  * @param model The model as read.
@@ -40,6 +42,7 @@ export function StateMachineOutline({
   onSelect: (selection: GraphCanvasSelection) => void;
 }) {
   const stateName = useStateLabel().label;
+  const codeText = useRecordCode().code;
   const tree = useMemo(() => stateTree(model, layout), [model, layout]);
   const states = new Map(model.states.map((s) => [s.id, s]));
   const vertices = new Map(layout.points.map((p) => [p.id, p.points.length]));
@@ -118,6 +121,10 @@ export function StateMachineOutline({
           </div>
         )}
       </CollapsibleSection>
+      <NotesOutlineSection
+        notes={layout.notes} sectionKey="architecture_state_outline_notes" help={ARCHITECTURE_HELP.stateMachineNotes} selection={selection} onSelect={onSelect}
+        pointsAt={(l) => `${leaderSummary(l, model, codeText)}${leaderIsDrawn(l, model) ? "" : " (not drawn)"}`}
+      />
     </DetailCard>
   );
 }

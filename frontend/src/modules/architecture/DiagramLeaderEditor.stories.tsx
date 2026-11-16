@@ -4,24 +4,27 @@ import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildConnection, buildViewNode } from "./architectureFixtures";
 import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
-import { boxFromNode, newLeader, type EditorLeader, type NoteLeaderTarget } from "./diagramEditorModel";
+import { boxFromNode } from "./diagramEditorModel";
+import { boxName } from "./diagramOutlineModel";
+import { leaderTargetFields, newLeader, type EditorLeader, type NoteLeaderTarget } from "./noteModel";
 
 const BOXES = [boxFromNode(buildViewNode()), boxFromNode(buildViewNode({ element_id: "el-2", unique_code: "ELM-002", name: "Orders" }))];
 const LINK = buildConnection();
+const TARGETS = [
+  ...BOXES.map((b) => ({ value: `element:${b.elementId}`, label: `Box: ${boxName(b)}` })),
+  { value: `connection:${LINK.id}`, label: `Connection: ${LINK.unique_code} ${LINK.name}` },
+];
 
 /** Hosts the card with real state, as the editor page does, and reports each callback. */
 function Host({ initial, editable = true, drawn = true, onRemove = fn(), onOpenNote = fn() }: {
   initial: EditorLeader; editable?: boolean; drawn?: boolean; onRemove?: () => void; onOpenNote?: () => void;
 }) {
   const [leader, setLeader] = useState(initial);
-  const target = (t: NoteLeaderTarget) => setLeader((l) => ({
-    ...l, kind: t.kind, element_id: t.kind === "element" ? t.elementId : null, connection_id: t.kind === "connection" ? t.connectionId : null,
-    x: t.kind === "point" ? t.x : null, y: t.kind === "point" ? t.y : null,
-  }));
+  const target = (t: NoteLeaderTarget) => setLeader((l) => ({ ...l, ...leaderTargetFields(t) }));
   return (
     <div style={{ maxWidth: "22rem" }}>
       <DiagramLeaderEditor
-        leader={leader} index={1} editable={editable} boxes={BOXES} connections={[LINK]} drawn={drawn} newPoint={{ x: 120, y: 80 }}
+        leader={leader} index={1} editable={editable} targets={TARGETS} drawn={drawn} newPoint={{ x: 120, y: 80 }}
         onTarget={target} onChange={(change) => setLeader((l) => ({ ...l, ...change }))} onOpenNote={onOpenNote} onRemove={onRemove}
       />
     </div>

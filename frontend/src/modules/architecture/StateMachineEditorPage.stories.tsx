@@ -7,7 +7,7 @@ import { expectLabelInName } from "../../testing/labelInName";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
-  buildElement, buildState, buildStateMachine, buildStateMachineModel, buildTransition, captureDownloads, mockArchitectureReads, PROJECT_ID,
+  buildElement, buildLeader, buildNote, buildState, buildStateMachine, buildStateMachineModel, buildTransition, captureDownloads, mockArchitectureReads, PROJECT_ID,
 } from "./architectureFixtures";
 import { StateMachineEditorPage } from "./StateMachineEditorPage";
 import { chooseMenuRow } from "../../testing/menuTree";
@@ -888,5 +888,178 @@ export const ATransitionSelectionOffersItsActionsAsIconButtons: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect(actionNames(panel)).toEqual(["Comment on this connection", "Delete transition…"]);
+  },
+};
+
+// --- Notes ---
+
+/** Clicks empty canvas at a position inside the pane (a real pointer click, so the canvas reports its position). */
+async function clickPane(canvasElement: HTMLElement, at: { x: number; y: number }) {
+  const pane = canvasElement.querySelector(".react-flow__pane") as HTMLElement;
+  const rect = pane.getBoundingClientRect();
+  await userEvent.pointer({ keys: "[MouseLeft]", target: pane, coords: { clientX: rect.left + at.x, clientY: rect.top + at.y } });
+}
+
+/** The note card's fields (the card is the "Selection" region). */
+const noteField = (canvas: ReturnType<typeof within>, name: string) => canvas.findByRole("combobox", { name });
+
+/** A note on a state machine diagram with a leader to Idle, one to a transition and one to a spot. */
+function modelWithNotes() {
+  return buildStateMachineModel({
+    notes: [
+      buildNote({
+        id: "nt-1", title: "Why", text: "Wait for the motor", leaders: [
+          buildLeader({ id: "ld-1", kind: "state", state_id: "ste-1", x: null, y: null }),
+          buildLeader({ id: "ld-2", kind: "transition", transition_id: "trn-1", x: null, y: null }),
+          buildLeader({ id: "ld-3" }),
+        ],
+      }),
+    ],
+  });
+}
+
+export const AStoredNoteIsDrawnWithItsLeadersToAStateATransitionAndASpot: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: [buildElement()], stateMachineModel: modelWithNotes() }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByLabelText("Why: Wait for the motor, node")).toBeInTheDocument();
+    await waitFor(() => expect(canvasElement.querySelectorAll(".react-flow__edge.graph-leader").length).toBe(3));
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
+  },
+};
+
+export const AddNoteInTheMenuPlacesAnEmptyNoteSelectsItAndFocusesItsText: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await addFromMenu(canvas, "Add note");
+    const text = await canvas.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(text).toHaveFocus());
+    await userEvent.type(text, "Check the limit");
+    await userEvent.tab();
+    await expect(await canvas.findByLabelText("Check the limit, node")).toBeInTheDocument();
+    // A note is part of the drawing, so it is saved with it and nothing was stored at once.
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
+  },
+};
+
+export const NoteModePlacesANoteAtEachClickAndEscapeLeavesItAndNeverMeetsComment: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    const noteToggle = canvas.getByRole("button", { name: "Note" });
+    const commentToggle = canvas.getByRole("button", { name: "Comment" });
+    await userEvent.click(noteToggle);
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "true");
+    await clickPane(canvasElement, { x: 40, y: 300 });
+    const text = await canvas.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(text).toHaveFocus());
+    await userEvent.type(text, "First");
+    await userEvent.tab();
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "true");
+    await clickPane(canvasElement, { x: 300, y: 300 });
+    await waitFor(() => expect(canvasElement.querySelectorAll(".graph-node-tone").length).toBe(2));
+    await userEvent.click(commentToggle);
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(noteToggle);
+    await expect(commentToggle).toHaveAttribute("aria-pressed", "false");
+    (document.activeElement as HTMLElement | null)?.blur();
+    await userEvent.keyboard("{Escape}");
+    await expect(noteToggle).toHaveAttribute("aria-pressed", "false");
+    await clickPane(canvasElement, { x: 560, y: 300 });
+    await expect(canvasElement.querySelectorAll(".graph-node-tone").length).toBe(2);
+  },
+};
+
+export const ANoteWithALeaderToAStateAndOneToATransitionIsSavedWithTheDrawing: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    await addFromMenu(canvas, "Add note");
+    await userEvent.type(await canvas.findByRole("textbox", { name: "Note text" }), "Reason");
+    await userEvent.tab();
+    await userEvent.selectOptions(await noteField(canvas, "Tone"), "info");
+    await userEvent.click(await canvas.findByRole("button", { name: "Add leader" }));
+    await canvas.findByText("Leader 1");
+    await userEvent.selectOptions(await noteField(canvas, "Points at"), "state:ste-1");
+    await userEvent.click(canvas.getByRole("button", { name: "Select note" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Add leader" }));
+    await canvas.findByText("Leader 2");
+    await userEvent.selectOptions(await noteField(canvas, "Points at"), "transition:trn-1");
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${MACHINE}/layout`,
+      expect.objectContaining({
+        version: 5,
+        notes: [expect.objectContaining({
+          id: null, text: "Reason", tone: "info",
+          leaders: [
+            expect.objectContaining({ id: null, kind: "state", state_id: "ste-1", transition_id: null, element_id: null, connection_id: null }),
+            expect.objectContaining({ id: null, kind: "transition", transition_id: "trn-1", state_id: null }),
+          ],
+        })],
+      }),
+    ));
+  },
+};
+
+export const ThePointsAtListOffersTheStatesAndTransitionsOfThisDiagramOnly: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: [buildElement()], stateMachineModel: modelWithNotes() }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: "Outline" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Leader 1" }));
+    const list = await noteField(canvas, "Points at");
+    const labels = within(list).getAllByRole("option").map((o) => o.textContent);
+    await expect(labels).toContain("State: STE-001 Idle");
+    await expect(labels).toContain("Transition: STE-001 Idle to STE-002 Running (start)");
+    await expect(labels.some((l) => /^(Box|Connection):/.test(l ?? ""))).toBe(false);
+    await expect(labels).toContain("A spot on the canvas");
+  },
+};
+
+export const TheOutlineListsNotesAndWhatEachLeaderPointsAt: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: [buildElement()], stateMachineModel: modelWithNotes() }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: "Outline" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Why — Wait for the motor" }));
+    await expect(canvas.getByText("· Points at STE-001 Idle")).toBeInTheDocument();
+    await expect(canvas.getByText("· Points at transition STE-001 Idle to STE-002 Running (start)")).toBeInTheDocument();
+    await expect(canvas.getByText("· Points at a spot")).toBeInTheDocument();
+    await expect(await canvas.findByRole("textbox", { name: "Title" })).toHaveValue("Why");
+  },
+};
+
+export const TheDeleteKeyRemovesASelectedNoteAtOnceAndUndoBringsItBack: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: [buildElement()], stateMachineModel: modelWithNotes() }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const note = await canvas.findByLabelText("Why: Wait for the motor, node");
+    note.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard("{Delete}");
+    await waitFor(() => expect(canvas.queryByLabelText("Why: Wait for the motor, node")).toBeNull());
+    // Nothing is asked and nothing is stored until Save; the removal is one undo step.
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeEnabled();
+    await userEvent.click(canvas.getByRole("button", { name: "Undo" }));
+    await expect(await canvas.findByLabelText("Why: Wait for the motor, node")).toBeInTheDocument();
+  },
+};
+
+export const AnArchivedDiagramCannotPlaceOrEditNotes: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: { ...modelWithNotes(), diagram: buildStateMachine({ is_archived: true }) } });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Note" })).toBeDisabled();
+    const note = await canvas.findByLabelText("Why: Wait for the motor, node");
+    note.focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(await canvas.findByRole("textbox", { name: "Title" })).toBeDisabled();
+    await expect(canvas.queryByRole("button", { name: "Add leader" })).toBeNull();
   },
 };

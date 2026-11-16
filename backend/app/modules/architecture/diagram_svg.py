@@ -42,6 +42,7 @@ from __future__ import annotations
 import math
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
@@ -461,37 +462,56 @@ def _drawn_notes(notes: list[NoteOut]) -> list[NoteOut]:
 
 def _leader_run(
     note: NoteOut, leader: LeaderOut, boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
-    edges: list[ViewEdge],
+    edges: list[ViewEdge], states: Mapping[uuid.UUID, tuple[float, float, float, float]] | None = None,
+    transitions: Mapping[uuid.UUID, Point] | None = None,
 ) -> tuple[Point, list[Point], Point] | None:
     """Where a leader runs, as `(start, vertices, end)`, or `None` when its target is not drawn.
 
-    The end is an element's attach point, a drawn line's middle or the free point. A box end and the start choose their
-    attach points by one rule, held equal to the browser's: a point a person chose wins; otherwise an open end is the point
-    of its box nearest the vertex next to it, and with no vertices the nearest pair of attach points (a box target) or the
-    note's point nearest the end (a line or a free point).
+    The end is a box's attach point (an element of a block diagram, a state of a state machine diagram), a drawn line's middle
+    (a connection, or a transition) or the free point. A box end and the start choose their attach points by one rule, held
+    equal to the browser's: a point a person chose wins; otherwise an open end is the point of its box nearest the vertex next
+    to it, and with no vertices the nearest pair of attach points (a box target) or the note's point nearest the end (a line or a
+    free point).
+
+    Args:
+        note: The note the leader belongs to.
+        leader: The leader.
+        boxes: A block diagram's drawn boxes by element id (and boundary box id).
+        middles: A block diagram's drawn lines' middles by drawn edge id.
+        edges: A block diagram's drawn edges, to find the one that stands for a connection.
+        states: A state machine diagram's drawn state frames by state id (`None` in a block diagram).
+        transitions: A state machine diagram's transition middles by transition id (`None` in a block diagram).
     """
     kind = leader.kind
     block = (note.x, note.y, note.width, note.height)
     vertices = [(p.x, p.y) for p in leader.points]
     end: Point
-    to_point: AttachPoint | None = None
     target_box: tuple[float, float, float, float] | None = None
     if kind == LeaderKind.ELEMENT and leader.element_id is not None:
         target = boxes.get(leader.element_id)
         if target is None:
             return None
         target_box = (target.x, target.y, target.width, target.height)
+    elif kind == LeaderKind.STATE and leader.state_id is not None:
+        target_box = (states or {}).get(leader.state_id)
+        if target_box is None:
+            return None
+    if target_box is not None:
         if vertices:
-            to_point = nearest_point(target_box, vertices[-1])
+            end = point_xy(target_box, nearest_point(target_box, vertices[-1]))
         else:
             from_point, to_point = line_points(block, target_box, leader.start_point, None)
             return point_xy(block, from_point), [], point_xy(target_box, to_point)
-        end = point_xy(target_box, to_point)
     elif kind == LeaderKind.CONNECTION and leader.connection_id is not None:
         drawn = next((e for e in edges if e.id in middles and any(c.id == leader.connection_id for c in e.connections)), None)
         if drawn is None:
             return None
         end = middles[drawn.id]
+    elif kind == LeaderKind.TRANSITION and leader.transition_id is not None:
+        middle = (transitions or {}).get(leader.transition_id)
+        if middle is None:
+            return None
+        end = middle
     elif kind == LeaderKind.POINT and leader.x is not None and leader.y is not None:
         end = (leader.x, leader.y)
     else:
@@ -520,13 +540,15 @@ def _leader_marker(tone: str, style: LineEnd, stroke: str, defs: dict[str, str])
 
 def _leader_runs(
     notes: list[NoteOut], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
-    edges: list[ViewEdge],
+    edges: list[ViewEdge], states: Mapping[uuid.UUID, tuple[float, float, float, float]] | None = None,
+    transitions: Mapping[uuid.UUID, Point] | None = None,
 ) -> dict[uuid.UUID, tuple[Point, list[Point], Point]]:
-    """Where each drawn leader runs, by leader id (a leader whose target is not drawn is left out)."""
+    """Where each drawn leader runs, by leader id (a leader whose target is not drawn is left out); the arguments after `edges`
+    are a state machine diagram's targets (see `_leader_run`)."""
     runs: dict[uuid.UUID, tuple[Point, list[Point], Point]] = {}
     for n in _drawn_notes(notes):
         for leader in n.leaders:
-            run = _leader_run(n, leader, boxes, middles, edges)
+            run = _leader_run(n, leader, boxes, middles, edges, states, transitions)
             if run is not None:
                 runs[leader.id] = run
     return runs

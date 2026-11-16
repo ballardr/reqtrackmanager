@@ -91,6 +91,17 @@ def collect_interface_list(db: Session, req: ReportContext) -> ReportResult:
     wanted = (req.params.get("element") or "").strip()
     rows: list[list[str]] = []
     with_requirement = 0
+    # A requirement of another project (a cross-level link) is named only for a viewer who may view requirements there, so the
+    # report never discloses a record's code beyond what its reader may see; one the viewer may not see is left out.
+    may_view: dict[uuid.UUID, bool] = {}
+
+    def may_name(requirement: Requirement, own_project: uuid.UUID) -> bool:
+        if requirement.project_id == own_project:
+            return True
+        if requirement.project_id not in may_view:
+            may_view[requirement.project_id] = req.can_view(db, REQUIREMENT_TYPE, requirement.project_id)
+        return may_view[requirement.project_id]
+
     for project in projects:
         elements = project_elements(db, project.id)
         focus = find_element(elements, wanted) if wanted else None
@@ -122,6 +133,7 @@ def collect_interface_list(db: Session, req: ReportContext) -> ReportResult:
         codes = {
             r.id: req.code(r.unique_code, r.project_id)
             for r in db.scalars(select(Requirement).where(Requirement.id.in_({i for v in by_connection.values() for i in v})))
+            if may_name(r, project.id)
         } if by_connection else {}
 
         def end(element_id: uuid.UUID, port_id: uuid.UUID | None, elements=elements, ports=ports, project_id=project.id) -> str:

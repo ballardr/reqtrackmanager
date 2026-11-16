@@ -43,7 +43,7 @@ export const NOTE_SIZE_MODE_LABEL: Record<NoteSizeMode, string> = { automatic: "
 export const NOTE_TITLE_MAX = 120;
 
 /** What an annotation's leader line ends at. */
-export type LeaderKind = "element" | "connection" | "point";
+export type LeaderKind = "element" | "connection" | "state" | "transition" | "point";
 
 /** How a leader line begins or ends. */
 export type LineEnd = "none" | "arrow" | "dot";
@@ -56,6 +56,10 @@ export interface DiagramLeader {
   kind: LeaderKind;
   element_id: string | null;
   connection_id: string | null;
+  /** The state a note on a state machine diagram points at (`kind` "state"). */
+  state_id: string | null;
+  /** The transition a note on a state machine diagram points at (`kind` "transition"). */
+  transition_id: string | null;
   x: number | null;
   y: number | null;
   start_point: AttachPoint | null;
@@ -882,6 +886,8 @@ export interface StateMachineModel {
   diagram: StateMachineDiagram;
   states: ArchitectureState[];
   transitions: StateTransition[];
+  /** The diagram's annotation notes with their leaders. */
+  notes: DiagramNote[];
   findings: StateMachineFinding[];
 }
 

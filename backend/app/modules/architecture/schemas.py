@@ -578,7 +578,9 @@ class LeaderIn(BaseModel):
     """A line from a note to what it describes (`id` keeps an existing leader of the note; none creates one).
 
     `kind` says what the line ends at and exactly the matching target is given: `element_id` for `element`,
-    `connection_id` for `connection`, `x` and `y` together for `point`. `start_point` is the attach point of the note's block
+    `connection_id` for `connection`, `state_id` for `state`, `transition_id` for `transition`, `x` and `y` together for
+    `point`. A block diagram's notes use the first two, a state machine diagram's the next two; the owner's rules refuse the
+    other pair. `start_point` is the attach point of the note's block
     it leaves from (none: the nearest); `points` are its vertices in order from the note, `smooth` curves through them,
     and the two styles draw an arrowhead or a dot at an end.
     """
@@ -587,6 +589,8 @@ class LeaderIn(BaseModel):
     kind: LeaderKind
     element_id: UUID | None = None
     connection_id: UUID | None = None
+    state_id: UUID | None = None
+    transition_id: UUID | None = None
     x: Coordinate | None = None
     y: Coordinate | None = None
     start_point: AttachPoint | None = None
@@ -599,10 +603,12 @@ class LeaderIn(BaseModel):
     def _target_matches_its_kind(self) -> LeaderIn:
         """Rejects a leader whose target does not match its kind (a missing target, or a second one)."""
         if self.kind == LeaderKind.NONE:
-            raise ValueError("A leader points at an element, a connection or a point.")
+            raise ValueError("A leader points at an element, a connection, a state, a transition or a point.")
         given = {
             LeaderKind.ELEMENT: self.element_id is not None,
             LeaderKind.CONNECTION: self.connection_id is not None,
+            LeaderKind.STATE: self.state_id is not None,
+            LeaderKind.TRANSITION: self.transition_id is not None,
             LeaderKind.POINT: self.x is not None or self.y is not None,
         }
         for kind, present in given.items():
@@ -612,6 +618,10 @@ class LeaderIn(BaseModel):
             raise ValueError("A leader to an element names the element.")
         if self.kind == LeaderKind.CONNECTION and self.connection_id is None:
             raise ValueError("A leader to a connection names the connection.")
+        if self.kind == LeaderKind.STATE and self.state_id is None:
+            raise ValueError("A leader to a state names the state.")
+        if self.kind == LeaderKind.TRANSITION and self.transition_id is None:
+            raise ValueError("A leader to a transition names the transition.")
         if self.kind == LeaderKind.POINT and (self.x is None or self.y is None):
             raise ValueError("A leader to a point gives both coordinates.")
         return self
@@ -624,6 +634,8 @@ class LeaderOut(BaseModel):
     kind: LeaderKind
     element_id: UUID | None
     connection_id: UUID | None
+    state_id: UUID | None = None
+    transition_id: UUID | None = None
     x: float | None
     y: float | None
     start_point: AttachPoint | None
@@ -1143,12 +1155,14 @@ class TransitionPointsIn(BaseModel):
 
 class StateMachineLayoutSave(BaseModel):
     """The editor's save of the drawing: every state's box and nesting, and the attach points of the transitions named.
-    A state or transition left out is kept as it is; one that does not belong to the diagram is refused. 409 when the
-    `version` is stale."""
+    A state or transition left out is kept as it is; one that does not belong to the diagram is refused. `notes`, when given,
+    is the complete list of the diagram's notes (an annotation left out is deleted; an id that is not this diagram's is
+    refused); left out (`None`) it keeps the stored notes. 409 when the `version` is stale."""
 
     version: int
     states: list[StateLayoutIn] = Field(default_factory=list, max_length=2000)
     transitions: list[TransitionPointsIn] = Field(default_factory=list, max_length=5000)
+    notes: list[NoteIn] | None = Field(default=None, max_length=200)
 
 
 class StateMachineModel(BaseModel):
@@ -1157,6 +1171,7 @@ class StateMachineModel(BaseModel):
     diagram: StateMachineDiagramOut
     states: list[StateOut]
     transitions: list[TransitionOut]
+    notes: list[NoteOut] = Field(default_factory=list)
     findings: list[FindingOut]
 
 

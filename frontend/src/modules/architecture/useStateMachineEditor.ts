@@ -146,8 +146,8 @@ export function useStateMachineEditor(projectId: string, diagramId: string): Sta
 
   const save = useCallback(async () => {
     const sent = history.present;
-    const { states, transitions } = layoutToSave(sent);
-    if ((await store((version) => api.saveLayout(diagramId, version, states, transitions))) === null) return false;
+    const { states, transitions, notes } = layoutToSave(sent);
+    if ((await store((version) => api.saveLayout(diagramId, version, states, transitions, notes))) === null) return false;
     // The stored drawing is the baseline at once: the read-back may be overtaken by a later read, which must not leave the
     // saved drawing looking unsaved.
     setHistory((h) => ({ ...h, saved: sent }));

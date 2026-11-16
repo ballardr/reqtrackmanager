@@ -31,10 +31,9 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import { useRecordCode } from "../../hooks/useRecordCode";
-import {
-  BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, boundaryNodeId, boundaryOutsideName, leaderIsDrawn, leaderSummary, type EditorBoundary,
-  type EditorBox, type EditorNote,
-} from "./diagramEditorModel";
+import { BOUNDARY_SHAPE_LABEL, boundaryNodeId, boundaryOutsideName, leaderIsDrawn, leaderSummary, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
+import { NotesOutlineSection } from "./NotesOutlineSection";
+import type { EditorNote } from "./noteModel";
 import {
   boxName, connectionRows, elementRows, outlineBranchIds, outlineSize, outlineTree, type ConnectionRow,
 } from "./diagramOutlineModel";
@@ -42,13 +41,6 @@ import type { DiagramAnchor, DiagramViewEdge, ModelStateMachine } from "./types"
 import { ARCHITECTURE_HELP } from "./help";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
-
-/** A note's title and text shortened for a list. */
-function noteSummary(note: Pick<EditorNote, "title" | "text">): string {
-  const flat = [note.title, note.text].map((part) => part.replace(/\s+/g, " ").trim()).filter(Boolean).join(" — ");
-  if (!flat) return "Empty note";
-  return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
-}
 
 /**
  * @param boxes Every box of the layout.
@@ -229,42 +221,10 @@ export function DiagramOutline({
         </CollapsibleSection>
       )}
 
-      {notes.length > 0 && (
-        <CollapsibleSection sectionKey="architecture_outline_notes" title="Notes" help={ARCHITECTURE_HELP.diagramNotes} variant="plain" summary={String(notes.length)}>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {notes.map((n) => (
-              <li key={n.key}>
-                <button
-                  type="button" className={isSelected("node", NOTE_NODE_PREFIX + n.key) ? "btn btn-sm btn-primary" : "btn btn-sm"}
-                  aria-current={isSelected("node", NOTE_NODE_PREFIX + n.key) ? "true" : undefined}
-                  onClick={() => onSelect({ kind: "node", id: NOTE_NODE_PREFIX + n.key })}
-                >
-                  {noteSummary(n)}
-                </button>
-                {n.leaders.length > 0 && (
-                  <ul style={{ listStyle: "none", margin: 0, paddingLeft: "var(--space-4)" }} aria-label="Leaders">
-                    {n.leaders.map((l, i) => {
-                      const pointsAt = leaderSummary(l, boxes, edges, leaderIsDrawn(l, visibleBoxIds, edges, drawnEdgeIds));
-                      return (
-                        <li key={l.key}>
-                          <button
-                            type="button" className={isSelected("leader", l.key) ? "btn btn-sm btn-primary" : "btn btn-sm"}
-                            aria-current={isSelected("leader", l.key) ? "true" : undefined}
-                            onClick={() => onSelect({ kind: "leader", id: l.key })}
-                          >
-                            Leader {i + 1}
-                          </button>
-                          <span className="text-muted"> · Points at {pointsAt}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-        </CollapsibleSection>
-      )}
+      <NotesOutlineSection
+        notes={notes} sectionKey="architecture_outline_notes" help={ARCHITECTURE_HELP.diagramNotes} selection={selection} onSelect={onSelect}
+        pointsAt={(l) => leaderSummary(l, boxes, edges, leaderIsDrawn(l, visibleBoxIds, edges, drawnEdgeIds))}
+      />
 
       <CollapsibleSection sectionKey="architecture_outline_lines" title="Lines" variant="plain" summary={String(rows.length)}>
         {rows.length === 0 ? (

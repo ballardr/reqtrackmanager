@@ -43,10 +43,12 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.modules.architecture import state_machine_checks as checks
-from app.modules.architecture.diagrams import _check_new_element
-from app.modules.architecture.enums import AttachPoint, FindingSeverity, LabelPosition, RecordStatus, StateKind
+from app.modules.architecture.diagrams import _check_new_element, leaders_of, machine_notes_of, note_out, sync_notes
+from app.modules.architecture.enums import AttachPoint, FindingSeverity, LabelPosition, LeaderKind, RecordStatus, StateKind
 from app.modules.architecture.models import (
+    ArchitectureDiagramNote,
     ArchitectureElement,
+    ArchitectureNoteLeader,
     ArchitectureState,
     ArchitectureStateMachineDiagram,
     ArchitectureTransition,
@@ -54,6 +56,7 @@ from app.modules.architecture.models import (
 from app.modules.architecture.records import RuleError, _check_version, _detail, _forget, _touch
 from app.modules.architecture.schemas import (
     FindingOut,
+    NoteIn,
     StateCreate,
     StateMachineDiagramCreate,
     StateMachineDiagramOut,
@@ -661,15 +664,43 @@ def delete_transition(
 # --- Layout ----------------------------------------------------------------
 
 
+def _check_note_leaders(
+    notes: Sequence[NoteIn], stored: dict[uuid.UUID, list[ArchitectureNoteLeader]], states: set[uuid.UUID],
+    transitions: set[uuid.UUID],
+) -> None:
+    """Checks what the notes' leaders point at: a state or transition of this diagram, or a point (a note on a state machine
+    diagram never points at a block diagram's element or connection). A leader id must be one of its own note's and listed
+    once.
+
+    Raises:
+        RuleError: 400 for a leader to an element or connection, to a state or transition of another diagram, or one that is
+            not the note's own or is listed twice.
+    """
+    for note in notes:
+        own = {row.id for row in stored.get(note.id, [])} if note.id is not None else set()
+        seen: set[uuid.UUID] = set()
+        for leader in note.leaders:
+            if leader.id is not None:
+                if leader.id not in own or leader.id in seen:
+                    raise RuleError("A leader does not belong to this note, or is listed twice.", 400)
+                seen.add(leader.id)
+            if leader.kind in (LeaderKind.ELEMENT, LeaderKind.CONNECTION):
+                raise RuleError("A note on a state machine diagram points at a state, a transition or a point.", 400)
+            if leader.kind == LeaderKind.STATE and leader.state_id not in states:
+                raise RuleError("A note can point at a state of its own state machine diagram.", 400)
+            if leader.kind == LeaderKind.TRANSITION and leader.transition_id not in transitions:
+                raise RuleError("A note can point at a transition of its own state machine diagram.", 400)
+
+
 def save_layout(
     db: Session, project: Any, actor: User, diagram_id: uuid.UUID, payload: StateMachineLayoutSave,
 ) -> ArchitectureStateMachineDiagram:
-    """Replaces the boxes and nesting of the states named, and the attach points of the transitions named (the editor's
-    save). Anything not named is kept. The caller commits.
+    """Replaces the boxes and nesting of the states named, the attach points of the transitions named and, when the request
+    carries them, the diagram's notes with their leaders (the editor's save). Anything not named is kept. The caller commits.
 
     Raises:
-        RuleError: 404 if absent, 409 on a stale `version`, 400 for a state or transition of another diagram or a nesting
-            that breaks the rules.
+        RuleError: 404 if absent, 409 on a stale `version`, 400 for a state or transition of another diagram, a note or leader
+            that is not this diagram's or points outside it, or a nesting that breaks the rules.
     """
     diagram = get_state_machine(db, Viewer.of_user(actor, project), project.id, diagram_id, lock=True)
     _check_version(diagram, payload.version)
@@ -677,10 +708,17 @@ def save_layout(
     transitions = {t.id: t for t in transitions_of(db, diagram.id)}
     if any(s.id not in states for s in payload.states) or any(t.id not in transitions for t in payload.transitions):
         raise RuleError("A state or transition does not belong to this state machine diagram.", 400)
+    notes_changed = 0
+    if payload.notes is not None:
+        notes_changed = sync_notes(
+            db, payload.notes, machine_notes_of(db, diagram.id),
+            lambda: ArchitectureDiagramNote(id=uuid.uuid4(), state_machine_diagram_id=diagram.id),
+            lambda notes, stored: _check_note_leaders(notes, stored, set(states), set(transitions)),
+        )
     parents = {i: s.parent_state_id for i, s in states.items()}
     parents.update({s.id: s.parent_state_id for s in payload.states})
     _check_tree(states.values(), parents)
-    changed = 0
+    changed = notes_changed
     for given in payload.states:
         row = states[given.id]
         values = (given.x, given.y, given.width, given.height, given.collapsed, given.parent_state_id)
@@ -818,9 +856,12 @@ def transition_outs(
 def model_of(db: Session, diagram: ArchitectureStateMachineDiagram, viewer: Viewer) -> StateMachineModel:
     """The diagram with its states, transitions and findings, for the editor and the outline."""
     states, transitions = states_of(db, diagram.id), transitions_of(db, diagram.id)
+    notes = machine_notes_of(db, diagram.id)
+    leaders = leaders_of(db, (n.id for n in notes))
     return StateMachineModel(
         diagram=state_machine_outs(db, [diagram], viewer)[0], states=state_outs(db, states, viewer),
-        transitions=transition_outs(transitions, states, diagram.version), findings=[finding_out(f) for f in checks.check(states, transitions)],
+        transitions=transition_outs(transitions, states, diagram.version),
+        notes=[note_out(n, leaders.get(n.id, ())) for n in notes], findings=[finding_out(f) for f in checks.check(states, transitions)],
     )
 
 

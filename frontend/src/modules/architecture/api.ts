@@ -315,8 +315,8 @@ export const projectStateMachineApi = (projectId: string) => {
     archive: (id: string) => api.post<StateMachineDiagram>(`${base}/${id}/archive`),
     unarchive: (id: string) => api.post<StateMachineDiagram>(`${base}/${id}/unarchive`),
     remove: (id: string) => api.delete<void>(`${base}/${id}`),
-    saveLayout: (id: string, version: number, states: StateLayoutValues[], transitions: TransitionPointsValues[]) =>
-      api.put<StateMachineDiagram>(`${base}/${id}/layout`, { version, states, transitions }),
+    saveLayout: (id: string, version: number, states: StateLayoutValues[], transitions: TransitionPointsValues[], notes: NoteValues[]) =>
+      api.put<StateMachineDiagram>(`${base}/${id}/layout`, { version, states, transitions, notes }),
     addState: (id: string, version: number, values: StateCreateValues) =>
       api.post<ArchitectureState>(`${base}/${id}/states`, { version, ...values }),
     addTransition: (id: string, version: number, values: TransitionFieldValues) =>

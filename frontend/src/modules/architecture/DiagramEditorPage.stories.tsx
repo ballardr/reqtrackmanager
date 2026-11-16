@@ -674,8 +674,8 @@ export const ANoteIsGivenAToneAndALeaderToABoxAndBothAreSaved: Story = {
         notes: [expect.objectContaining({
           id: null, tone: "danger",
           leaders: [{
-            id: null, kind: "element", element_id: "el-1", connection_id: null, x: null, y: null, start_point: "right", points: [],
-            smooth: false, start_style: "none", end_style: "dot",
+            id: null, kind: "element", element_id: "el-1", connection_id: null, state_id: null, transition_id: null, x: null, y: null,
+            start_point: "right", points: [], smooth: false, start_style: "none", end_style: "dot",
           }],
         })],
       }),

@@ -6,6 +6,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.modules.architecture.tests._helpers import (
+    add_member,
+    grant_project_role,
     make_connection,
     make_diagram,
     make_element,
@@ -80,6 +82,34 @@ def test_a_leaf_element_with_no_owner_and_a_connection_with_no_requirement_are_l
 
 
 # --- AR3 interface list -------------------------------------------------------------
+
+
+def test_the_interface_list_names_a_requirement_of_another_project_only_to_a_reader_who_may_view_it(client, admin_token):
+    """A requirement linked across projects to a connection is named in the list only for a reader who may view requirements in
+    its own project; for anyone else the connection reads as having none, so the report discloses no record beyond what its
+    reader can see."""
+    world = World(client, admin_token, "Report cross level")
+    world.enable("architecture")
+    mine, theirs = world.project("Mine"), world.project("Theirs")
+    a = make_element(client, world.token, mine["id"], "Alpha")
+    b = make_element(client, world.token, mine["id"], "Bravo")
+    connection = make_connection(client, world.token, mine["id"], a["id"], b["id"])
+    requirement = world.requirement(theirs, "Remote need")
+    world.link(
+        ("architecture_connection", connection["id"]), ("requirement", requirement),
+        source_project_id=mine["id"], target_project_id=theirs["id"],
+    )
+    user_id, reader = add_member(client, world.token, world.org["id"], mine["id"], f"reader-{world.org['id'][:8]}@example.com")
+    grant_project_role(client, world.token, mine["id"], user_id, "architect")
+
+    def requirements_column(token) -> list[str]:
+        report = _report(client, token, mine["id"], "interface-list")
+        return [row[-2] for row in _rows(report)["connections"]]
+
+    # The organisation administrator may view requirements in the other project, so the code is named.
+    assert requirements_column(world.token)[0].endswith("-001")
+    # A member of only the reported project is not told the record exists.
+    assert requirements_column(reader) == [""]
 
 
 def test_the_interface_list_names_both_ends_the_type_and_the_protocol_and_filters(client, admin_token):

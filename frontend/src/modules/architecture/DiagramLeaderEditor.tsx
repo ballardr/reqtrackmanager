@@ -5,8 +5,8 @@
  * its vertices.
  *
  * Responsibilities:
- * - Offer the keyboard route to what the canvas does with a leader: a "Points at" list (a drawn box or connection, or a spot
- *   with X and Y), the attach point it starts from, and the vertices and curve through the shared `LineVertexFields`.
+ * - Offer the keyboard route to what the canvas does with a leader: a "Points at" list (what the page offers: a drawn box or
+ *   connection, a state or transition, or a spot with X and Y), the attach point it starts from, and the vertices and curve through the shared `LineVertexFields`.
  * - Say, rather than hide, that a leader points at something that is not drawn.
  * - Go back to the note the leader belongs to, or remove the leader (the note stays).
  *
@@ -20,15 +20,12 @@ import { FieldCaption } from "../../components/FieldHelp";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, type AttachPoint } from "../../components/graphAttachPoints";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { labelOptions } from "../../utils/labelOptions";
-import {
-  LEADER_SPOT_OPTION, leaderOf, leaderOptionValue, type EditorBox, type EditorLeader, type NoteLeaderTarget,
-} from "./diagramEditorModel";
-import { boxName } from "./diagramOutlineModel";
+import { LEADER_SPOT_OPTION, leaderOf, leaderOptionValue, leaderTargetOf, type EditorLeader, type NoteLeaderTarget } from "./noteModel";
 import { ARCHITECTURE_HELP } from "./help";
 import { LineVertexFields } from "./LineVertexFields";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
-import { LINE_END_LABEL, type ArchitectureConnection, type LineEnd, type LineWaypoint } from "./types";
+import { LINE_END_LABEL, type LineEnd, type LineWaypoint } from "./types";
 
 /** A typed position as a number, or null when the text is not one (the field then keeps the old value). */
 function parsePosition(text: string): number | null {
@@ -36,12 +33,18 @@ function parsePosition(text: string): number | null {
   return text.trim() !== "" && Number.isFinite(value) && Math.abs(value) <= 1_000_000 ? Math.round(value) : null;
 }
 
+/** One thing a leader can end at, as the "Points at" list offers it: its option value (`leaderOptionValue`) and its words. */
+export interface LeaderTargetOption {
+  value: string;
+  label: string;
+}
+
 /**
  * @param leader The selected leader.
  * @param index Its position among the note's leaders, from 1 (names the card).
  * @param editable Whether the layout can be changed.
- * @param boxes The boxes the diagram draws (switched-off boxes left out).
- * @param connections The connections of the drawn lines.
+ * @param targets What the diagram draws that a leader can end at (the page names them: boxes and connections, or states and transitions).
+ * @param help The "Points at" field's help; by default the block diagram's wording (boxes and connections).
  * @param drawn Whether the leader's target is drawn (a leader to something switched off or removed is not).
  * @param newPoint Where an added vertex goes (off the line, chosen by the page, which knows where the line runs).
  * @param onTarget Called with a box, connection or spot to end at.
@@ -50,13 +53,13 @@ function parsePosition(text: string): number | null {
  * @param onRemove Called to remove the leader.
  */
 export function DiagramLeaderEditor({
-  leader, index, editable, boxes, connections, drawn, newPoint, onTarget, onChange, onOpenNote, onRemove,
+  leader, index, editable, targets, help = ARCHITECTURE_HELP.leaderPointsAt, drawn, newPoint, onTarget, onChange, onOpenNote, onRemove,
 }: {
   leader: EditorLeader;
   index: number;
   editable: boolean;
-  boxes: EditorBox[];
-  connections: ArchitectureConnection[];
+  targets: LeaderTargetOption[];
+  help?: string;
   drawn: boolean;
   newPoint: LineWaypoint;
   onTarget: (target: NoteLeaderTarget) => void;
@@ -66,18 +69,17 @@ export function DiagramLeaderEditor({
 }) {
   const target = leaderOf(leader);
   const current = leaderOptionValue(target);
-  const options = [
-    ...boxes.map((b) => ({ value: `element:${b.elementId}`, label: `Box: ${boxName(b)}` })),
-    ...connections.map((c) => ({ value: `connection:${c.id}`, label: `Connection: ${c.unique_code}${c.name ? ` ${c.name}` : ""}` })),
-  ];
+  const options = [...targets];
   const spot = { value: LEADER_SPOT_OPTION, label: "A spot on the canvas" };
   if (target?.kind === "point" || current === "") options.push(spot);
   else if (!options.some((o) => o.value === current)) options.push({ value: current, label: "An item not on this diagram" });
   // A box or connection leader may be moved to a spot with the same list; the spot starts where the line ends now when known.
   const choose = (value: string) => {
     if (value === LEADER_SPOT_OPTION) onTarget({ kind: "point", x: Math.round(newPoint.x), y: Math.round(newPoint.y) });
-    else if (value.startsWith("element:")) onTarget({ kind: "element", elementId: value.slice("element:".length) });
-    else if (value.startsWith("connection:")) onTarget({ kind: "connection", connectionId: value.slice("connection:".length) });
+    else {
+      const chosen = leaderTargetOf(value);
+      if (chosen) onTarget(chosen);
+    }
   };
   const setSpot = (axis: "x" | "y", text: string) => {
     const value = parsePosition(text);
@@ -92,12 +94,12 @@ export function DiagramLeaderEditor({
     <div className="stack">
       <p><strong>Leader {index}</strong></p>
       <LabeledSelect
-        label="Points at" help={ARCHITECTURE_HELP.leaderPointsAt} placeholder={null} disabled={!editable} value={current}
+        label="Points at" help={help} placeholder={null} disabled={!editable} value={current}
         options={[...options, ...(options.some((o) => o.value === LEADER_SPOT_OPTION) ? [] : [spot])]} onChange={choose}
       />
       {target?.kind === "point" && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>
-          <FieldCaption label="Spot" help={ARCHITECTURE_HELP.leaderPointsAt} />
+          <FieldCaption label="Spot" help={help} />
           <div className="row" style={{ gap: "var(--space-2)", alignItems: "center", flexWrap: "nowrap" }}>
             <InlineTextInput
               type="number" ariaLabel="Spot X" value={String(target.x)} commitOnBlur disabled={!editable} onChange={(text) => setSpot("x", text)}

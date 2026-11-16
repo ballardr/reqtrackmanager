@@ -10,6 +10,7 @@
  * - A transition: its two states, event, condition (guard), action and description, edited in place through the shared field group (read-only
  *   text when the diagram cannot be edited), the findings that name it, the attach points of its two ends (the keyboard route to
  *   dragging a line's end); Comment and Delete. Double-clicking a line on the canvas opens the same fields in a dialog.
+ * - A note or one of its leader lines: the shared note and leader forms (`StateMachineNoteCards`).
  * - Nothing selected: a short prompt.
  *
  * Design decisions:
@@ -34,6 +35,8 @@ import { SelectionActions } from "./SelectionActions";
 import { StateSelectionFields } from "./StateSelectionFields";
 import type { TransitionFocusField } from "./TransitionFieldGroup";
 import { TransitionSelectionFields } from "./TransitionSelectionFields";
+import { noteKeyOf } from "./noteModel";
+import { StateMachineNoteCards, type StateMachineNoteHandlers } from "./StateMachineNoteCards";
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import { markerAttachPoints, markerFrame } from "./stateShapes";
@@ -68,10 +71,11 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  * @param onParentChange Puts the state inside another (or at the top level with null); an unsaved drawing edit.
  * @param onPointsChange Sets the attach point of one or both ends of a transition (null is automatic); an unsaved drawing edit.
  * @param onComment Starts a comment on the selected state or transition.
+ * @param notes What a change to a selected note or leader does.
  */
 export function StateMachineSelectionPanel({
   projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onSaveTransition, focusTransition, onTransitionFocused, onDeleteState, onDeleteTransition, onParentChange,
-  onPointsChange, onComment, onConnect,
+  onPointsChange, onComment, onConnect, notes,
 }: {
   projectId: string;
   model: StateMachineModel;
@@ -90,15 +94,23 @@ export function StateMachineSelectionPanel({
   onParentChange: (state: ArchitectureState, parentId: string | null) => void;
   onPointsChange: (transition: StateTransition, change: LineRouteChange) => void;
   onComment: (target: { kind: "node" | "edge"; id: string }) => void;
+  notes: StateMachineNoteHandlers;
 }) {
   const commentText = useStrings().canvasComments;
   const stateName = useStateLabel().label;
 
-  const state = selection?.kind === "node" ? model.states.find((s) => s.id === selection.id) ?? null : null;
+  const noteKey = selection?.kind === "node" ? noteKeyOf(selection.id) : null;
+  const note = noteKey === null ? null : layout.notes.find((n) => n.key === noteKey) ?? null;
+  const leader = selection?.kind === "leader"
+    ? layout.notes.flatMap((n) => n.leaders.map((l, i) => ({ note: n, leader: l, index: i + 1 }))).find((x) => x.leader.key === selection.id) ?? null
+    : null;
+  const state = selection?.kind === "node" && noteKey === null ? model.states.find((s) => s.id === selection.id) ?? null : null;
   const transition = selection?.kind === "edge" ? model.transitions.find((t) => t.id === selection.id) ?? null : null;
 
   let body;
-  if (state) {
+  if (note || leader) {
+    body = <StateMachineNoteCards model={model} layout={layout} note={note} leader={leader} editable={editable} handlers={notes} />;
+  } else if (state) {
     const holds = layout.boxes.some((b) => b.parent_state_id === state.id);
     const own = layout.boxes.find((b) => b.id === state.id);
     const blocked = new Set([state.id, ...descendantIds(layout, state.id)]);
@@ -212,7 +224,7 @@ export function StateMachineSelectionPanel({
       </>
     );
   } else {
-    body = <p className="text-muted">Select a state or a transition to see its details.</p>;
+    body = <p className="text-muted">Select a state, a transition or a note to see its details.</p>;
   }
 
   return (

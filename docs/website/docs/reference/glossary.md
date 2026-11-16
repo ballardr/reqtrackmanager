@@ -156,7 +156,7 @@ The filled dot where a state machine diagram starts. An Active diagram needs exa
 
 #### Leader
 
-A line from a note on a block diagram to what the note describes: a box, a drawn connection line or a free spot on the drawing. A note can have several. A leader can start at any attach point of the note, pass through vertices, be straight or smooth, and have an arrowhead or a dot at either end. Drag from an attach point of a note to draw one; select it to change where it ends, where it starts and how its ends look. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+A line from a note on a block diagram or a state machine diagram to what the note describes: a box or a drawn connection line (block diagram), a state or a transition (state machine diagram), or a free spot on the drawing. A note can have several. A leader can start at any attach point of the note, pass through vertices, be straight or smooth, and have an arrowhead or a dot at either end. Drag from an attach point of a note to draw one; select it to change where it ends, where it starts and how its ends look. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
 #### Lifecycle (requirement lifecycle)
 
@@ -192,7 +192,7 @@ A name a project or organisation gives an entry of the project navigation (for e
 
 #### Note (annotation)
 
-Text placed on one diagram only, with a tone, an optional **Title** (drawn in bold above the text), an **Alignment** (Left, Centre or Right), a **Size** (Automatic: as large as its text needs; Manual: the size set by dragging) and any number of leaders. The line breaks typed in its text are kept. It is not a display note, which belongs to an element. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [Leader](#leader).
+Text placed on one diagram only, with a tone, an optional **Title** (drawn in bold above the text), an **Alignment** (Left, Centre or Right), a **Size** (Automatic: as large as its text needs; Manual: the size set by dragging) and any number of leaders. The line breaks typed in its text are kept. It is not a display note, which belongs to an element. A state machine diagram has notes too. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md), [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md#notes) and [Leader](#leader).
 
 #### Organisation
 

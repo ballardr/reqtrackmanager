@@ -38,7 +38,8 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import { DetailLayout } from "../../components/DetailLayout";
 import { EditHistoryButtons } from "../../components/EditHistoryButtons";
-import { GraphCanvas, type GraphCanvasSelection } from "../../components/GraphCanvas";
+import { GraphCanvas, type GraphCanvasSelection, type GraphLeaderTarget } from "../../components/GraphCanvas";
+import type { AttachPoint } from "../../components/graphAttachPoints";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordHeader } from "../../components/RecordHeader";
@@ -48,6 +49,7 @@ import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useEscapeToLeaveMode } from "../../hooks/useEscapeToLeaveMode";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
 import { useUrlChoice } from "../../hooks/useUrlFilter";
 import { projectElementApi, projectStateApi, projectStateMachineApi } from "./api";
@@ -65,9 +67,15 @@ import { StateMachineFormModal } from "./StateMachineFormModal";
 import { DiagramExportMenu } from "./DiagramExportMenu";
 import { useDiagramExport } from "./useDiagramExport";
 import {
-  PALETTE_KIND_PREFIX, addStateBox, boxOfState, canvasEdges, canvasNodes, defaultSize, frameAt, growAround, markerOffsets, moveStates, nextFreeSpot,
-  resizeStates, setParent, setTransitionPoints,
+  PALETTE_KIND_PREFIX, addStateBox, boxOfState, canvasEdges, canvasLeaders, canvasNodes, defaultSize, frameAt, growAround, markerOffsets, moveStates,
+  nextFreeSpot, resizeStates, setParent, setTransitionPoints,
 } from "./stateMachineModel";
+import { NoteModeToggle } from "./NoteModeToggle";
+import type { StateMachineNoteHandlers } from "./StateMachineNoteCards";
+import {
+  LEADER_REACH, MAX_NOTE_LEADERS, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH, addLeader, addNote, newLeader, newLeaderKey, newNote, newNoteKey,
+  noteFrame, noteKeyOf, patchLeader, removeLeader, removeNote, setLeaderTarget, updateNote, type EditorLeader, type NoteLeaderTarget,
+} from "./noteModel";
 import { statePinAnchorOf, statePinDescriber, statePinPlaceOf } from "./stateMachineComments";
 import { StateMachineOutline } from "./StateMachineOutline";
 import { StateMachineSelectionPanel } from "./StateMachineSelectionPanel";
@@ -126,6 +134,7 @@ export function StateMachineEditorPage() {
   const [canvasBox, setCanvasBox] = useState<HTMLElement | null>(null);
   const canvasHeight = useFillViewportHeight(canvasBox, CANVAS_MIN_HEIGHT);
   const [focusNameOf, setFocusNameOf] = useState<string | null>(null);
+  const [focusNoteKey, setFocusNoteKey] = useState<string | null>(null);
   const [editingState, setEditingState] = useState<ArchitectureState | null>(null);
   const [focusTransition, setFocusTransition] = useState<{ id: string; field: TransitionFocusField } | null>(null);
   const [editingTransition, setEditingTransition] = useState<StateTransition | null>(null);
@@ -166,6 +175,7 @@ export function StateMachineEditorPage() {
   const kinds = useMemo(() => new Map((model?.states ?? []).map((s) => [s.id, s.kind])), [model]);
   const nodes = useMemo(() => (model ? canvasNodes(model, layout, { findings: model.findings, codeOf: stateLabels.code }) : []), [model, layout, stateLabels]);
   const edges = useMemo(() => (model ? canvasEdges(model, layout) : []), [model, layout]);
+  const leaders = useMemo(() => (model ? canvasLeaders(layout, model) : []), [model, layout]);
 
   // Comments are stored at once and apart from the drawing, so they never make it look unsaved.
   const anchorOfPin = useCallback(
@@ -183,6 +193,14 @@ export function StateMachineEditorPage() {
   const commentLayer = useCanvasComments({
     projectId, artefactType: "architecture_state_machine_diagram", recordId: diagramId, anchorOf: anchorOfPin, placeOf: placeOfClick,
   });
+
+  // Note mode and Comment mode are never both on: turning one on turns the other off, and a comment started elsewhere (Pin to
+  // diagram) wins while it lasts.
+  const [noteMode, setNoteMode] = useState(false);
+  const placingNote = noteMode && !commentLayer.commentMode;
+  const chooseCommentMode = (on: boolean) => { if (on) setNoteMode(false); commentLayer.setCommentMode(on); };
+  const chooseNoteMode = (on: boolean) => { if (on) commentLayer.setCommentMode(false); setNoteMode(on); };
+  useEscapeToLeaveMode(placingNote || commentLayer.commentMode, () => { setNoteMode(false); commentLayer.setCommentMode(false); });
 
   const diagram = model?.diagram ?? null;
   const archive = useArchiveAction({
@@ -317,6 +335,66 @@ export function StateMachineEditorPage() {
     }
   }
 
+  /** Adds an empty note with its top-left corner at `at`, selects it and puts the cursor in its text (add, then edit). */
+  function addNoteAt(at: { x: number; y: number }) {
+    const key = newNoteKey(layout);
+    editor.edit((l) => addNote(l, newNote(key, at)));
+    setSelection({ kind: "node", id: NOTE_NODE_PREFIX + key });
+    setFocusNoteKey(key);
+  }
+
+  /** Whether a leader may end at `target`: a state or transition of this diagram, or a free spot. */
+  function leaderTargetAllowed(target: NoteLeaderTarget): boolean {
+    if (!model) return false;
+    if (target.kind === "state") return model.states.some((s) => s.id === target.stateId);
+    if (target.kind === "transition") return model.transitions.some((t) => t.id === target.transitionId);
+    return target.kind === "point";
+  }
+
+  /** Adds a leader to a note ending at `target` and selects it (add, then edit). The note keeps at most ten. */
+  function addLeaderTo(noteKey: string, target: NoteLeaderTarget, start: AttachPoint | null = null) {
+    if (!leaderTargetAllowed(target)) return;
+    const note = layout.notes.find((n) => n.key === noteKey);
+    if (!note || note.leaders.length >= MAX_NOTE_LEADERS) return;
+    const key = newLeaderKey(layout);
+    editor.edit((l) => addLeader(l, noteKey, newLeader(key, target, start)));
+    setSelection({ kind: "leader", id: key });
+  }
+
+  /** Adds a leader to a free spot to the right of the note, the keyboard route to drawing one from the note. */
+  function addLeaderFrom(noteKey: string) {
+    const note = layout.notes.find((n) => n.key === noteKey);
+    if (note) {
+      const frame = noteFrame(note);
+      addLeaderTo(noteKey, { kind: "point", x: Math.round(note.x + frame.width + LEADER_REACH), y: Math.round(note.y + frame.height / 2) });
+    }
+  }
+
+  /** The target a canvas drop names, as a leader target (a note is not one). */
+  function leaderTargetOf(to: GraphLeaderTarget): NoteLeaderTarget | null {
+    if (to.kind === "point") return { kind: "point", x: to.x, y: to.y };
+    if (to.kind === "edge") return { kind: "transition", transitionId: to.id };
+    return noteKeyOf(to.id) !== null ? null : { kind: "state", stateId: to.id };
+  }
+
+  /** Points a leader at another target (a drag of its end, or the "Points at" list). */
+  function pointLeaderAt(leaderKey: string, target: NoteLeaderTarget | null) {
+    if (target === null || !leaderTargetAllowed(target)) return;
+    editor.edit((l) => setLeaderTarget(l, leaderKey, target));
+  }
+
+  const noteHandlers: StateMachineNoteHandlers = {
+    focusNoteKey, onFocused: () => setFocusNoteKey(null),
+    onChange: (key, patch) => editor.edit((l) => updateNote(l, key, patch)),
+    onAddLeader: addLeaderFrom,
+    onSelectLeader: (key) => setSelection({ kind: "leader", id: key }),
+    onSelectNote: (key) => setSelection({ kind: "node", id: NOTE_NODE_PREFIX + key }),
+    onLeaderTarget: pointLeaderAt,
+    onLeaderChange: (key, change: Partial<EditorLeader>) => editor.edit((l) => patchLeader(l, key, change)),
+    onRemoveLeader: (key) => { editor.edit((l) => removeLeader(l, key)); setSelection(null); },
+    onRemoveNote: (key) => { editor.edit((l) => removeNote(l, key)); setSelection(null); },
+  };
+
   async function askDeleteState(state: ArchitectureState) {
     try {
       setPendingDelete({ kind: "state", state, impact: await stateApi.impact(state.id) });
@@ -354,9 +432,23 @@ export function StateMachineEditorPage() {
     }
   }
 
-  /** The canvas's Delete key: states and transitions are deleted after a confirmation, never at once. */
+  /**
+   * The canvas's Delete key: states and transitions are deleted after a confirmation, never at once; a note or a leader line is
+   * removed from the drawing at once (an undoable local edit that Save stores).
+   */
   function deleteSelected(chosen: GraphCanvasSelection) {
     if (!editable || !model) return;
+    if (chosen.kind === "leader") {
+      editor.edit((l) => removeLeader(l, chosen.id));
+      setSelection(null);
+      return;
+    }
+    const noteKey = chosen.kind === "node" ? noteKeyOf(chosen.id) : null;
+    if (noteKey !== null) {
+      editor.edit((l) => removeNote(l, noteKey));
+      setSelection(null);
+      return;
+    }
     if (chosen.kind === "node") {
       const state = model.states.find((s) => s.id === chosen.id);
       if (state) void askDeleteState(state);
@@ -379,9 +471,13 @@ export function StateMachineEditorPage() {
       >
         Save
       </button>
-      <StateMachineAddMenu disabled={!editable || editor.saving} onAdd={(kind) => void addState(kind, null)} />
+      <StateMachineAddMenu
+        disabled={!editable || editor.saving} onAdd={(kind) => void addState(kind, null)}
+        onAddNote={() => addNoteAt(nextFreeSpot(layout, { width: NOTE_WIDTH, height: NOTE_HEIGHT }))}
+      />
       <DiagramExportMenu disabled={exporting} onExport={(kind) => void exportDiagram(kind)} />
-      {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={commentLayer.setCommentMode} />}
+      {tab === "drawing" && <NoteModeToggle on={placingNote} onChange={chooseNoteMode} disabled={!editable} />}
+      {tab === "drawing" && <CommentModeToggle on={commentLayer.commentMode} onChange={chooseCommentMode} />}
       <StateMachineSettingsButton
         lineHops={diagram?.line_hops ?? false} disabled={!editable || editor.saving}
         onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
@@ -401,6 +497,7 @@ export function StateMachineEditorPage() {
         onParentChange={(state, parentId) => editor.edit((l) => setParent(l, state.id, parentId, kinds))}
         onPointsChange={(transition, change) => editor.edit((l) => setTransitionPoints(l, transition.id, change))}
         onConnect={(state, targetId) => void addTransition(state.id, targetId)}
+        notes={noteHandlers}
         onComment={(target) => {
           // A transition has no position of its own here, so the comment starts at the middle of the states it joins.
           const line = target.kind === "edge" ? model.transitions.find((t) => t.id === target.id) : undefined;
@@ -481,14 +578,37 @@ export function StateMachineEditorPage() {
           <div className="stack" style={{ flex: "3 1 32rem", minWidth: 0 }}>
             <div ref={setCanvasBox}>
               <GraphCanvas
-                nodes={nodes} edges={edges} ariaLabel={`State machine diagram ${diagram.name}`} height={canvasHeight}
-                readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
+                nodes={nodes} edges={edges} leaders={leaders} ariaLabel={`State machine diagram ${diagram.name}`} height={canvasHeight}
+                readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection}
+                // A note just placed from Note mode must not lose its selection when the same click clears it on the canvas.
+                onSelect={(next) => { if (next !== null || !placingNote) { setSelection(next); setFocusNoteKey(null); } }}
                 {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} lineHops={diagram?.line_hops ?? false}
                 onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves, markerOffsets(model.states, l)))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}
                 onEdgePointsChange={(edgeId, points) => editor.edit((l) => setTransitionPoints(l, edgeId, { points, smooth: points.length > 0 ? undefined : false }))}
-                onConnect={(source, target) => void addTransition(source, target)}
+                onCanvasClick={(at) => {
+                  if (placingNote) addNoteAt({ x: Math.round(at.x - NOTE_WIDTH / 2), y: Math.round(at.y - NOTE_HEIGHT / 2) });
+                }}
+                onLeaderTargetChange={(leaderKey, target) => pointLeaderAt(leaderKey, leaderTargetOf(target))}
+                onLeaderPointsChange={(leaderKey, points) => editor.edit((l) => patchLeader(l, leaderKey, { points }))}
+                onConnectEmpty={(source, to, via) => {
+                  // A line drawn from a note and released on a state, a line or empty canvas is a leader; a state starts no such line.
+                  const noteKey = noteKeyOf(source);
+                  if (noteKey === null) return;
+                  const target = leaderTargetOf(to);
+                  if (target) addLeaderTo(noteKey, target, via.sourcePoint ?? null);
+                }}
+                onConnect={(source, target, via) => {
+                  // A line from a note to a state is a leader, not a transition; nothing is drawn to a note.
+                  const noteKey = noteKeyOf(source);
+                  if (noteKey !== null) {
+                    const to = leaderTargetOf({ kind: "node", id: target });
+                    if (to) addLeaderTo(noteKey, to, via?.sourcePoint ?? null);
+                    return;
+                  }
+                  if (noteKeyOf(target) === null) void addTransition(source, target);
+                }}
                 onDelete={deleteSelected}
                 onNodeOpen={(id) => {
                   const state = model.states.find((s) => s.id === id);

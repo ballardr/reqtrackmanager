@@ -2,7 +2,7 @@
 Module: modules.architecture.state_machine_export
 
 The state machine diagrams' share of the project bundle (`export.py` calls these functions): each diagram with its
-states, transitions, tags, places and comments, and the ids and codes the bundle's links and comments need.
+states, transitions, notes, tags, places and comments, and the ids and codes the bundle's links and comments need.
 
 Responsibilities:
 - `export_state_machines`: the diagrams as bundle rows, and the rows exported (for the link section).
@@ -14,13 +14,17 @@ Design decisions:
 - **Portable keys.** A diagram names the element it describes by code (or, for one another owner shares, the owner
   reference `export.py` already uses for a connection's end). A state names its parent and a transition names its two
   states by the state's **name**, which is unique within a diagram; a pin's box is a state name and its line the
-  transition's position in the diagram's list. A bundled code (`SMD-001`, `STE-004`) is information only: an import
+  transition's position in the diagram's list; a note's leader names a state by name and a transition by position, the same
+  keys. A bundled code (`SMD-001`, `STE-004`) is information only: an import
   numbers afresh, and the codes key the links within the bundle.
 - **Status is restored as exported.** The checks gate guards the move to `active` through the API; a bundle is a backup,
   and an active diagram may already carry errors (an edit is never refused for introducing one), so the import writes
   the status it was given. No approval is skipped, since this module has none.
 - **A diagram whose element is not available is dropped with a warning**, with its states, as a connection whose end is
   missing is.
+- **Notes are the block diagram's.** A note and its leaders are written and read by `note_bundle`, shared with the block
+  diagram's bundle; only a leader's target is resolved here. A leader whose state or transition is not in the bundle is
+  dropped with a warning and its note kept. A bundle written before notes existed has no `notes` key and reads as none.
 - A state and a diagram take their tags and places through one helper each way, so a type that cannot be placed (a state)
   carries an empty list rather than a different code path.
 
@@ -29,6 +33,7 @@ Dependencies: this module's models and rules, `services.bundle_comments`, `servi
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from datetime import datetime
@@ -39,13 +44,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.architecture import note_bundle
 from app.modules.architecture.diagram_line_path import clean_waypoints
-from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, AttachPoint, LabelPosition, RecordStatus, StateKind
+from app.modules.architecture.diagrams import leaders_of
+from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, AttachPoint, LabelPosition, LeaderKind, RecordStatus, StateKind
 from app.modules.architecture.models import (
+    ArchitectureDiagramNote,
+    ArchitectureNoteLeader,
     ArchitectureState,
     ArchitectureStateMachineDiagram,
     ArchitectureTransition,
 )
+from app.modules.architecture.schemas import MAX_NOTE_LEADERS
 from app.modules.architecture.service import (
     STATE_ARTEFACT_TYPE,
     STATE_CODE_PREFIX,
@@ -164,6 +174,30 @@ def export_state_machines(
         prime_record_tag_names(db, artefact_type, record_ids)
         prime_record_placements(db, artefact_type, record_ids)
     comments = export_comments(db, STATE_MACHINE_ARTEFACT_TYPE, ids, anchor)
+    notes = list(db.scalars(
+        select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.state_machine_diagram_id.in_(ids))
+        .order_by(ArchitectureDiagramNote.sort_order, ArchitectureDiagramNote.id)
+    ))
+    leaders = leaders_of(db, (n.id for n in notes))
+    by_machine_notes: dict[UUID, list[ArchitectureDiagramNote]] = defaultdict(list)
+    for n in notes:
+        if n.state_machine_diagram_id is not None:
+            by_machine_notes[n.state_machine_diagram_id].append(n)
+
+    def leader_json(leader: ArchitectureNoteLeader) -> dict[str, Any] | None:
+        """A leader's line and its target by name (a state) or position (a transition), or as a point; `None` for a
+        target that is not in this bundle."""
+        row = note_bundle.leader_json(leader)
+        if leader.kind == LeaderKind.STATE.value and leader.state_id in state_names:
+            row["state_name"] = state_names[leader.state_id]
+        elif leader.kind == LeaderKind.TRANSITION.value and leader.transition_id in positions:
+            row["transition_position"] = positions[leader.transition_id]
+        elif leader.kind == LeaderKind.POINT.value:
+            row["x"], row["y"] = leader.x, leader.y
+        else:
+            return None
+        return row
+
     rows = [
         {
             "unique_code": m.unique_code, "name": m.name, "description": m.description, "status": m.status,
@@ -187,6 +221,13 @@ def export_state_machines(
                     "points": clean_waypoints(t.points), "smooth": t.smooth,
                 }
                 for t in by_machine_transitions.get(m.id, [])
+            ],
+            "notes": [
+                {
+                    **note_bundle.note_json(n),
+                    "leaders": [j for row in leaders.get(n.id, []) if (j := leader_json(row)) is not None],
+                }
+                for n in by_machine_notes.get(m.id, [])
             ],
             "created_by_email": email_of(m.creator_id), "created_at": _stamp(m.created_at),
             "is_archived": m.is_archived, "archived_at": _stamp(m.archived_at), "archived_by_email": email_of(m.archived_by),
@@ -212,6 +253,61 @@ def reset_for_template(entries: list[dict[str, Any]], kept_elements: set[str]) -
     fresh_drafts(entries, status=RecordStatus.DRAFT.value)
     strip_comments(entries)
     return [e for e in entries if (e.get("element") or {}).get("code") in kept_elements]
+
+
+def _import_notes(
+    db: Session, machine_id: UUID, raw_notes: Any, states: dict[str, ArchitectureState], transition_ids: dict[str, str],
+    code: str, warnings: BundleImportWarnings,
+) -> None:
+    """Recreates a state machine diagram's notes and leaders. A leader whose state or transition was not imported, or whose
+    point is not a finite number, is dropped with a warning and its note kept; at most `MAX_NOTE_LEADERS` leaders are kept per
+    note and at most 200 notes per diagram (the API's caps; a bundle is not trusted to respect them).
+
+    Args:
+        db: Active session; rows are added and flushed, never committed.
+        machine_id: The imported diagram.
+        raw_notes: The bundle's `notes` (absent in an older bundle).
+        states: The imported states by name.
+        transition_ids: The imported transitions' ids by position in the bundle.
+        code: The diagram's bundled code, for warnings.
+        warnings: Receives a note for everything dropped.
+    """
+    if not isinstance(raw_notes, list):
+        return
+    pending: list[tuple[ArchitectureDiagramNote, dict[str, Any]]] = []
+    for order, raw in enumerate(n for n in raw_notes[:200] if isinstance(n, dict)):
+        row = note_bundle.note_row(raw, order, state_machine_diagram_id=machine_id)
+        db.add(row)
+        pending.append((row, raw))
+    if not pending:
+        return
+    db.flush()  # a leader row names its note
+    for row, raw in pending:
+        leaders = raw.get("leaders")
+        wanted = [item for item in (leaders[:MAX_NOTE_LEADERS] if isinstance(leaders, list) else []) if isinstance(item, dict)]
+        for order, leader in enumerate(wanted):
+            leader_row = note_bundle.leader_row(row.id, order, leader)
+            kind = leader.get("kind")
+            restored = False
+            if kind == LeaderKind.STATE.value:
+                state = states.get(leader.get("state_name") or "")
+                if state is not None:
+                    leader_row.state_id, restored = state.id, True
+            elif kind == LeaderKind.TRANSITION.value:
+                transition = transition_ids.get(str(leader.get("transition_position")))
+                if transition is not None:
+                    leader_row.transition_id, restored = UUID(transition), True
+            elif kind == LeaderKind.POINT.value:
+                x, y = leader.get("x"), leader.get("y")
+                if (
+                    isinstance(x, int | float) and isinstance(y, int | float) and not isinstance(x, bool) and not isinstance(y, bool)
+                    and math.isfinite(x) and math.isfinite(y)
+                ):
+                    leader_row.x, leader_row.y, restored = float(x), float(y), True
+            if restored:
+                db.add(leader_row)
+            else:
+                warnings.add(f"State machine diagram {code}: a note's leader could not be restored — left out.")
 
 
 def import_state_machines(
@@ -311,6 +407,8 @@ def import_state_machines(
             db.add(transition)
             db.flush()
             transition_ids[str(order)] = str(transition.id)
+
+        _import_notes(db, machine.id, entry.get("notes"), by_name, transition_ids, code, warnings)
 
         def resolve(kind: str, key: str, names=by_name, transitions=transition_ids) -> str | None:
             if kind == "node":

@@ -69,12 +69,11 @@ import { defaultConnectionType } from "./connectionGuidance";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
+import { addBoundaries, addBoxes, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges, canvasLeaders, canvasNodes, moveItems, nextFreePosition, removeBoundary, removeBox, resizeItems, setLineAnchor, boxFrame, lockedBoxLabel, BOUNDARY_NODE_PREFIX } from "./diagramEditorModel";
 import {
-  addBoundaries, addBoxes, addNote, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
-  canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
-  setLineAnchor, noteFrame, boxFrame, lockedBoxLabel, updateNote, addLeader, newLeader, newLeaderKey, patchLeader, removeLeader, setLeaderTarget, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT,
-  MAX_NOTE_LEADERS, NOTE_NODE_PREFIX, NOTE_WIDTH, type EditorLeader, type NoteLeaderTarget,
-} from "./diagramEditorModel";
+  LEADER_REACH, MAX_NOTE_LEADERS, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH, addLeader, addNote, newLeader, newLeaderKey, newNote, newNoteKey,
+  noteFrame, patchLeader, removeLeader, removeNote, setLeaderTarget, updateNote, type EditorLeader, type NoteLeaderTarget,
+} from "./noteModel";
 import { outerSide } from "./diagramResolver";
 import { toggleStates } from "./diagramExport";
 import { DiagramExportMenu } from "./DiagramExportMenu";
@@ -101,9 +100,6 @@ import {
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
 const CANVAS_MIN_HEIGHT = 300;
-/** How far to the right of a note a leader added from its card ends, in canvas units. */
-const LEADER_REACH = 120;
-
 /** The project's Element Types settings. */
 const SETUP_PATH = (projectId: string) => `/projects/${projectId}/admin/architecture/architecture-element-types`;
 /** The project's Connection Types settings. */

@@ -3,9 +3,8 @@ import { expect, waitFor, within } from "storybook/test";
 
 import { GraphCanvas } from "../../components/GraphCanvas";
 import { buildDiagramView, buildNote } from "./architectureFixtures";
-import {
-  BOX_HEIGHT, canvasNodes, layoutFromView, layoutToSave, newNote, nextFreePosition, noteFrame, resizeItems, updateNote, type EditorLayout, type EditorNote,
-} from "./diagramEditorModel";
+import { BOX_HEIGHT, canvasNodes, layoutFromView, layoutToSave, nextFreePosition, resizeItems, type EditorLayout } from "./diagramEditorModel";
+import { newNote, noteFrame, updateNote, type EditorNote } from "./noteModel";
 import { NOTE_CAPTION_HEIGHT, NOTE_PADDING, automaticFrame, drawnSize, noteLines } from "./noteLayout";
 import cases from "./noteLayoutCases.json";
 

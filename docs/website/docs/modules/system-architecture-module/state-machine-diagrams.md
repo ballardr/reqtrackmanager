@@ -86,6 +86,12 @@ Choose **Add to diagram**, then Initial state, State, Final state or Choice, or 
 
 The Selection card edits the selected state in place: name and kind (the name of an initial state, final state or choice is captioned **Name (Outline and exports)**, because the drawn text is its symbol label); for an ordinary state its description and entry, exit and activity lines; for an initial state, final state or choice its symbol label and label position. Changes are stored when the cursor leaves the card's fields, or with **Save**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
 
+## Notes
+
+A note is text placed on this state machine diagram only, with a tone and any number of **leaders**. It works as on a block diagram (see [Block diagram editor](block-diagram-editor.md)): a **Title**, **Note text** with its line breaks, **Alignment**, **Tone** (None draws the words alone) and **Size** (Automatic or Manual). A leader is a line from the note to a **state**, a **transition** or a spot; a selected leader shows **Points at** (the diagram's states and transitions, or a spot with X and Y), **Starts at**, a **Start style** and an **End style** (None, Arrow or Dot) and the same **Vertices** and **Smooth curve** as a transition. Drag from an attach point of the note onto a state, a line or empty canvas to draw one, or use **Add leader** in the note's card without a pointer.
+
+Choose **Add note** in the **Add to diagram** menu, or turn on **Note** in the toolbar beside **Comment** and click empty canvas to place a note there; Escape or the same button turns the mode off, and Note and Comment are never on together. A note is part of the drawing, so it is saved with **Save**, and **Undo** and **Redo** act on it. The **Delete** key removes a selected note or leader at once (no question is asked, as Undo brings it back). Deleting the state or transition a leader points at removes that leader and keeps the note. A note is a remark about the drawing: the checks do not read it, and it does not change the behaviour described. The **Outline** lists the notes and what each leader points at.
+
 ## Undo and Redo
 
 **Undo** and **Redo** act on the unsaved drawing (positions, sizes, nesting, attach points and vertices). The keys are Cmd+Z and Cmd+Shift+Z on a Mac, and Ctrl+Z with Ctrl+Shift+Z or Ctrl+Y elsewhere. They work when the cursor is not in a text box and no dialog is open. A state or transition added from the diagram is created at once, so Undo does not remove it.
@@ -117,7 +123,7 @@ An edit to an Active diagram that introduces an error is still saved and shown, 
 
 | Export | Result |
 | --- | --- |
-| PNG image, SVG image | The server's drawing of the diagram in the notation above |
+| PNG image, SVG image | The server's drawing of the diagram in the notation above, with its notes and leaders |
 | Download Mermaid text, Copy Mermaid text | `stateDiagram-v2` text for documentation that renders Mermaid |
 
 ```mermaid
@@ -128,4 +134,4 @@ stateDiagram-v2
     s2 --> [*] : halt
 ```
 
-In the Mermaid text, vertices and line hops are left out (Mermaid routes the lines itself), a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label and its position are not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep them.
+In the Mermaid text, a note is written beside the first state its leaders point at (`note left of` or `note right of`, on the side the note lies on), so a note with no leader to a state, one that points only at a transition or a spot, and one that points at an initial or final state (which Mermaid cannot name) are left out; the SVG and PNG keep every note. Vertices and line hops are left out (Mermaid routes the lines itself), a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label and its position are not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep them.

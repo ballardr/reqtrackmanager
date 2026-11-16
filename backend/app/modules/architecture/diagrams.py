@@ -25,6 +25,8 @@ Design decisions:
   cannot be newly placed.
 - **Layout save replaces.** The editor owns undo and redo, so it saves the complete placement and note lists; an element
   left out is unplaced. An id that names a note or toggle of another diagram is refused.
+- **One note mechanism for both diagram types.** A state machine diagram's notes are rows of the same tables as a block
+  diagram's (`sync_notes`, `machine_notes_of`); only what a leader may point at differs, so the owner passes that check.
 - **Line anchors follow the boxes.** An anchor joins two placed elements, so unplacing either removes it (the layout save and
   `remove_placement` both do), and a save may not name an element that is not placed. An anchor whose line is not drawn
   at the moment (a view switch hides an end, or roll-up draws another pair) is kept and simply unused.
@@ -43,7 +45,7 @@ from __future__ import annotations
 import enum
 import math
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -327,9 +329,17 @@ def placements_of(db: Session, diagram_id: uuid.UUID) -> list[ArchitectureDiagra
 
 
 def notes_of(db: Session, diagram_id: uuid.UUID) -> list[ArchitectureDiagramNote]:
-    """The diagram's notes in order."""
+    """The block diagram's notes in order."""
     return list(db.scalars(
         select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.diagram_id == diagram_id)
+        .order_by(ArchitectureDiagramNote.sort_order, ArchitectureDiagramNote.id)
+    ))
+
+
+def machine_notes_of(db: Session, state_machine_diagram_id: uuid.UUID) -> list[ArchitectureDiagramNote]:
+    """The state machine diagram's notes in order."""
+    return list(db.scalars(
+        select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.state_machine_diagram_id == state_machine_diagram_id)
         .order_by(ArchitectureDiagramNote.sort_order, ArchitectureDiagramNote.id)
     ))
 
@@ -448,7 +458,8 @@ def _value(member: Any) -> Any:
 def _leader_values(leader: ArchitectureNoteLeader | LeaderIn, order: int) -> tuple[Any, ...]:
     """What makes a leader what it is, for comparing a stored one with a submitted one at position `order`."""
     return (
-        _value(leader.kind), leader.element_id, leader.connection_id, leader.x, leader.y, _value(leader.start_point),
+        _value(leader.kind), leader.element_id, leader.connection_id, leader.state_id, leader.transition_id, leader.x, leader.y,
+        _value(leader.start_point),
         _points_of(leader.points), leader.smooth, _value(leader.start_style), _value(leader.end_style), order,
     )
 
@@ -457,7 +468,8 @@ def leader_out(leader: ArchitectureNoteLeader) -> LeaderOut:
     """A stored leader as the view gives it."""
     return LeaderOut(
         id=leader.id, kind=LeaderKind(leader.kind), element_id=leader.element_id, connection_id=leader.connection_id,
-        x=leader.x, y=leader.y, start_point=AttachPoint(leader.start_point) if leader.start_point else None,
+        state_id=leader.state_id, transition_id=leader.transition_id, x=leader.x, y=leader.y,
+        start_point=AttachPoint(leader.start_point) if leader.start_point else None,
         points=[WaypointIn(x=p["x"], y=p["y"]) for p in leader.points], smooth=leader.smooth,
         start_style=LineEnd(leader.start_style), end_style=LineEnd(leader.end_style),
     )
@@ -485,6 +497,8 @@ def _write_leader(row: ArchitectureNoteLeader, leader: LeaderIn, order: int) -> 
     row.sort_order, row.kind = order, kind.value
     row.element_id = leader.element_id if kind == LeaderKind.ELEMENT else None
     row.connection_id = leader.connection_id if kind == LeaderKind.CONNECTION else None
+    row.state_id = leader.state_id if kind == LeaderKind.STATE else None
+    row.transition_id = leader.transition_id if kind == LeaderKind.TRANSITION else None
     row.x = leader.x if kind == LeaderKind.POINT else None
     row.y = leader.y if kind == LeaderKind.POINT else None
     row.start_point = leader.start_point.value if leader.start_point else None
@@ -517,6 +531,8 @@ def _check_leaders(
                 if old is None or leader.id in seen:
                     raise RuleError("A leader does not belong to this note, or is listed twice.", 400)
                 seen.add(leader.id)
+            if leader.kind in (LeaderKind.STATE, LeaderKind.TRANSITION):
+                raise RuleError("A note on a block diagram points at an element, a connection or a point.", 400)
             if leader.kind == LeaderKind.ELEMENT and leader.element_id is not None:
                 if not (old is not None and old.element_id == leader.element_id) and leader.element_id not in placed:
                     raise RuleError("A note can point at an element that is on the diagram.", 400)
@@ -550,6 +566,53 @@ def _sync_leaders(db: Session, note_id: uuid.UUID, wanted: Sequence[LeaderIn], s
         elif _leader_values(stored_row, stored_row.sort_order) != _leader_values(leader, order):
             _write_leader(stored_row, leader, order)
             changed += 1
+    return changed
+
+
+def sync_notes(
+    db: Session, wanted: Sequence[NoteIn], stored: Sequence[ArchitectureDiagramNote],
+    create: Callable[[], ArchitectureDiagramNote],
+    check_leaders: Callable[[Sequence[NoteIn], dict[uuid.UUID, list[ArchitectureNoteLeader]]], None],
+) -> int:
+    """Makes a diagram's stored notes (and their leaders) match `wanted`, the whole list: a note left out is deleted, one
+    without an id is created. The one routine behind both diagram types' layout saves; the owner supplies how a new row
+    names it (`create`) and what its leaders may point at (`check_leaders`, which raises `RuleError`). Returns how many
+    note and leader rows were added, removed or changed. The caller commits.
+
+    Raises:
+        RuleError: 400 for a note id that is not the diagram's, a note listed twice, a block that is not finite, or what
+            `check_leaders` refuses.
+    """
+    kept = {n.id: n for n in stored}
+    for note in wanted:
+        _check_box(note)
+        if note.id is not None and note.id not in kept:
+            raise RuleError("A note does not belong to this diagram.", 400)
+    note_ids = [n.id for n in wanted if n.id is not None]
+    if len(set(note_ids)) != len(note_ids):
+        raise RuleError("A note can be listed once.", 400)
+    stored_leaders = leaders_of(db, kept)
+    check_leaders(wanted, stored_leaders)
+    changed = 0
+    for note_id, old_note in kept.items():
+        if note_id not in set(note_ids):
+            db.delete(old_note)
+            changed += 1
+    rows: list[ArchitectureDiagramNote] = []
+    for order, note in enumerate(wanted):
+        note_row = kept.get(note.id) if note.id is not None else None
+        if note_row is None:
+            note_row = create()
+            _write_note(note_row, note, order)
+            db.add(note_row)
+            changed += 1
+        elif _note_values(note_row, note_row.sort_order) != _note_values(note, order):
+            _write_note(note_row, note, order)
+            changed += 1
+        rows.append(note_row)
+    db.flush()  # a leader row names its note, so the notes are written first
+    for note_row, note in zip(rows, wanted, strict=True):
+        changed += _sync_leaders(db, note_row.id, note.leaders, stored_leaders.get(note_row.id, []))
     return changed
 
 
@@ -611,35 +674,10 @@ def save_layout(
             )
             moved += 1
 
-    kept_notes = {n.id: n for n in notes_of(db, diagram.id)}
-    for note in payload.notes:
-        if note.id is not None and note.id not in kept_notes:
-            raise RuleError("A note does not belong to this diagram.", 400)
-    note_ids = {n.id for n in payload.notes if n.id is not None}
-    if len(note_ids) != len([n for n in payload.notes if n.id is not None]):
-        raise RuleError("A note can be listed once.", 400)
-    stored_leaders = leaders_of(db, kept_notes)
-    _check_leaders(db, project.id, payload.notes, stored_leaders, set(wanted_ids))
-    notes_changed = 0
-    for note_id, old_note in kept_notes.items():
-        if note_id not in note_ids:
-            db.delete(old_note)
-            notes_changed += 1
-    rows: list[ArchitectureDiagramNote] = []
-    for order, note in enumerate(payload.notes):
-        note_row = kept_notes.get(note.id) if note.id is not None else None
-        if note_row is None:
-            note_row = ArchitectureDiagramNote(id=uuid.uuid4(), diagram_id=diagram.id)
-            _write_note(note_row, note, order)
-            db.add(note_row)
-            notes_changed += 1
-        elif _note_values(note_row, note_row.sort_order) != _note_values(note, order):
-            _write_note(note_row, note, order)
-            notes_changed += 1
-        rows.append(note_row)
-    db.flush()  # a leader row names its note, so the notes are written first
-    for note_row, note in zip(rows, payload.notes, strict=True):
-        notes_changed += _sync_leaders(db, note_row.id, note.leaders, stored_leaders.get(note_row.id, []))
+    notes_changed = sync_notes(
+        db, payload.notes, notes_of(db, diagram.id), lambda: ArchitectureDiagramNote(id=uuid.uuid4(), diagram_id=diagram.id),
+        lambda notes, stored: _check_leaders(db, project.id, notes, stored, set(wanted_ids)),
+    )
 
     anchors_changed = _sync_anchors(db, diagram.id, payload.anchors, set(wanted_ids))
     boundaries_changed = boundary_rules.sync_boundaries(db, diagram.id, payload.boundaries)

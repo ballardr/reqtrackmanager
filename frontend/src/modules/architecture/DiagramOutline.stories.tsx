@@ -3,7 +3,8 @@ import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildUser, withRouter, withStatefulAuth } from "../../testing/storybook-helpers";
 import { buildConnection, buildNote, buildViewBoundary, buildViewEdge, buildViewNode } from "./architectureFixtures";
-import { boundaryFromView, boundaryNodeId, boxFromNode, noteFromView } from "./diagramEditorModel";
+import { boundaryFromView, boundaryNodeId, boxFromNode } from "./diagramEditorModel";
+import { noteFromView } from "./noteModel";
 import { DiagramOutline } from "./DiagramOutline";
 import { connectionRows, outlineSize, outlineTree } from "./diagramOutlineModel";
 import { exportFileName, toggleStates } from "./diagramExport";

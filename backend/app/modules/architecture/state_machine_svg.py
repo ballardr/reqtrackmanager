@@ -12,7 +12,9 @@ Responsibilities:
 - Draw each transition as an arrow between two attach points (the ones a person chose, else the nearest; markers offer only
   the middle of a side, without the side its label is on), a transition from a state to itself as the loop of `state_shapes`,
   and its `event [guard] / action` label.
-- With the diagram's `line_hops` on, draw a small arc where one transition crosses another (`diagram_line_hops`).
+- Draw the diagram's notes and their leaders with the block diagram's drawing (`diagram_svg`): a leader ends at a state's attach
+  point, a transition's middle or a free point.
+- With the diagram's `line_hops` on, draw a small arc where one transition or leader crosses another (`diagram_line_hops`).
 
 Design decisions:
 - **Everything user-supplied is text.** Names, codes, actions and labels are XML-escaped and stripped of control characters
@@ -36,11 +38,20 @@ import uuid
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_points import ATTACH_POINTS, point_xy, route_points
-from app.modules.architecture.diagram_svg import _ROOT, _note_lines, _text, _wrap
+from app.modules.architecture.diagram_svg import (
+    _ROOT,
+    _drawn_notes,
+    _framed_notes,
+    _leader_runs,
+    _note_lines,
+    _notes,
+    _text,
+    _wrap,
+)
 from app.modules.architecture.diagram_symbol_label import LABEL_FONT_SIZE, LABEL_LINE_HEIGHT, LABEL_PADDING, BesideLayout, beside_label, fit_label
 from app.modules.architecture.enums import LabelPosition, StateKind
 from app.modules.architecture.labels import STATE_KIND_LABEL
-from app.modules.architecture.schemas import StateMachineModel, StateOut, TransitionOut
+from app.modules.architecture.schemas import NoteOut, StateMachineModel, StateOut, TransitionOut
 from app.modules.architecture.state_shapes import (
     COMPOSITE_HEADER_HEIGHT,
     LABEL_ON_FILL,
@@ -198,21 +209,18 @@ def _label(lines: list[str], x: float, bottom: float, anchor: str) -> str:
     )
 
 
-def _transitions(
-    transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut], line_hops_on: bool = False,
-) -> tuple[str, str]:
-    """The lines and then the labels of the transitions (labels are drawn last, above every box).
+_Entry = tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point]
 
-    With `line_hops_on` a transition that crosses another is drawn with a small arc over it (`diagram_line_hops`); a loop on
-    one state is not one of the lines.
-    """
+
+def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut]) -> list[_Entry]:
+    """Where each transition is drawn: `(transition, label lines, the loop's path or None, start, vertices, end, middle)`. A
+    transition whose state is not in the diagram is left out; parallel transitions between two states are spread sideways."""
     totals: dict[frozenset, int] = {}
     for t in transitions:
         key = frozenset((t.source_state_id, t.target_state_id))
         totals[key] = totals.get(key, 0) + 1
     rank: dict[frozenset, int] = {}
-    # Each entry is (transition, label lines, the loop's path or None, then for a drawn line: start, vertices, end, middle).
-    entries: list[tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point]] = []
+    entries: list[_Entry] = []
     for t in transitions:
         source, target = boxes.get(t.source_state_id), boxes.get(t.target_state_id)
         if source is None or target is None:
@@ -242,9 +250,17 @@ def _transitions(
             x1, y1, x2, y2 = x1 + nx, y1 + ny, x2 + nx, y2 + ny
             middle = ((x1 + x2) / 2, (y1 + y2) / 2)
         entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle))
-    hops = line_hops([
-        HopLine(str(t.id), start, vertices, end, t.smooth) for t, _, loop, start, vertices, end, _ in entries if loop is None
-    ]) if line_hops_on else {}
+    return entries
+
+
+def _hop_lines(entries: list[_Entry]) -> list[HopLine]:
+    """The transitions that are lines (not loops) as hop candidates."""
+    return [HopLine(str(t.id), start, vertices, end, t.smooth) for t, _, loop, start, vertices, end, _ in entries if loop is None]
+
+
+def _transitions(entries: list[_Entry], hops: dict[str, str]) -> tuple[str, str]:
+    """The lines and then the labels of the transitions (labels are drawn last, above every box); a transition in `hops` is
+    drawn along its hop path (`diagram_line_hops`)."""
     drawn: list[str] = []
     labels: list[str] = []
     for t, lines, loop, (x1, y1), vertices, (x2, y2), (mx, my) in entries:
@@ -269,14 +285,17 @@ def render_state_machine(model: StateMachineModel) -> str:
     """The state machine diagram as an SVG document.
 
     Args:
-        model: The diagram with its states and transitions (`state_machines.model_of`).
+        model: The diagram with its states, transitions and notes (`state_machines.model_of`).
 
     Returns:
         The SVG text.
     """
     states = model.states
     title = _text(f"{model.diagram.unique_code} {model.diagram.name}")
-    if not states:
+    notes: list[NoteOut] = _framed_notes(model.notes)
+    drawn_notes = _drawn_notes(notes)
+    defs = ""
+    if not states and not drawn_notes:
         min_x, min_y, width, height = 0.0, 0.0, 320.0, 120.0
         body = '<text x="160" y="60" text-anchor="middle" font-size="12" fill="#64748B">No states</text>'
     else:
@@ -284,7 +303,22 @@ def render_state_machine(model: StateMachineModel) -> str:
         ordered = sorted(states, key=lambda s: depths[s.id])
         holding = {s.parent_state_id for s in states if s.parent_state_id is not None}
         boxes = {s.id: s for s in states}
-        lines, labels = _transitions(model.transitions, boxes, model.diagram.line_hops)
+        entries = _transition_entries(model.transitions, boxes)
+        leader_runs = _leader_runs(
+            notes, {}, {}, [], {s.id: _box(s) for s in states}, {t.id: middle for t, _, _, _, _, _, middle in entries},
+        )
+        hops: dict[str, str] = {}
+        if model.diagram.line_hops:
+            lines = _hop_lines(entries)
+            for n in drawn_notes:
+                for leader in n.leaders:
+                    if leader.id in leader_runs:
+                        start, vertices, end = leader_runs[leader.id]
+                        lines.append(HopLine(str(leader.id), start, vertices, end, leader.smooth))
+            hops = line_hops(lines)
+        lines_svg, labels = _transitions(entries, hops)
+        note_defs, leaders, note_blocks = _notes(notes, leader_runs, hops)
+        defs += note_defs
         looped = {t.source_state_id for t in model.transitions if t.source_state_id == t.target_state_id}
         reach = {s.id: _reach(s) for s in states}
         xs = [v for s in states for v in (reach[s.id][0], reach[s.id][2] + (SELF_LOOP_REACH if s.id in looped else 0))]
@@ -292,6 +326,15 @@ def render_state_machine(model: StateMachineModel) -> str:
         for t in model.transitions:
             xs.extend(p.x for p in t.points)
             ys.extend(p.y for p in t.points)
+        for n in drawn_notes:
+            xs.extend((n.x, n.x + n.width))
+            ys.extend((n.y, n.y + n.height))
+            for leader in n.leaders:
+                xs.extend(p.x for p in leader.points)
+                ys.extend(p.y for p in leader.points)
+                if leader.x is not None and leader.y is not None:
+                    xs.append(leader.x)
+                    ys.append(leader.y)
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
         composites = "".join(_composite(s) for s in ordered if s.id in holding and StateKind(s.kind) is StateKind.STATE)
@@ -299,13 +342,13 @@ def render_state_machine(model: StateMachineModel) -> str:
             _marker(s) if StateKind(s.kind) is not StateKind.STATE else _state(s)
             for s in ordered if not (s.id in holding and StateKind(s.kind) is StateKind.STATE)
         )
-        body = f"{composites}{lines}{leaves}{labels}"
-    defs = (
+        body = f"{composites}{lines_svg}{leaders}{leaves}{labels}{note_blocks}"
+    arrow = (
         f'<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
         f'<path d="M0,0 L10,5 L0,10 z" fill="{_INK}"/></marker>'
     )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{min_x:.1f} {min_y:.1f} {width:.1f} {height:.1f}" '
         f'width="{width:.0f}" height="{height:.0f}" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="{title}">'
-        f"<title>{title}</title><defs>{defs}</defs>{body}</svg>"
+        f"<title>{title}</title><defs>{arrow}{defs}</defs>{body}</svg>"
     )

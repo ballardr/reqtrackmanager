@@ -204,12 +204,36 @@ def _create_state_machines(api: Any, project_id: str, start: int, count: int) ->
             state = api.post(f"{base}/state-machine-diagrams/{diagram['id']}/states", body)
             version = state["state_machine_diagram_version"]
             made.append(state)
-        for source, target, event in ((0, 1, ""), (1, 3, "halt"), (2, 2, "tick")):
+        transitions: list[dict[str, Any]] = []
+        for slot, (source, target, event) in enumerate(((0, 1, ""), (1, 3, "halt"), (2, 2, "tick"))):
+            if slot == 2:
+                # Notes with a leader to a state, a transition and a point go in before the last transition, so the last
+                # `post` stays the create under test (it quotes the version the layout save leaves).
+                saved = api.put(f"{base}/state-machine-diagrams/{diagram['id']}/layout", {
+                    "version": version, "states": [], "transitions": [],
+                    "notes": [
+                        {
+                            "title": "Probe title", "text": "Probe note\nsecond line", "x": 0, "y": -120, "tone": "info",
+                            "text_align": "center", "size_mode": "automatic",
+                            "leaders": [{"kind": "state", "state_id": made[1]["id"], "start_point": "bottom"}],
+                        },
+                        {"text": "Probe line note", "x": 200, "y": -120, "leaders": [{"kind": "transition", "transition_id": transitions[1]["id"]}]},
+                        {
+                            "text": "Probe spot note", "x": 400, "y": -120,
+                            "leaders": [{
+                                "kind": "point", "x": 440, "y": -220, "points": [{"x": 420, "y": -180}], "smooth": True,
+                                "start_style": "dot", "end_style": "arrow",
+                            }],
+                        },
+                    ],
+                })
+                version = saved["version"]
             transition = api.post(
                 f"{base}/state-machine-diagrams/{diagram['id']}/transitions",
                 {"version": version, "source_state_id": made[source]["id"], "target_state_id": made[target]["id"], "event": event},
             )
             version = transition["state_machine_diagram_version"]
+            transitions.append(transition)
         diagram_ids.append(diagram["id"])
         state_ids.extend(s["id"] for s in made)
     return diagram_ids, state_ids

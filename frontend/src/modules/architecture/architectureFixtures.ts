@@ -138,7 +138,7 @@ export function buildStateMachineModel(overrides: Partial<StateMachineModel> & {
     buildTransition({ id: "trn-2", source_state_id: "ste-2", source_state_code: "STE-002", target_state_id: "ste-2", target_state_code: "STE-002", event: "tick", action: "adjust" }),
     buildTransition({ id: "trn-3", source_state_id: "ste-2", source_state_code: "STE-002", target_state_id: "ste-3", target_state_code: "STE-003", event: "stop" }),
   ];
-  return { diagram: buildStateMachine(), states, transitions, findings: [], ...overrides };
+  return { diagram: buildStateMachine(), states, transitions, notes: [], findings: [], ...overrides };
 }
 
 export function buildViewNode(overrides: Partial<DiagramViewNode> = {}): DiagramViewNode {
@@ -169,7 +169,7 @@ export function buildNote(overrides: Partial<DiagramNote> = {}): DiagramNote {
 /** A leader line as the view lists it: straight, from the nearest point of its note to a spot, with an arrowhead at the end. */
 export function buildLeader(overrides: Partial<DiagramLeader> = {}): DiagramLeader {
   return {
-    id: "ld-1", kind: "point", element_id: null, connection_id: null, x: 300, y: -100, start_point: null, points: [], smooth: false,
+    id: "ld-1", kind: "point", element_id: null, connection_id: null, state_id: null, transition_id: null, x: 300, y: -100, start_point: null, points: [], smooth: false,
     start_style: "none", end_style: "arrow", ...overrides,
   };
 }

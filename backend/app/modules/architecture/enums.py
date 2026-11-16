@@ -126,12 +126,16 @@ class NoteSizeMode(str, enum.Enum):
 
 
 class LeaderKind(str, enum.Enum):
-    """What an annotation note's leader line ends at: a placed element's box, a connection's drawn line (its midpoint) or
-    a free point of the canvas. (`NONE` is a note with no leader: it has no leader row, so a stored leader is never `NONE`.)"""
+    """What an annotation note's leader line ends at: a placed element's box, a connection's drawn line (its midpoint), a
+    state machine diagram's state or transition, or a free point of the canvas. (`NONE` is a note with no leader: it has no
+    leader row, so a stored leader is never `NONE`.) A block diagram's notes use `element`, `connection` and `point`; a state
+    machine diagram's use `state`, `transition` and `point`."""
 
     NONE = "none"
     ELEMENT = "element"
     CONNECTION = "connection"
+    STATE = "state"
+    TRANSITION = "transition"
     POINT = "point"
 
 

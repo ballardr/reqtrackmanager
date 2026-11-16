@@ -23,7 +23,7 @@ import { IconAction } from "../../components/IconAction";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLatest } from "../../hooks/useLatest";
 import { labelOptions } from "../../utils/labelOptions";
-import { MAX_NOTE_LEADERS, noteFrame, type EditorNote, type NotePatch } from "./diagramEditorModel";
+import { MAX_NOTE_LEADERS, noteFrame, type EditorNote, type NotePatch } from "./noteModel";
 import { ARCHITECTURE_HELP } from "./help";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";

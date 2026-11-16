@@ -60,7 +60,7 @@ import math
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -69,20 +69,16 @@ from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
-from app.modules.architecture import allocation_export, state_machine_export
+from app.modules.architecture import allocation_export, note_bundle, state_machine_export
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
 from app.modules.architecture.diagram_line_path import clean_waypoints
 from app.modules.architecture.diagrams import leaders_of
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
-    NOTE_TITLE_MAX,
     AttachPoint,
     LeaderKind,
     LineEnd,
-    NoteAlign,
-    NoteSizeMode,
-    NoteTone,
     PortDirection,
     RecordStatus,
 )
@@ -782,12 +778,9 @@ def _element_ref(codes: dict[UUID, str], foreign: dict[UUID, dict[str, str]], el
 def _leader_json(
     leader: ArchitectureNoteLeader, codes: dict[UUID, str], foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
 ) -> dict[str, Any] | None:
-    """A leader for the bundle: its line (start point, vertices, curve, ends) and the target named by code (an element by
-    code or foreign reference, a connection by code) or as a position; `None` for a connection that is not in the bundle."""
-    row: dict[str, Any] = {
-        "kind": leader.kind, "start_point": leader.start_point, "points": clean_waypoints(leader.points), "smooth": leader.smooth,
-        "start_style": leader.start_style, "end_style": leader.end_style,
-    }
+    """A leader for the bundle: its line (`note_bundle.leader_json`) and the target named by code (an element by code or
+    foreign reference, a connection by code) or as a position; `None` for a connection that is not in the bundle."""
+    row = note_bundle.leader_json(leader)
     if leader.kind == LeaderKind.ELEMENT.value and leader.element_id is not None:
         row["element"] = _element_ref(codes, foreign, leader.element_id)
     elif leader.kind == LeaderKind.CONNECTION.value and leader.connection_id in connection_codes:
@@ -803,10 +796,9 @@ def _note_json(
     note: ArchitectureDiagramNote, leaders: list[ArchitectureNoteLeader], codes: dict[UUID, str],
     foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
 ) -> dict[str, Any]:
-    """An annotation note for the bundle: its title, text, alignment, size mode, block, tone and leaders."""
+    """An annotation note for the bundle: its block (`note_bundle.note_json`) and leaders."""
     return {
-        "title": note.title, "text_align": note.text_align, "size_mode": note.size_mode, "text": note.text, "x": note.x,
-        "y": note.y, "width": note.width, "height": note.height, "tone": note.tone,
+        **note_bundle.note_json(note),
         "leaders": [j for row in leaders if (j := _leader_json(row, codes, foreign, connection_codes)) is not None],
     }
 
@@ -871,7 +863,8 @@ def _diagrams_json(
         by_diagram_boxes.setdefault(box.diagram_id, []).append(box)
     by_diagram_notes: dict[UUID, list[ArchitectureDiagramNote]] = {}
     for note in notes:
-        by_diagram_notes.setdefault(note.diagram_id, []).append(note)
+        if note.diagram_id is not None:
+            by_diagram_notes.setdefault(note.diagram_id, []).append(note)
     by_diagram_anchors: dict[UUID, list[ArchitectureDiagramAnchor]] = {}
     for anchor in anchors:
         by_diagram_anchors.setdefault(anchor.diagram_id, []).append(anchor)
@@ -1035,20 +1028,12 @@ def _import_leaders(
     """Recreates a note's leaders. One whose target cannot be resolved (an element not on the imported diagram, a connection
     that was not imported, a position that is not a number) is dropped with a warning, and the note is kept; an unknown
     start point or end style reads as automatic or plain; vertices are cleaned as for a line anchor."""
-    valid_points = {p.value for p in AttachPoint}
-    valid_ends = {e.value for e in LineEnd}
     raw = entry.get("leaders") if "leaders" in entry else _legacy_leader(entry)
     for order, leader in enumerate(raw if isinstance(raw, list) else []):
         if not isinstance(leader, dict):
             continue
         kind = leader.get("kind")
-        row = ArchitectureNoteLeader(
-            note_id=note_id, sort_order=order, kind=str(kind), points=clean_waypoints(leader.get("points")),
-            smooth=leader.get("smooth") is True,
-            start_point=leader.get("start_point") if leader.get("start_point") in valid_points else None,
-            start_style=leader.get("start_style") if leader.get("start_style") in valid_ends else LineEnd.NONE.value,
-            end_style=leader.get("end_style") if leader.get("end_style") in valid_ends else LineEnd.ARROW.value,
-        )
+        row = note_bundle.leader_row(note_id, order, leader)
         restored = False
         if kind == LeaderKind.ELEMENT.value:
             element = _resolve_ref(db, project, current_user, elements, leader.get("element") or {})
@@ -1195,21 +1180,7 @@ def _import_diagrams(
         _import_boundaries(db, diagram, connections, entry.get("boundaries", []), code, warnings)
         note_rows: list[tuple[ArchitectureDiagramNote, dict[str, Any]]] = []
         for order, note in enumerate(entry.get("notes", [])):
-            tone, align, title = note.get("tone"), note.get("text_align"), note.get("title")
-            tone = tone if tone in {t.value for t in NoteTone} else NoteTone.NEUTRAL.value
-            size_mode = note.get("size_mode")
-            note_row = ArchitectureDiagramNote(
-                id=uuid4(), diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
-                width=note.get("width", 160.0), height=note.get("height", 60.0), sort_order=order, tone=tone,
-                # An older bundle has no size mode: a note with no tone is sized to its text, as an upgrade does, and any other
-                # keeps the size it was drawn at.
-                size_mode=size_mode if size_mode in {m.value for m in NoteSizeMode} else (
-                    NoteSizeMode.AUTOMATIC.value if tone == NoteTone.NONE.value else NoteSizeMode.MANUAL.value
-                ),
-                # A bundle is not trusted to respect the cap, and an older one has neither field.
-                title=title[:NOTE_TITLE_MAX] if isinstance(title, str) else "",
-                text_align=align if align in {a.value for a in NoteAlign} else NoteAlign.LEFT.value,
-            )
+            note_row = note_bundle.note_row(note, order, diagram_id=diagram.id)
             db.add(note_row)
             note_rows.append((note_row, note))
         if note_rows:

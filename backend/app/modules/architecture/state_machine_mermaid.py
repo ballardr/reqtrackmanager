@@ -16,6 +16,10 @@ Design decisions:
   the label rule is the shared `state_shapes.transition_label` with its line break written as a space (Mermaid reads one line).
 - **A transition is written in the block of its two states** when they share a parent and at the top level when they do not,
   because Mermaid scopes the start and end marks to a block and draws a line that crosses blocks only from the top.
+- An annotation note is written as `note left|right of <state>` (the side the note lies on), its title then its typed lines, beside
+  the first state its leaders point at, in that state's block. A note with no leader to a drawn, declared state (none, a leader to
+  a transition or a point, or to an initial or final state, which Mermaid has no name for) is not written, as Mermaid has no
+  free note and cannot point at a line; the SVG, PNG and bundle keep every note.
 - Positions, sizes, attach points and vertices are left out: Mermaid lays the graph out itself. Several final states in one block
   collapse into the block's single end mark, which Mermaid cannot tell apart.
 - A transition that leaves an initial state, or enters a final one, for a state in another block is not written: the marks
@@ -35,8 +39,8 @@ import re
 import uuid
 from collections import defaultdict
 
-from app.modules.architecture.enums import StateKind
-from app.modules.architecture.schemas import StateMachineModel, StateOut, TransitionOut
+from app.modules.architecture.enums import LeaderKind, StateKind
+from app.modules.architecture.schemas import NoteOut, StateMachineModel, StateOut, TransitionOut
 from app.modules.architecture.state_shapes import action_lines, transition_label
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f  ￾￿]+")
@@ -55,11 +59,20 @@ def _label(t: TransitionOut) -> str:
     return _text(transition_label(t.event, t.guard, t.action).replace("\n", " "))
 
 
+def _note_lines(note: NoteOut) -> list[str]:
+    """A note's text for a `note … end note` block: the title, then the typed lines. A line that would end the block is
+    prefixed with a figure dash, so no text can close it early."""
+    lines = [" ".join(note.title.split())] if note.title.strip() else []
+    lines += note.text.strip().splitlines()
+    safe = [_text(line) for line in lines if line.strip()]
+    return [f"\u2012 {line}" if line.lower().startswith("end") else line for line in safe]
+
+
 def render_state_machine_mermaid(model: StateMachineModel) -> str:
     """The state machine diagram as Mermaid `stateDiagram-v2` text.
 
     Args:
-        model: The diagram with its states and transitions (`state_machines.model_of`).
+        model: The diagram with its states, transitions and notes (`state_machines.model_of`).
 
     Returns:
         The Mermaid text, ending in a newline.
@@ -86,6 +99,26 @@ def render_state_machine_mermaid(model: StateMachineModel) -> str:
             return "[*]"
         return keys[state_id]
 
+    attached: dict[uuid.UUID, list[NoteOut]] = defaultdict(list)
+    for note in model.notes:
+        if not _note_lines(note):
+            continue
+        target = next((
+            leader.state_id for leader in note.leaders
+            if leader.kind == LeaderKind.STATE and leader.state_id in states
+            and StateKind(states[leader.state_id].kind) not in (StateKind.INITIAL, StateKind.FINAL)
+        ), None)
+        if target is not None:
+            attached[target].append(note)
+
+    def notes_of(state: StateOut, indent: str) -> list[str]:
+        """The note blocks beside a state."""
+        out: list[str] = []
+        for note in attached[state.id]:
+            side = "right" if note.x + note.width / 2 >= state.x + state.width / 2 else "left"
+            out += [f"{indent}note {side} of {keys[state.id]}", *(f"{indent}    {line}" for line in _note_lines(note)), f"{indent}end note"]
+        return out
+
     def block(parent: uuid.UUID | None, indent: str) -> list[str]:
         out: list[str] = []
         for s in children[parent]:
@@ -94,12 +127,14 @@ def render_state_machine_mermaid(model: StateMachineModel) -> str:
                 continue
             if kind is StateKind.CHOICE:
                 out += [f"{indent}%% {_text(f'{s.unique_code} {s.label}'.strip())}", f"{indent}state {key} <<choice>>"]
+                out += notes_of(s, indent)
                 continue
             out.append(f'{indent}state "{_text(s.unique_code)} {_text(s.name)}" as {key}')
             if children[s.id]:
                 out += [f"{indent}state {key} {{", *block(s.id, indent + "    "), f"{indent}}}"]
             else:
                 out += [f"{indent}{key} : {_text(line)}" for line in action_lines(s.entry_action, s.exit_action, s.activity)]
+            out += notes_of(s, indent)
         for t in scoped[parent]:
             line = f"{indent}{end(t.source_state_id, True)} --> {end(t.target_state_id, False)}"
             out.append(f"{line} : {_label(t)}" if _label(t) else line)
