@@ -1,11 +1,11 @@
 /**
  * Module: modules/architecture/DiagramNoteEditor
  *
- * The Selection card's form for an annotation note: its title, text, tone and alignment, and its list of leader lines.
+ * The Selection card's form for an annotation note: its title, text, tone, alignment and size, and its list of leader lines.
  *
  * Responsibilities:
  * - Edit the title and the text locally and apply each when its field loses focus, so one edit is one undo step (not one per
- *   keystroke); the tone and the alignment apply at once. The line breaks typed in the text are kept.
+ *   keystroke); the tone, alignment and size apply at once. The line breaks typed in the text are kept.
  * - List the note's leaders ("Points at ELM-001 Gateway", with a note when one points at something that is not drawn), open
  *   one in its own card (`DiagramLeaderEditor`) and add another (the keyboard route to drawing a line from the note).
  *
@@ -23,11 +23,13 @@ import { IconAction } from "../../components/IconAction";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLatest } from "../../hooks/useLatest";
 import { labelOptions } from "../../utils/labelOptions";
-import { MAX_NOTE_LEADERS, type EditorNote, type NotePatch } from "./diagramEditorModel";
+import { MAX_NOTE_LEADERS, noteFrame, type EditorNote, type NotePatch } from "./diagramEditorModel";
 import { ARCHITECTURE_HELP } from "./help";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
-import { NOTE_TEXT_ALIGN_LABEL, NOTE_TITLE_MAX, NOTE_TONE_LABEL, type NoteTextAlign, type NoteTone } from "./types";
+import {
+  NOTE_SIZE_MODE_LABEL, NOTE_TEXT_ALIGN_LABEL, NOTE_TITLE_MAX, NOTE_TONE_LABEL, type NoteSizeMode, type NoteTextAlign, type NoteTone,
+} from "./types";
 
 /** One of a note's leaders as the card lists it. */
 export interface LeaderRow {
@@ -44,7 +46,7 @@ export interface LeaderRow {
  * @param leaders The note's leaders in order.
  * @param autoFocusText True to put the cursor in the text when the card first appears (a note just placed).
  * @param onFocused Called once the text has taken the focus.
- * @param onChange Called with what changed: the title or the text when its field loses focus, the tone or the alignment at once.
+ * @param onChange Called with what changed: the title or the text when its field loses focus, the tone, alignment or size at once.
  * @param onAddLeader Called to add a leader (a line to a free spot beside the note, selected to be edited).
  * @param onOpenLeader Called with a leader's key to select it.
  * @param onRemove Called to remove the note.
@@ -107,6 +109,12 @@ export function DiagramNoteEditor({
       <LabeledSelect
         label="Tone" help={ARCHITECTURE_HELP.noteTone} placeholder={null} disabled={!editable} value={note.tone}
         options={labelOptions(NOTE_TONE_LABEL)} onChange={(value) => onChange({ tone: value as NoteTone })}
+      />
+      <LabeledSelect
+        label="Size" help={ARCHITECTURE_HELP.noteSize} placeholder={null} disabled={!editable} value={note.sizeMode}
+        options={labelOptions(NOTE_SIZE_MODE_LABEL)}
+        // Choosing Manual keeps the size the note is drawn at now; choosing Automatic keeps the stored size for a return to Manual.
+        onChange={(value) => onChange(value === "manual" ? { sizeMode: "manual", ...noteFrame(note) } : { sizeMode: value as NoteSizeMode })}
       />
       {(leaders.length > 0 || editable) && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>

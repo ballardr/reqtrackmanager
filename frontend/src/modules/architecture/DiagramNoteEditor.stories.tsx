@@ -78,10 +78,26 @@ export const EveryAlignmentIsOffered: Story = {
   },
 };
 
+/** Choosing Manual keeps the size the note is drawn at now; choosing Automatic leaves the stored size for a return. */
+export const SizeIsAutomaticOrManualAndManualKeepsTheDrawnSize: Story = {
+  play: async ({ canvasElement, args }) => {
+    const size = within(canvasElement).getByRole("combobox", { name: "Size" });
+    expect(within(size).getAllByRole("option").map((o) => o.textContent)).toEqual(["Automatic", "Manual"]);
+    expect(size).toHaveValue("automatic");
+    // "Check with ops" with a neutral tone is drawn at its content frame (117 x 42, caption included), not at the stored 160 x 60.
+    await userEvent.selectOptions(size, "Manual");
+    expect(args.onChange).toHaveBeenLastCalledWith({ sizeMode: "manual", width: 117, height: 42 });
+    await userEvent.selectOptions(size, "Automatic");
+    expect(args.onChange).toHaveBeenLastCalledWith({ sizeMode: "automatic" });
+  },
+};
+
 export const ReadOnlyFieldsCannotBeEdited: Story = {
   args: { editable: false },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    for (const name of ["Title", "Note text", "Alignment", "Tone"]) expect(canvas.getByRole(name === "Alignment" || name === "Tone" ? "combobox" : "textbox", { name })).toBeDisabled();
+    for (const name of ["Title", "Note text", "Alignment", "Tone", "Size"]) {
+      expect(canvas.getByRole(["Alignment", "Tone", "Size"].includes(name) ? "combobox" : "textbox", { name })).toBeDisabled();
+    }
   },
 };

@@ -11,7 +11,8 @@ Responsibilities:
   when several connections collapse into it, and (with connection detail on) its type and protocol.
 - Draw each boundary box (the outer connection a scoped diagram stands for) in the shape of its direction, with the
   connection's code, the element outside and a covered or not covered marker.
-- Draw annotation notes as plain text in a block of their tone (no block at all for the tone None, which draws the text alone,
+- Draw annotation notes (at the size their content needs when their size is Automatic, `diagram_note_layout`, else at the
+  stored size) as plain text in a block of their tone (no block at all for the tone None, which draws the text alone,
   and nothing for an empty note of that tone), with each leader line from the note's attach point through its vertices
   (straight or smooth) to the box, the line's midpoint or the free point it ends at, with an arrowhead or a dot at either
   end; a leader whose target is not drawn is not drawn.
@@ -31,7 +32,7 @@ Design decisions:
 - A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
 
 Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points),
-`diagram_line_path`, `diagram_line_hops`.
+`diagram_note_layout` (a note's lines and frame), `diagram_line_path`, `diagram_line_hops`.
 """
 
 from __future__ import annotations
@@ -47,7 +48,16 @@ from sqlalchemy.orm import Session
 
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
+from app.modules.architecture.diagram_note_layout import (
+    NOTE_FONT_SIZE,
+    NOTE_LINE_HEIGHT,
+    NOTE_PADDING,
+    TITLE_PERCENT,
+    drawn_size,
+    note_lines,
+)
 from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy, route_points
+from app.modules.architecture.diagram_symbol_label import text_width
 from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
@@ -107,26 +117,27 @@ def _note_lines(note: str, width: int, lines: int) -> list[str]:
     return out
 
 
-def _paragraph_lines(text: str, width: int) -> list[str]:
-    """`text` as lines of about `width` characters that keep the breaks a person typed: each line is word-wrapped on its own, a
-    blank line stays one empty line, and the text's own trailing breaks are dropped."""
-    out: list[str] = []
-    for paragraph in text.strip("\n").splitlines():
-        out.extend(_wrap(paragraph, width, 1000) or [""])
-    return out
+def _fit_with_ellipsis(line: str, bold: bool, inner_width: int) -> str:
+    """`line` cut at the end, as far as needed, so that it and an ellipsis fit `inner_width` (the note's own measure)."""
+    percent = TITLE_PERCENT if bold else 100
+    cut = line.rstrip()
+    while cut and text_width(cut + "…", NOTE_FONT_SIZE, percent) > inner_width * 1000:
+        cut = cut[:-1].rstrip()
+    return cut + "…"
 
 
 def _note_block(note: NoteOut) -> list[tuple[str, bool]]:
     """The lines a note draws, top to bottom, as `(text, bold)`: its title in bold, then its text, each wrapped to the note's
-    width with typed line breaks kept. When they do not fit the block's height the last line ends with an ellipsis."""
-    width = max(int(note.width / 6.5), 6)
-    room = max(int((note.height - 8) / 13), 1)
-    lines = [(line, True) for line in _paragraph_lines(" ".join(note.title.split()), max(int(width / 1.15), 4))]
-    lines += [(line, False) for line in _paragraph_lines(note.text, width)]
+    width (`diagram_note_layout`, the lines the editor draws) with typed line breaks kept. When they do not fit the block's
+    height the last line ends with an ellipsis."""
+    inner = max(int(note.width) - 2 * NOTE_PADDING, 1)
+    laid = note_lines(note.title, note.text, inner)
+    lines = [(line, True) for line in laid.title] + [(line, False) for line in laid.text]
+    room = max(int((note.height - 2 * NOTE_PADDING) // NOTE_LINE_HEIGHT), 1)
     if len(lines) > room:
         lines = lines[:room]
         last, bold = lines[-1]
-        lines[-1] = (last[: max(width - 1, 1)].rstrip() + "…", bold)
+        lines[-1] = (_fit_with_ellipsis(last, bold, inner), bold)
     return lines
 
 
@@ -135,17 +146,30 @@ _NOTE_ANCHOR: dict[str, str] = {"left": "start", "center": "middle", "right": "e
 
 
 def _note_text(note: NoteOut) -> str:
-    """The `<text>` of each line of a note, aligned as the note says (left and right keep 6 units from the block's edge)."""
+    """The `<text>` of each line of a note, aligned as the note says (left and right keep `NOTE_PADDING` from the block's edge)."""
     align = note.text_align.value
-    x = {"left": note.x + 6, "center": note.x + note.width / 2, "right": note.x + note.width - 6}[align]
+    x = {
+        "left": note.x + NOTE_PADDING, "center": note.x + note.width / 2, "right": note.x + note.width - NOTE_PADDING,
+    }[align]
     parts: list[str] = []
     for i, (line, bold) in enumerate(_note_block(note)):
         weight = ' font-weight="bold"' if bold else ""
+        y = note.y + NOTE_PADDING + 12 + i * NOTE_LINE_HEIGHT
         parts.append(
-            f'<text x="{x:.1f}" y="{note.y + 16 + i * 13:.1f}" font-size="11"{weight} text-anchor="{_NOTE_ANCHOR[align]}" '
+            f'<text x="{x:.1f}" y="{y:.1f}" font-size="{NOTE_FONT_SIZE}"{weight} text-anchor="{_NOTE_ANCHOR[align]}" '
             f'fill="{_TEXT_COLOR}">{_text(line)}</text>'
         )
     return "".join(parts)
+
+
+def _framed_notes(notes: list[NoteOut]) -> list[NoteOut]:
+    """The notes with the size each is drawn at (`diagram_note_layout.drawn_size`: an Automatic note's computed frame, else
+    its stored one), so every later step, the leaders' attach points included, reads one frame."""
+    framed: list[NoteOut] = []
+    for n in notes:
+        width, height = drawn_size(n.size_mode, n.tone, n.title, n.text, n.width, n.height)
+        framed.append(n.model_copy(update={"width": width, "height": height}))
+    return framed
 
 
 def _symbol_group(markup: str, x: float, y: float, size: float) -> str | None:
@@ -533,6 +557,7 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     Returns:
         The SVG text.
     """
+    view = view.model_copy(update={"notes": _framed_notes(view.notes)})
     visible = [n for n in view.nodes if not n.hidden]
     symbol_ids = {n.symbol_id for n in visible if n.symbol_id}
     symbols: dict[uuid.UUID, str] = {}

@@ -110,6 +110,11 @@ export interface GraphCanvasNode {
   accent?: string;
   /** Draws the border dashed (a placeholder or hidden-for-this-viewer node). */
   dashed?: boolean;
+  /**
+   * The distance in canvas units from the box's edge to its text on every side, the border included (a node sized to its text, such
+   * as an annotation, so a line that ends at its edge ends that far from the words). Without it the box has its default padding.
+   */
+  inset?: number;
   /** A short heading drawn in bold above the label (a note's title); text only. A node with a title and no label is named by the title. */
   title?: string;
   /**

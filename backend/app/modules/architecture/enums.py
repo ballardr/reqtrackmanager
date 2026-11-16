@@ -118,6 +118,13 @@ class NoteAlign(str, enum.Enum):
     RIGHT = "right"
 
 
+class NoteSizeMode(str, enum.Enum):
+    """Whether an annotation note is drawn at the size stored for it (Manual) or at the size its content needs (Automatic)."""
+
+    AUTOMATIC = "automatic"
+    MANUAL = "manual"
+
+
 class LeaderKind(str, enum.Enum):
     """What an annotation note's leader line ends at: a placed element's box, a connection's drawn line (its midpoint) or
     a free point of the canvas. (`NONE` is a note with no leader: it has no leader row, so a stored leader is never `NONE`.)"""

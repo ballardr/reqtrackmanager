@@ -5,7 +5,8 @@ The layout of the label drawn inside an initial, final or choice symbol of a sta
 how large the symbol must be to hold them.
 
 Responsibilities:
-- Measure a text with a fixed, font-independent width table (`text_width`).
+- Measure a text with a fixed, font-independent width table (`text_width`), at any font size: annotation notes
+  (`diagram_note_layout`) measure with this same table, so every text on a diagram breaks at the same words.
 - Break a label into lines **between words only** (`wrap_label`): at spaces, after a hyphen and between East Asian characters,
   and at a line break the person typed; a word is never split.
 - Find the smallest symbol that holds the label (`fit_label`): the symbol grows from its labelled base size in steps until the
@@ -125,16 +126,18 @@ def _glyph(char: str) -> int:
     return _FULL if _is_full_width(ord(char)) else _OTHER
 
 
-def text_width(text: str) -> int:
-    """The width a text takes at the label's font size.
+def text_width(text: str, font_size: int = LABEL_FONT_SIZE, percent: int = 100) -> int:
+    """The width a text takes at a font size (by default the label's).
 
     Args:
         text: Plain text.
+        font_size: The font size in diagram units (annotation notes measure at their own size, with this one table).
+        percent: A width factor in percent (bold text is measured wider than regular text).
 
     Returns:
         The width in thousandths of a diagram unit (an integer, so the browser's copy agrees exactly).
     """
-    return sum(_glyph(char) for char in text) * LABEL_FONT_SIZE
+    return sum(_glyph(char) for char in text) * font_size * percent // 100
 
 
 def _pieces(paragraph: str) -> list[tuple[str, str]]:
@@ -162,12 +165,14 @@ def _pieces(paragraph: str) -> list[tuple[str, str]]:
     return pieces
 
 
-def wrap_label(label: str, limit: int) -> list[str]:
+def wrap_label(label: str, limit: int, font_size: int = LABEL_FONT_SIZE, percent: int = 100) -> list[str]:
     """Break a label into lines, between words only.
 
     Args:
         label: The label text; a line break the person typed starts a new line.
         limit: The widest a line may be, in thousandths of a diagram unit.
+        font_size: The font size the text is measured at (see `text_width`).
+        percent: The width factor the text is measured with (see `text_width`).
 
     Returns:
         The lines, none empty. A word wider than `limit` is kept whole on a line of its own.
@@ -176,13 +181,13 @@ def wrap_label(label: str, limit: int) -> list[str]:
     for paragraph in label.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         current, current_width = "", 0
         for separator, part in _pieces(paragraph):
-            part_width = text_width(part)
-            if current and current_width + text_width(separator) + part_width > limit:
+            part_width = text_width(part, font_size, percent)
+            if current and current_width + text_width(separator, font_size, percent) + part_width > limit:
                 lines.append(current)
                 current, current_width = part, part_width
             elif current:
                 current += separator + part
-                current_width += text_width(separator) + part_width
+                current_width += text_width(separator, font_size, percent) + part_width
             else:
                 current, current_width = part, part_width
         if current:

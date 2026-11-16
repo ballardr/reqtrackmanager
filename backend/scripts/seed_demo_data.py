@@ -2639,6 +2639,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
             "notes": [
                 {"title": "Redundancy", "text_align": "center",
                  "text": "Single flight controller.\n\nRedundancy is decided separately.", "x": 380, "y": -150, "width": 200, "height": 90,
+                 "size_mode": "automatic",
                  "tone": "warning",
                  "leaders": [{"kind": "element", "element_id": fc["id"], "end_style": "arrow"}]},
                 {"text": "All telemetry leaves the airframe over this link.", "x": 700, "y": 40, "width": 200, "height": 60,

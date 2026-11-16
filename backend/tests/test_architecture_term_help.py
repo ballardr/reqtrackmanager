@@ -13,7 +13,10 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_architecture_term_help.py"
-HELP = 'export const T = [\n  { label: "Route", help: ARCHITECTURE_HELP.outlineRoute },\n  { label: "Ports", help: ARCHITECTURE_HELP.elementPorts },\n];\n'
+HELP = (
+    'export const T = [\n  { label: "Route", help: ARCHITECTURE_HELP.outlineRoute },\n'
+    '  { label: "Ports", help: ARCHITECTURE_HELP.elementPorts },\n];\n'
+)
 
 
 def _load_checker():

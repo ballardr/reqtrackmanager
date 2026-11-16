@@ -42,7 +42,15 @@ from sqlalchemy import select
 
 from app.models.record_comment import RecordComment, RecordCommentPin
 from app.modules.architecture.diagram_resolver import outer_side
-from app.modules.architecture.enums import DISPLAY_NOTE_MAX, AttachPoint, NoteAlign, NoteTone, PortDirection, RecordStatus
+from app.modules.architecture.enums import (
+    DISPLAY_NOTE_MAX,
+    AttachPoint,
+    NoteAlign,
+    NoteSizeMode,
+    NoteTone,
+    PortDirection,
+    RecordStatus,
+)
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionRealisation,
@@ -109,6 +117,7 @@ _SCOPED_DIAGRAMS = 5
 _MAX_BOUNDARIES = 20
 _NOTE_TONES = [tone.value for tone in NoteTone]
 _NOTE_ALIGNS = [align.value for align in NoteAlign]
+_NOTE_SIZE_MODES = [mode.value for mode in NoteSizeMode]
 
 
 def _route(rng: random.Random, seed: int) -> list[dict[str, float]]:
@@ -468,7 +477,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
             batch.satellite(ArchitectureDiagramNote, {
                 "id": note_id, "diagram_id": record_id, "text": textgen.title(rng), "x": float(order * 180),
                 "y": -100.0, "width": 160.0, "height": 60.0, "sort_order": order, "tone": rng.choice(_NOTE_TONES),
-                "title": textgen.title(rng), "text_align": rng.choice(_NOTE_ALIGNS),
+                "title": textgen.title(rng), "text_align": rng.choice(_NOTE_ALIGNS), "size_mode": rng.choice(_NOTE_SIZE_MODES),
                 "created_at": created, "updated_at": created,
             })
             for leader in _note_leaders(rng, placed, project_connections, order, forced=index == 0):

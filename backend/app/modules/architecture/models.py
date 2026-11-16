@@ -627,11 +627,14 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
         tone: A `NoteTone` value.
         title: A short text drawn in bold above the text (empty for none).
         text_align: A `NoteAlign` value: how the title and the text sit in the block.
+        size_mode: A `NoteSizeMode` value: `automatic` draws the note at the size its content needs (width and height are then
+            kept as the size a Manual note returns to), `manual` at the stored width and height.
     """
 
     __tablename__ = "architecture_diagram_notes"
     __table_args__ = (
         CheckConstraint("text_align IN ('left', 'center', 'right')", name="ck_architecture_diagram_notes_text_align"),
+        CheckConstraint("size_mode IN ('automatic', 'manual')", name="ck_architecture_diagram_notes_size_mode"),
     )
 
     diagram_id: Mapped[uuid.UUID] = mapped_column(
@@ -646,6 +649,7 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     tone: Mapped[str] = mapped_column(String(16), default="neutral", server_default="neutral")
     title: Mapped[str] = mapped_column(String(NOTE_TITLE_MAX), default="", server_default="")
     text_align: Mapped[str] = mapped_column(String(16), default="left", server_default="left")
+    size_mode: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
 
 
 class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):

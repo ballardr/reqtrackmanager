@@ -115,7 +115,7 @@ def test_a_note_that_does_not_fit_ends_with_an_ellipsis_and_the_title_counts_as_
     _org, project, token = setup(client, admin_token, "Arch note text clip")
     p = project["id"]
     diagram, boxes = _diagram(client, token, p)
-    _save(client, token, p, diagram, boxes, [{"title": "Title", "text": "a\nb\nc\nd\ne", "x": 0, "y": 200, "width": 200, "height": 50}])
+    _save(client, token, p, diagram, boxes, [{"title": "Title", "text": "a\nb\nc\nd\ne", "x": 0, "y": 200, "width": 200, "height": 60}])
     note = view(client, token, p, diagram["id"])["notes"][0]
     lines = _note_block(NoteOut.model_validate(note))
     assert len(lines) == 3 and lines[0] == ("Title", True) and lines[-1][0].endswith("…")

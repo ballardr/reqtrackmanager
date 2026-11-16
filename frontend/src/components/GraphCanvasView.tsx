@@ -123,6 +123,7 @@ type NodeData = {
   symbol: string | null;
   accent?: string;
   dashed?: boolean;
+  inset?: number;
   outline: GraphNodeOutline;
   tone?: GraphNodeTone;
   placeholder?: boolean;
@@ -236,10 +237,14 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     data.textAlign ? `graph-node-align-${data.textAlign}` : "",
     data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
     data.placeholder ? "graph-node-placeholder" : "",
+    data.inset !== undefined ? "graph-node-inset" : "",
   ].filter(Boolean).join(" ");
+  const style: Record<string, string | number> = {};
+  if (data.accent) style["--graph-node-accent"] = data.accent;
+  if (data.inset !== undefined) style["--graph-node-inset"] = `${data.inset}px`;
   return (
     <>
-    <div className={classes} style={data.accent ? ({ "--graph-node-accent": data.accent } as CSSProperties) : undefined}>
+    <div className={classes} style={Object.keys(style).length > 0 ? (style as CSSProperties) : undefined}>
       {shaped && <NodeOutline outline={data.outline} />}
       {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
@@ -799,7 +804,7 @@ export function GraphCanvasView({
         ariaLabel: text.nodeAria(nodeName(n)),
         data: {
           label: n.label, title: n.title, textAlign: n.textAlign, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
-          accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone, placeholder: n.placeholder,
+          accent: n.accent, dashed: n.dashed, inset: n.inset, outline: n.outline ?? "rectangle", tone: n.tone, placeholder: n.placeholder,
           resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, markerText: n.marker ? n.markerText : undefined, container: n.container === true,
         },
       };

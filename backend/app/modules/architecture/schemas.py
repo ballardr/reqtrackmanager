@@ -36,6 +36,7 @@ from app.modules.architecture.enums import (
     LineEnd,
     LineStyle,
     NoteAlign,
+    NoteSizeMode,
     NoteTone,
     PortDirection,
     RecordStatus,
@@ -632,8 +633,9 @@ class LeaderOut(BaseModel):
 
 class NoteIn(BaseModel):
     """An annotation on a diagram: plain text in a block with a tone, an optional title (drawn in bold above the text),
-    the alignment of both and its leader lines (`id` keeps an existing note; none creates one). Line breaks in the text are
-    kept."""
+    the alignment of both, whether it is sized to its content (`size_mode`; the stored width and height apply when it is Manual,
+    the default, so a caller that sends a size keeps it) and its leader lines (`id` keeps an existing note; none creates one).
+    Line breaks in the text are kept."""
 
     id: UUID | None = None
     title: str = Field(default="", max_length=NOTE_TITLE_MAX)
@@ -644,6 +646,7 @@ class NoteIn(BaseModel):
     height: Extent = 60.0
     tone: NoteTone = NoteTone.NEUTRAL
     text_align: NoteAlign = NoteAlign.LEFT
+    size_mode: NoteSizeMode = NoteSizeMode.MANUAL
     leaders: list[LeaderIn] = Field(default_factory=list, max_length=MAX_NOTE_LEADERS)
 
 
@@ -745,6 +748,7 @@ class NoteOut(BaseModel):
     height: float
     tone: NoteTone
     text_align: NoteAlign
+    size_mode: NoteSizeMode
     leaders: list[LeaderOut]
 
 

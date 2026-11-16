@@ -81,6 +81,7 @@ from app.modules.architecture.enums import (
     LeaderKind,
     LineEnd,
     NoteAlign,
+    NoteSizeMode,
     NoteTone,
     PortDirection,
     RecordStatus,
@@ -802,10 +803,10 @@ def _note_json(
     note: ArchitectureDiagramNote, leaders: list[ArchitectureNoteLeader], codes: dict[UUID, str],
     foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
 ) -> dict[str, Any]:
-    """An annotation note for the bundle: its title, text, alignment, block, tone and leaders."""
+    """An annotation note for the bundle: its title, text, alignment, size mode, block, tone and leaders."""
     return {
-        "title": note.title, "text_align": note.text_align, "text": note.text, "x": note.x, "y": note.y, "width": note.width,
-        "height": note.height, "tone": note.tone,
+        "title": note.title, "text_align": note.text_align, "size_mode": note.size_mode, "text": note.text, "x": note.x,
+        "y": note.y, "width": note.width, "height": note.height, "tone": note.tone,
         "leaders": [j for row in leaders if (j := _leader_json(row, codes, foreign, connection_codes)) is not None],
     }
 
@@ -1195,10 +1196,16 @@ def _import_diagrams(
         note_rows: list[tuple[ArchitectureDiagramNote, dict[str, Any]]] = []
         for order, note in enumerate(entry.get("notes", [])):
             tone, align, title = note.get("tone"), note.get("text_align"), note.get("title")
+            tone = tone if tone in {t.value for t in NoteTone} else NoteTone.NEUTRAL.value
+            size_mode = note.get("size_mode")
             note_row = ArchitectureDiagramNote(
                 id=uuid4(), diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
-                width=note.get("width", 160.0), height=note.get("height", 60.0), sort_order=order,
-                tone=tone if tone in {t.value for t in NoteTone} else NoteTone.NEUTRAL.value,
+                width=note.get("width", 160.0), height=note.get("height", 60.0), sort_order=order, tone=tone,
+                # An older bundle has no size mode: a note with no tone is sized to its text, as an upgrade does, and any other
+                # keeps the size it was drawn at.
+                size_mode=size_mode if size_mode in {m.value for m in NoteSizeMode} else (
+                    NoteSizeMode.AUTOMATIC.value if tone == NoteTone.NONE.value else NoteSizeMode.MANUAL.value
+                ),
                 # A bundle is not trusted to respect the cap, and an older one has neither field.
                 title=title[:NOTE_TITLE_MAX] if isinstance(title, str) else "",
                 text_align=align if align in {a.value for a in NoteAlign} else NoteAlign.LEFT.value,

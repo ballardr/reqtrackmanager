@@ -43,6 +43,11 @@ NOTE_ALIGN_LABEL: dict[str, str] = {
     "right": "Right",
 }
 
+NOTE_SIZE_MODE_LABEL: dict[str, str] = {
+    "automatic": "Automatic",
+    "manual": "Manual",
+}
+
 #: Statuses that mean a record is no longer in force, for "Open only" filters and the inactive style.
 INACTIVE_STATUSES: tuple[str, ...] = ("retired", "rejected")
 

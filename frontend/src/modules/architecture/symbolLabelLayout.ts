@@ -5,7 +5,8 @@
  * how large the symbol must be to hold them. Pure functions, no React.
  *
  * Responsibilities:
- * - Measure a text with a fixed, font-independent width table (`textWidth`).
+ * - Measure a text with a fixed, font-independent width table (`textWidth`), at any font size: annotation notes (`noteLayout`)
+ *   measure with this same table, so every text on a diagram breaks at the same words.
  * - Break a label into lines between words only (`wrapLabel`): at spaces, after a hyphen, between East Asian characters and at
  *   a line break the person typed; a word is never split.
  * - Find the smallest symbol that holds the label (`fitLabel`): the symbol grows from its labelled base size in steps until the
@@ -92,15 +93,17 @@ function glyph(char: string): number {
 }
 
 /**
- * The width a text takes at the label's font size.
+ * The width a text takes at a font size (by default the label's).
  *
  * @param text Plain text.
+ * @param fontSize The font size in canvas units (annotation notes measure at their own size, with this one table).
+ * @param percent A width factor in percent (bold text is measured wider than regular text).
  * @returns The width in thousandths of a canvas unit (an integer).
  */
-export function textWidth(text: string): number {
+export function textWidth(text: string, fontSize = LABEL_FONT_SIZE, percent = 100): number {
   let total = 0;
   for (const char of text) total += glyph(char);
-  return total * LABEL_FONT_SIZE;
+  return Math.floor((total * fontSize * percent) / 100);
 }
 
 /** The pieces a paragraph may be broken into, each with the separator that joins it to the one before. */
@@ -133,22 +136,25 @@ function pieces(paragraph: string): Array<[string, string]> {
  *
  * @param label The label text; a line break the person typed starts a new line.
  * @param limit The widest a line may be, in thousandths of a canvas unit.
+ * @param fontSize The font size the text is measured at (see `textWidth`).
+ * @param percent The width factor the text is measured with (see `textWidth`).
  * @returns The lines, none empty. A word wider than `limit` is kept whole on a line of its own.
  */
-export function wrapLabel(label: string, limit: number): string[] {
+export function wrapLabel(label: string, limit: number, fontSize = LABEL_FONT_SIZE, percent = 100): string[] {
   const lines: string[] = [];
   for (const paragraph of label.replace(/\r\n?/g, "\n").split("\n")) {
     let current = "";
     let currentWidth = 0;
     for (const [separator, part] of pieces(paragraph)) {
-      const partWidth = textWidth(part);
-      if (current && currentWidth + textWidth(separator) + partWidth > limit) {
+      const partWidth = textWidth(part, fontSize, percent);
+      const separatorWidth = textWidth(separator, fontSize, percent);
+      if (current && currentWidth + separatorWidth + partWidth > limit) {
         lines.push(current);
         current = part;
         currentWidth = partWidth;
       } else if (current) {
         current += separator + part;
-        currentWidth += textWidth(separator) + partWidth;
+        currentWidth += separatorWidth + partWidth;
       } else {
         current = part;
         currentWidth = partWidth;
@@ -168,7 +174,7 @@ export function wrapLabel(label: string, limit: number): string[] {
  * @returns True when the corner of the text block nearest the edge is at least `LABEL_PADDING` inside it.
  */
 export function holds(kind: StateMarkerKind, size: number, lines: string[]): boolean {
-  const width = Math.max(...lines.map(textWidth)); // thousandths of a unit
+  const width = Math.max(...lines.map((line) => textWidth(line))); // thousandths of a unit
   const height = lines.length * LABEL_LINE_HEIGHT * 1000;
   const half = Math.floor(size / 2);
   if (kind === "choice") {
@@ -235,7 +241,7 @@ export function besideLabel(label: string, position: LabelPosition, symbolWidth:
   const text = label.trim();
   if (!text || position === "inside") return null;
   const lines = wrapLabel(text, BESIDE_MAX_WIDTH * 1000);
-  const width = Math.floor((Math.max(...lines.map(textWidth)) + 999) / 1000);
+  const width = Math.floor((Math.max(...lines.map((line) => textWidth(line))) + 999) / 1000);
   const height = lines.length * LABEL_LINE_HEIGHT;
   if (position === "right") return { lines, x: symbolWidth + LABEL_PADDING, y: (symbolHeight - height) / 2, width, height, align: "left" };
   if (position === "left") return { lines, x: -(LABEL_PADDING + width), y: (symbolHeight - height) / 2, width, height, align: "right" };

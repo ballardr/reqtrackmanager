@@ -34,6 +34,11 @@ export type NoteTextAlign = "left" | "center" | "right";
 
 export const NOTE_TEXT_ALIGN_LABEL: Record<NoteTextAlign, string> = { left: "Left", center: "Centre", right: "Right" };
 
+/** Whether a note is drawn at the size its content needs (Automatic) or at the size stored for it (Manual). */
+export type NoteSizeMode = "automatic" | "manual";
+
+export const NOTE_SIZE_MODE_LABEL: Record<NoteSizeMode, string> = { automatic: "Automatic", manual: "Manual" };
+
 /** The longest note title (characters); the server refuses a longer one. */
 export const NOTE_TITLE_MAX = 120;
 
@@ -535,6 +540,7 @@ export interface DiagramNote {
   height: number;
   tone: NoteTone;
   text_align: NoteTextAlign;
+  size_mode: NoteSizeMode;
   leaders: DiagramLeader[];
 }
 
@@ -657,6 +663,7 @@ export interface NoteValues {
   height: number;
   tone: NoteTone;
   text_align: NoteTextAlign;
+  size_mode: NoteSizeMode;
   leaders: LeaderValues[];
 }
 

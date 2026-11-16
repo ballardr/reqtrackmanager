@@ -169,6 +169,18 @@
   white-space: pre-line;
 }
 
+/* A node with an inset (an annotation sized to its text): its text sits that far from the box's edge on every side, the border
+   included (the left border is 4px wide), so a line that ends at the edge ends that far from the words. */
+.graph-node-inset {
+  gap: 0;
+  padding: calc(var(--graph-node-inset) - 1px);
+  padding-left: calc(var(--graph-node-inset) - 4px);
+}
+
+.graph-node-inset .graph-node-caption {
+  line-height: 1.2;
+}
+
 /* A node's heading (a note's title): bold, one step above the label. */
 .graph-node-title {
   max-width: 100%;

@@ -72,7 +72,7 @@ import { ConnectionFormModal } from "./ConnectionFormModal";
 import {
   addBoundaries, addBoxes, addNote, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges,
   canvasLeaders, canvasNodes, moveItems, newNote, newNoteKey, nextFreePosition, removeBoundary, removeBox, removeNote, resizeItems,
-  setLineAnchor, updateNote, addLeader, newLeader, newLeaderKey, patchLeader, removeLeader, setLeaderTarget, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT,
+  setLineAnchor, noteFrame, updateNote, addLeader, newLeader, newLeaderKey, patchLeader, removeLeader, setLeaderTarget, BOUNDARY_NODE_PREFIX, NOTE_HEIGHT,
   MAX_NOTE_LEADERS, NOTE_NODE_PREFIX, NOTE_WIDTH, type EditorLeader, type NoteLeaderTarget,
 } from "./diagramEditorModel";
 import { outerSide } from "./diagramResolver";
@@ -594,7 +594,10 @@ export function DiagramEditorPage() {
   /** Adds a leader to a free spot to the right of the note, the keyboard route to drawing one from the note. */
   function addLeaderFrom(noteKey: string) {
     const note = layout.notes.find((n) => n.key === noteKey);
-    if (note) addLeaderTo(noteKey, { kind: "point", x: Math.round(note.x + note.width + LEADER_REACH), y: Math.round(note.y + note.height / 2) });
+    if (note) {
+      const frame = noteFrame(note);
+      addLeaderTo(noteKey, { kind: "point", x: Math.round(note.x + frame.width + LEADER_REACH), y: Math.round(note.y + frame.height / 2) });
+    }
   }
 
   /**

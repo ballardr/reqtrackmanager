@@ -192,7 +192,7 @@ A name a project or organisation gives an entry of the project navigation (for e
 
 #### Note (annotation)
 
-Text placed on one diagram only, with a tone, an optional **Title** (drawn in bold above the text), an **Alignment** (Left, Centre or Right) and any number of leaders. The line breaks typed in its text are kept. It is not a display note, which belongs to an element. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [Leader](#leader).
+Text placed on one diagram only, with a tone, an optional **Title** (drawn in bold above the text), an **Alignment** (Left, Centre or Right), a **Size** (Automatic: as large as its text needs; Manual: the size set by dragging) and any number of leaders. The line breaks typed in its text are kept. It is not a display note, which belongs to an element. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [Leader](#leader).
 
 #### Organisation
 

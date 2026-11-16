@@ -22,10 +22,11 @@
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode, GraphNodeBadge } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
 import { reverseRoute, suggestWaypoint } from "../../components/graphLinePath";
+import { NOTE_PADDING, drawnSize } from "./noteLayout";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
   ArchitectureConnection, ArchitectureElement, BoundaryShape, BoundaryValues, DiagramAnchor, DiagramNote, DiagramView,
-  DiagramLeader, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, LeaderKind, LeaderValues, LineEnd, LineRouteChange, LineWaypoint, NoteTextAlign, NoteTone, NoteValues, PlacementValues,
+  DiagramLeader, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, LeaderKind, LeaderValues, LineEnd, LineRouteChange, LineWaypoint, NoteSizeMode, NoteTextAlign, NoteTone, NoteValues, PlacementValues,
 } from "./types";
 import { isOutOfUse } from "./types";
 import {
@@ -99,10 +100,13 @@ export interface EditorNote {
   text: string;
   x: number;
   y: number;
+  /** The stored size: the size drawn when `sizeMode` is manual, and the size a note returns to from automatic. */
   width: number;
   height: number;
   tone: NoteTone;
   textAlign: NoteTextAlign;
+  /** Whether the note is drawn at the size its content needs (`noteFrame`) or at the stored one. */
+  sizeMode: NoteSizeMode;
   leaders: EditorLeader[];
 }
 
@@ -246,7 +250,7 @@ export function boxFromNode(node: DiagramViewNode): EditorBox {
 export function noteFromView(note: DiagramNote): EditorNote {
   return {
     key: note.id, id: note.id, title: note.title, text: note.text, x: note.x, y: note.y, width: note.width, height: note.height,
-    tone: note.tone, textAlign: note.text_align,
+    tone: note.tone, textAlign: note.text_align, sizeMode: note.size_mode,
     leaders: note.leaders.map(leaderFromView),
   };
 }
@@ -326,7 +330,7 @@ export function layoutToSave(
     })),
     notes: layout.notes.map((n) => ({
       id: n.id, title: n.title, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height, tone: n.tone, text_align: n.textAlign,
-      leaders: n.leaders.map(leaderToValues),
+      size_mode: n.sizeMode, leaders: n.leaders.map(leaderToValues),
     })),
     anchors: layout.anchors,
     boundaries: layout.boundaries.map((b) => ({ connection_id: b.connectionId, x: b.x, y: b.y, width: b.width, height: b.height })),
@@ -339,7 +343,7 @@ function signature(layout: EditorLayout): string {
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
     notes.map((n) => [
-      n.title, n.text, n.x, n.y, n.width, n.height, n.tone, n.text_align,
+      n.title, n.text, n.x, n.y, n.width, n.height, n.tone, n.text_align, n.size_mode,
       n.leaders.map((l) => [
         l.kind, l.element_id, l.connection_id, l.x, l.y, l.start_point, l.points.map((p) => [p.x, p.y]), l.smooth, l.start_style, l.end_style,
       ]),
@@ -381,7 +385,8 @@ export function resizeItems(
     }),
     notes: layout.notes.map((n) => {
       const c = to.get(NOTE_NODE_PREFIX + n.key);
-      return c ? { ...n, x: c.x, y: c.y, width: c.width, height: c.height } : n;
+      // A note the person resizes is sized by hand from then on, at the size just drawn.
+      return c ? { ...n, x: c.x, y: c.y, width: c.width, height: c.height, sizeMode: "manual" } : n;
     }),
     boundaries: layout.boundaries.map((b) => {
       const c = to.get(boundaryNodeId(b.connectionId));
@@ -474,7 +479,8 @@ export function removeBoundary(layout: EditorLayout, connectionId: string): Edit
 /** @param key A fresh note key. @param at Where its top-left corner goes. @returns A new, empty, neutral note with no leader. */
 export function newNote(key: string, at: { x: number; y: number }): EditorNote {
   return {
-    key, id: null, title: "", text: "", x: at.x, y: at.y, width: NOTE_WIDTH, height: NOTE_HEIGHT, tone: "neutral", textAlign: "left", leaders: [],
+    key, id: null, title: "", text: "", x: at.x, y: at.y, width: NOTE_WIDTH, height: NOTE_HEIGHT, tone: "neutral", textAlign: "left", sizeMode: "automatic",
+    leaders: [],
   };
 }
 
@@ -483,9 +489,19 @@ export function addNote(layout: EditorLayout, note: EditorNote): EditorLayout {
 }
 
 /** What the Selection card changes about a note. */
-export type NotePatch = Partial<Pick<EditorNote, "title" | "text" | "tone" | "textAlign">>;
+export type NotePatch = Partial<Pick<EditorNote, "title" | "text" | "tone" | "textAlign" | "sizeMode" | "width" | "height">>;
 
-/** Changes the title, text, tone or alignment of a note. */
+/**
+ * The size a note is drawn at: the frame its content needs when its size is automatic, else the stored size.
+ *
+ * @param note The note.
+ * @returns The width and height the canvas, the leaders' attach points and the exports use for it.
+ */
+export function noteFrame(note: EditorNote): { width: number; height: number } {
+  return drawnSize(note);
+}
+
+/** Changes the title, text, tone, alignment, size mode or stored size of a note. */
 export function updateNote(layout: EditorLayout, key: string, patch: NotePatch): EditorLayout {
   return { ...layout, notes: layout.notes.map((n) => (n.key === key ? { ...n, ...patch } : n)) };
 }
@@ -547,7 +563,7 @@ export function removeNote(layout: EditorLayout, key: string): EditorLayout {
  * @param columns Boxes per row of the grid.
  */
 export function nextFreePosition(layout: EditorLayout, index = 0, columns = 4): { x: number; y: number } {
-  const taken = [...layout.boxes, ...layout.notes, ...layout.boundaries];
+  const taken = [...layout.boxes, ...layout.notes.map((n) => ({ x: n.x, y: n.y, ...noteFrame(n) })), ...layout.boundaries];
   const hits = (x: number, y: number) =>
     taken.some((t) => x < t.x + t.width && t.x < x + BOX_WIDTH && y < t.y + t.height && t.y < y + BOX_HEIGHT);
   let free = -1;
@@ -656,7 +672,8 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
   const notes = layout.notes.map<GraphCanvasNode>((n) => ({
     id: NOTE_NODE_PREFIX + n.key, label: noteLabel(n, ctx.emptyNote), title: n.title.trim() || undefined,
     caption: n.tone === "none" ? undefined : ctx.noteCaption, textAlign: n.textAlign,
-    x: n.x, y: n.y, width: n.width, height: n.height, dashed: n.tone !== "none", tone: n.tone, placeholder: noteIsEmpty(n),
+    x: n.x, y: n.y, ...noteFrame(n), dashed: n.tone !== "none", tone: n.tone, placeholder: noteIsEmpty(n),
+    inset: NOTE_PADDING,
   }));
   const boundaries = layout.boundaries.map<GraphCanvasNode>((b) => ({
     id: boundaryNodeId(b.connectionId), label: b.connection_code,
@@ -798,7 +815,8 @@ export function noteLeadersSummary(
  * @param boxes Every box of the layout.
  */
 export function leaderVertexSuggestion(note: EditorNote, leader: EditorLeader, boxes: readonly EditorBox[]): LineWaypoint {
-  const start = { x: note.x + note.width / 2, y: note.y + note.height / 2 };
+  const frame = noteFrame(note);
+  const start = { x: note.x + frame.width / 2, y: note.y + frame.height / 2 };
   const target = leaderOf(leader);
   let end = { x: start.x + 160, y: start.y };
   if (target?.kind === "point") end = { x: target.x, y: target.y };

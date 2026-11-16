@@ -52,7 +52,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
-from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteAlign, NoteTone, RecordStatus
+from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteAlign, NoteSizeMode, NoteTone, RecordStatus
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -425,10 +425,11 @@ def leaders_of(db: Session, note_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, li
 
 
 def _note_values(note: ArchitectureDiagramNote | NoteIn, order: int) -> tuple[Any, ...]:
-    """What makes a note what it is (its block, tone, title and alignment), for comparing a stored note with a submitted one
-    at position `order`. Its leaders are compared on their own."""
+    """What makes a note what it is (its block, tone, title, alignment and size mode), for comparing a stored note with a
+    submitted one at position `order`. Its leaders are compared on their own."""
     return (
         note.text, note.x, note.y, note.width, note.height, order, _value(note.tone), note.title, _value(note.text_align),
+        _value(note.size_mode),
     )
 
 
@@ -466,15 +467,16 @@ def note_out(note: ArchitectureDiagramNote, leaders: Sequence[ArchitectureNoteLe
     """A stored note with its leaders (read them with `leaders_of`) as the view gives it."""
     return NoteOut(
         id=note.id, title=note.title, text=note.text, x=note.x, y=note.y, width=note.width, height=note.height,
-        tone=NoteTone(note.tone), text_align=NoteAlign(note.text_align),
+        tone=NoteTone(note.tone), text_align=NoteAlign(note.text_align), size_mode=NoteSizeMode(note.size_mode),
         leaders=[leader_out(row) for row in leaders],
     )
 
 
 def _write_note(row: ArchitectureDiagramNote, note: NoteIn, order: int) -> None:
-    """Copies a submitted note's block, tone, title and alignment onto its row."""
+    """Copies a submitted note's block, tone, title, alignment and size mode onto its row."""
     row.text, row.x, row.y, row.width, row.height, row.sort_order = note.text, note.x, note.y, note.width, note.height, order
     row.tone, row.title, row.text_align = note.tone.value, note.title, note.text_align.value
+    row.size_mode = note.size_mode.value
 
 
 def _write_leader(row: ArchitectureNoteLeader, leader: LeaderIn, order: int) -> None:

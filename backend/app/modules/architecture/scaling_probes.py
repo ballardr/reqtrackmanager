@@ -148,7 +148,8 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
             "boundaries": [{"connection_id": outer["id"], "x": -240, "y": 0}],
             "notes": [
                 {
-                    "title": "Probe title", "text": "Probe note\nsecond line", "x": 0, "y": -120, "tone": "info", "text_align": "center",
+                    "title": "Probe title", "text": "Probe note\nsecond line", "x": 0, "y": -120, "tone": "info",
+                    "text_align": "center", "size_mode": "automatic",
                     "leaders": [{"kind": "element", "element_id": ends[0]["id"], "start_point": "bottom"}],
                 },
                 {"text": "Probe line note", "x": 200, "y": -120, "leaders": [{"kind": "connection", "connection_id": outer["id"]}]},
