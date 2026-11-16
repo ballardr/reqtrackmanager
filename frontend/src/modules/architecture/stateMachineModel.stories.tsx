@@ -1,3 +1,4 @@
+import { fitLabel } from "./symbolLabelLayout";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
@@ -111,10 +112,13 @@ export const ALabelledMarkerIsDrawnLargerAroundItsBoxWithItsText: Story = {
     const nodes = new Map(canvasNodes(labelled, layoutFromModel(labelled), { findings: [] }).map((n) => [n.id, n]));
     const stored = box(layoutFromModel(labelled), "ste-0");
     const drawn = nodes.get("ste-0")!;
-    await expect(drawn).toMatchObject({ width: 52, height: 52, markerText: { lines: ["Power", "on"], onFill: true } });
-    await expect((drawn.x ?? 0) + 26).toBe(stored.x + stored.width / 2);
-    await expect((drawn.y ?? 0) + 26).toBe(stored.y + stored.height / 2);
-    await expect(drawn.symbolSvg).toContain('viewBox="0 0 52 52"');
+    const layout = fitLabel("initial", "Power on")!;
+    const half = layout.size / 2;
+    await expect(drawn).toMatchObject({ width: layout.size, height: layout.size, markerText: { lines: layout.lines, onFill: true } });
+    await expect(layout.lines.join(" ")).toBe("Power on");
+    await expect((drawn.x ?? 0) + half).toBe(stored.x + stored.width / 2);
+    await expect((drawn.y ?? 0) + half).toBe(stored.y + stored.height / 2);
+    await expect(drawn.symbolSvg).toContain(`viewBox="0 0 ${layout.size} ${layout.size}"`);
     const plain = nodes.get("ste-3")!;
     await expect(plain.markerText).toBeUndefined();
     await expect(plain).toMatchObject({ width: 28, height: 28 });

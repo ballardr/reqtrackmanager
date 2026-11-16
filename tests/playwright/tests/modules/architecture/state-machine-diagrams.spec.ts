@@ -108,7 +108,7 @@ async function createElement(request: APIRequestContext, base: string, headers: 
 /** Creates a state machine diagram with the states and transitions named through the API (setup); returns ids by state name. */
 async function createMachine(
   request: APIRequestContext, base: string, headers: Record<string, string>, elementId: string, name: string,
-  states: { name: string; kind?: string; x: number; y: number }[], transitions: [string, string, string?][],
+  states: { name: string; kind?: string; x: number; y: number; label?: string }[], transitions: [string, string, string?][],
 ) {
   const created = await request.post(`${base}/state-machine-diagrams`, { headers, data: { name, element_id: elementId } });
   expect(created.ok(), await created.text()).toBeTruthy();
@@ -117,7 +117,7 @@ async function createMachine(
   const ids: Record<string, string> = {};
   for (const state of states) {
     const added = await request.post(`${base}/state-machine-diagrams/${diagram.id}/states`, {
-      headers, data: { version, name: state.name, kind: state.kind ?? "state", x: state.x, y: state.y, width: state.kind && state.kind !== "state" ? 20 : 160, height: state.kind && state.kind !== "state" ? 20 : 64 },
+      headers, data: { version, name: state.name, kind: state.kind ?? "state", ...(state.label ? { label: state.label } : {}), x: state.x, y: state.y, width: state.kind && state.kind !== "state" ? 20 : 160, height: state.kind && state.kind !== "state" ? 20 : 64 },
     });
     expect(added.ok(), await added.text()).toBeTruthy();
     const body = await added.json();
@@ -401,6 +401,52 @@ test.describe("System Architecture: state machine diagrams", () => {
       const drawn = [...svg.matchAll(/<text[^>]*fill="#1E293B"[^>]*>([^<]+)<\/text>/g)].map((m) => m[1]).filter((t) => label.includes(t.trim().replace(/-$/, "")));
       expect(drawn).toEqual(screen);
     });
+  });
+
+  test("text inside an initial, final or choice symbol keeps its padding from the symbol's inner edge and is centred, for a short and a long label", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdPad", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Valve ${suffix}`);
+    const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Valve modes ${suffix}`, [
+      { name: "Begin", kind: "initial", x: 40, y: 200, label: "Power on and warm up the heater" },
+      { name: "Done", kind: "final", x: 340, y: 200, label: "Shut down complete" },
+      { name: "Branch", kind: "choice", x: 700, y: 200, label: "Is the tank level above the high-level alarm threshold?" },
+      { name: "Idle", x: 40, y: 20 },
+    ], []);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    const padding = 4; // LABEL_PADDING, in canvas units
+    const kinds = [
+      { node: "Initial state", shape: "circle" }, { node: "Final state", shape: "disc" }, { node: "Choice", shape: "diamond" },
+    ] as const;
+    for (const { node, shape } of kinds) {
+      await test.step(`${node}: the text is centred and at least ${padding} units inside the ${shape}'s inner edge`, async () => {
+        const symbol = page.getByLabel(`${node}, node`, { exact: true });
+        await expect(symbol.locator(".graph-node-marker-text")).toBeVisible();
+        const measured = await symbol.evaluate((el) => {
+          const viewport = el.closest(".react-flow__viewport") as HTMLElement;
+          const scale = new DOMMatrix(getComputedStyle(viewport).transform).a;
+          const image = el.querySelector(".graph-node-marker-image")!.getBoundingClientRect();
+          const text = el.querySelector(".graph-node-marker-text")!.getBoundingClientRect();
+          return {
+            scale, size: image.width / scale, textWidth: text.width / scale, textHeight: text.height / scale,
+            offsetX: (text.x + text.width / 2 - (image.x + image.width / 2)) / scale,
+            offsetY: (text.y + text.height / 2 - (image.y + image.height / 2)) / scale,
+          };
+        });
+        const a = measured.textWidth / 2;
+        const b = measured.textHeight / 2;
+        const half = Math.round(measured.size / 2);
+        const clearance = shape === "diamond"
+          ? ((half - 2) - (a + b)) / Math.SQRT2
+          : (shape === "circle" ? half - 1 : Math.floor((26 * Math.round(measured.size) + 36) / 72)) - Math.hypot(a, b);
+        expect(Math.abs(measured.offsetX)).toBeLessThan(1.5);
+        expect(Math.abs(measured.offsetY)).toBeLessThan(1.5);
+        // The browser's real glyphs are no wider than the layout's table, so the clearance is at least the padding (0.5 for rounding).
+        expect(clearance).toBeGreaterThanOrEqual(padding - 0.5);
+        // The text sits inside the symbol, not past it.
+        expect(measured.size).toBeGreaterThan(measured.textHeight);
+      });
+    }
   });
 
   test("a state is nested in another, the drawing is stored by Save and survives a reload, and a state is deleted with what goes with it", async ({ page }) => {

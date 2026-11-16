@@ -14,7 +14,7 @@
       "kind": "initial",
       "name": "two words",
       "label": "Power on",
-      "size": 52,
+      "size": 56,
       "lines": [
         "Power",
         "on"
@@ -25,15 +25,16 @@
       "kind": "initial",
       "name": "a long phrase",
       "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
-      "size": 116,
+      "size": 124,
       "lines": [
         "Is the tank",
         "level above",
         "the high-",
         "level alarm",
-        "threshold for",
-        "more than",
-        "ten seconds"
+        "threshold",
+        "for more",
+        "than ten",
+        "seconds"
       ],
       "fits": true
     },
@@ -41,7 +42,7 @@
       "kind": "initial",
       "name": "a hyphen is a place to break",
       "label": "Over-temperature protection trip",
-      "size": 88,
+      "size": 92,
       "lines": [
         "Over-",
         "temperature",
@@ -54,7 +55,7 @@
       "kind": "initial",
       "name": "one very long word",
       "label": "Supercalifragilisticexpialidocious",
-      "size": 172,
+      "size": 192,
       "lines": [
         "Supercalifragilisticexpialidocious"
       ],
@@ -74,7 +75,7 @@
       "kind": "initial",
       "name": "a word that just fits the choice at its base size",
       "label": "Verification",
-      "size": 68,
+      "size": 76,
       "lines": [
         "Verification"
       ],
@@ -87,7 +88,8 @@
       "size": 68,
       "lines": [
         "ABS",
-        "MWM @",
+        "MWM",
+        "@",
         "100%"
       ],
       "fits": true
@@ -98,8 +100,8 @@
       "label": "illi jilt fl.",
       "size": 52,
       "lines": [
-        "illi jilt",
-        "fl."
+        "illi",
+        "jilt fl."
       ],
       "fits": true
     },
@@ -134,7 +136,7 @@
       "kind": "initial",
       "name": "spaces around and between words",
       "label": "  spaced    out  ",
-      "size": 52,
+      "size": 56,
       "lines": [
         "spaced",
         "out"
@@ -145,18 +147,18 @@
       "kind": "initial",
       "name": "the longest label",
       "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
-      "size": 200,
+      "size": 204,
       "lines": [
-        "lorem ipsum dolor sit",
-        "amet lorem ipsum",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
-        "lorem ipsum dolor sit",
-        "amet lorem ipsum",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
-        "lorem ipsum dolor sit",
-        "amet lorem ipsum",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
         "lorem ipsum d"
@@ -188,15 +190,15 @@
       "kind": "final",
       "name": "a long phrase",
       "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
-      "size": 160,
+      "size": 168,
       "lines": [
         "Is the tank",
         "level above",
-        "the high-level",
-        "alarm",
+        "the high-",
+        "level alarm",
         "threshold for",
-        "more than ten",
-        "seconds"
+        "more than",
+        "ten seconds"
       ],
       "fits": true
     },
@@ -204,7 +206,7 @@
       "kind": "final",
       "name": "a hyphen is a place to break",
       "label": "Over-temperature protection trip",
-      "size": 120,
+      "size": 124,
       "lines": [
         "Over-",
         "temperature",
@@ -217,7 +219,7 @@
       "kind": "final",
       "name": "one very long word",
       "label": "Supercalifragilisticexpialidocious",
-      "size": 236,
+      "size": 260,
       "lines": [
         "Supercalifragilisticexpialidocious"
       ],
@@ -237,7 +239,7 @@
       "kind": "final",
       "name": "a word that just fits the choice at its base size",
       "label": "Verification",
-      "size": 92,
+      "size": 100,
       "lines": [
         "Verification"
       ],
@@ -247,7 +249,7 @@
       "kind": "final",
       "name": "capitals and signs are wider",
       "label": "ABS MWM @ 100%",
-      "size": 88,
+      "size": 92,
       "lines": [
         "ABS",
         "MWM",
@@ -262,8 +264,8 @@
       "label": "illi jilt fl.",
       "size": 72,
       "lines": [
-        "illi jilt",
-        "fl."
+        "illi",
+        "jilt fl."
       ],
       "fits": true
     },
@@ -298,7 +300,7 @@
       "kind": "final",
       "name": "spaces around and between words",
       "label": "  spaced    out  ",
-      "size": 72,
+      "size": 76,
       "lines": [
         "spaced",
         "out"
@@ -309,20 +311,21 @@
       "kind": "final",
       "name": "the longest label",
       "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
-      "size": 272,
+      "size": 280,
       "lines": [
         "lorem ipsum dolor sit",
-        "amet lorem ipsum dolor",
-        "sit amet lorem ipsum",
+        "amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
         "lorem ipsum dolor sit",
-        "amet lorem ipsum dolor",
-        "sit amet lorem ipsum",
+        "amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
         "lorem ipsum dolor sit",
-        "amet lorem ipsum d"
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum d"
       ],
       "fits": true
     },
@@ -351,14 +354,15 @@
       "kind": "choice",
       "name": "a long phrase",
       "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
-      "size": 168,
+      "size": 172,
       "lines": [
         "Is the tank",
         "level above",
-        "the high-level",
-        "alarm",
-        "threshold for",
-        "more than ten",
+        "the high-",
+        "level alarm",
+        "threshold",
+        "for more",
+        "than ten",
         "seconds"
       ],
       "fits": true
@@ -367,7 +371,7 @@
       "kind": "choice",
       "name": "a hyphen is a place to break",
       "label": "Over-temperature protection trip",
-      "size": 124,
+      "size": 132,
       "lines": [
         "Over-",
         "temperature",
@@ -380,7 +384,7 @@
       "kind": "choice",
       "name": "one very long word",
       "label": "Supercalifragilisticexpialidocious",
-      "size": 188,
+      "size": 208,
       "lines": [
         "Supercalifragilisticexpialidocious"
       ],
@@ -413,7 +417,8 @@
       "size": 96,
       "lines": [
         "ABS",
-        "MWM @",
+        "MWM",
+        "@",
         "100%"
       ],
       "fits": true
@@ -447,7 +452,7 @@
       "kind": "choice",
       "name": "a typed line break is kept",
       "label": "First line\nSecond line",
-      "size": 100,
+      "size": 104,
       "lines": [
         "First",
         "line",
@@ -471,18 +476,18 @@
       "kind": "choice",
       "name": "the longest label",
       "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
-      "size": 276,
+      "size": 284,
       "lines": [
-        "lorem ipsum dolor sit",
-        "amet lorem ipsum",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
-        "lorem ipsum dolor sit",
-        "amet lorem ipsum",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
-        "lorem ipsum dolor sit",
-        "amet lorem ipsum",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
         "dolor sit amet lorem",
         "ipsum dolor sit amet",
         "lorem ipsum d"
@@ -497,15 +502,15 @@
     },
     {
       "text": "iii",
-      "width": 9000
+      "width": 10200
     },
     {
       "text": "WWW",
-      "width": 25500
+      "width": 30000
     },
     {
       "text": "abc 123",
-      "width": 36400
+      "width": 40400
     },
     {
       "text": "電源",
@@ -513,7 +518,7 @@
     },
     {
       "text": "A-b",
-      "width": 18000
+      "width": 19800
     }
   ]
 }

@@ -15,7 +15,7 @@
  * - The server draws the same lines with a Python copy (`diagram_symbol_label.py`); `symbolLabelCases.json` holds the cases
  *   both are tested against, so a change is made in both. The measure is a table of average glyph widths in thousandths of the
  *   font size (integers only, so both languages agree exactly), not the browser's own metrics, so the screen and the exports
- *   break a label at the same words. It errs wide, so the real text does not overflow the symbol.
+ *   break a label at the same words. It is set wider than the system fonts' glyphs, so the real text keeps its padding.
  * - Padding is measured, not implied: the text block's rectangle is centred on the symbol and its nearest corner must be at least
  *   `LABEL_PADDING` from the inner edge of the circle, the ring's disc or the diamond (measured at right angles, inside the
  *   diamond's stroke), in integers so both languages agree exactly. `TEXT_PERCENT` only sets how wide a line is first tried.
@@ -43,13 +43,17 @@ export const LABEL_PADDING = 4;
 export const SIZE_STEP = 4;
 export const MAX_SIZE = 320;
 
-/** Glyph widths in thousandths of the font size. */
-const SPACE = 280;
-const NARROW = 300;
-const CAPITAL = 680;
-const WIDE = 850;
+/**
+ * Glyph widths in thousandths of the font size, set above what the product's system font stack draws (measured with the browser's
+ * canvas in the system UI font, Arial, Helvetica and Roboto; the widest rendered label was 7% under the table), so the real text
+ * keeps its padding.
+ */
+const SPACE = 320;
+const NARROW = 340;
+const CAPITAL = 740;
+const WIDE = 1000;
 const FULL = 1000;
-const OTHER = 560;
+const OTHER = 620;
 const NARROW_GLYPHS = new Set("iljtfI.,:;'|!()[]/\\");
 const WIDE_GLYPHS = new Set("MWmw@%");
 /** Code point ranges drawn full width, and so broken between any two characters. */

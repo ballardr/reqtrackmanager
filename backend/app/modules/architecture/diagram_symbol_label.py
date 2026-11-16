@@ -18,7 +18,7 @@ Design decisions:
   `tests/test_architecture_symbol_label.py`, holds the cases both are tested against; a change is made in both.
 - **A fixed width table, not font metrics.** The server has no font, and a browser's glyph widths differ by platform; a table of
   average widths (in thousandths of the font size, integers only so both languages agree exactly) is the one measure both can
-  share. It errs wide, so the real text does not overflow the symbol.
+  share. It is set wider than the system fonts' glyphs (see the table), so the real text keeps its padding.
 - **Padding is measured, not implied.** The text block's rectangle (widest line by line count) is centred on the symbol and its
   nearest corner must be at least `LABEL_PADDING` from the inner edge of the circle, the ring's disc or the diamond (the
   diamond's edge is measured at right angles, inside its stroke); all in integers (thousandths of a unit, squares instead of
@@ -52,9 +52,11 @@ LABEL_PADDING = 4
 SIZE_STEP = 4
 MAX_SIZE = 320
 
-#: Glyph widths in thousandths of the font size: a space, narrow glyphs, capitals, the widest capitals and signs, a full-width
+#: Glyph widths in thousandths of the font size, set above what the product's system font stack draws (measured with the
+#: browser's canvas in the system UI font, Arial, Helvetica and Roboto; the widest rendered label was 7% under the table), so
+#: the real text keeps its padding: a space, narrow glyphs, capitals, the widest capitals and signs, a full-width
 #: (East Asian) character, and everything else.
-_SPACE, _NARROW, _CAPITAL, _WIDE, _FULL, _OTHER = 280, 300, 680, 850, 1000, 560
+_SPACE, _NARROW, _CAPITAL, _WIDE, _FULL, _OTHER = 320, 340, 740, 1000, 1000, 620
 _NARROW_GLYPHS = frozenset("iljtfI.,:;'|!()[]/\\")
 _WIDE_GLYPHS = frozenset("MWmw@%")
 #: Code point ranges drawn full width, and so broken between any two characters.

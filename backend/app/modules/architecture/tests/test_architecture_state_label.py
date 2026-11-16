@@ -153,12 +153,14 @@ def test_the_svg_draws_a_labelled_symbol_larger_with_its_text_inside_and_an_unla
     base = project_base(project["id"])
     svg = client.get(f"{base}/state-machine-diagrams/{machine['id']}/svg", headers=auth_headers(token)).text
     ET.fromstring(svg)
-    size = BASE_SIZE[StateKind.INITIAL]
+    layout = fit_label(StateKind.INITIAL, "Power on")
+    assert layout is not None
+    size = layout.size
     # The labelled dot is drawn at the size its label needs, centred on the stored 20 x 20 box; the final state is untouched.
     assert f'translate({-(size - 20) / 2:.1f} {-(size - 20) / 2:.1f}) scale(1.0000 1.0000)' in svg
     assert "translate(200.0 0.0) scale(1.0000 1.0000)" in svg
     texts = [t for t in ET.fromstring(svg).iter(f"{SVG}text") if t.get("fill") == LABEL_ON_FILL]
-    assert [t.text for t in texts] == ["Power", "on"]  # broken between words to the dot's text width
+    assert [t.text for t in texts] == layout.lines and " ".join(layout.lines) == "Power on"  # broken between words only
 
 
 def test_the_marker_frame_grows_a_labelled_symbol_around_its_centre_and_leaves_an_unlabelled_one_alone():
