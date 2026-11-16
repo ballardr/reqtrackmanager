@@ -61,7 +61,7 @@ from app.modules.architecture._shared import (
 from app.modules.architecture.connection_tree import closure_of
 from app.modules.architecture.diagram_routes import filter_diagrams
 from app.modules.architecture.enums import PortDirection, RecordStatus, StateKind
-from app.modules.architecture.labels import PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL, STATE_KIND_LABEL
+from app.modules.architecture.labels import LABEL_POSITION_LABEL, PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL, STATE_KIND_LABEL
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureDiagram,
@@ -840,6 +840,10 @@ def _state_columns(db: Session, project: Project) -> list[RecordColumn]:
         RecordColumn("exit_action", "Exit action", lambda t, r: r.exit_action, text_parser),
         RecordColumn("activity", "Activity", lambda t, r: r.activity, text_parser),
         RecordColumn("label", "Symbol label", lambda t, r: r.label, text_parser),
+        RecordColumn(
+            "label_position", "Label position", lambda t, r: LABEL_POSITION_LABEL.get(r.label_position, r.label_position),
+            text_parser, kind="enum", choices=tuple(LABEL_POSITION_LABEL.values()),
+        ),
         _tags_column(),
     ]
 

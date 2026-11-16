@@ -30,6 +30,7 @@ from app.modules.architecture.enums import (
     ElementShape,
     FindingSeverity,
     FolderKind,
+    LabelPosition,
     LeaderKind,
     LineEnd,
     LineStyle,
@@ -1002,6 +1003,7 @@ class StateCreate(BaseModel):
     exit_action: str = Field(default="", max_length=2000)
     activity: str = Field(default="", max_length=2000)
     label: str = Field(default="", max_length=SYMBOL_LABEL_LENGTH)
+    label_position: LabelPosition = LabelPosition.INSIDE
     x: Coordinate = 0.0
     y: Coordinate = 0.0
     width: Extent = 160.0
@@ -1022,6 +1024,7 @@ class StateUpdate(BaseModel):
     exit_action: str | None = Field(default=None, max_length=2000)
     activity: str | None = Field(default=None, max_length=2000)
     label: str | None = Field(default=None, max_length=SYMBOL_LABEL_LENGTH)
+    label_position: LabelPosition | None = None
     x: Coordinate | None = None
     y: Coordinate | None = None
     width: Extent | None = None
@@ -1052,6 +1055,7 @@ class StateOut(ProjectScopedRow):
     exit_action: str
     activity: str
     label: str
+    label_position: str = "inside"
     x: float
     y: float
     width: float

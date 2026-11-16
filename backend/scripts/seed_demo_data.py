@@ -2696,14 +2696,14 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     machine_id, version = machine.json()["id"], machine.json()["version"]
     states: dict[str, str] = {}
     for name, kind, parent, extra in (
-        ("Start", "initial", None, {"x": 0, "y": 120, "width": 20, "height": 20, "label": "Power on"}),
+        ("Start", "initial", None, {"x": 0, "y": 120, "width": 20, "height": 20, "label": "Power on", "label_position": "above"}),
         ("Self-test", "state", None, {"x": 200, "y": 100, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"}),
         ("Flying", "state", None, {"x": 460, "y": 40, "width": 520, "height": 300}),
         ("Flight start", "initial", "Flying", {"x": 490, "y": 140, "width": 20, "height": 20}),
         ("Armed", "state", "Flying", {"x": 560, "y": 120, "entry_action": "spin_up_motors()"}),
         ("Hovering", "state", "Flying", {"x": 780, "y": 120, "activity": "hold_position()"}),
         ("Returning home", "state", "Flying", {"x": 670, "y": 240, "activity": "navigate_to_home()"}),
-        ("Battery check", "choice", "Flying", {"x": 890, "y": 245, "width": 36, "height": 36, "label": "Battery low?"}),
+        ("Battery check", "choice", "Flying", {"x": 890, "y": 245, "width": 36, "height": 36, "label": "Battery low?", "label_position": "right"}),
         ("Failsafe", "state", None, {"x": 460, "y": 400, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."}),
         ("Landed", "final", None, {"x": 1060, "y": 160, "width": 28, "height": 28, "label": "Landed"}),
     ):

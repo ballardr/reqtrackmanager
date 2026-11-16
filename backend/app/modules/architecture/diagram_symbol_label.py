@@ -10,6 +10,8 @@ Responsibilities:
   and at a line break the person typed; a word is never split.
 - Find the smallest symbol that holds the label (`fit_label`): the symbol grows from its labelled base size in steps until the
   text, with `LABEL_PADDING` clear of the symbol's inner edge on every side, fits inside it (`holds`).
+- Place a label outside its symbol (`beside_label`): the symbol keeps its plain size and the text block sits against one side
+  of it, `LABEL_PADDING` clear of the symbol's outer edge, wrapped to `BESIDE_MAX_WIDTH` and aligned toward the symbol.
 
 Design decisions:
 - **One rule, two implementations.** The browser draws the label from the lines this module gives
@@ -24,7 +26,9 @@ Design decisions:
   diamond's edge is measured at right angles, inside its stroke); all in integers (thousandths of a unit, squares instead of
   roots) so both languages agree exactly. `TEXT_PERCENT` only sets how wide a line is first tried (the square that fits), so
   lines wrap before the exact check.
-- **Text outside a symbol keeps the same gap** (`LABEL_PADDING` from the symbol's outer edge), used by the label position.
+- **Text outside a symbol keeps the same gap** (`LABEL_PADDING` from the symbol's outer edge), used by the label position. The
+  block is measured with the same width table and rounded up to a whole unit, so both languages place it identically; it lies
+  outside the symbol's own box (the box lines attach to), so it is positioned relative to that box and may be negative.
 - **A word longer than the largest symbol's text area** has no good drawing: it is kept whole on one line at the largest size and
   `fits` is False, so the Selection card can warn; it is never broken mid-word and never clipped.
 
@@ -35,7 +39,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from app.modules.architecture.enums import StateKind
+from app.modules.architecture.enums import LabelPosition, StateKind
 
 #: The label's font size and line height (diagram units).
 LABEL_FONT_SIZE = 10
@@ -51,6 +55,9 @@ TEXT_PERCENT: dict[StateKind, int] = {StateKind.INITIAL: 56, StateKind.FINAL: 42
 LABEL_PADDING = 4
 SIZE_STEP = 4
 MAX_SIZE = 320
+
+#: The widest a label placed outside its symbol is first wrapped to (diagram units); a single longer word is kept whole.
+BESIDE_MAX_WIDTH = 160
 
 #: Glyph widths in thousandths of the font size, set above what the product's system font stack draws (measured with the
 #: browser's canvas in the system UI font, Arial, Helvetica and Roboto; the widest rendered label was 7% under the table), so
@@ -78,6 +85,26 @@ class SymbolLabelLayout(NamedTuple):
     size: int
     lines: list[str]
     fits: bool
+
+
+class BesideLayout(NamedTuple):
+    """The drawing of a label placed outside its symbol.
+
+    Attributes:
+        lines: The label's lines, top to bottom.
+        x: The text block's left edge, relative to the symbol's top left corner (negative to its left).
+        y: The text block's top edge, relative to the symbol's top left corner (negative above it).
+        width: The widest line (a whole number of units, from the width table).
+        height: The block's height (lines times the line height).
+        align: How the lines are aligned within the block: `left`, `center` or `right`, toward the symbol.
+    """
+
+    lines: list[str]
+    x: float
+    y: float
+    width: int
+    height: int
+    align: str
 
 
 def _is_full_width(code: int) -> bool:
@@ -211,3 +238,31 @@ def fit_label(kind: StateKind, label: str) -> SymbolLabelLayout | None:
         if holds(kind, size, lines):
             return SymbolLabelLayout(size, lines, True)
     return SymbolLabelLayout(MAX_SIZE, wrap_label(text, text_side(kind, MAX_SIZE) * 1000), False)
+
+
+def beside_label(label: str, position: LabelPosition, symbol_width: float, symbol_height: float) -> BesideLayout | None:
+    """Where a label sits when it is outside its symbol.
+
+    Args:
+        label: The symbol's label.
+        position: `LEFT`, `RIGHT`, `ABOVE` or `BELOW` (`INSIDE` is not a place outside, see `fit_label`).
+        symbol_width: The width of the symbol's own box.
+        symbol_height: The height of the symbol's own box.
+
+    Returns:
+        The lines and the text block's place relative to the symbol's top left corner, or None when the label is blank or the
+        position is `INSIDE`. The block is `LABEL_PADDING` from the symbol's edge on its side and centred along it.
+    """
+    text = label.strip()
+    if not text or position is LabelPosition.INSIDE:
+        return None
+    lines = wrap_label(text, BESIDE_MAX_WIDTH * 1000)
+    width = (max(text_width(line) for line in lines) + 999) // 1000
+    height = len(lines) * LABEL_LINE_HEIGHT
+    if position is LabelPosition.RIGHT:
+        return BesideLayout(lines, symbol_width + LABEL_PADDING, (symbol_height - height) / 2, width, height, "left")
+    if position is LabelPosition.LEFT:
+        return BesideLayout(lines, -(LABEL_PADDING + width), (symbol_height - height) / 2, width, height, "right")
+    if position is LabelPosition.ABOVE:
+        return BesideLayout(lines, (symbol_width - width) / 2, -(LABEL_PADDING + height), width, height, "center")
+    return BesideLayout(lines, (symbol_width - width) / 2, symbol_height + LABEL_PADDING, width, height, "center")

@@ -143,6 +143,17 @@ class StateKind(str, enum.Enum):
     CHOICE = "choice"
 
 
+class LabelPosition(str, enum.Enum):
+    """Where an initial, final or choice symbol's label is drawn: `INSIDE` the symbol (which grows to hold it), or outside it
+    on one side, against the symbol at its plain notation size."""
+
+    INSIDE = "inside"
+    LEFT = "left"
+    RIGHT = "right"
+    ABOVE = "above"
+    BELOW = "below"
+
+
 class FindingSeverity(str, enum.Enum):
     """How serious a modelling finding on a state machine diagram is: an `ERROR` blocks activation, a `WARNING` never does."""
 

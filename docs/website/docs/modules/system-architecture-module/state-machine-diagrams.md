@@ -48,7 +48,16 @@ The diagrams use UML state machine notation, which is also the SysML state machi
 | Composite state | Frame that contains other states |
 | Transition | Arrow labelled `event [condition] / action`; a transition from a state to itself is drawn as a loop |
 
-An initial state, final state or choice can carry a **symbol label**, up to 256 characters of text drawn inside the symbol, so a branch can say what it decides ("Battery low?"). The text breaks between words, after a hyphen or at a line break typed in the field, never inside a word, and the symbol is drawn as large as the text needs (a long label makes a large symbol; a long remark reads better as a note). A single word longer than the largest symbol holds is drawn whole on one line and extends past the symbol, and the field warns about it. The screen, the SVG and PNG exports break the text at the same words; the full text is also in the Selection card and the Outline.
+An initial state, final state or choice can carry a **symbol label**, up to 256 characters of text drawn with the symbol, so a branch can say what it decides ("Battery low?"). The text breaks between words, after a hyphen or at a line break typed in the field, never inside a word. A long remark reads better as a note. The screen, the SVG and PNG exports break the text at the same words; the full text is also in the Selection card and the Outline.
+
+The **Label position** chooses where the text is drawn:
+
+| Position | The text is drawn | The symbol |
+|----------|-------------------|------------|
+| Inside (default) | In the symbol | Grows to hold the text, so a long label makes a large symbol. A single word longer than the largest symbol holds is drawn whole on one line and extends past the symbol, and the field warns about it |
+| Left, Right, Above, Below | Beside the symbol, 4 units from its edge, in lines of at most 160 units | Keeps its plain size |
+
+A line left to choose its own ends does not end on the side the text is on, so it does not run through the text; an end set to that side in the Selection card is kept as chosen.
 
 Conditions (guards) and actions are text that a person reads. The module does not simulate a diagram or generate code from it.
 
@@ -75,7 +84,7 @@ Here "button pressed" is an event, "battery ok" and "battery low" are conditions
 
 Choose **Add to diagram**, then Initial state, State, Final state or Choice, or drag the item onto the drawing. The item is added at once with a default name ("State 1", "State 2"; a marker is named for its kind), selected, and its name is ready to type over in the **Selection** card. Dropping an item inside a composite state puts it in that state. Point at **Add to diagram** for a short guide to building a machine.
 
-The Selection card edits the selected state in place: name and kind (the name of an initial state, final state or choice is captioned **Name (Outline and exports)**, because the drawn text is its symbol label); for an ordinary state its description and entry, exit and activity lines; for an initial state, final state or choice its symbol label. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
+The Selection card edits the selected state in place: name and kind (the name of an initial state, final state or choice is captioned **Name (Outline and exports)**, because the drawn text is its symbol label); for an ordinary state its description and entry, exit and activity lines; for an initial state, final state or choice its symbol label and label position. Changes are stored when the cursor leaves the card's fields, or with **Save state**; a name cannot be blank. Double-clicking a state opens the same fields in a dialog. The card also holds the state's tags and links.
 
 ## Undo and Redo
 
@@ -119,4 +128,4 @@ stateDiagram-v2
     s2 --> [*] : halt
 ```
 
-In the Mermaid text, vertices and line hops are left out (Mermaid routes the lines itself), a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label is not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep it.
+In the Mermaid text, vertices and line hops are left out (Mermaid routes the lines itself), a composite state is a nested block, and the initial and final states are the start and end marks of their block. Mermaid does not accept entry, exit and do lines on a composite state, so they are omitted for composite states. Several final states in one block share Mermaid's single end mark. Mermaid cannot write text inside a start mark, end mark or choice, so a symbol label and its position are not drawn in the Mermaid text (a choice's label is written as a comment line); the image exports and the project bundle keep them.

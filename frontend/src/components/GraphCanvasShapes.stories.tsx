@@ -215,6 +215,57 @@ const GROUP: GraphCanvasNode[] = [
 const rect = (el: Element) => el.getBoundingClientRect();
 const nodeEl = (canvas: ReturnType<typeof within>, name: string) => canvas.getByLabelText(`${name}, node`).closest(".react-flow__node") as HTMLElement;
 
+/** A marker's text can be placed outside it by the consumer: the node stays the marker's own size and the text sits where the block says, on the page. */
+export const MarkerTextCanBeDrawnOutsideItsMarker: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Order processing" showViewToggle={false}
+      nodes={[
+        { id: "right", label: "Right", x: 0, y: 100, width: 36, height: 36, marker: true, symbolSvg: DIAMOND, markerText: { lines: ["Paid?"], onFill: false, block: { x: 40, y: 12, width: 40, height: 12, align: "left" } } },
+        { id: "above", label: "Above", x: 300, y: 100, width: 36, height: 36, marker: true, symbolSvg: DIAMOND, markerText: { lines: ["First", "second"], onFill: false, block: { x: 0, y: -28, width: 36, height: 24, align: "center" } } },
+      ]}
+      edges={[]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const right = nodeEl(canvas, "Right");
+    const above = nodeEl(canvas, "Above");
+    await waitFor(() => expect(right.querySelector(".graph-node-marker-text-block")).toHaveTextContent("Paid?"));
+    const scale = rect(right).width / 36;
+    const beside = rect(right.querySelector(".graph-node-marker-text-block")!);
+    await expect(rect(right).height / 36).toBeCloseTo(scale, 1);
+    await expect(beside.left - rect(right).right).toBeCloseTo(4 * scale, 0);
+    await expect(beside.top + beside.height / 2).toBeCloseTo(rect(right).top + rect(right).height / 2, 0);
+    const over = rect(above.querySelector(".graph-node-marker-text-block")!);
+    await expect(over.bottom).toBeLessThan(rect(above).top);
+    await expect(rect(above.querySelector(".graph-node-marker-text-block")!).left).toBeCloseTo(rect(above).left, 0);
+    await expect(right.querySelector(".graph-node-marker-text-on-fill")).toBeNull();
+  },
+};
+
+/** A node's `attachPoints` narrow where an open line end may meet it: a diamond that does not offer its left side is met at another. */
+export const AnOpenLineEndAvoidsASideTheNodeDoesNotOffer: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Order processing" showViewToggle={false}
+      nodes={[
+        { id: "open", label: "Open", x: 0, y: 0 },
+        { id: "check", label: "Payment check", x: 300, y: 0, width: 36, height: 36, marker: true, symbolSvg: DIAMOND, attachPoints: ["top", "right", "bottom"] },
+      ]}
+      edges={[{ id: "decide", source: "open", target: "check" }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    // The diamond's left side (300, 18) is the nearest of its points to Open but is not offered, so the line meets its top (318, 0),
+    // reached from Open's top right corner (160, 0); with all four sides offered it would end at the left side.
+    await waitFor(() => {
+      const [x1, y1, x2, y2] = pathNumbers(canvasElement.querySelector(".react-flow__edge-path")?.getAttribute("d"));
+      expect([near(x1, 160), near(y1, 0), near(x2, 318), near(y2, 0)]).toEqual([true, true, true, true]);
+    });
+  },
+};
+
 /** Children are drawn inside their container, above it, and keep the consumer's absolute coordinates. */
 export const AContainerDrawsItsChildrenInsideIt: Story = {
   render: () => <Host initial={GROUP} />,

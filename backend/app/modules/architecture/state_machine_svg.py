@@ -7,10 +7,11 @@ download is this document drawn in the browser), in UML state machine notation.
 Responsibilities:
 - Draw each ordinary state as a rounded rectangle with its name, code and `entry /`, `exit /` and `do /` lines, a composite
   state (one that holds others) as a frame with its name in a header strip, and the initial, final and choice states as the
-  standard markers of `state_shapes`.
+  standard markers of `state_shapes`, a marker's label inside the symbol or outside it on one side (`LabelPosition`), and the
+  extent of the drawing includes the text outside a symbol.
 - Draw each transition as an arrow between two attach points (the ones a person chose, else the nearest; markers offer only
-  the middle of a side), a transition from a state to itself as the loop of `state_shapes`, and its `event [guard] / action`
-  label.
+  the middle of a side, without the side its label is on), a transition from a state to itself as the loop of `state_shapes`,
+  and its `event [guard] / action` label.
 - With the diagram's `line_hops` on, draw a small arc where one transition crosses another (`diagram_line_hops`).
 
 Design decisions:
@@ -34,10 +35,10 @@ import uuid
 
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
-from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, point_xy, route_points
-from app.modules.architecture.diagram_symbol_label import LABEL_FONT_SIZE, LABEL_LINE_HEIGHT, fit_label
+from app.modules.architecture.diagram_points import ATTACH_POINTS, point_xy, route_points
 from app.modules.architecture.diagram_svg import _ROOT, _note_lines, _text, _wrap
-from app.modules.architecture.enums import StateKind
+from app.modules.architecture.diagram_symbol_label import LABEL_FONT_SIZE, LABEL_LINE_HEIGHT, LABEL_PADDING, BesideLayout, beside_label, fit_label
+from app.modules.architecture.enums import LabelPosition, StateKind
 from app.modules.architecture.labels import STATE_KIND_LABEL
 from app.modules.architecture.schemas import StateMachineModel, StateOut, TransitionOut
 from app.modules.architecture.state_shapes import (
@@ -49,6 +50,7 @@ from app.modules.architecture.state_shapes import (
     STATE_MARKERS,
     action_lines,
     labelled_svg,
+    marker_attach_points,
     marker_frame,
     self_loop,
     self_loop_path,
@@ -67,10 +69,30 @@ Box = tuple[float, float, float, float]
 
 
 def _box(state: StateOut) -> Box:
-    """The state's frame as drawn: its stored box, or the larger frame of a symbol that carries a label."""
+    """The state's frame as drawn: its stored box, or the larger frame of a symbol that carries a label inside it (a label
+    outside the symbol leaves the frame as stored)."""
     box = (state.x, state.y, state.width, state.height)
     kind = StateKind(state.kind)
-    return box if kind is StateKind.STATE else marker_frame(kind, box, state.label)
+    return box if kind is StateKind.STATE else marker_frame(kind, box, state.label, LabelPosition(state.label_position))
+
+
+def _outside_label(state: StateOut) -> BesideLayout | None:
+    """The layout of a marker's label drawn outside its symbol, or None (an ordinary state, no label, or a label inside)."""
+    if StateKind(state.kind) is StateKind.STATE:
+        return None
+    x, y, w, h = _box(state)
+    return beside_label(state.label, LabelPosition(state.label_position), w, h)
+
+
+def _reach(state: StateOut) -> tuple[float, float, float, float]:
+    """The left, top, right and bottom of everything drawn for a state: its frame and the text outside it."""
+    x, y, w, h = _box(state)
+    left, top, right, bottom = x, y, x + w, y + h
+    beside = _outside_label(state)
+    if beside is not None:
+        left, top = min(left, x + beside.x), min(top, y + beside.y)
+        right, bottom = max(right, x + beside.x + beside.width), max(bottom, y + beside.y + beside.height)
+    return left, top, right, bottom
 
 
 def _depths(states: list[StateOut]) -> dict[uuid.UUID, int]:
@@ -91,7 +113,9 @@ def _marker(state: StateOut) -> str:
     when it is not just the kind's own label."""
     kind = StateKind(state.kind)
     x, y, w, h = _box(state)
-    layout = fit_label(kind, state.label)
+    inside = LabelPosition(state.label_position) is LabelPosition.INSIDE
+    layout = fit_label(kind, state.label) if inside else None
+    beside = _outside_label(state)
     size, markup = (layout.size, labelled_svg(kind, layout.size)) if layout else STATE_MARKERS[kind]
     match = _ROOT.search(markup)
     inner = markup[match.end(): -len("</svg>")] if match else ""
@@ -105,8 +129,17 @@ def _marker(state: StateOut) -> str:
             f'font-size="{LABEL_FONT_SIZE}" fill="{colour}">{_text(line)}</text>'
             for i, line in enumerate(lines)
         )
+    if beside is not None:
+        anchor, at = {"left": ("start", 0), "center": ("middle", beside.width / 2), "right": ("end", beside.width)}[beside.align]
+        top = y + beside.y + LABEL_FONT_SIZE
+        drawing += "".join(
+            f'<text x="{x + beside.x + at:.1f}" y="{top + i * LABEL_LINE_HEIGHT:.1f}" text-anchor="{anchor}" '
+            f'font-size="{LABEL_FONT_SIZE}" fill="{_TEXT_COLOR}">{_text(line)}</text>'
+            for i, line in enumerate(beside.lines)
+        )
     if state.name.strip() and state.name != STATE_KIND_LABEL.get(state.kind):
-        cx, ty = x + w / 2, y + h + 13
+        below = beside.height + LABEL_PADDING if beside is not None and LabelPosition(state.label_position) is LabelPosition.BELOW else 0
+        cx, ty = x + w / 2, y + h + below + 13
         drawing += f'<text x="{cx:.1f}" y="{ty:.1f}" text-anchor="middle" font-size="10" fill="{_MUTED}">{_text(state.name)}</text>'
     return drawing
 
@@ -197,7 +230,8 @@ def _transitions(
         vertices: list[Point] = [(p.x, p.y) for p in t.points]
         pa, pb = route_points(
             _box(source), _box(target), t.source_point, t.target_point, vertices,
-            SIDE_POINTS if a_marker else ATTACH_POINTS, SIDE_POINTS if b_marker else ATTACH_POINTS,
+            marker_attach_points(source.label, LabelPosition(source.label_position)) if a_marker else ATTACH_POINTS,
+            marker_attach_points(target.label, LabelPosition(target.label_position)) if b_marker else ATTACH_POINTS,
         )
         (x1, y1), (x2, y2) = point_xy(_box(source), pa), point_xy(_box(target), pb)
         if vertices:
@@ -252,12 +286,9 @@ def render_state_machine(model: StateMachineModel) -> str:
         boxes = {s.id: s for s in states}
         lines, labels = _transitions(model.transitions, boxes, model.diagram.line_hops)
         looped = {t.source_state_id for t in model.transitions if t.source_state_id == t.target_state_id}
-        frames = {s.id: _box(s) for s in states}
-        xs = [v for s in states for v in (frames[s.id][0], frames[s.id][0] + frames[s.id][2] + (SELF_LOOP_REACH if s.id in looped else 0))]
-        ys = [
-            v for s in states
-            for v in (frames[s.id][1] - (SELF_LOOP_REACH if s.id in looped else 6), frames[s.id][1] + frames[s.id][3] + 18)
-        ]
+        reach = {s.id: _reach(s) for s in states}
+        xs = [v for s in states for v in (reach[s.id][0], reach[s.id][2] + (SELF_LOOP_REACH if s.id in looped else 0))]
+        ys = [v for s in states for v in (reach[s.id][1] - (SELF_LOOP_REACH if s.id in looped else 6), reach[s.id][3] + 18)]
         for t in model.transitions:
             xs.extend(p.x for p in t.points)
             ys.extend(p.y for p in t.points)

@@ -28,7 +28,7 @@ function RecordLine({ record }: { record: BaselineRecordRef }) {
 function RecordList({ caption, tone, records }: { caption: string; tone: "accent" | "danger"; records: BaselineRecordRef[] }) {
   if (records.length === 0) return null;
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <div><Badge tone={tone}>{caption}</Badge> <span className="text-muted">{records.length}</span></div>
       <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
         {records.map((r) => <li key={r.code}><RecordLine record={r} /></li>)}
@@ -74,7 +74,7 @@ export function BaselineComparisonView({ comparison }: { comparison: BaselineCom
                 <RecordList caption="Added" tone="accent" records={type.added} />
                 <RecordList caption="Removed" tone="danger" records={type.removed} />
                 {type.changed.length > 0 && (
-                  <div className="stack" style={{ gap: "0.25rem" }}>
+                  <div className="stack" style={{ gap: "var(--space-1)" }}>
                     <div><Badge tone="info">Changed</Badge> <span className="text-muted">{type.changed.length}</span></div>
                     <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
                       {type.changed.map((record) => (

@@ -8,7 +8,9 @@
  * Responsibilities:
  * - Give the markers: the filled dot of an initial state, the ringed dot of a final state and the diamond of a choice, each
  *   with its size and its SVG markup, and the drawing each takes at any larger size while it carries a label (`labelledSvg`).
- * - `markerFrame`: the frame a marker is drawn in, which a label grows around the stored box's centre (`symbolLabelLayout`).
+ * - `markerFrame`: the frame a marker is drawn in, which a label inside it grows around the stored box's centre
+ *   (`symbolLabelLayout`); a label outside the symbol leaves the symbol at its stored box.
+ * - `markerAttachPoints`: the points an open line end may choose on a marker, without the side its label is on.
  * - Give the sizes a state, a composite state's header and padding and the corner radius use.
  *
  * Design decisions:
@@ -20,7 +22,9 @@
  *   drawn from a data URI cannot read the page's colour tokens.
  */
 
+import { SIDE_POINTS, type AttachPoint } from "../../components/graphAttachPoints";
 import { BASE_SIZE, fitLabel, LABEL_FONT_SIZE, LABEL_LINE_HEIGHT, MAX_SIZE, SIZE_STEP, TEXT_PERCENT } from "./symbolLabelLayout";
+import type { LabelPosition } from "./types";
 
 /** A marker kind: a state kind drawn as a shape with no text inside. */
 export type StateMarkerKind = "initial" | "final" | "choice";
@@ -82,21 +86,38 @@ export interface Frame {
 }
 
 /**
- * The frame a marker is drawn in: its stored box, or, when it carries a label, at least the size the label needs and centred on
- * the stored box.
+ * The frame a marker is drawn in: its stored box, or, when it carries a label inside it, at least the size the label needs and
+ * centred on the stored box. A label outside the symbol leaves the symbol at its stored box.
  *
  * @param kind The marker kind.
  * @param box The stored box.
  * @param label The symbol's label (blank means none).
+ * @param position Where the label is drawn.
  * @returns The frame to draw and to attach lines to.
  */
-export function markerFrame(kind: StateMarkerKind, box: Frame, label: string): Frame {
-  const layout = fitLabel(kind, label);
+export function markerFrame(kind: StateMarkerKind, box: Frame, label: string, position: LabelPosition = "inside"): Frame {
+  const layout = position === "inside" ? fitLabel(kind, label) : null;
   if (!layout) return box;
   const size = layout.size;
   const width = Math.max(box.width, size);
   const height = Math.max(box.height, size);
   return { x: box.x - (width - box.width) / 2, y: box.y - (height - box.height) / 2, width, height };
+}
+
+/** The side of a symbol each outside label position covers. */
+const LABEL_SIDE: Partial<Record<LabelPosition, AttachPoint>> = { left: "left", right: "right", above: "top", below: "bottom" };
+
+/**
+ * The attach points an open line end may choose on a marker: the middle of each side, without the side its label is on (a line
+ * there would run through the text). A fixed end a person chose is used as given.
+ *
+ * @param label The symbol's label (blank means none, so every side is offered).
+ * @param position Where the label is drawn.
+ * @returns The points, in tie-break order.
+ */
+export function markerAttachPoints(label: string, position: LabelPosition): readonly AttachPoint[] {
+  const covered = label.trim() ? LABEL_SIDE[position] : undefined;
+  return SIDE_POINTS.filter((point) => point !== covered);
 }
 
 /** The size a new ordinary state is drawn at. */

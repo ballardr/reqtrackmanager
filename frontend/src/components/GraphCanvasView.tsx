@@ -93,6 +93,8 @@ const NO_BADGES: readonly GraphNodeBadge[] = [];
 
 const DEFAULT_WIDTH = 160;
 const DEFAULT_HEIGHT = 64;
+/** The room (screen pixels) the opening view leaves beyond a marker label that lies outside its marker, on top of the label itself. */
+const FIT_MARGIN = 24;
 /** The smallest size a node can be resized to, by pointer or key, and the step of a key resize. */
 const MIN_WIDTH = 80;
 const MIN_HEIGHT = 40;
@@ -192,6 +194,11 @@ function NodeBody({ text }: { text: string }) {
   );
 }
 
+/** The place and alignment of a marker's text block outside the marker (see `GraphMarkerText.block`). */
+function markerBlockStyle(block: NonNullable<GraphMarkerText["block"]>): CSSProperties {
+  return { left: block.x, top: block.y, width: block.width, height: block.height, textAlign: block.align };
+}
+
 /** One box on the canvas: accent edge, optional symbol and the text label; the eight handles are for drawing lines. */
 function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
   if (data.marker) {
@@ -200,7 +207,11 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
         {data.symbol && <img className="graph-node-marker-image" src={data.symbol} alt="" />}
         {data.markerText && data.markerText.lines.length > 0 && (
           <span
-            className={data.markerText.onFill ? "graph-node-marker-text graph-node-marker-text-on-fill" : "graph-node-marker-text"}
+            className={[
+              "graph-node-marker-text", data.markerText.onFill ? "graph-node-marker-text-on-fill" : "",
+              data.markerText.block ? "graph-node-marker-text-block" : "",
+            ].filter(Boolean).join(" ")}
+            style={data.markerText.block ? markerBlockStyle(data.markerText.block) : undefined}
           >
             {data.markerText.lines.join("\n")}
           </span>
@@ -652,11 +663,28 @@ export function GraphCanvasView({
       const keep = z && z.baseWidth === baseWidth && z.baseHeight === baseHeight;
       map.set(n.id, {
         ...position, width: keep ? z.width : baseWidth, height: keep ? z.height : baseHeight,
-        points: n.marker ? SIDE_POINTS : undefined,
+        points: n.attachPoints ?? (n.marker ? SIDE_POINTS : undefined),
       });
     }
     return map;
   }, [nodes, moved, sized]);
+
+  // The most any marker's label block reaches beyond its marker's frame, so the opening view leaves room for the text.
+  const labelOverhang = useMemo(() => {
+    let most = 0;
+    for (const n of nodes) {
+      const block = n.marker ? n.markerText?.block : undefined;
+      if (!block) continue;
+      const width = n.width ?? DEFAULT_WIDTH;
+      const height = n.height ?? DEFAULT_HEIGHT;
+      most = Math.max(most, -block.x, -block.y, block.x + block.width - width, block.y + block.height - height);
+    }
+    return Math.ceil(most);
+  }, [nodes]);
+  const fitOptions = useMemo(
+    () => (labelOverhang > 0 ? { maxZoom: fitMaxZoom, padding: `${labelOverhang + FIT_MARGIN}px` as const } : { maxZoom: fitMaxZoom }),
+    [fitMaxZoom, labelOverhang],
+  );
 
   // Attach points near the pointer: the boxes the pointer is near carry `data-attach-near` on their element (the stylesheet shows
   // their points). It is set from a pointer move through the DOM, never through state, so a move re-renders nothing; the work
@@ -1172,10 +1200,10 @@ export function GraphCanvasView({
     if (fittedForCentre.current) move();
     else {
       fittedForCentre.current = true;
-      void instance.fitView({ maxZoom: fitMaxZoom, duration: 0 }).then(move);
+      void instance.fitView({ ...fitOptions, duration: 0 }).then(move);
     }
     return undefined;
-  }, [centerKey, latestCenter, initialised, fitMaxZoom]);
+  }, [centerKey, latestCenter, initialised, fitOptions]);
 
   const keyResize = resizable && !readOnly && onNodesResize !== undefined;
   const keyDelete = !readOnly && onDelete !== undefined;
@@ -1296,7 +1324,7 @@ export function GraphCanvasView({
         snapGrid={snapGrid !== undefined && snapGrid > 0 ? [snapGrid, snapGrid] : undefined}
         connectionMode={ConnectionMode.Loose}
         fitView
-        fitViewOptions={{ maxZoom: fitMaxZoom }}
+        fitViewOptions={fitOptions}
         minZoom={0.1}
         maxZoom={2}
       >

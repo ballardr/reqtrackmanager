@@ -23,16 +23,21 @@
  *   state per level, no depth beyond 12) are not repeated here.
  * - The shapes' sizes come from `stateShapes`, the table the server's drawing is tested against. A marker with a label is drawn
  *   as large as its label needs (`markerFrame`, `symbolLabelLayout`: whole words), centred on its stored box, and the label is drawn inside it.
+ *   A label placed outside the symbol leaves the symbol at its stored box and is drawn beside it (`besideLabel`); the canvas node
+ *   is the symbol, so lines meet the symbol, and `markerAttachPoints` keeps an open line end off the side the text is on.
+ * - A marker's drawn frame can differ from its stored box (a label inside grows it around the box's centre), so a move reported
+ *   by the canvas as the frame's new corner is turned back into the stored box (`markerOffsets`), and the symbol stays where it
+ *   was dropped.
  */
 import type { GraphCanvasEdge, GraphCanvasNode } from "../../components/GraphCanvas";
 import {
   commitStep, isDirtyBy, redoStep, refreshPresentOf, startHistoryOf, undoStep, type History as HistoryOf,
 } from "../../utils/editHistory";
 import {
-  COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING, LABEL_ON_FILL_KINDS, labelledSvg, markerFrame, STATE_DEFAULT_SIZE, STATE_MARKERS,
+  COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING, LABEL_ON_FILL_KINDS, labelledSvg, markerAttachPoints, markerFrame, STATE_DEFAULT_SIZE, STATE_MARKERS,
   type StateMarkerKind,
 } from "./stateShapes";
-import { fitLabel } from "./symbolLabelLayout";
+import { besideLabel, fitLabel } from "./symbolLabelLayout";
 import {
   STATE_KIND_LABEL, STATE_MARKER_KINDS, type ArchitectureState, type LineRouteChange, type StateKind, type StateLayoutValues, type StateMachineFinding,
   type StateMachineModel, type StateTransition, type TransitionPointsValues,
@@ -130,10 +135,48 @@ export function layoutSignature(layout: StateMachineLayout): string {
 
 const byId = (layout: StateMachineLayout, id: string): StateBox | undefined => layout.boxes.find((b) => b.id === id);
 
-/** Moves states; a state inside a frame is reported by the canvas together with the frame, so each box is set as given. */
-export function moveStates(layout: StateMachineLayout, moves: { id: string; x: number; y: number }[]): StateMachineLayout {
+/**
+ * How far each marker's drawn frame lies from its stored box (the frame's corner minus the box's), for a marker whose label inside
+ * it grows the frame around the box's centre. A marker drawn at its stored box (no label, or a label outside it) has none.
+ *
+ * @param states The diagram's states, which carry the label and its position.
+ * @param layout The drawing being edited (the stored boxes).
+ * @returns The offset of every marker whose frame is not its box.
+ */
+export function markerOffsets(states: readonly ArchitectureState[], layout: StateMachineLayout): Map<string, { x: number; y: number }> {
+  const boxes = new Map(layout.boxes.map((b) => [b.id, b]));
+  const found = new Map<string, { x: number; y: number }>();
+  for (const state of states) {
+    const box = boxes.get(state.id);
+    if (!box || !isMarkerKind(state.kind)) continue;
+    const frame = markerFrame(state.kind, box, state.label, state.label_position);
+    if (frame.x !== box.x || frame.y !== box.y) found.set(state.id, { x: frame.x - box.x, y: frame.y - box.y });
+  }
+  return found;
+}
+
+/**
+ * Moves states; a state inside a frame is reported by the canvas together with the frame, so each box is set as given. A move is
+ * the new corner of the state's drawn frame, so a marker whose frame differs from its box is put back by that difference.
+ *
+ * @param layout The drawing being edited.
+ * @param moves The new top left corner of each moved state's drawn frame.
+ * @param offsets The frame-to-box difference of markers (`markerOffsets`); none by default.
+ * @returns The layout with the boxes moved.
+ */
+export function moveStates(
+  layout: StateMachineLayout, moves: { id: string; x: number; y: number }[], offsets: ReadonlyMap<string, { x: number; y: number }> = new Map(),
+): StateMachineLayout {
   const to = new Map(moves.map((m) => [m.id, m]));
-  return { ...layout, boxes: layout.boxes.map((b) => (to.has(b.id) ? { ...b, x: to.get(b.id)!.x, y: to.get(b.id)!.y } : b)) };
+  return {
+    ...layout,
+    boxes: layout.boxes.map((b) => {
+      const move = to.get(b.id);
+      if (!move) return b;
+      const offset = offsets.get(b.id);
+      return { ...b, x: move.x - (offset?.x ?? 0), y: move.y - (offset?.y ?? 0) };
+    }),
+  };
 }
 
 /** Sets the position and size of states (a resize). */
@@ -352,13 +395,18 @@ export function canvasNodes(model: StateMachineModel, layout: StateMachineLayout
     const box = boxes.get(state.id) ?? boxOfState(state);
     const parentId = box.parent_state_id && boxes.has(box.parent_state_id) ? box.parent_state_id : undefined;
     if (isMarkerKind(state.kind)) {
-      const layout = fitLabel(state.kind, state.label);
-      const frame = markerFrame(state.kind, box, state.label);
+      const inside = state.label_position === "inside";
+      const layout = inside ? fitLabel(state.kind, state.label) : null;
+      const frame = markerFrame(state.kind, box, state.label, state.label_position);
+      const beside = inside ? null : besideLabel(state.label, state.label_position, frame.width, frame.height);
       return {
         id: state.id, label: STATE_KIND_LABEL[state.kind], caption: state.name === STATE_KIND_LABEL[state.kind] ? undefined : state.name,
         x: frame.x, y: frame.y, width: frame.width, height: frame.height, marker: true,
         symbolSvg: layout ? labelledSvg(state.kind, layout.size) : STATE_MARKERS[state.kind].svg, parentId,
-        markerText: layout ? { lines: layout.lines, onFill: LABEL_ON_FILL_KINDS.has(state.kind) } : undefined,
+        attachPoints: markerAttachPoints(state.label, state.label_position),
+        markerText: layout
+          ? { lines: layout.lines, onFill: LABEL_ON_FILL_KINDS.has(state.kind) }
+          : beside ? { lines: beside.lines, onFill: false, block: { x: beside.x, y: beside.y, width: beside.width, height: beside.height, align: beside.align } } : undefined,
       };
     }
     return {

@@ -36,14 +36,17 @@ import type { TransitionFocusField } from "./TransitionFieldGroup";
 import { TransitionSelectionFields } from "./TransitionSelectionFields";
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, findingsFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
+import { markerAttachPoints, markerFrame } from "./stateShapes";
 import {
-  FINDING_SEVERITY_LABEL, STATE_KIND_LABEL, type ArchitectureState, type LineRouteChange, type LineWaypoint, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
+  FINDING_SEVERITY_LABEL, LABEL_POSITION_LABEL, STATE_KIND_LABEL, type ArchitectureState, type LineRouteChange, type LineWaypoint, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
 } from "./types";
 
-/** The geometry of a state's box as the canvas draws it, with the points a marker offers. */
+/** The geometry of a state's box as the canvas draws it, with the points a marker offers (its label's side is not one). */
 function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeometry {
   const box = layout.boxes.find((b) => b.id === state.id) ?? state;
-  return { x: box.x, y: box.y, width: box.width, height: box.height, points: isMarkerKind(state.kind) ? SIDE_POINTS : undefined };
+  if (!isMarkerKind(state.kind)) return { x: box.x, y: box.y, width: box.width, height: box.height };
+  const frame = markerFrame(state.kind, box, state.label, state.label_position);
+  return { ...frame, points: markerAttachPoints(state.label, state.label_position) };
 }
 
 /**
@@ -121,7 +124,10 @@ export function StateMachineSelectionPanel({
               </div>
             )}
             {isMarkerKind(state.kind) && state.label && (
-              <dl style={{ margin: 0 }}><dt><TermCaption term="Symbol label" /></dt><dd style={{ margin: 0 }}>{state.label}</dd></dl>
+              <dl style={{ margin: 0 }}>
+                <dt><TermCaption term="Symbol label" /></dt><dd style={{ margin: 0 }}>{state.label}</dd>
+                <dt><TermCaption term="Label position" /></dt><dd style={{ margin: 0 }}>{LABEL_POSITION_LABEL[state.label_position]}</dd>
+              </dl>
             )}
             {!isMarkerKind(state.kind) && (state.entry_action || state.exit_action || state.activity) && (
               <dl style={{ margin: 0 }}>

@@ -1,9 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { BASE_SIZE, fitLabel, holds, LABEL_PADDING, MAX_SIZE, SIZE_STEP, textSide, textWidth, wrapLabel, type SymbolLabelLayout } from "./symbolLabelLayout";
+import {
+  BASE_SIZE, besideLabel, BESIDE_MAX_WIDTH, fitLabel, holds, LABEL_PADDING, MAX_SIZE, SIZE_STEP, textSide, textWidth, wrapLabel, type SymbolLabelLayout,
+} from "./symbolLabelLayout";
 import cases from "./symbolLabelCases.json";
 import type { StateMarkerKind } from "./stateShapes";
+import type { LabelPosition } from "./types";
 
 function Host() {
   return <p>Runs the browser copy of the symbol label layout against the cases the server produced.</p>;
@@ -68,5 +71,47 @@ export const TextKeepsItsPaddingFromTheInnerEdge: Story = {
       await expect(holds(kind, BASE_SIZE[kind], ["Go"])).toBe(true);
       await expect(holds(kind, BASE_SIZE[kind], ["W".repeat(10)])).toBe(false);
     }
+  },
+};
+
+/** The browser's placement of a label outside its symbol is the server's: the same lines, block and alignment for every position and symbol box. */
+export const OutsideLabelsMatchTheServersCases: Story = {
+  play: async () => {
+    for (const c of cases.beside) {
+      const layout = besideLabel(c.label, c.position as LabelPosition, c.symbol[0], c.symbol[1]);
+      await expect(layout, c.name).toEqual({ lines: c.lines, x: c.x, y: c.y, width: c.width, height: c.height, align: c.align });
+    }
+  },
+};
+
+/** The text block sits exactly the padding from the symbol's edge, centred along it, aligned toward the symbol. */
+export const OutsideLabelsKeepThePaddingFromTheSymbolsOuterEdge: Story = {
+  play: async () => {
+    const around = (position: LabelPosition) => besideLabel("Power ok?", position, 36, 36)!;
+    const right = around("right");
+    const left = around("left");
+    const above = around("above");
+    const below = around("below");
+    await expect(right.x - 36).toBe(LABEL_PADDING);
+    await expect(-(left.x + left.width)).toBe(LABEL_PADDING);
+    await expect(below.y - 36).toBe(LABEL_PADDING);
+    await expect(-(above.y + above.height)).toBe(LABEL_PADDING);
+    await expect(right.y + right.height / 2).toBe(18);
+    await expect(above.x + above.width / 2).toBe(18);
+    await expect([right.align, left.align, above.align, below.align]).toEqual(["left", "right", "center", "center"]);
+  },
+};
+
+/** A long label wraps to the maximum width, a longer word stays whole, and a blank label or one inside has no outside layout. */
+export const OutsideLabelsWrapKeepAWordWholeAndNeedATextAndAPlace: Story = {
+  play: async () => {
+    const wide = besideLabel("Is the tank level above the high-level alarm threshold for more than ten seconds", "right", 36, 36)!;
+    await expect(wide.lines.length).toBeGreaterThan(1);
+    for (const line of wide.lines) await expect(textWidth(line)).toBeLessThanOrEqual(BESIDE_MAX_WIDTH * 1000);
+    const word = besideLabel("x".repeat(60), "above", 20, 20)!;
+    await expect(word.lines).toEqual(["x".repeat(60)]);
+    await expect(word.width).toBeGreaterThan(BESIDE_MAX_WIDTH);
+    await expect(besideLabel("", "right", 20, 20)).toBeNull();
+    await expect(besideLabel("Go", "inside", 20, 20)).toBeNull();
   },
 };

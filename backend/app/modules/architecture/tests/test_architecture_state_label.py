@@ -16,9 +16,8 @@ from sqlalchemy import text
 
 from alembic import command
 from app.database import engine
-from app.modules.architecture.enums import StateKind
 from app.modules.architecture.diagram_symbol_label import BASE_SIZE, fit_label
-from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH
+from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, StateKind
 from app.modules.architecture.state_shapes import (
     LABEL_ON_FILL,
     STATE_MARKERS,

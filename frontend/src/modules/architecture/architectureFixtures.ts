@@ -107,7 +107,7 @@ export function buildState(overrides: Partial<ArchitectureState> = {}): Architec
     id: "ste-1", project_id: PROJECT_ID, unique_code: "STE-001", state_machine_diagram_id: "smd-1", state_machine_diagram_code: "SMD-001",
     state_machine_diagram_name: "Gateway modes", state_machine_diagram_version: 5, element_id: "el-1", element_code: "ELM-001",
     element_name: "Gateway", name: "Idle", description: "", kind: "state", parent_state_id: null, parent_state_code: null,
-    entry_action: "", exit_action: "", activity: "", label: "", x: 200, y: 40, width: 160, height: 64, collapsed: false, status: "draft",
+    entry_action: "", exit_action: "", activity: "", label: "", label_position: "inside", x: 200, y: 40, width: 160, height: 64, collapsed: false, status: "draft",
     is_archived: false, creator_id: "user-1", created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
   };
 }

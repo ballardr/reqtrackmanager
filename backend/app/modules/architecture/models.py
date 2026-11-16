@@ -899,6 +899,8 @@ class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
         entry_action / exit_action / activity: Plain text a person reads, never evaluated or drawn as markup.
         label: Up to 256 characters of plain text drawn inside an initial, final or choice symbol (`SYMBOL_LABEL_LENGTH`);
             empty for an ordinary state, whose name is drawn in its box.
+        label_position: A `LabelPosition` value: where the label is drawn relative to the symbol (`inside` by default, and
+            always `inside` for an ordinary state).
         x / y / width / height / collapsed: The box in diagram units; a collapsed composite state is drawn as one box.
         creator_id: The author.
     """
@@ -908,6 +910,9 @@ class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
         UniqueConstraint("project_id", "unique_code", name="uq_architecture_states_project_unique_code"),
         UniqueConstraint("state_machine_diagram_id", "name", name="uq_architecture_states_name"),
         CheckConstraint("kind IN ('initial', 'state', 'final', 'choice')", name="ck_architecture_states_kind"),
+        CheckConstraint(
+            "label_position IN ('inside', 'left', 'right', 'above', 'below')", name="ck_architecture_states_label_position"
+        ),
     )
 
     state_machine_diagram_id: Mapped[uuid.UUID] = mapped_column(
@@ -927,6 +932,7 @@ class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
     exit_action: Mapped[str] = mapped_column(Text, default="")
     activity: Mapped[str] = mapped_column(Text, default="")
     label: Mapped[str] = mapped_column(String(SYMBOL_LABEL_LENGTH), default="", server_default="")
+    label_position: Mapped[str] = mapped_column(String(16), default="inside", server_default="inside")
     x: Mapped[float] = mapped_column(Float, default=0.0)
     y: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(Float, default=160.0)

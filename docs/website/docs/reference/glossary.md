@@ -56,7 +56,7 @@ The only way to modify a locked (Approved or Completed) requirement: a proposal 
 
 #### Choice
 
-A diamond in a state machine diagram. The conditions (guards) on its outgoing transitions decide which path is taken. It can carry a symbol label, text drawn inside the diamond. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+A diamond in a state machine diagram. The conditions (guards) on its outgoing transitions decide which path is taken. It can carry a symbol label, text drawn inside the diamond or beside it. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Close the loop
 
@@ -132,7 +132,7 @@ What happens each time a state is left, for example "stop the motor". It is draw
 
 #### Final state
 
-The ringed dot where a state machine diagram ends. A final state has no outgoing transitions and can carry a symbol label, text drawn inside the ring. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+The ringed dot where a state machine diagram ends. A final state has no outgoing transitions and can carry a symbol label, text drawn inside the ring or beside it. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### General (Pain Point scores)
 
@@ -152,7 +152,7 @@ The part of a requirement that never changes once created: its project, componen
 
 #### Initial state
 
-The filled dot where a state machine diagram starts. An Active diagram needs exactly one initial state at the top level. It can carry a symbol label, text drawn inside the dot. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+The filled dot where a state machine diagram starts. An Active diagram needs exactly one initial state at the top level. It can carry a symbol label, text drawn inside the dot or beside it. See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Leader
 

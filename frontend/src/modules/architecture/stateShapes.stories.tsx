@@ -3,7 +3,7 @@ import { expect } from "storybook/test";
 
 import { safeSvgImage } from "../../utils/safeSvgImage";
 import cases from "./stateShapeCases.json";
-import { labelledSvg, markerFrame, STATE_MARKERS, stateShapeTable, type StateMarkerKind } from "./stateShapes";
+import { labelledSvg, markerAttachPoints, markerFrame, STATE_MARKERS, stateShapeTable, type StateMarkerKind } from "./stateShapes";
 import { BASE_SIZE } from "./symbolLabelLayout";
 
 function Host() {
@@ -64,5 +64,28 @@ export const AMarkerFrameGrowsAroundItsCentreOnlyForALabel: Story = {
     await expect(grown.width).toBeGreaterThan(96);
     await expect(grown.x + grown.width / 2).toBe(118);
     await expect(markerFrame("initial", { x: 0, y: 0, width: 200, height: 100 }, "x")).toEqual({ x: 0, y: 0, width: 200, height: 100 });
+  },
+};
+
+/** A label outside the symbol leaves the frame at the stored box (the text is drawn beside it), and a blank label or one inside is as before. */
+export const AMarkerFrameIsTheStoredBoxForALabelOutsideTheSymbol: Story = {
+  play: async () => {
+    const box = { x: 100, y: 50, width: 36, height: 36 };
+    for (const position of ["left", "right", "above", "below"] as const) {
+      await expect(markerFrame("choice", box, "A long enough label to need more room", position)).toEqual(box);
+    }
+    await expect(markerFrame("choice", box, "Full?", "inside")).toEqual({ x: 70, y: 20, width: 96, height: 96 });
+  },
+};
+
+/** An open line end is not offered the side a label is on; with no label or the label inside, every side is. */
+export const AMarkerOffersEverySideExceptTheOneItsLabelIsOn: Story = {
+  play: async () => {
+    await expect(markerAttachPoints("Go", "inside")).toEqual(["top", "right", "bottom", "left"]);
+    await expect(markerAttachPoints("", "left")).toEqual(["top", "right", "bottom", "left"]);
+    await expect(markerAttachPoints("Go", "left")).toEqual(["top", "right", "bottom"]);
+    await expect(markerAttachPoints("Go", "right")).toEqual(["top", "bottom", "left"]);
+    await expect(markerAttachPoints("Go", "above")).toEqual(["right", "bottom", "left"]);
+    await expect(markerAttachPoints("Go", "below")).toEqual(["top", "right", "left"]);
   },
 };

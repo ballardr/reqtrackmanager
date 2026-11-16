@@ -40,7 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.modules.architecture.diagram_line_path import clean_waypoints
-from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, AttachPoint, RecordStatus, StateKind
+from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, AttachPoint, LabelPosition, RecordStatus, StateKind
 from app.modules.architecture.models import (
     ArchitectureState,
     ArchitectureStateMachineDiagram,
@@ -62,6 +62,7 @@ from app.services.template_reset import fresh_drafts
 _NO_COMMENTS: dict[str, list[dict[str, Any]]] = {"comments": [], "comment_pins": []}
 _KINDS = {kind.value for kind in StateKind}
 _POINTS = {point.value for point in AttachPoint}
+_LABEL_POSITIONS = {position.value for position in LabelPosition}
 
 
 def _imported_label(raw: dict[str, Any]) -> str:
@@ -72,6 +73,15 @@ def _imported_label(raw: dict[str, Any]) -> str:
     if kind not in _KINDS or kind == StateKind.STATE.value or not isinstance(label, str):
         return ""
     return label.strip()[:SYMBOL_LABEL_LENGTH]
+
+
+def _imported_label_position(raw: dict[str, Any]) -> str:
+    """The label position of an imported state: the bundle's value when it is a known position and the state is a marker, and
+    `inside` otherwise (a file from before the position existed, or from another source, may carry anything)."""
+    position = raw.get("label_position")
+    if raw.get("kind") not in _KINDS or raw.get("kind") == StateKind.STATE.value or position not in _LABEL_POSITIONS:
+        return LabelPosition.INSIDE.value
+    return str(position)
 
 
 def _stamp(value: datetime | None) -> str | None:
@@ -163,6 +173,7 @@ def export_state_machines(
                     "unique_code": s.unique_code, "name": s.name, "description": s.description, "kind": s.kind,
                     "parent_name": state_names.get(s.parent_state_id) if s.parent_state_id else None,
                     "entry_action": s.entry_action, "exit_action": s.exit_action, "activity": s.activity, "label": s.label,
+                    "label_position": s.label_position,
                     "x": s.x, "y": s.y, "width": s.width, "height": s.height, "collapsed": s.collapsed,
                     **_classification(db, STATE_ARTEFACT_TYPE, s.id),
                 }
@@ -261,7 +272,8 @@ def import_state_machines(
                 unique_code=generate_unique_code(db, project, STATE_ARTEFACT_TYPE, STATE_CODE_PREFIX),
                 name=name, description=raw.get("description", ""), kind=raw.get("kind") if raw.get("kind") in _KINDS else "state",
                 parent_state_id=None, entry_action=raw.get("entry_action", ""), exit_action=raw.get("exit_action", ""),
-                activity=raw.get("activity", ""), label=_imported_label(raw), x=float(raw.get("x", 0)), y=float(raw.get("y", 0)),
+                activity=raw.get("activity", ""), label=_imported_label(raw), label_position=_imported_label_position(raw),
+                x=float(raw.get("x", 0)), y=float(raw.get("y", 0)),
                 width=float(raw.get("width", 160)), height=float(raw.get("height", 64)), collapsed=bool(raw.get("collapsed")),
                 creator_id=creator,
             )

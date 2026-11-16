@@ -4,8 +4,8 @@
  * The field group of a state of a state machine diagram, shared by the Selection card (edited in place) and the edit dialog
  * (`StateFormModal`, opened by double-clicking a state), so a field added later reaches both: the name (required), the kind,
  * and, for an ordinary state, the description and the entry, exit and activity lines. A marker (initial state, final state,
- * choice) is a shape with no inside, so it takes a name and a symbol label (the text drawn inside the symbol, up to 256 characters; the symbol grows to hold it, and a
- * word too long for the largest symbol is warned about). A state is added to a diagram with no form (its kind is chosen
+ * choice) is a shape with no inside, so it takes a name, a symbol label (up to 256 characters) and where the label is drawn:
+ * inside the symbol (which grows to hold it, and a word too long for the largest symbol is warned about) or beside it. A state is added to a diagram with no form (its kind is chosen
  * in the Add to diagram menu), so this group has no creation variant.
  */
 import { TextAreaField, TextField } from "../../components/FormFields";
@@ -15,20 +15,21 @@ import { labelOptions } from "../../utils/labelOptions";
 import { ARCHITECTURE_HELP } from "./help";
 import { isMarkerKind } from "./stateMachineModel";
 import { fitLabel } from "./symbolLabelLayout";
-import { STATE_KIND_LABEL, SYMBOL_LABEL_MAX, type StateFieldValues, type StateKind } from "./types";
+import { LABEL_POSITION_LABEL, STATE_KIND_LABEL, SYMBOL_LABEL_MAX, type LabelPosition, type StateFieldValues, type StateKind } from "./types";
 
 /** The characters from which the label field shows how many remain (a limit that matters only near it). */
 const LABEL_COUNT_FROM = 200;
 
 /**
  * The note under the symbol label field: a warning when a word is longer than the largest symbol can hold (it is drawn whole on
- * one line and extends past the symbol), and the length once it nears the limit. Shown only while it applies.
+ * one line and extends past the symbol; the text beside a symbol has no such limit), and the length once it nears the limit.
+ * Shown only while it applies.
  *
  * @param values The form's values.
  * @returns The note, or undefined when there is nothing to say.
  */
 function symbolLabelHint(values: StateFieldValues) {
-  const layout = isMarkerKind(values.kind) ? fitLabel(values.kind, values.label) : null;
+  const layout = isMarkerKind(values.kind) && values.label_position === "inside" ? fitLabel(values.kind, values.label) : null;
   const tooLong = layout !== null && !layout.fits;
   const counted = values.label.length >= LABEL_COUNT_FROM;
   if (!tooLong && !counted) return undefined;
@@ -79,6 +80,12 @@ export function StateFieldGroup({
             inputProps={{ maxLength: SYMBOL_LABEL_MAX }} onChange={(value) => onChange("label", value)}
           />
         </FormGridFull>
+      )}
+      {marker && (
+        <LabeledSelect
+          help={ARCHITECTURE_HELP.stateLabelPosition} label="Label position" value={values.label_position} placeholder={null}
+          options={labelOptions(LABEL_POSITION_LABEL)} onChange={(next) => onChange("label_position", next as LabelPosition)}
+        />
       )}
       {!marker && (
         <>

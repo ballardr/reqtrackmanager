@@ -692,6 +692,14 @@ export const STATE_KIND_LABEL: Record<StateKind, string> = {
 /** The kinds drawn as a marker (a shape with no text inside) rather than a box. */
 export const STATE_MARKER_KINDS: readonly StateKind[] = ["initial", "final", "choice"];
 
+/** Where a marker's label is drawn: inside the symbol (which grows to hold it) or outside it on one side (the symbol keeps its plain size). */
+export type LabelPosition = "inside" | "left" | "right" | "above" | "below";
+
+/** What a person sees for each label position, in the order they are offered. */
+export const LABEL_POSITION_LABEL: Record<LabelPosition, string> = {
+  inside: "Inside", left: "Left", right: "Right", above: "Above", below: "Below",
+};
+
 /** How serious a modelling finding is: an error blocks activation, a warning never does. */
 export type FindingSeverity = "error" | "warning";
 
@@ -780,8 +788,10 @@ export interface ArchitectureState extends ProjectScopedRow {
   entry_action: string;
   exit_action: string;
   activity: string;
-  /** Plain text drawn inside an initial, final or choice symbol (up to 40 characters); empty for an ordinary state. */
+  /** Plain text drawn with an initial, final or choice symbol (up to 256 characters); empty for an ordinary state. */
   label: string;
+  /** Where the label is drawn relative to the symbol; always `inside` for an ordinary state. */
+  label_position: LabelPosition;
   x: number;
   y: number;
   width: number;
@@ -803,6 +813,7 @@ export interface StateFieldValues {
   exit_action: string;
   activity: string;
   label: string;
+  label_position: LabelPosition;
 }
 
 /** The longest symbol label the server stores (characters). */

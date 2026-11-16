@@ -29,6 +29,14 @@ STATE_KIND_LABEL: dict[str, str] = {
     "choice": "Choice",
 }
 
+LABEL_POSITION_LABEL: dict[str, str] = {
+    "inside": "Inside",
+    "left": "Left",
+    "right": "Right",
+    "above": "Above",
+    "below": "Below",
+}
+
 #: Statuses that mean a record is no longer in force, for "Open only" filters and the inactive style.
 INACTIVE_STATUSES: tuple[str, ...] = ("retired", "rejected")
 

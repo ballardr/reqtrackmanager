@@ -505,6 +505,47 @@ export const AStoredSymbolLabelIsDrawnInsideItsSymbol: Story = {
   },
 };
 
+/** The card's Label position is stored on its own, and a label beside its symbol is drawn outside it while the symbol keeps its plain size. */
+export const ALabelPositionIsChosenInTheCardAndTheTextIsDrawnBesideTheSymbol: Story = {
+  beforeEach: () => {
+    const model = buildStateMachineModel();
+    model.states = model.states.map((s) => (s.id === "ste-1"
+      ? { ...s, kind: "choice" as const, name: "Branch", entry_action: "", exit_action: "", width: 36, height: 36, label: "Battery low?" }
+      : s));
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+    spyOn(api, "put").mockResolvedValue(buildState({ kind: "choice", label: "Battery low?", label_position: "right" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Choice");
+    const position = await canvas.findByLabelText("Label position");
+    await expect(position).toHaveValue("inside");
+    await userEvent.selectOptions(position, "right");
+    await userEvent.click(canvas.getByRole("button", { name: "Save state" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/states/ste-1`, { version: 5, label_position: "right" }));
+  },
+};
+
+/** A state whose label is beside its symbol draws the text outside the symbol, which keeps its plain size, and the Outline lists the position. */
+export const AStoredLabelBesideItsSymbolIsDrawnOutsideIt: Story = {
+  beforeEach: () => {
+    const model = buildStateMachineModel();
+    model.states = model.states.map((s) => (s.id === "ste-1"
+      ? { ...s, kind: "choice" as const, name: "Branch", entry_action: "", exit_action: "", width: 36, height: 36, label: "Battery low?", label_position: "below" as const }
+      : s));
+    mockArchitectureReads({ elements: [buildElement()], stateMachineModel: model });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const choice = await canvas.findByLabelText("Choice, node");
+    await waitFor(() => expect(choice.closest(".react-flow__node")?.querySelector(".graph-node-marker-text-block")).toHaveTextContent("Battery low?"));
+    const node = choice.closest(".react-flow__node") as HTMLElement;
+    await waitFor(() => expect(node.querySelector(".graph-node-marker-text-block")!.getBoundingClientRect().top).toBeGreaterThanOrEqual(node.getBoundingClientRect().bottom));
+    await userEvent.click(await canvas.findByRole("tab", { name: "Outline" }));
+    await expect(await canvas.findByText("Label position: Below")).toBeInTheDocument();
+  },
+};
+
 /** Changing the kind in the card is the repair for a wrong choice: a state becomes a choice and its action fields go. */
 export const TheCardKeepsTheKindSoAWrongChoiceCanBeRepaired: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildState({ kind: "choice" }) as never); },

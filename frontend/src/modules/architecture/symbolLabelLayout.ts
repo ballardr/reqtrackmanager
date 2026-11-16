@@ -10,6 +10,8 @@
  *   a line break the person typed; a word is never split.
  * - Find the smallest symbol that holds the label (`fitLabel`): the symbol grows from its labelled base size in steps until the
  *   text, with `LABEL_PADDING` clear of the symbol's inner edge on every side, fits inside it (`holds`).
+ * - Place a label outside its symbol (`besideLabel`): the symbol keeps its plain size and the text block sits against one side of
+ *   it, `LABEL_PADDING` clear of the symbol's outer edge, wrapped to `BESIDE_MAX_WIDTH` and aligned toward the symbol.
  *
  * Design decisions:
  * - The server draws the same lines with a Python copy (`diagram_symbol_label.py`); `symbolLabelCases.json` holds the cases
@@ -19,12 +21,14 @@
  * - Padding is measured, not implied: the text block's rectangle is centred on the symbol and its nearest corner must be at least
  *   `LABEL_PADDING` from the inner edge of the circle, the ring's disc or the diamond (measured at right angles, inside the
  *   diamond's stroke), in integers so both languages agree exactly. `TEXT_PERCENT` only sets how wide a line is first tried.
- *   Text outside a symbol keeps the same gap from the symbol's outer edge (the label position).
+ *   Text outside a symbol keeps the same gap from the symbol's outer edge (the label position); that block is measured with the
+ *   same width table and rounded up to a whole unit, and placed relative to the symbol's own box (so its offset may be negative).
  * - A word longer than the largest symbol's text area is kept whole on one line at the largest size and `fits` is false, so the
  *   Selection card can warn; it is never broken mid-word and never clipped.
  */
 
 import type { StateMarkerKind } from "./stateShapes";
+import type { LabelPosition } from "./types";
 
 /** The label's font size and line height (canvas units). */
 export const LABEL_FONT_SIZE = 10;
@@ -42,6 +46,9 @@ export const LABEL_PADDING = 4;
 /** The step a symbol grows by while its label does not fit, and the largest size. */
 export const SIZE_STEP = 4;
 export const MAX_SIZE = 320;
+
+/** The widest a label placed outside its symbol is first wrapped to (canvas units); a single longer word is kept whole. */
+export const BESIDE_MAX_WIDTH = 160;
 
 /**
  * Glyph widths in thousandths of the font size, set above what the product's system font stack draws (measured with the browser's
@@ -196,4 +203,42 @@ export function fitLabel(kind: StateMarkerKind, label: string): SymbolLabelLayou
     if (holds(kind, size, lines)) return { size, lines, fits: true };
   }
   return { size: MAX_SIZE, lines: wrapLabel(text, textSide(kind, MAX_SIZE) * 1000), fits: false };
+}
+
+/** The drawing of a label placed outside its symbol. */
+export interface BesideLayout {
+  /** The label's lines, top to bottom. */
+  lines: string[];
+  /** The text block's left edge, relative to the symbol's top left corner (negative to its left). */
+  x: number;
+  /** The text block's top edge, relative to the symbol's top left corner (negative above it). */
+  y: number;
+  /** The widest line (a whole number of units, from the width table). */
+  width: number;
+  /** The block's height (lines times the line height). */
+  height: number;
+  /** How the lines are aligned within the block, toward the symbol. */
+  align: "left" | "center" | "right";
+}
+
+/**
+ * Where a label sits when it is outside its symbol.
+ *
+ * @param label The symbol's label.
+ * @param position `left`, `right`, `above` or `below` (`inside` is not a place outside, see `fitLabel`).
+ * @param symbolWidth The width of the symbol's own box.
+ * @param symbolHeight The height of the symbol's own box.
+ * @returns The lines and the text block's place relative to the symbol's top left corner, or null when the label is blank or the
+ *   position is `inside`. The block is `LABEL_PADDING` from the symbol's edge on its side and centred along it.
+ */
+export function besideLabel(label: string, position: LabelPosition, symbolWidth: number, symbolHeight: number): BesideLayout | null {
+  const text = label.trim();
+  if (!text || position === "inside") return null;
+  const lines = wrapLabel(text, BESIDE_MAX_WIDTH * 1000);
+  const width = Math.floor((Math.max(...lines.map(textWidth)) + 999) / 1000);
+  const height = lines.length * LABEL_LINE_HEIGHT;
+  if (position === "right") return { lines, x: symbolWidth + LABEL_PADDING, y: (symbolHeight - height) / 2, width, height, align: "left" };
+  if (position === "left") return { lines, x: -(LABEL_PADDING + width), y: (symbolHeight - height) / 2, width, height, align: "right" };
+  if (position === "above") return { lines, x: (symbolWidth - width) / 2, y: -(LABEL_PADDING + height), width, height, align: "center" };
+  return { lines, x: (symbolWidth - width) / 2, y: symbolHeight + LABEL_PADDING, width, height, align: "center" };
 }

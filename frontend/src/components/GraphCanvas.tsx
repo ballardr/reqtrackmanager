@@ -48,12 +48,22 @@ export type GraphNodeOutline = "rectangle" | "pointed-right" | "pointed-left" | 
  */
 export type GraphNodeTone = "none" | "neutral" | "info" | "success" | "warning" | "danger";
 
-/** Plain text drawn inside a marker, centred, one line per entry of `lines` (the consumer breaks them; none is wrapped or cut here). */
+/**
+ * Plain text drawn with a marker, one line per entry of `lines` (the consumer breaks them; none is wrapped or cut here). It is
+ * centred inside the marker unless `block` places it elsewhere.
+ */
 export interface GraphMarkerText {
   /** The lines drawn, top to bottom. */
   lines: string[];
   /** True when the text sits on the marker's fill (drawn in a light colour); false when it sits on the page. */
   onFill: boolean;
+  /**
+   * Where the text block is, relative to the marker's top left corner, when it is outside the marker (a label beside a decision
+   * symbol): its left, top, width and height in canvas units, and how its lines are aligned. The block may lie outside the marker's
+   * frame (a negative offset, or beyond its width); it is part of the node for selecting and dragging but not for line attach points,
+   * and the opening view leaves room for it. It is drawn on the page, so it needs `onFill` false.
+   */
+  block?: { x: number; y: number; width: number; height: number; align: "left" | "center" | "right" };
 }
 
 /** One target of a badge that leads to several (a state machine diagram of a block that has more than one). */
@@ -121,8 +131,14 @@ export interface GraphCanvasNode {
    * resizable and is not a container.
    */
   marker?: boolean;
-  /** Text drawn inside a marker (a label on a decision symbol); ignored for a node that is not a marker. Plain text, never markup. */
+  /** Text drawn with a marker (a label on a decision symbol); ignored for a node that is not a marker. Plain text, never markup. */
   markerText?: GraphMarkerText;
+  /**
+   * The attach points an open line end may choose on this node (a fixed end is used as given), in `ATTACH_POINTS` order. Left out,
+   * a marker offers the middle of each side and any other node all eight. A consumer narrows it for a marker whose label sits on
+   * one side, so an automatic line never runs through the text.
+   */
+  attachPoints?: readonly AttachPoint[];
   /**
    * Draws the node as a container: a rounded frame with its label in a strip across the top and a see-through body, drawn
    * behind the nodes whose `parentId` names it. A node does not need this to be named as a parent; it only changes how

@@ -30,7 +30,8 @@ Design decisions:
 - **Deterministic.** Elements are drawn in the order of the view, so equal views give equal bytes.
 - A node a toggle hides, and a line with a hidden end, are not drawn; a locked node is a dashed box with its code.
 
-Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points), `diagram_line_path`, `diagram_line_hops`.
+Dependencies: `schemas` (the view), `symbols` (the safe markup), `models` (symbol rows), `diagram_points` (attach points),
+`diagram_line_path`, `diagram_line_hops`.
 """
 
 from __future__ import annotations

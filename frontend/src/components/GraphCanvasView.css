@@ -330,6 +330,13 @@
   pointer-events: none;
 }
 
+/* A label outside its marker is placed by the consumer (left, top, width, height and alignment set inline). It is part of the node
+   for selecting and dragging, so it takes pointer events, and it sits on the page, not on the marker's fill. */
+.graph-node-marker-text-block {
+  transform: none;
+  pointer-events: auto;
+}
+
 .graph-node-marker-text-on-fill {
   color: #ffffff;
 }

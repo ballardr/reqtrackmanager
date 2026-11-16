@@ -66,7 +66,7 @@ def test_a_note_keeps_its_tone_and_each_kind_of_leader_and_the_view_returns_them
     saved = _save(client, token, p, diagram, boxes, notes)
     assert saved["version"] == diagram["version"] + 1
     shown = view(client, token, p, diagram["id"])["notes"]
-    assert [(n["tone"], [l["kind"] for l in n["leaders"]]) for n in shown] == [
+    assert [(n["tone"], [leader["kind"] for leader in n["leaders"]]) for n in shown] == [
         ("info", ["element"]), ("warning", ["connection"]), ("danger", ["point"]), ("neutral", []),
     ]
     box, line, spot = (n["leaders"][0] for n in shown[:3])
@@ -88,7 +88,7 @@ def test_a_note_can_have_several_leaders_in_order(client, admin_token):
     ]
     _save(client, token, p, diagram, boxes, [{"text": "Both", "leaders": leaders}])
     (note,) = view(client, token, p, diagram["id"])["notes"]
-    assert [(l["kind"], l["element_id"]) for l in note["leaders"]] == [("element", b["id"]), ("element", a["id"]), ("point", None)]
+    assert [(leader["kind"], leader["element_id"]) for leader in note["leaders"]] == [("element", b["id"]), ("element", a["id"]), ("point", None)]
     too_many = [{"kind": "point", "x": i, "y": 0} for i in range(11)]
     _save(client, token, p, diagram, boxes, [{"text": "Many", "leaders": too_many}], expect=422)
 
@@ -209,7 +209,7 @@ def test_deleting_the_target_removes_its_leader_and_keeps_the_note_and_its_other
         assert resp.status_code in (200, 204), resp.text
     shown = view(client, token, p, diagram["id"])["notes"]
     assert [n["text"] for n in shown] == ["To the spare", "To the line"]
-    assert [[l["kind"] for l in n["leaders"]] for n in shown] == [["point"], []]
+    assert [[leader["kind"] for leader in n["leaders"]] for n in shown] == [["point"], []]
 
 
 def test_the_database_refuses_a_leader_row_that_does_not_match_its_kind(client, admin_token):
@@ -435,7 +435,7 @@ def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(clien
     shown = view(client, token, copy["id"], listing[0]["id"])
     names = {n["unique_code"]: n["element_id"] for n in shown["nodes"]}
     notes = shown["notes"]
-    assert [(n["text"], n["tone"], [l["kind"] for l in n["leaders"]]) for n in notes] == [
+    assert [(n["text"], n["tone"], [leader["kind"] for leader in n["leaders"]]) for n in notes] == [
         ("Box", "info", ["element", "point"]), ("Line", "warning", ["connection"]), ("Spot", "neutral", ["point"]),
         ("Plain", "neutral", []),
     ]
@@ -474,7 +474,7 @@ def test_a_bundle_written_with_the_single_leader_of_a_note_is_still_read(client,
     copy = imported.json()["project"]
     listing = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
     shown = view(client, token, copy["id"], listing[0]["id"])["notes"]
-    assert [[(l["kind"], l["end_style"], l["start_style"]) for l in n["leaders"]] for n in shown] == [
+    assert [[(leader["kind"], leader["end_style"], leader["start_style"]) for leader in n["leaders"]] for n in shown] == [
         [("element", "none", "none")], [("connection", "arrow", "none")], [("point", "arrow", "none")], [],
     ]
 
@@ -507,7 +507,7 @@ def test_an_import_drops_a_leader_it_cannot_resolve_and_keeps_the_note_and_its_o
     copy = imported.json()["project"]
     listing = client.get(f"{project_base(copy['id'])}/diagrams", headers=auth_headers(token)).json()
     shown = view(client, token, copy["id"], listing[0]["id"])["notes"]
-    assert [(n["text"], [l["kind"] for l in n["leaders"]], n["tone"]) for n in shown] == [
+    assert [(n["text"], [leader["kind"] for leader in n["leaders"]], n["tone"]) for n in shown] == [
         ("Box", ["point"], "neutral"), ("Spot", [], "neutral"),
     ]
     # An unknown start point reads as automatic, an unknown end style as an arrow and a bad vertex is left out.

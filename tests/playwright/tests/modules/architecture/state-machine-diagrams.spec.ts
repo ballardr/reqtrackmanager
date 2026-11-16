@@ -449,6 +449,124 @@ test.describe("System Architecture: state machine diagrams", () => {
     }
   });
 
+  test("a label can sit inside, left, right, above or below its symbol: the symbol keeps its plain size, the text sits beside it, a line avoids that side, and a reload and the server's drawing agree", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdPos", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Boiler ${suffix}`);
+    const { diagram, ids } = await createMachine(page.request, base, adminHeaders, elementId, `Boiler modes ${suffix}`, [
+      { name: "Start", kind: "initial", x: 40, y: 60 }, { name: "Branch", kind: "choice", x: 240, y: 60, label: "Pressure high?" },
+    ], [["Start", "Branch"]]);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    const choice = page.getByLabel("Choice, node", { exact: true });
+    await expect(choice).toBeVisible();
+    const inside = (await choice.boundingBox())!;
+    expect(inside.width).toBeGreaterThan(60); // the label inside grew the diamond
+
+    const setPosition = async (position: "Inside" | "Left" | "Right" | "Above" | "Below") => {
+      await selectNode(page, "Choice");
+      await selectionCard(page).getByLabel("Label position").selectOption({ label: position });
+      const stored = page.waitForResponse((r) => /\/states\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+      await selectionCard(page).getByRole("button", { name: "Save state" }).click();
+      const response = await stored;
+      expect(response.ok()).toBeTruthy();
+      expect(await response.request().postDataJSON()).toMatchObject({ label_position: position.toLowerCase() });
+    };
+    /** The symbol's and the text's rectangles in canvas units, relative to the symbol's top left corner. */
+    const placed = async () => choice.evaluate((el) => {
+      const scale = new DOMMatrix(getComputedStyle(el.closest(".react-flow__viewport") as HTMLElement).transform).a;
+      const box = el.getBoundingClientRect();
+      const text = el.querySelector(".graph-node-marker-text-block")?.getBoundingClientRect();
+      return {
+        width: box.width / scale, height: box.height / scale,
+        text: text ? { left: (text.left - box.left) / scale, top: (text.top - box.top) / scale, right: (text.right - box.left) / scale, bottom: (text.bottom - box.top) / scale } : null,
+      };
+    });
+    /** Where the line from Start ends, in canvas units (the end of its path). */
+    const lineEnd = async () => page.locator(".react-flow__edge-path").first().evaluate((el) => {
+      const numbers = (el.getAttribute("d") ?? "").match(/-?\d+(\.\d+)?/g)!.map(Number);
+      return { x: numbers[numbers.length - 2], y: numbers[numbers.length - 1] };
+    });
+
+    await test.step("Right: the diamond returns to its plain 20 unit size and the text sits 4 units to its right, centred on it", async () => {
+      await setPosition("Right");
+      await expect(choice.locator(".graph-node-marker-text-block")).toHaveText("Pressure high?");
+      await expect.poll(async () => (await placed()).text!.left).toBeCloseTo(24, 0);
+      const right = await placed();
+      expect(right.width).toBeCloseTo(20, 0);
+      expect((right.text!.top + right.text!.bottom) / 2).toBeCloseTo(right.height / 2, 0);
+      expect((await choice.boundingBox())!.width).toBeLessThan(inside.width / 2);
+    });
+
+    await test.step("a line left to choose its own end still meets the symbol on its left, at its edge", async () => {
+      const end = await lineEnd();
+      expect(Math.abs(end.x - 240)).toBeLessThan(4);
+      expect(Math.abs(end.y - 70)).toBeLessThan(4);
+    });
+
+    await test.step("Left: the text sits 4 units to the left and the line now meets another side, never running through the text", async () => {
+      await setPosition("Left");
+      await expect.poll(async () => (await placed()).text!.right).toBeCloseTo(-4, 0);
+      await expect.poll(async () => Math.abs((await lineEnd()).x - 240)).toBeGreaterThan(4); // not the left side where the text is
+    });
+
+    await test.step("Above and Below: the text is centred over or under the symbol, 4 units from it", async () => {
+      await setPosition("Above");
+      await expect.poll(async () => (await placed()).text!.bottom).toBeCloseTo(-4, 0);
+      const above = await placed();
+      expect((above.text!.left + above.text!.right) / 2).toBeCloseTo(above.width / 2, 0);
+      await setPosition("Below");
+      await expect.poll(async () => { const now = await placed(); return now.text!.top - now.height; }).toBeCloseTo(4, 0);
+      const below = await placed();
+      expect((below.text!.left + below.text!.right) / 2).toBeCloseTo(below.width / 2, 0);
+    });
+
+    await test.step("a reload keeps the position, the Outline lists it and the server draws the symbol at its stored box with the text outside", async () => {
+      await page.reload();
+      await expect(page.getByLabel("Choice, node", { exact: true }).locator(".graph-node-marker-text-block")).toHaveText("Pressure high?");
+      await page.getByRole("tab", { name: "Outline" }).click();
+      await expect(page.getByText("Label position: Below")).toBeVisible();
+      const svg = await (await page.request.get(`${base}/state-machine-diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
+      // The 36 unit diamond is drawn into its stored 20 unit box (a scale of 20/36), at the stored corner, not grown for the text.
+      expect(svg).toContain("translate(240.0 60.0) scale(0.5556 0.5556)");
+      const drawn = [...svg.matchAll(/<text[^>]*text-anchor="middle"[^>]*fill="#1E293B"[^>]*>([^<]+)<\/text>/g)].map((m) => m[1]);
+      expect(drawn).toContain("Pressure high?");
+    });
+
+    await test.step("Inside puts the text back in a larger symbol", async () => {
+      await page.getByRole("tab", { name: "Drawing" }).click();
+      await setPosition("Inside");
+      await expect(choice.locator(".graph-node-marker-text-block")).toHaveCount(0);
+      expect((await choice.boundingBox())!.width).toBeGreaterThan(60);
+    });
+    expect(ids.Branch).toBeTruthy();
+  });
+
+  test("moving a symbol with a label inside it leaves it where it is dropped, not shifted by the growth the label gave it", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdDrop", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Press ${suffix}`);
+    const { diagram, ids } = await createMachine(page.request, base, adminHeaders, elementId, `Press modes ${suffix}`, [
+      { name: "Branch", kind: "choice", x: 300, y: 200, label: "Is the pressure above the safe limit for the vessel?" },
+    ], []);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    await expect(page.getByLabel("Choice, node", { exact: true })).toBeVisible();
+    const stored = async () => {
+      const model = await (await page.request.get(`${base}/state-machine-diagrams/${diagram.id}/model`, { headers: adminHeaders })).json();
+      const state = model.states.find((s: { id: string }) => s.id === ids.Branch);
+      return { x: state.x as number, y: state.y as number };
+    };
+    const before = await stored();
+    await selectNode(page, "Choice");
+    await page.keyboard.press("ArrowRight");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await expect.poll(async () => (await stored()).x).not.toBe(before.x);
+    const after = await stored();
+    // A key press moves the drawing by a few units; the symbol is about 130 units wide, so a jump by half its growth would be over 50.
+    expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(20);
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(20);
+  });
+
   test("a state is nested in another, the drawing is stored by Save and survives a reload, and a state is deleted with what goes with it", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdDraw", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

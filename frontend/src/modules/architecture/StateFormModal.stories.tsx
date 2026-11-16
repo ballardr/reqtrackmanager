@@ -45,6 +45,41 @@ export const AMarkerKindHidesTheActionsAndShowsTheSymbolLabel: Story = {
   },
 };
 
+/** A marker offers where its label is drawn, with the options in a fixed order; the choice is sent, and an ordinary state has none. */
+export const AMarkerChoosesWhereItsLabelIsDrawn: Story = {
+  args: { initial: buildState({ name: "Choice", kind: "choice", label: "Battery low?" }) },
+  play: async ({ args }) => {
+    const d = dialog();
+    const field = d.getByLabelText("Label position");
+    await expect(field).toHaveValue("inside");
+    await expect(within(field).getAllByRole("option").map((o) => o.textContent)).toEqual(["Inside", "Left", "Right", "Above", "Below"]);
+    await userEvent.selectOptions(field, "right");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: "choice", label: "Battery low?", label_position: "right" }));
+  },
+};
+
+/** The word warning belongs to a label inside a symbol: beside it the symbol keeps its size, so there is nothing to warn about. */
+export const ALongWordBesideItsSymbolIsNotWarnedAbout: Story = {
+  args: { initial: buildState({ name: "Choice", kind: "choice", label: `before ${"x".repeat(60)} after`, label_position: "left" }) },
+  play: async () => {
+    await expect(dialog().queryByRole("alert")).not.toBeInTheDocument();
+  },
+};
+
+/** Making a marker an ordinary state sends an empty label and the inside position, which the server requires of a state with no symbol. */
+export const BecomingAnOrdinaryStateSendsNoLabelOrPosition: Story = {
+  args: { initial: buildState({ name: "Choice", kind: "choice", label: "Battery low?", label_position: "below" }) },
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.selectOptions(d.getByLabelText("Label position"), "left");
+    await userEvent.selectOptions(d.getByLabelText("Kind"), "state");
+    await expect(d.queryByLabelText("Label position")).not.toBeInTheDocument();
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: "state", label: "", label_position: "inside" }));
+  },
+};
+
 /** The label is limited to 256 characters in the field, so a longer entry cannot be typed; the count shows near the limit. */
 export const TheSymbolLabelTakes256Characters: Story = {
   args: { initial: buildState({ name: "Choice", kind: "choice" }) },

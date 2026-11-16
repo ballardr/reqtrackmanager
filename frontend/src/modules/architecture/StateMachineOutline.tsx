@@ -22,7 +22,7 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { TreeView } from "../../components/TreeView";
 import { actionLines, stateTree, type StateMachineLayout } from "./stateMachineModel";
 import { useStateLabel } from "./useStateLabel";
-import { STATE_KIND_LABEL, type StateMachineModel } from "./types";
+import { LABEL_POSITION_LABEL, STATE_KIND_LABEL, type StateMachineModel } from "./types";
 import { ARCHITECTURE_HELP } from "./help";
 
 /**
@@ -65,6 +65,9 @@ export function StateMachineOutline({
               </button>
               <span className="text-muted">{STATE_KIND_LABEL[node.state.kind]}</span>
               {node.state.label && <span className="text-muted">Symbol label: {node.state.label}</span>}
+              {node.state.label && node.state.label_position !== "inside" && (
+                <span className="text-muted">Label position: {LABEL_POSITION_LABEL[node.state.label_position]}</span>
+              )}
               {actionLines(node.state) && <span className="text-muted" style={{ whiteSpace: "pre-line" }}>{actionLines(node.state)}</span>}
             </span>
           )}

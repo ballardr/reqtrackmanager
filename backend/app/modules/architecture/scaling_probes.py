@@ -196,7 +196,8 @@ def _create_state_machines(api: Any, project_id: str, start: int, count: int) ->
             body = {
                 "version": version, "name": f"{name} {start + i}", "kind": kind, "description": "A state of the probe.",
                 "entry_action": "start()" if kind == "state" else "",
-                "label": "" if kind == "state" else "Probe", "x": len(made) * 200.0, "y": 0.0,
+                "label": "" if kind == "state" else "Probe", "label_position": "inside" if kind == "state" else "right",
+                "x": len(made) * 200.0, "y": 0.0,
                 "parent_state_id": made[parent]["id"] if parent is not None else None,
             }
             state = api.post(f"{base}/state-machine-diagrams/{diagram['id']}/states", body)

@@ -6,7 +6,7 @@ import { buildState, buildStateMachineModel, buildTransition } from "./architect
 import labelCases from "./stateLabelCases.json";
 import {
   actionLines, canvasEdges, canvasNodes, commit, defaultSize, frameAt, isDirty, layoutFromModel, layoutSignature, mergeModel, moveStates,
-  layoutToSave, nextFreeSpot, redo, resizeStates, setParent, setTransitionPoints, stateTree, startHistory, transitionLabel, undo,
+  layoutToSave, markerOffsets, nextFreeSpot, redo, resizeStates, setParent, setTransitionPoints, stateTree, startHistory, transitionLabel, undo,
 } from "./stateMachineModel";
 import { defaultStateName } from "./stateFields";
 import { COMPOSITE_HEADER_HEIGHT, COMPOSITE_PADDING } from "./stateShapes";
@@ -122,6 +122,49 @@ export const ALabelledMarkerIsDrawnLargerAroundItsBoxWithItsText: Story = {
     const plain = nodes.get("ste-3")!;
     await expect(plain.markerText).toBeUndefined();
     await expect(plain).toMatchObject({ width: 28, height: 28 });
+  },
+};
+
+/** A label outside its symbol leaves the node at the symbol's stored box, carries the text block beside it and keeps lines off the text's side. */
+export const ALabelBesideItsSymbolLeavesTheSymbolAtItsBoxAndPlacesTheText: Story = {
+  play: async () => {
+    const beside = buildStateMachineModel({
+      states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "Power on", label_position: "right" as const } : s)),
+    });
+    const stored = box(layoutFromModel(beside), "ste-0");
+    const drawn = new Map(canvasNodes(beside, layoutFromModel(beside), { findings: [] }).map((n) => [n.id, n])).get("ste-0")!;
+    await expect(drawn).toMatchObject({ x: stored.x, y: stored.y, width: stored.width, height: stored.height, marker: true });
+    await expect(drawn.markerText).toMatchObject({ lines: ["Power on"], onFill: false, block: { x: stored.width + 4, align: "left" } });
+    await expect(drawn.symbolSvg).not.toContain('viewBox="0 0 52 52"');
+    await expect(drawn.attachPoints).toEqual(["top", "bottom", "left"]);
+    // A label inside leaves every side offered, and no label has no text block.
+    const inside = buildStateMachineModel({ states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "Power on" } : s)) });
+    const innerNode = new Map(canvasNodes(inside, layoutFromModel(inside), { findings: [] }).map((n) => [n.id, n])).get("ste-0")!;
+    await expect(innerNode.attachPoints).toEqual(["top", "right", "bottom", "left"]);
+    await expect(innerNode.markerText?.block).toBeUndefined();
+  },
+};
+
+/** A move is the new corner of the drawn frame, so a symbol grown by a label inside it is put back by the difference and stays where it was dropped. */
+export const AMovedSymbolStaysWhereItWasDroppedWhateverItsLabel: Story = {
+  play: async () => {
+    const labelled = buildStateMachineModel({
+      states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "Power on" } : s)),
+    });
+    const layout = layoutFromModel(labelled);
+    const stored = box(layout, "ste-0");
+    const offsets = markerOffsets(labelled.states, layout);
+    const frame = canvasNodes(labelled, layout, { findings: [] }).find((n) => n.id === "ste-0")!;
+    // Dropping the symbol without moving it returns the same box, however large the label made the drawing.
+    const same = moveStates(layout, [{ id: "ste-0", x: frame.x!, y: frame.y! }], offsets);
+    await expect(box(same, "ste-0")).toMatchObject({ x: stored.x, y: stored.y });
+    // Moving the drawn frame by (30, 20) moves the stored box by exactly that.
+    const moved = moveStates(layout, [{ id: "ste-0", x: frame.x! + 30, y: frame.y! + 20 }], offsets);
+    await expect(box(moved, "ste-0")).toMatchObject({ x: stored.x + 30, y: stored.y + 20 });
+    // A symbol drawn at its box (no label, or a label outside it) has no offset.
+    await expect(markerOffsets(MODEL.states, LAYOUT).size).toBe(0);
+    const beside = buildStateMachineModel({ states: MODEL.states.map((s) => (s.id === "ste-0" ? { ...s, label: "Go", label_position: "above" as const } : s)) });
+    await expect(markerOffsets(beside.states, layoutFromModel(beside)).size).toBe(0);
   },
 };
 

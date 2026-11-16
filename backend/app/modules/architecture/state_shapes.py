@@ -28,8 +28,9 @@ Dependencies: `enums` (the state kinds), `diagram_symbol_label` (the label's siz
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any
 
+from app.modules.architecture.diagram_points import SIDE_POINTS
 from app.modules.architecture.diagram_symbol_label import (
     BASE_SIZE,
     LABEL_FONT_SIZE,
@@ -39,7 +40,7 @@ from app.modules.architecture.diagram_symbol_label import (
     TEXT_PERCENT,
     fit_label,
 )
-from app.modules.architecture.enums import StateKind
+from app.modules.architecture.enums import AttachPoint, LabelPosition, StateKind
 
 Point = tuple[float, float]
 
@@ -118,25 +119,51 @@ def labelled_svg(kind: StateKind, size: int) -> str:
     )
 
 
-def marker_frame(kind: StateKind, box: tuple[float, float, float, float], label: str) -> tuple[float, float, float, float]:
-    """The frame a marker is drawn in: its stored box, or, when it carries a label, at least the size the label needs and
-    centred on the stored box.
+def marker_frame(
+    kind: StateKind, box: tuple[float, float, float, float], label: str, position: LabelPosition = LabelPosition.INSIDE,
+) -> tuple[float, float, float, float]:
+    """The frame a marker is drawn in: its stored box, or, when it carries a label inside it, at least the size the label
+    needs and centred on the stored box. A label outside the symbol leaves the symbol at its stored box (the text is drawn
+    beside it, see `diagram_symbol_label.beside_label`).
 
     Args:
         kind: An initial, final or choice state kind.
         box: `(x, y, width, height)` of the stored box.
         label: The symbol's label (blank means none).
+        position: Where the label is drawn.
 
     Returns:
         The frame to draw and to attach lines to.
     """
     x, y, w, h = box
-    layout = fit_label(kind, label)
+    layout = fit_label(kind, label) if position is LabelPosition.INSIDE else None
     if layout is None:
         return box
     size = layout.size
     width, height = max(w, size), max(h, size)
     return (x - (width - w) / 2, y - (height - h) / 2, width, height)
+
+
+#: The side of a symbol each outside label position covers (the point that side's attach point is).
+_LABEL_SIDE: dict[LabelPosition, AttachPoint] = {
+    LabelPosition.LEFT: AttachPoint.LEFT, LabelPosition.RIGHT: AttachPoint.RIGHT,
+    LabelPosition.ABOVE: AttachPoint.TOP, LabelPosition.BELOW: AttachPoint.BOTTOM,
+}
+
+
+def marker_attach_points(label: str, position: LabelPosition) -> tuple[AttachPoint, ...]:
+    """The attach points an open line end may choose on a marker: the middle of each side, without the side its label is on
+    (a line there would run through the text). A fixed end a person chose is used as given.
+
+    Args:
+        label: The symbol's label (blank means none, so every side is offered).
+        position: Where the label is drawn.
+
+    Returns:
+        The points, in tie-break order.
+    """
+    covered = _LABEL_SIDE.get(position) if label.strip() else None
+    return tuple(point for point in SIDE_POINTS if point is not covered)
 
 
 def shape_table() -> dict[str, Any]:

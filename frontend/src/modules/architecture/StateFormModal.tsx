@@ -11,7 +11,7 @@ import { FormActions } from "../../components/FormActions";
 import { FormGrid } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
 import { StateFieldGroup } from "./StateFieldGroup";
-import { valuesFromState } from "./stateFields";
+import { normaliseStateValues, valuesFromState } from "./stateFields";
 import type { ArchitectureState, StateFieldValues } from "./types";
 
 /**
@@ -39,7 +39,7 @@ export function StateFormModal({
         </FormGrid>
         <FormActions
           error={error} onCancel={onCancel} saveDisabled={values.name.trim() === ""}
-          onSave={() => onSave({ ...values, name: values.name.trim() })}
+          onSave={() => onSave(normaliseStateValues(values))}
         />
       </div>
     </Modal>

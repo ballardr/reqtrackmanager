@@ -65,7 +65,7 @@ import { StateMachineFormModal } from "./StateMachineFormModal";
 import { DiagramExportMenu } from "./DiagramExportMenu";
 import { useDiagramExport } from "./useDiagramExport";
 import {
-  PALETTE_KIND_PREFIX, addStateBox, boxOfState, canvasEdges, canvasNodes, defaultSize, frameAt, growAround, moveStates, nextFreeSpot,
+  PALETTE_KIND_PREFIX, addStateBox, boxOfState, canvasEdges, canvasNodes, defaultSize, frameAt, growAround, markerOffsets, moveStates, nextFreeSpot,
   resizeStates, setParent, setTransitionPoints,
 } from "./stateMachineModel";
 import { statePinAnchorOf, statePinDescriber, statePinPlaceOf } from "./stateMachineComments";
@@ -484,7 +484,7 @@ export function StateMachineEditorPage() {
                 nodes={nodes} edges={edges} ariaLabel={`State machine diagram ${diagram.name}`} height={canvasHeight}
                 readOnly={!editable} resizable fitMaxZoom={1} showViewToggle={false} selected={selection} onSelect={setSelection}
                 {...commentLayer.canvasProps} {...snap.canvasProps} {...attachPoints.canvasProps} lineHops={diagram?.line_hops ?? false}
-                onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves))}
+                onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves, markerOffsets(model.states, l)))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}
                 onEdgePointsChange={(edgeId, points) => editor.edit((l) => setTransitionPoints(l, edgeId, { points, smooth: points.length > 0 ? undefined : false }))}

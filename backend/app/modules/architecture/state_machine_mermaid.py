@@ -24,7 +24,7 @@ Design decisions:
   it takes). The SVG omits them for the same reason of room.
 - A choice's name and symbol label are left out (Mermaid draws the diamond without text, and the start and end marks cannot
   carry one); the choice's code and its label are written as a comment line so the text still names it. The label is not lost
-  from the SVG, PNG or bundle.
+  from the SVG, PNG or bundle. Mermaid has no place for text beside a symbol, so a label's position is not written either.
 
 Dependencies: `schemas` (the model), `state_shapes` (the label rules).
 """

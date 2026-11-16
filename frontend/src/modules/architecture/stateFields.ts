@@ -2,8 +2,8 @@
  * Module: modules/architecture/stateFields
  *
  * Pure helpers of the state fields: the default name of a state added straight to a diagram (unique within it, because the
- * server refuses a repeated name), the blank values, the values of an existing state and the fields an edit changed (the
- * update sends only those).
+ * server refuses a repeated name), the blank values, the values of an existing state, the values as stored (`normaliseStateValues`)
+ * and the fields an edit changed (the update sends only those).
  */
 import { STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type StateKind } from "./types";
 
@@ -11,6 +11,7 @@ import { STATE_KIND_LABEL, type ArchitectureState, type StateFieldValues, type S
 export function blankStateValues(kind: StateKind = "state"): StateFieldValues {
   return {
     name: kind === "state" ? "" : STATE_KIND_LABEL[kind], description: "", kind, entry_action: "", exit_action: "", activity: "", label: "",
+    label_position: "inside",
   };
 }
 
@@ -19,6 +20,21 @@ export function valuesFromState(state: ArchitectureState): StateFieldValues {
   return {
     name: state.name, description: state.description, kind: state.kind, entry_action: state.entry_action,
     exit_action: state.exit_action, activity: state.activity, label: state.label,
+    label_position: state.label_position,
+  };
+}
+
+/**
+ * The values to store: the name trimmed, and for a marker the label trimmed; an ordinary state has no symbol, so its label is
+ * empty and its label position `inside` (the server refuses a label or a position there).
+ *
+ * @param values The edited values.
+ * @returns The values to send.
+ */
+export function normaliseStateValues(values: StateFieldValues): StateFieldValues {
+  const marker = values.kind !== "state";
+  return {
+    ...values, name: values.name.trim(), label: marker ? values.label.trim() : "", label_position: marker ? values.label_position : "inside",
   };
 }
 
