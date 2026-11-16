@@ -43,9 +43,9 @@ import { ARCHITECTURE_HELP } from "./help";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
 
-/** A note's text shortened for a list. */
-function noteSummary(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+/** A note's title and text shortened for a list. */
+function noteSummary(note: Pick<EditorNote, "title" | "text">): string {
+  const flat = [note.title, note.text].map((part) => part.replace(/\s+/g, " ").trim()).filter(Boolean).join(" — ");
   if (!flat) return "Empty note";
   return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
 }
@@ -239,7 +239,7 @@ export function DiagramOutline({
                   aria-current={isSelected("node", NOTE_NODE_PREFIX + n.key) ? "true" : undefined}
                   onClick={() => onSelect({ kind: "node", id: NOTE_NODE_PREFIX + n.key })}
                 >
-                  {noteSummary(n.text)}
+                  {noteSummary(n)}
                 </button>
                 {n.leaders.length > 0 && (
                   <ul style={{ listStyle: "none", margin: 0, paddingLeft: "var(--space-4)" }} aria-label="Leaders">

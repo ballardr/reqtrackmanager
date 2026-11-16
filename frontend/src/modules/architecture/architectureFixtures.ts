@@ -161,7 +161,8 @@ export function buildViewEdge(overrides: Partial<DiagramViewEdge> = {}): Diagram
 /** An annotation as the view lists it: neutral, 160 x 60 at the origin, with no leader (`buildLeader` makes one). */
 export function buildNote(overrides: Partial<DiagramNote> = {}): DiagramNote {
   return {
-    id: "nt-1", text: "Check with ops", x: 0, y: -120, width: 160, height: 60, tone: "neutral", leaders: [], ...overrides,
+    id: "nt-1", title: "", text: "Check with ops", x: 0, y: -120, width: 160, height: 60, tone: "neutral", text_align: "left", leaders: [],
+    ...overrides,
   };
 }
 

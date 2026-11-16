@@ -110,6 +110,13 @@ export interface GraphCanvasNode {
   accent?: string;
   /** Draws the border dashed (a placeholder or hidden-for-this-viewer node). */
   dashed?: boolean;
+  /** A short heading drawn in bold above the label (a note's title); text only. A node with a title and no label is named by the title. */
+  title?: string;
+  /**
+   * How the title, label and caption sit in the box: `left`, `center` (the default look) or `right`. Line breaks in the label are
+   * kept whatever the alignment; a line longer than the box wraps between words.
+   */
+  textAlign?: GraphTextAlign;
   /** A short second line under the label (a type name, a code); text only. */
   caption?: string;
   /** Buttons drawn on the node's top left corner (see `GraphNodeBadge`); ignored for a marker. */
@@ -153,6 +160,9 @@ export interface GraphCanvasNode {
    */
   parentId?: string;
 }
+
+/** How a node's text is aligned in its box. */
+export type GraphTextAlign = "left" | "center" | "right";
 
 /** What a leader points at: a node, a line (its middle) or a free position in canvas units. */
 export type GraphLeaderTarget = { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "point"; x: number; y: number };
@@ -385,7 +395,7 @@ const GraphCanvasView = lazy(() => import("./GraphCanvasView").then((m) => ({ de
  */
 export function GraphListView({ nodes, edges, ariaLabel }: Pick<GraphCanvasProps, "nodes" | "edges" | "ariaLabel">) {
   const text = useStrings().graphCanvas;
-  const labels = new Map(nodes.map((n) => [n.id, n.label]));
+  const labels = new Map(nodes.map((n) => [n.id, n.title && n.label ? `${n.title}: ${n.label}` : n.title || n.label]));
   if (nodes.length === 0 && edges.length === 0) return <p className="text-muted">{text.empty}</p>;
   return (
     <div className="stack" role="group" aria-label={ariaLabel}>
@@ -399,7 +409,7 @@ export function GraphListView({ nodes, edges, ariaLabel }: Pick<GraphCanvasProps
         <tbody>
           {nodes.map((n) => (
             <tr key={n.id}>
-              <td>{n.label}</td>
+              <td>{labels.get(n.id)}</td>
             </tr>
           ))}
         </tbody>

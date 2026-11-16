@@ -720,6 +720,54 @@ export const ATonedNodeIsTintedInItsTone: Story = {
   },
 };
 
+const TEXT_NODES: GraphCanvasNode[] = [
+  { id: "left", title: "Heading", label: "First line\n\nSecond paragraph", x: 0, y: 0, width: 200, height: 120, textAlign: "left" },
+  { id: "centre", label: "Middle", x: 300, y: 0, width: 200, height: 120, textAlign: "center" },
+  { id: "right", title: "Right title", label: "Right text", x: 600, y: 0, width: 200, height: 120, textAlign: "right" },
+  { id: "bare", title: "Only a title", label: "", x: 0, y: 200, width: 200, height: 60 },
+];
+
+/** A node's title is drawn in bold above its label, the label keeps the line breaks it was given, and the node is named by both. */
+export const ANodeDrawsATitleInBoldAndKeepsTheLineBreaksOfItsLabel: Story = {
+  render: () => <GraphCanvas nodes={TEXT_NODES} edges={[]} ariaLabel="Text" showViewToggle={false} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = await canvas.findByLabelText(/^Heading: First line\s+Second paragraph, node$/);
+    const title = node.querySelector(".graph-node-title") as HTMLElement;
+    expect(title).toHaveTextContent("Heading");
+    expect(getComputedStyle(title).fontWeight).toBe("600");
+    const label = node.querySelector(".graph-node-label") as HTMLElement;
+    expect(label.textContent).toBe("First line\n\nSecond paragraph");
+    expect(getComputedStyle(label).whiteSpace).toBe("pre-line");
+    // A node with a title and no label draws no empty label and is named by its title.
+    const bare = await canvas.findByLabelText("Only a title, node");
+    expect(bare.querySelector(".graph-node-label")).toBeNull();
+  },
+};
+
+/** Left and right alignment put the text against that side of the box; centre (and no alignment) keeps it in the middle. */
+export const ANodeAlignsItsTextLeftCentreOrRight: Story = {
+  render: () => <GraphCanvas nodes={TEXT_NODES} edges={[]} ariaLabel="Aligned" showViewToggle={false} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const gaps = async (name: string | RegExp) => {
+      const box = (await canvas.findByLabelText(name)).querySelector(".graph-node") as HTMLElement;
+      const label = box.querySelector(".graph-node-label") as HTMLElement;
+      const outer = box.getBoundingClientRect();
+      const inner = label.getBoundingClientRect();
+      return { left: inner.left - outer.left, right: outer.right - inner.right };
+    };
+    await waitFor(async () => {
+      const left = await gaps(/^Heading: First line\s+Second paragraph, node$/);
+      expect(left.left).toBeLessThan(left.right);
+    });
+    const centre = await gaps("Middle, node");
+    expect(Math.abs(centre.left - centre.right)).toBeLessThan(4);
+    const right = await gaps("Right title: Right text, node");
+    expect(right.right).toBeLessThan(right.left);
+  },
+};
+
 /** Dragging a free leader end reports its new position once, when the drag ends. */
 export const DraggingAFreeLeaderEndReportsThePosition: Story = {
   args: { onLeaderTargetChange: fn() },

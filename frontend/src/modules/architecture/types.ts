@@ -29,6 +29,14 @@ export const NOTE_TONE_LABEL: Record<NoteTone, string> = {
   none: "None", neutral: "Neutral", info: "Information", success: "Positive", warning: "Caution", danger: "Critical",
 };
 
+/** How a note's title and text are aligned in its block. Full justification is not offered: the exports cannot draw it. */
+export type NoteTextAlign = "left" | "center" | "right";
+
+export const NOTE_TEXT_ALIGN_LABEL: Record<NoteTextAlign, string> = { left: "Left", center: "Centre", right: "Right" };
+
+/** The longest note title (characters); the server refuses a longer one. */
+export const NOTE_TITLE_MAX = 120;
+
 /** What an annotation's leader line ends at. */
 export type LeaderKind = "element" | "connection" | "point";
 
@@ -519,12 +527,14 @@ export interface DiagramViewBoundary {
 
 export interface DiagramNote {
   id: string;
+  title: string;
   text: string;
   x: number;
   y: number;
   width: number;
   height: number;
   tone: NoteTone;
+  text_align: NoteTextAlign;
   leaders: DiagramLeader[];
 }
 
@@ -639,12 +649,14 @@ export interface PlacementValues {
 /** One note as saved (`id` keeps an existing note; none creates one). */
 export interface NoteValues {
   id: string | null;
+  title: string;
   text: string;
   x: number;
   y: number;
   width: number;
   height: number;
   tone: NoteTone;
+  text_align: NoteTextAlign;
   leaders: LeaderValues[];
 }
 

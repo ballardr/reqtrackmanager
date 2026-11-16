@@ -75,8 +75,8 @@ import { useLatest } from "../hooks/useLatest";
 import { safeSvgImage } from "../utils/safeSvgImage";
 import "./GraphCanvasView.css";
 import {
-  GRAPH_DROP_MIME, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphLineEnd, type GraphMarkerText, type GraphNodeBadge,
-  type GraphNodeOutline, type GraphNodeTone, type GraphPinContext, type GraphPointAnchor,
+  GRAPH_DROP_MIME, type GraphCanvasNode, type GraphCanvasPin, type GraphCanvasProps, type GraphCanvasSelection, type GraphLeaderTarget, type GraphLineEnd, type GraphMarkerText, type GraphNodeBadge,
+  type GraphNodeOutline, type GraphNodeTone, type GraphPinContext, type GraphPointAnchor, type GraphTextAlign,
 } from "./GraphCanvas";
 import {
   ATTACH_POINTS, SIDE_POINTS, nearestPoint, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
@@ -115,6 +115,8 @@ const LEADER_END_HANDLE = "end";
 
 type NodeData = {
   label: string;
+  title?: string;
+  textAlign?: GraphTextAlign;
   caption?: string;
   badges: readonly GraphNodeBadge[];
   body?: string;
@@ -194,6 +196,11 @@ function NodeBody({ text }: { text: string }) {
   );
 }
 
+/** @param node A node. @returns Its spoken name: the title and the label, or whichever it has. */
+function nodeName(node: Pick<GraphCanvasNode, "title" | "label">): string {
+  return node.title && node.label ? `${node.title}: ${node.label}` : node.title || node.label;
+}
+
 /** The place and alignment of a marker's text block outside the marker (see `GraphMarkerText.block`). */
 function markerBlockStyle(block: NonNullable<GraphMarkerText["block"]>): CSSProperties {
   return { left: block.x, top: block.y, width: block.width, height: block.height, textAlign: block.align };
@@ -226,6 +233,7 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
   const classes = [
     "graph-node", data.dashed ? "graph-node-dashed" : "", shaped ? "graph-node-shaped" : "",
     data.container ? "graph-node-container" : "",
+    data.textAlign ? `graph-node-align-${data.textAlign}` : "",
     data.tone ? `graph-node-tone graph-node-tone-${data.tone}` : "",
     data.placeholder ? "graph-node-placeholder" : "",
   ].filter(Boolean).join(" ");
@@ -236,7 +244,8 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
       {data.resizable && <NodeResizer isVisible={selected} minWidth={MIN_WIDTH} minHeight={MIN_HEIGHT} />}
       {data.symbol && <img className="graph-node-symbol" src={data.symbol} alt="" />}
       <span className={data.body ? "graph-node-text graph-node-text-body" : "graph-node-text"}>
-        <span className="graph-node-label">{data.label}</span>
+        {data.title && <span className="graph-node-title">{data.title}</span>}
+        {data.label && <span className="graph-node-label">{data.label}</span>}
         {data.caption && <span className="graph-node-caption">{data.caption}</span>}
         {data.body && <NodeBody text={data.body} />}
       </span>
@@ -787,9 +796,9 @@ export function GraphCanvasView({
         width: box.width,
         height: box.height,
         selected: selection?.kind === "node" && selection.id === n.id,
-        ariaLabel: text.nodeAria(n.label),
+        ariaLabel: text.nodeAria(nodeName(n)),
         data: {
-          label: n.label, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
+          label: n.label, title: n.title, textAlign: n.textAlign, caption: n.caption, badges: n.marker ? NO_BADGES : n.badges ?? NO_BADGES, body: n.body, symbol: n.symbolSvg ? safeSvgImage(n.symbolSvg) : null,
           accent: n.accent, dashed: n.dashed, outline: n.outline ?? "rectangle", tone: n.tone, placeholder: n.placeholder,
           resizable: resizable && !readOnly && !n.marker, marker: n.marker === true, markerText: n.marker ? n.markerText : undefined, container: n.container === true,
         },

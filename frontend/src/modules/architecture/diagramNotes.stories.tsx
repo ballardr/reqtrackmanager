@@ -107,6 +107,38 @@ export const ALeaderIsDrawnWithItsRouteStartAndEndsOnTheCanvas: Story = {
   },
 };
 
+export const ATitleAndAnAlignmentAreCarriedToTheCanvasAndTheSave: Story = {
+  play: async () => {
+    let layout = layoutWith(buildNote({ title: "Heading", text: "One\n\nTwo", text_align: "center" }));
+    const [note] = layout.notes;
+    expect(note).toMatchObject({ title: "Heading", textAlign: "center" });
+    const node = canvasNodes(layout, CTX).find((n) => n.id === `note:${note.key}`);
+    // The title is its own line of the node and the text keeps the breaks typed.
+    expect(node).toMatchObject({ title: "Heading", label: "One\n\nTwo", textAlign: "center", placeholder: false });
+    expect(layoutToSave(layout).notes[0]).toMatchObject({ title: "Heading", text: "One\n\nTwo", text_align: "center" });
+    layout = updateNote(layout, "nt-1", { title: "", text: "" });
+    expect(canvasNodes(layout, CTX).find((n) => n.id === "note:nt-1")).toMatchObject({ title: undefined, label: "Empty note", placeholder: true });
+  },
+};
+
+export const ANoteWithOnlyATitleIsNotAPlaceholder: Story = {
+  play: async () => {
+    const layout = layoutWith(buildNote({ title: "Heading", text: "" }));
+    expect(canvasNodes(layout, CTX).find((n) => n.id === "note:nt-1")).toMatchObject({ title: "Heading", label: "", placeholder: false });
+  },
+};
+
+export const ATitleOrAnAlignmentChangeMakesTheLayoutDirtyAndAnUnchangedOneDoesNot: Story = {
+  play: async () => {
+    const layout = layoutWith(buildNote({ title: "Heading" }));
+    const history = startHistory(layout);
+    expect(isDirty(commit(history, updateNote(layout, "nt-1", { title: "Other" })))).toBe(true);
+    expect(isDirty(commit(history, updateNote(layout, "nt-1", { textAlign: "right" })))).toBe(true);
+    expect(isDirty(commit(history, updateNote(layout, "nt-1", { title: "Heading", textAlign: "left" })))).toBe(false);
+    expect(newNote("k", { x: 0, y: 0 })).toMatchObject({ title: "", textAlign: "left" });
+  },
+};
+
 export const EditingATonePointingOrAnyPartOfALeaderMakesTheLayoutDirty: Story = {
   play: async () => {
     const layout = layoutWith(buildNote({ leaders: [buildLeader()] }));

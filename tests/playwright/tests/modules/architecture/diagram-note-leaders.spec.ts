@@ -35,6 +35,9 @@ async function addNote(page: Page, text: string): Promise<Locator> {
   await clickMenuRow(page, "Add note");
   await page.getByRole("textbox", { name: "Note text" }).fill(text);
   await page.getByRole("textbox", { name: "Note text" }).blur();
+  // The Selection card under the canvas is taller than the screen leaves room for, and typing into it scrolls the page: bring the
+  // canvas back so the pointer positions below are on screen.
+  await page.locator(".graph-canvas").first().scrollIntoViewIfNeeded();
   return page.getByLabel(`${text}, node`, { exact: true });
 }
 

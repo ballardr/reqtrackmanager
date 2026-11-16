@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.modules.architecture.diagram_line_path import MAX_WAYPOINTS
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
+    NOTE_TITLE_MAX,
     SYMBOL_LABEL_LENGTH,
     AttachPoint,
     Domain,
@@ -34,6 +35,7 @@ from app.modules.architecture.enums import (
     LeaderKind,
     LineEnd,
     LineStyle,
+    NoteAlign,
     NoteTone,
     PortDirection,
     RecordStatus,
@@ -629,16 +631,19 @@ class LeaderOut(BaseModel):
 
 
 class NoteIn(BaseModel):
-    """An annotation on a diagram: plain text in a block with a tone and its leader lines (`id` keeps an existing note;
-    none creates one)."""
+    """An annotation on a diagram: plain text in a block with a tone, an optional title (drawn in bold above the text),
+    the alignment of both and its leader lines (`id` keeps an existing note; none creates one). Line breaks in the text are
+    kept."""
 
     id: UUID | None = None
+    title: str = Field(default="", max_length=NOTE_TITLE_MAX)
     text: str = Field(default="", max_length=2000)
     x: Coordinate = 0.0
     y: Coordinate = 0.0
     width: Extent = 160.0
     height: Extent = 60.0
     tone: NoteTone = NoteTone.NEUTRAL
+    text_align: NoteAlign = NoteAlign.LEFT
     leaders: list[LeaderIn] = Field(default_factory=list, max_length=MAX_NOTE_LEADERS)
 
 
@@ -732,12 +737,14 @@ class NoteOut(BaseModel):
     """An annotation on a diagram with its leaders."""
 
     id: UUID
+    title: str
     text: str
     x: float
     y: float
     width: float
     height: float
     tone: NoteTone
+    text_align: NoteAlign
     leaders: list[LeaderOut]
 
 

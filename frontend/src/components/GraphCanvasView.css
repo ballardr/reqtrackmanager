@@ -166,6 +166,32 @@
   font-size: 0.8125rem;
   line-height: 1.2;
   overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+/* A node's heading (a note's title): bold, one step above the label. */
+.graph-node-title {
+  max-width: 100%;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+/* An aligned node's text fills the box and sits against the chosen side; `center` keeps the node's own centred look. */
+.graph-node-align-left .graph-node-text,
+.graph-node-align-right .graph-node-text {
+  width: 100%;
+}
+
+.graph-node-align-left .graph-node-text {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.graph-node-align-right .graph-node-text {
+  align-items: flex-end;
+  text-align: right;
 }
 
 /* Connection handles show only while editing is allowed. */

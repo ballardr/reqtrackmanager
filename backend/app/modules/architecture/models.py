@@ -57,7 +57,7 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
-from app.modules.architecture.enums import DISPLAY_NOTE_MAX, SYMBOL_LABEL_LENGTH
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX, NOTE_TITLE_MAX, SYMBOL_LABEL_LENGTH
 
 
 class OwnedNamedMixin(UUIDPKMixin, TimestampMixin):
@@ -625,9 +625,14 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
         x / y / width / height: The block in diagram units.
         sort_order: Order among the diagram's notes.
         tone: A `NoteTone` value.
+        title: A short text drawn in bold above the text (empty for none).
+        text_align: A `NoteAlign` value: how the title and the text sit in the block.
     """
 
     __tablename__ = "architecture_diagram_notes"
+    __table_args__ = (
+        CheckConstraint("text_align IN ('left', 'center', 'right')", name="ck_architecture_diagram_notes_text_align"),
+    )
 
     diagram_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
@@ -639,6 +644,8 @@ class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
     height: Mapped[float] = mapped_column(Float, default=60.0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     tone: Mapped[str] = mapped_column(String(16), default="neutral", server_default="neutral")
+    title: Mapped[str] = mapped_column(String(NOTE_TITLE_MAX), default="", server_default="")
+    text_align: Mapped[str] = mapped_column(String(16), default="left", server_default="left")
 
 
 class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):

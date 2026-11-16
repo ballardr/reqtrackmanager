@@ -797,8 +797,7 @@ export function DiagramEditorPage() {
         onDeleteElement={(box) => void deleteElement(box.elementId)}
         onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
         drawnEdgeIds={drawnEdgeIds}
-        onEditNote={(key, text) => editor.edit((l) => updateNote(l, key, { text }))}
-        onNoteTone={(key, tone) => editor.edit((l) => updateNote(l, key, { tone }))}
+        onNoteChange={(key, patch) => editor.edit((l) => updateNote(l, key, patch))}
         onAddLeader={addLeaderFrom}
         onSelectLeader={(key) => setSelection({ kind: "leader", id: key })}
         onSelectNote={(key) => setSelection({ kind: "node", id: NOTE_NODE_PREFIX + key })}

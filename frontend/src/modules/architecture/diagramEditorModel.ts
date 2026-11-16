@@ -25,7 +25,7 @@ import { reverseRoute, suggestWaypoint } from "../../components/graphLinePath";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import type {
   ArchitectureConnection, ArchitectureElement, BoundaryShape, BoundaryValues, DiagramAnchor, DiagramNote, DiagramView,
-  DiagramLeader, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, LeaderKind, LeaderValues, LineEnd, LineRouteChange, LineWaypoint, NoteTone, NoteValues, PlacementValues,
+  DiagramLeader, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, LeaderKind, LeaderValues, LineEnd, LineRouteChange, LineWaypoint, NoteTextAlign, NoteTone, NoteValues, PlacementValues,
 } from "./types";
 import { isOutOfUse } from "./types";
 import {
@@ -93,12 +93,16 @@ export interface EditorLeader {
 export interface EditorNote {
   key: string;
   id: string | null;
+  /** A short heading drawn in bold above the text; empty for none. */
+  title: string;
+  /** The text; the line breaks typed are kept. */
   text: string;
   x: number;
   y: number;
   width: number;
   height: number;
   tone: NoteTone;
+  textAlign: NoteTextAlign;
   leaders: EditorLeader[];
 }
 
@@ -241,7 +245,8 @@ export function boxFromNode(node: DiagramViewNode): EditorBox {
 /** @param note A note of a resolved view. @returns Its editor form (its key is its id). */
 export function noteFromView(note: DiagramNote): EditorNote {
   return {
-    key: note.id, id: note.id, text: note.text, x: note.x, y: note.y, width: note.width, height: note.height, tone: note.tone,
+    key: note.id, id: note.id, title: note.title, text: note.text, x: note.x, y: note.y, width: note.width, height: note.height,
+    tone: note.tone, textAlign: note.text_align,
     leaders: note.leaders.map(leaderFromView),
   };
 }
@@ -320,7 +325,8 @@ export function layoutToSave(
       element_id: b.elementId, x: b.x, y: b.y, width: b.width, height: b.height, collapsed: b.collapsed,
     })),
     notes: layout.notes.map((n) => ({
-      id: n.id, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height, tone: n.tone, leaders: n.leaders.map(leaderToValues),
+      id: n.id, title: n.title, text: n.text, x: n.x, y: n.y, width: n.width, height: n.height, tone: n.tone, text_align: n.textAlign,
+      leaders: n.leaders.map(leaderToValues),
     })),
     anchors: layout.anchors,
     boundaries: layout.boundaries.map((b) => ({ connection_id: b.connectionId, x: b.x, y: b.y, width: b.width, height: b.height })),
@@ -333,7 +339,7 @@ function signature(layout: EditorLayout): string {
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
     notes.map((n) => [
-      n.text, n.x, n.y, n.width, n.height, n.tone,
+      n.title, n.text, n.x, n.y, n.width, n.height, n.tone, n.text_align,
       n.leaders.map((l) => [
         l.kind, l.element_id, l.connection_id, l.x, l.y, l.start_point, l.points.map((p) => [p.x, p.y]), l.smooth, l.start_style, l.end_style,
       ]),
@@ -467,15 +473,20 @@ export function removeBoundary(layout: EditorLayout, connectionId: string): Edit
 
 /** @param key A fresh note key. @param at Where its top-left corner goes. @returns A new, empty, neutral note with no leader. */
 export function newNote(key: string, at: { x: number; y: number }): EditorNote {
-  return { key, id: null, text: "", x: at.x, y: at.y, width: NOTE_WIDTH, height: NOTE_HEIGHT, tone: "neutral", leaders: [] };
+  return {
+    key, id: null, title: "", text: "", x: at.x, y: at.y, width: NOTE_WIDTH, height: NOTE_HEIGHT, tone: "neutral", textAlign: "left", leaders: [],
+  };
 }
 
 export function addNote(layout: EditorLayout, note: EditorNote): EditorLayout {
   return { ...layout, notes: [...layout.notes, note] };
 }
 
-/** Changes the text or tone of a note. */
-export function updateNote(layout: EditorLayout, key: string, patch: Partial<Pick<EditorNote, "text" | "tone">>): EditorLayout {
+/** What the Selection card changes about a note. */
+export type NotePatch = Partial<Pick<EditorNote, "title" | "text" | "tone" | "textAlign">>;
+
+/** Changes the title, text, tone or alignment of a note. */
+export function updateNote(layout: EditorLayout, key: string, patch: NotePatch): EditorLayout {
   return { ...layout, notes: layout.notes.map((n) => (n.key === key ? { ...n, ...patch } : n)) };
 }
 
@@ -616,6 +627,17 @@ const BOUNDARY_OUTLINE: Record<BoundaryShape, GraphNodeOutline> = {
   input: "pointed-right", output: "pointed-left", bidirectional: "pointed-both", dot: "ellipse",
 };
 
+/** @param note A note. @returns Whether it has neither a title nor text (the canvas then shows its placeholder and a faint outline). */
+export function noteIsEmpty(note: Pick<EditorNote, "title" | "text">): boolean {
+  return note.title.trim() === "" && note.text.trim() === "";
+}
+
+/** @param note A note. @param emptyNote The stand-in text for a note with nothing. @returns The label the canvas draws: the text as typed (its line breaks kept), nothing when only the title is set, else the stand-in. */
+function noteLabel(note: Pick<EditorNote, "title" | "text">, emptyNote: string): string {
+  if (note.text.trim()) return note.text.replace(/^\n+|\s+$/g, "");
+  return note.title.trim() ? "" : emptyNote;
+}
+
 /** @returns The canvas nodes for the boxes a view switch leaves visible, and for the notes. */
 export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanvasNode[] {
   const boxes = layout.boxes.filter((b) => !ctx.hidden.has(b.elementId)).map<GraphCanvasNode>((b) => ({
@@ -632,8 +654,9 @@ export function canvasNodes(layout: EditorLayout, ctx: CanvasContext): GraphCanv
   // A note with no tone is its text alone: no "Note" caption and no dashed edge (the canvas draws a faint outline while it is
   // hovered, selected or empty, so it can still be found and edited).
   const notes = layout.notes.map<GraphCanvasNode>((n) => ({
-    id: NOTE_NODE_PREFIX + n.key, label: n.text.trim() || ctx.emptyNote, caption: n.tone === "none" ? undefined : ctx.noteCaption,
-    x: n.x, y: n.y, width: n.width, height: n.height, dashed: n.tone !== "none", tone: n.tone, placeholder: n.text.trim() === "",
+    id: NOTE_NODE_PREFIX + n.key, label: noteLabel(n, ctx.emptyNote), title: n.title.trim() || undefined,
+    caption: n.tone === "none" ? undefined : ctx.noteCaption, textAlign: n.textAlign,
+    x: n.x, y: n.y, width: n.width, height: n.height, dashed: n.tone !== "none", tone: n.tone, placeholder: noteIsEmpty(n),
   }));
   const boundaries = layout.boundaries.map<GraphCanvasNode>((b) => ({
     id: boundaryNodeId(b.connectionId), label: b.connection_code,

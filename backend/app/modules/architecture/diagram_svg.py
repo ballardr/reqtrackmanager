@@ -107,6 +107,47 @@ def _note_lines(note: str, width: int, lines: int) -> list[str]:
     return out
 
 
+def _paragraph_lines(text: str, width: int) -> list[str]:
+    """`text` as lines of about `width` characters that keep the breaks a person typed: each line is word-wrapped on its own, a
+    blank line stays one empty line, and the text's own trailing breaks are dropped."""
+    out: list[str] = []
+    for paragraph in text.strip("\n").splitlines():
+        out.extend(_wrap(paragraph, width, 1000) or [""])
+    return out
+
+
+def _note_block(note: NoteOut) -> list[tuple[str, bool]]:
+    """The lines a note draws, top to bottom, as `(text, bold)`: its title in bold, then its text, each wrapped to the note's
+    width with typed line breaks kept. When they do not fit the block's height the last line ends with an ellipsis."""
+    width = max(int(note.width / 6.5), 6)
+    room = max(int((note.height - 8) / 13), 1)
+    lines = [(line, True) for line in _paragraph_lines(" ".join(note.title.split()), max(int(width / 1.15), 4))]
+    lines += [(line, False) for line in _paragraph_lines(note.text, width)]
+    if len(lines) > room:
+        lines = lines[:room]
+        last, bold = lines[-1]
+        lines[-1] = (last[: max(width - 1, 1)].rstrip() + "…", bold)
+    return lines
+
+
+#: The SVG `text-anchor` of a note's lines by alignment.
+_NOTE_ANCHOR: dict[str, str] = {"left": "start", "center": "middle", "right": "end"}
+
+
+def _note_text(note: NoteOut) -> str:
+    """The `<text>` of each line of a note, aligned as the note says (left and right keep 6 units from the block's edge)."""
+    align = note.text_align.value
+    x = {"left": note.x + 6, "center": note.x + note.width / 2, "right": note.x + note.width - 6}[align]
+    parts: list[str] = []
+    for i, (line, bold) in enumerate(_note_block(note)):
+        weight = ' font-weight="bold"' if bold else ""
+        parts.append(
+            f'<text x="{x:.1f}" y="{note.y + 16 + i * 13:.1f}" font-size="11"{weight} text-anchor="{_NOTE_ANCHOR[align]}" '
+            f'fill="{_TEXT_COLOR}">{_text(line)}</text>'
+        )
+    return "".join(parts)
+
+
 def _symbol_group(markup: str, x: float, y: float, size: float) -> str | None:
     """The sanitised symbol fitted into a `size` square at `(x, y)`, or `None` if it has no usable root element."""
     match = _ROOT.search(markup)
@@ -358,7 +399,7 @@ _TONES: dict[str, tuple[str, str]] = {
 def _drawn_notes(notes: list[NoteOut]) -> list[NoteOut]:
     """The notes the document draws: all of them, except an empty note with no tone, which would be invisible (the editor
     shows it with a faint outline so it can be found, which is never exported)."""
-    return [n for n in notes if n.tone != NoteTone.NONE or n.text.strip()]
+    return [n for n in notes if n.tone != NoteTone.NONE or n.text.strip() or n.title.strip()]
 
 
 def _leader_run(
@@ -477,11 +518,7 @@ def _notes(
             else f'<rect x="{n.x:.1f}" y="{n.y:.1f}" width="{n.width:.1f}" height="{n.height:.1f}" fill="{fill}" stroke="{stroke}"/>'
         )
         blocks.append(
-            f'<g data-note="{n.id}">{box}'
-            + "".join(
-                f'<text x="{n.x + 6:.1f}" y="{n.y + 16 + i * 13:.1f}" font-size="11" fill="{_TEXT_COLOR}">{_text(line)}</text>'
-                for i, line in enumerate(_wrap(n.text, max(int(n.width / 6.5), 6), max(int((n.height - 8) / 13), 1)))
-            ) + "</g>"
+            f'<g data-note="{n.id}">{box}{_note_text(n)}</g>'
         )
     return "".join(defs.values()), "".join(leaders), "".join(blocks)
 

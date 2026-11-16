@@ -1,11 +1,11 @@
 /**
  * Module: modules/architecture/DiagramNoteEditor
  *
- * The Selection card's form for an annotation note: its text and tone, and its list of leader lines.
+ * The Selection card's form for an annotation note: its title, text, tone and alignment, and its list of leader lines.
  *
  * Responsibilities:
- * - Edit the text locally and apply it when the field loses focus, so one edit is one undo step (not one per keystroke); the
- *   tone applies at once.
+ * - Edit the title and the text locally and apply each when its field loses focus, so one edit is one undo step (not one per
+ *   keystroke); the tone and the alignment apply at once. The line breaks typed in the text are kept.
  * - List the note's leaders ("Points at ELM-001 Gateway", with a note when one points at something that is not drawn), open
  *   one in its own card (`DiagramLeaderEditor`) and add another (the keyboard route to drawing a line from the note).
  *
@@ -18,16 +18,16 @@ import { Pencil, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { FieldCaption } from "../../components/FieldHelp";
-import { TextAreaField } from "../../components/FormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import { IconAction } from "../../components/IconAction";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLatest } from "../../hooks/useLatest";
 import { labelOptions } from "../../utils/labelOptions";
-import { MAX_NOTE_LEADERS, type EditorNote } from "./diagramEditorModel";
+import { MAX_NOTE_LEADERS, type EditorNote, type NotePatch } from "./diagramEditorModel";
 import { ARCHITECTURE_HELP } from "./help";
 import { selectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
-import { NOTE_TONE_LABEL, type NoteTone } from "./types";
+import { NOTE_TEXT_ALIGN_LABEL, NOTE_TITLE_MAX, NOTE_TONE_LABEL, type NoteTextAlign, type NoteTone } from "./types";
 
 /** One of a note's leaders as the card lists it. */
 export interface LeaderRow {
@@ -44,27 +44,37 @@ export interface LeaderRow {
  * @param leaders The note's leaders in order.
  * @param autoFocusText True to put the cursor in the text when the card first appears (a note just placed).
  * @param onFocused Called once the text has taken the focus.
- * @param onText Called with the new text when the field loses focus.
- * @param onTone Called with a new tone.
+ * @param onChange Called with what changed: the title or the text when its field loses focus, the tone or the alignment at once.
  * @param onAddLeader Called to add a leader (a line to a free spot beside the note, selected to be edited).
  * @param onOpenLeader Called with a leader's key to select it.
  * @param onRemove Called to remove the note.
  */
 export function DiagramNoteEditor({
-  note, editable, leaders, autoFocusText, onFocused, onText, onTone, onAddLeader, onOpenLeader, onRemove,
+  note, editable, leaders, autoFocusText, onFocused, onChange, onAddLeader, onOpenLeader, onRemove,
 }: {
   note: EditorNote;
   editable: boolean;
   leaders: LeaderRow[];
   autoFocusText: boolean;
   onFocused: () => void;
-  onText: (text: string) => void;
-  onTone: (tone: NoteTone) => void;
+  onChange: (patch: NotePatch) => void;
   onAddLeader: () => void;
   onOpenLeader: (key: string) => void;
   onRemove: () => void;
 }) {
   const [draft, setDraft] = useState(note.text);
+  const [titleDraft, setTitleDraft] = useState(note.title);
+  // An Undo or a Redo changes the note under the card: the fields show it again rather than what was typed before.
+  const [seenText, setSeenText] = useState(note.text);
+  const [seenTitle, setSeenTitle] = useState(note.title);
+  if (seenText !== note.text) {
+    setSeenText(note.text);
+    setDraft(note.text);
+  }
+  if (seenTitle !== note.title) {
+    setSeenTitle(note.title);
+    setTitleDraft(note.title);
+  }
   const focusDone = useLatest(onFocused);
   const [askedFocus] = useState(autoFocusText);
   const textBox = useRef<HTMLDivElement>(null);
@@ -81,12 +91,22 @@ export function DiagramNoteEditor({
 
   return (
     <div className="stack">
-      <div ref={textBox} className="stack" onBlur={() => { if (draft !== note.text) onText(draft); }}>
-        <TextAreaField helpNotNeeded label="Note text" value={draft} onChange={setDraft} disabled={!editable} />
+      <div className="stack" onBlur={() => { if (titleDraft !== note.title) onChange({ title: titleDraft }); }}>
+        <TextField
+          label="Title" help={ARCHITECTURE_HELP.noteTitle} value={titleDraft} onChange={setTitleDraft} disabled={!editable}
+          inputProps={{ maxLength: NOTE_TITLE_MAX }}
+        />
+      </div>
+      <div ref={textBox} className="stack" onBlur={() => { if (draft !== note.text) onChange({ text: draft }); }}>
+        <TextAreaField label="Note text" help={ARCHITECTURE_HELP.noteText} value={draft} onChange={setDraft} disabled={!editable} />
       </div>
       <LabeledSelect
+        label="Alignment" help={ARCHITECTURE_HELP.noteAlign} placeholder={null} disabled={!editable} value={note.textAlign}
+        options={labelOptions(NOTE_TEXT_ALIGN_LABEL)} onChange={(value) => onChange({ textAlign: value as NoteTextAlign })}
+      />
+      <LabeledSelect
         label="Tone" help={ARCHITECTURE_HELP.noteTone} placeholder={null} disabled={!editable} value={note.tone}
-        options={labelOptions(NOTE_TONE_LABEL)} onChange={(value) => onTone(value as NoteTone)}
+        options={labelOptions(NOTE_TONE_LABEL)} onChange={(value) => onChange({ tone: value as NoteTone })}
       />
       {(leaders.length > 0 || editable) && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>

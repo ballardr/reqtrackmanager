@@ -37,6 +37,12 @@ LABEL_POSITION_LABEL: dict[str, str] = {
     "below": "Below",
 }
 
+NOTE_ALIGN_LABEL: dict[str, str] = {
+    "left": "Left",
+    "center": "Centre",
+    "right": "Right",
+}
+
 #: Statuses that mean a record is no longer in force, for "Open only" filters and the inactive style.
 INACTIVE_STATUSES: tuple[str, ...] = ("retired", "rejected")
 

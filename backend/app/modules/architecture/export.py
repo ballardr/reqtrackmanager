@@ -76,9 +76,11 @@ from app.modules.architecture.diagram_line_path import clean_waypoints
 from app.modules.architecture.diagrams import leaders_of
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
+    NOTE_TITLE_MAX,
     AttachPoint,
     LeaderKind,
     LineEnd,
+    NoteAlign,
     NoteTone,
     PortDirection,
     RecordStatus,
@@ -800,9 +802,10 @@ def _note_json(
     note: ArchitectureDiagramNote, leaders: list[ArchitectureNoteLeader], codes: dict[UUID, str],
     foreign: dict[UUID, dict[str, str]], connection_codes: dict[UUID, str],
 ) -> dict[str, Any]:
-    """An annotation note for the bundle: its block, tone and leaders."""
+    """An annotation note for the bundle: its title, text, alignment, block, tone and leaders."""
     return {
-        "text": note.text, "x": note.x, "y": note.y, "width": note.width, "height": note.height, "tone": note.tone,
+        "title": note.title, "text_align": note.text_align, "text": note.text, "x": note.x, "y": note.y, "width": note.width,
+        "height": note.height, "tone": note.tone,
         "leaders": [j for row in leaders if (j := _leader_json(row, codes, foreign, connection_codes)) is not None],
     }
 
@@ -1191,11 +1194,14 @@ def _import_diagrams(
         _import_boundaries(db, diagram, connections, entry.get("boundaries", []), code, warnings)
         note_rows: list[tuple[ArchitectureDiagramNote, dict[str, Any]]] = []
         for order, note in enumerate(entry.get("notes", [])):
-            tone = note.get("tone")
+            tone, align, title = note.get("tone"), note.get("text_align"), note.get("title")
             note_row = ArchitectureDiagramNote(
                 id=uuid4(), diagram_id=diagram.id, text=note.get("text", ""), x=note.get("x", 0.0), y=note.get("y", 0.0),
                 width=note.get("width", 160.0), height=note.get("height", 60.0), sort_order=order,
                 tone=tone if tone in {t.value for t in NoteTone} else NoteTone.NEUTRAL.value,
+                # A bundle is not trusted to respect the cap, and an older one has neither field.
+                title=title[:NOTE_TITLE_MAX] if isinstance(title, str) else "",
+                text_align=align if align in {a.value for a in NoteAlign} else NoteAlign.LEFT.value,
             )
             db.add(note_row)
             note_rows.append((note_row, note))

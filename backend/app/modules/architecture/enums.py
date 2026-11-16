@@ -18,6 +18,9 @@ import enum
 #: The longest display note an element may carry (characters): the line drawn inside its box on a diagram.
 DISPLAY_NOTE_MAX = 500
 
+#: The longest title an annotation note may carry (characters): the bold line drawn above its text.
+NOTE_TITLE_MAX = 120
+
 #: The longest label an initial, final or choice symbol may carry (characters): the text drawn inside the symbol.
 SYMBOL_LABEL_LENGTH = 256
 
@@ -104,6 +107,15 @@ class NoteTone(str, enum.Enum):
     SUCCESS = "success"
     WARNING = "warning"
     DANGER = "danger"
+
+
+class NoteAlign(str, enum.Enum):
+    """How the title and the text of an annotation note are aligned in its block. Full justification is not offered: SVG has
+    no justified text, so the exports could not match the screen."""
+
+    LEFT = "left"
+    CENTER = "center"
+    RIGHT = "right"
 
 
 class LeaderKind(str, enum.Enum):

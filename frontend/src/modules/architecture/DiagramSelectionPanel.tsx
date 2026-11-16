@@ -49,7 +49,7 @@ import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, routeAttachPoints, type Att
 import { suggestWaypoint } from "../../components/graphLinePath";
 import {
   BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, NOTE_NODE_PREFIX, anchorOf, boundaryOutsideName, leaderIsDrawn, leaderSummary,
-  leaderVertexSuggestion, type EditorBoundary, type EditorBox, type EditorLeader, type EditorNote, type NoteLeaderTarget,
+  leaderVertexSuggestion, type EditorBoundary, type EditorBox, type EditorLeader, type EditorNote, type NoteLeaderTarget, type NotePatch,
 } from "./diagramEditorModel";
 import { boxName } from "./diagramOutlineModel";
 import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
@@ -63,7 +63,7 @@ import { selectionAction, type SelectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import type {
   ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionFieldValues, ConnectionRef, ConnectionType, DiagramAnchor, LineRouteChange,
-  DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, NoteTone, PortValues,
+  DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, PortValues,
 } from "./types";
 import type { OrgUser } from "../../api/types";
 
@@ -125,8 +125,7 @@ function stateMachineActions(
  * @param onDeleteElement Deletes the element from the model.
  * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic).
  * @param drawnEdgeIds The ids of the lines the canvas draws (a note's leader to a connection needs one of them).
- * @param onEditNote Sets a note's text.
- * @param onNoteTone Sets a note's tone.
+ * @param onNoteChange Changes a note's title, text, tone or alignment.
  * @param onAddLeader Adds a leader to a note (a line to a free spot beside it, which becomes the selection).
  * @param onSelectLeader Selects a leader (by key).
  * @param onSelectNote Selects a note (by key).
@@ -141,7 +140,7 @@ function stateMachineActions(
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, drawnEdgeIds, onEditNote, onNoteTone, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
@@ -167,8 +166,7 @@ export function DiagramSelectionPanel({
   onDeleteElement: (box: EditorBox) => void;
   onAnchorChange: (edge: DiagramViewEdge, change: LineRouteChange) => void;
   drawnEdgeIds: ReadonlySet<string>;
-  onEditNote: (key: string, text: string) => void;
-  onNoteTone: (key: string, tone: NoteTone) => void;
+  onNoteChange: (key: string, patch: NotePatch) => void;
   onAddLeader: (noteKey: string) => void;
   onSelectLeader: (leaderKey: string) => void;
   onSelectNote: (noteKey: string) => void;
@@ -337,7 +335,7 @@ export function DiagramSelectionPanel({
             key: l.key, summary: leaderSummary(l, boxes, edges, true).replace(/ \(not drawn\)$/, ""),
             drawn: leaderIsDrawn(l, drawnBoxIds, edges, drawnEdgeIds),
           }))}
-          onText={(text) => onEditNote(note.key, text)} onTone={(tone) => onNoteTone(note.key, tone)}
+          onChange={(patch) => onNoteChange(note.key, patch)}
           onAddLeader={() => onAddLeader(note.key)} onOpenLeader={onSelectLeader} onRemove={() => onRemoveNote(note.key)}
         />
       );

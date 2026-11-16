@@ -190,6 +190,10 @@ A self-contained, optional capability area (backend endpoints, database tables, 
 
 A name a project or organisation gives an entry of the project navigation (for example "ADRs" for Decisions), shown in the navigation, as the page title and as the back link of that entry's records. A project's own name takes precedence over its parent's, which takes precedence over the organisation's. See [Administering a project](../workflows/administering-a-project.md#navigation-names).
 
+#### Note (annotation)
+
+Text placed on one diagram only, with a tone, an optional **Title** (drawn in bold above the text), an **Alignment** (Left, Centre or Right) and any number of leaders. The line breaks typed in its text are kept. It is not a display note, which belongs to an element. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [Leader](#leader).
+
 #### Organisation
 
 The top-level container, owning users, groups, branding, SSO configuration, and every project underneath it. See [Organisations and projects](../concepts/organisations-and-projects.md).

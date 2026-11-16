@@ -17,7 +17,8 @@ Design decisions:
 - **Flat.** Placed elements are not nested as subgraphs: a rolled-up line already joins the nearest placed ancestors, and
   a line to a subgraph is drawn unreliably by Mermaid.
 - **Positions, vertices and colours are left out**: Mermaid lays the graph and routes the lines itself.
-- An annotation note with text is a flag-shaped node. A leader to a drawn box is a dotted link from the note (with a head
+- An annotation note with a title or text is a flag-shaped node (the title in bold; the typed line breaks are kept; Mermaid centres
+  a node's text, so a note's alignment is not written). A leader to a drawn box is a dotted link from the note (with a head
   at each end that has an arrowhead; a dot end is written as a plain end, as Mermaid has no dotted line with a dot); a
   leader to a line or a free point is not written, because Mermaid cannot point at a line, and a leader to a box that is
   not drawn is not written either, so nothing hidden leaves in the text.
@@ -85,8 +86,11 @@ def _edge(source: str, target: str, edge: ViewEdge) -> str:
 
 
 def _note(key: str, note: NoteOut) -> str:
-    """One annotation note node line: its text lines, each made safe."""
-    return f'    {key}>"{"<br/>".join(_text(line) for line in note.text.splitlines() if line.strip())}"]'
+    """One annotation note node line: its title in bold, then its text lines (the breaks a person typed, a blank line kept
+    between them), each made safe. Mermaid draws a node's text centred, so a note's alignment is not written."""
+    lines = [f"<b>{_text(' '.join(note.title.split()))}</b>"] if note.title.strip() else []
+    lines += [_text(line) for line in note.text.strip().splitlines()]
+    return f'    {key}>"{"<br/>".join(lines)}"]'
 
 
 def _leaders(key: str, note: NoteOut, keys: dict[uuid.UUID, str]) -> list[str]:
@@ -123,7 +127,7 @@ def render_mermaid(view: DiagramView) -> str:
     keys.update({b.id: f"b{i}" for i, b in enumerate(view.boundaries, start=1)})
     lines += [_node(keys[n.element_id], n) for n in visible]
     lines += [_boundary(keys[b.id], b) for b in view.boundaries]
-    notes = [n for n in view.notes if n.text.strip()]
+    notes = [n for n in view.notes if n.text.strip() or n.title.strip()]
     if not visible and not view.boundaries and not notes:
         lines.append('    empty["Empty diagram"]')
     lines += [
