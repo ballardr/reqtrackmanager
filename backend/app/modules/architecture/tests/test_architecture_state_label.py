@@ -1,8 +1,8 @@
-"""Tests for the symbol label of an initial, final or choice state: it is stored on create and edit and cleared with an empty
-value, only a marker may carry one (an ordinary state's name is drawn in its box), changing a state to an ordinary one clears
-it, it is searched, listed and exported as the `label` column (a state has no import), carried by the project bundle (cut to the limit when
-a file from elsewhere is longer), drawn inside a larger symbol by the SVG, and the migration adds and drops the column. Every
-test builds its own organisation."""
+"""Tests for the symbol label of an initial, final or choice state (up to 256 characters): it is stored on create and edit
+and cleared with an empty value, only a marker may carry one (an ordinary state's name is drawn in its box), changing a state to
+an ordinary one clears it, it is searched, listed and exported as the `label` column (a state has no import), carried by the
+project bundle (cut to the limit when a file from elsewhere is longer), drawn inside a symbol that grows to hold it by the SVG,
+and the migrations add, widen and drop the column. Every test builds its own organisation."""
 
 from __future__ import annotations
 
@@ -17,10 +17,12 @@ from sqlalchemy import text
 from alembic import command
 from app.database import engine
 from app.modules.architecture.enums import StateKind
+from app.modules.architecture.diagram_symbol_label import BASE_SIZE, fit_label
+from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH
 from app.modules.architecture.state_shapes import (
     LABEL_ON_FILL,
-    LABELLED_MARKERS,
     STATE_MARKERS,
+    labelled_svg,
     marker_frame,
 )
 from app.modules.architecture.tests._helpers import (
@@ -63,12 +65,14 @@ def test_a_marker_takes_a_label_on_create_and_edit_and_an_empty_value_clears_it(
     }
 
 
-def test_a_label_is_cut_off_at_forty_characters_by_the_api_and_an_ordinary_state_refuses_one(client, admin_token):
+def test_a_label_may_have_up_to_256_characters_the_api_refuses_more_and_an_ordinary_state_refuses_one(client, admin_token):
     _org, project, token = setup(client, admin_token, "Arch label rules")
     element = make_element(client, token, project["id"], "Valve")
     machine = make_machine(client, token, project["id"], element["id"])
-    add_state(client, token, project["id"], machine["id"], "Too long", kind="choice", label="x" * 41, expect=422)
-    add_state(client, token, project["id"], machine["id"], "Exactly", kind="choice", label="x" * 40)
+    assert SYMBOL_LABEL_LENGTH == 256
+    add_state(client, token, project["id"], machine["id"], "Too long", kind="choice", label="x" * 257, expect=422)
+    exact = add_state(client, token, project["id"], machine["id"], "Exactly", kind="choice", label="word " * 51 + "x")
+    assert len(exact["label"]) == 256
     add_state(client, token, project["id"], machine["id"], "Ordinary", kind="state", label="No place", expect=400)
     ordinary = add_state(client, token, project["id"], machine["id"], "Open")
     refused = _update(client, token, project["id"], machine["id"], ordinary["id"], label="No place")
@@ -122,7 +126,7 @@ def test_the_label_round_trips_in_the_project_bundle_and_an_overlong_or_misplace
     assert {s["name"]: s["label"] for s in states}["Branch"] == "Too fast?"
     for s in states:  # a file from elsewhere: too long on a marker, and a label on an ordinary state
         if s["name"] == "Branch":
-            s["label"] = "y" * 80
+            s["label"] = "y" * 300
         if s["name"] == "Running":
             s["label"] = "Ordinary"
     rebuilt = io.BytesIO()
@@ -137,7 +141,7 @@ def test_the_label_round_trips_in_the_project_bundle_and_an_overlong_or_misplace
     new_id = imported.json()["project"]["id"]
     copies = client.get(f"{project_base(new_id)}/state-machine-diagrams", headers=auth_headers(token)).json()
     labels = {s["name"]: s["label"] for s in machine_model(client, token, new_id, copies[0]["id"])["states"]}
-    assert labels["Branch"] == "y" * 40 and labels["Running"] == ""
+    assert labels["Branch"] == "y" * 256 and labels["Running"] == ""
 
 
 def test_the_svg_draws_a_labelled_symbol_larger_with_its_text_inside_and_an_unlabelled_one_as_before(client, admin_token):
@@ -149,29 +153,38 @@ def test_the_svg_draws_a_labelled_symbol_larger_with_its_text_inside_and_an_unla
     base = project_base(project["id"])
     svg = client.get(f"{base}/state-machine-diagrams/{machine['id']}/svg", headers=auth_headers(token)).text
     ET.fromstring(svg)
-    labelled = LABELLED_MARKERS[StateKind.INITIAL]
-    # The labelled dot is scaled from the larger drawing, centred on the stored 20 x 20 box; the final state is untouched.
-    assert f'translate({-(labelled.size - 20) / 2:.1f} {-(labelled.size - 20) / 2:.1f}) scale(1.0000 1.0000)' in svg
+    size = BASE_SIZE[StateKind.INITIAL]
+    # The labelled dot is drawn at the size its label needs, centred on the stored 20 x 20 box; the final state is untouched.
+    assert f'translate({-(size - 20) / 2:.1f} {-(size - 20) / 2:.1f}) scale(1.0000 1.0000)' in svg
     assert "translate(200.0 0.0) scale(1.0000 1.0000)" in svg
     texts = [t for t in ET.fromstring(svg).iter(f"{SVG}text") if t.get("fill") == LABEL_ON_FILL]
-    assert [t.text for t in texts] == ["Power", "on"]  # wrapped to the dot's text width
+    assert [t.text for t in texts] == ["Power", "on"]  # broken between words to the dot's text width
 
 
 def test_the_marker_frame_grows_a_labelled_symbol_around_its_centre_and_leaves_an_unlabelled_one_alone():
     box = (100.0, 50.0, 36.0, 36.0)
     assert marker_frame(StateKind.CHOICE, box, "") == box and marker_frame(StateKind.CHOICE, box, "   ") == box
-    size = LABELLED_MARKERS[StateKind.CHOICE].size
+    size = BASE_SIZE[StateKind.CHOICE]
     x, y, w, h = marker_frame(StateKind.CHOICE, box, "Full?")
     assert (w, h) == (size, size) and (x + w / 2, y + h / 2) == (118.0, 68.0)
     # A box already larger than the labelled size is kept.
     assert marker_frame(StateKind.INITIAL, (0.0, 0.0, 200.0, 100.0), "x") == (0.0, 0.0, 200.0, 100.0)
 
 
-def test_every_labelled_symbol_is_larger_than_its_plain_one_and_holds_its_text_width():
+def test_a_longer_label_grows_the_frame_and_the_drawing_at_any_size_keeps_its_viewbox_and_stroke():
+    box = (100.0, 50.0, 36.0, 36.0)
+    long_label = "Is the tank level above the high-level alarm threshold for more than ten seconds"
+    layout = fit_label(StateKind.CHOICE, long_label)
+    assert layout is not None and layout.size > BASE_SIZE[StateKind.CHOICE]
+    x, y, w, h = marker_frame(StateKind.CHOICE, box, long_label)
+    assert (w, h) == (layout.size, layout.size) and (x + w / 2, y + h / 2) == (118.0, 68.0)
     for kind, plain in STATE_MARKERS.items():
-        labelled = LABELLED_MARKERS[kind]
-        assert labelled.size > plain[0] and 0 < labelled.text_width < labelled.size
-        assert f'viewBox="0 0 {labelled.size} {labelled.size}"' in labelled.svg
+        for size in (BASE_SIZE[kind], 200):
+            svg = labelled_svg(kind, size)
+            assert size > plain[0] and f'viewBox="0 0 {size} {size}"' in svg and svg.startswith("<svg") and svg.endswith("</svg>")
+            assert "<script" not in svg and "href" not in svg
+        if kind is not StateKind.INITIAL:
+            assert 'stroke-width="2"' in labelled_svg(kind, 200)
 
 
 def test_the_label_migration_adds_the_column_with_an_empty_default_and_reverses_cleanly(client, admin_token):
@@ -192,3 +205,27 @@ def test_the_label_migration_adds_the_column_with_an_empty_default_and_reverses_
         command.upgrade(build_alembic_config(), "head")
     with engine.connect() as conn:
         assert conn.execute(text("SELECT label FROM architecture_states WHERE id = :i"), {"i": state["id"]}).scalar_one() == ""
+
+
+def test_the_widening_migration_keeps_every_label_and_a_downgrade_cuts_a_long_one_to_forty_characters(client, admin_token):
+    """Downgrading 0192 narrows `label` to 40 characters (cutting a longer one); upgrading restores 256 and keeps what is left."""
+    _org, project, token = setup(client, admin_token, "Arch label width")
+    element = make_element(client, token, project["id"], "Wide")
+    machine = make_machine(client, token, project["id"], element["id"])
+    long_label = "word " * 40 + "end"
+    long = add_state(client, token, project["id"], machine["id"], "Long", kind="choice", label=long_label)
+    short = add_state(client, token, project["id"], machine["id"], "Short", kind="choice", label="Full?")
+    column = "SELECT character_maximum_length FROM information_schema.columns WHERE table_name = 'architecture_states' AND column_name = 'label'"
+    with engine.connect() as conn:
+        assert conn.execute(text(column)).scalar_one() == 256
+    command.downgrade(build_alembic_config(), "0191")
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(text(column)).scalar_one() == 40
+            assert conn.execute(text("SELECT label FROM architecture_states WHERE id = :i"), {"i": long["id"]}).scalar_one() == long_label[:40]
+            assert conn.execute(text("SELECT label FROM architecture_states WHERE id = :i"), {"i": short["id"]}).scalar_one() == "Full?"
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        assert conn.execute(text(column)).scalar_one() == 256
+        assert conn.execute(text("SELECT label FROM architecture_states WHERE id = :i"), {"i": short["id"]}).scalar_one() == "Full?"

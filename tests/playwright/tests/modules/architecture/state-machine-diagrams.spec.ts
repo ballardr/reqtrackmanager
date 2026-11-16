@@ -363,6 +363,46 @@ test.describe("System Architecture: state machine diagrams", () => {
     });
   });
 
+  test("a long symbol label is kept whole, never split inside a word, in a symbol that grows to hold it, on the screen and in the server drawing", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdLong", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Tank ${suffix}`);
+    const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Tank modes ${suffix}`, [
+      { name: "Start", kind: "initial", x: 40, y: 60 }, { name: "Branch", kind: "choice", x: 240, y: 60 },
+    ], [["Start", "Branch"]]);
+    const label = "Is the tank level above the high-level alarm threshold for more than ten seconds";
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    const choice = page.getByLabel("Choice, node", { exact: true });
+    await expect(choice).toBeVisible();
+    await selectNode(page, "Choice");
+
+    await test.step("a label of more than forty characters can be typed and is stored", async () => {
+      await selectionCard(page).getByLabel("Symbol label").fill(label);
+      const stored = page.waitForResponse((r) => /\/states\/[^/]+$/.test(r.url()) && r.request().method() === "PUT");
+      await page.getByRole("heading", { level: 1 }).click();
+      const response = await stored;
+      expect(response.ok()).toBeTruthy();
+      expect(await response.request().postDataJSON()).toMatchObject({ label });
+    });
+
+    const drawnLines = async () => (await choice.locator(".graph-node-marker-text").innerText()).split("\n");
+    await test.step("the screen draws every word whole and the symbol is larger than a one-line label needs", async () => {
+      const lines = await drawnLines();
+      expect(lines.length).toBeGreaterThan(1);
+      expect(lines.join(" ").replace(/- /g, "-")).toBe(label);
+      expect((await choice.boundingBox())!.width).toBeGreaterThan(120);
+    });
+
+    await test.step("a reload keeps the label and the server's drawing breaks it at the same words", async () => {
+      await page.reload();
+      const screen = await drawnLines();
+      expect(screen.join(" ")).toContain("tank level");
+      const svg = await (await page.request.get(`${base}/state-machine-diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
+      const drawn = [...svg.matchAll(/<text[^>]*fill="#1E293B"[^>]*>([^<]+)<\/text>/g)].map((m) => m[1]).filter((t) => label.includes(t.trim().replace(/-$/, "")));
+      expect(drawn).toEqual(screen);
+    });
+  });
+
   test("a state is nested in another, the drawing is stored by Save and survives a reload, and a state is deleted with what goes with it", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdDraw", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

@@ -35,21 +35,20 @@ import uuid
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
 from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
 from app.modules.architecture.diagram_points import ATTACH_POINTS, SIDE_POINTS, point_xy, route_points
+from app.modules.architecture.diagram_symbol_label import LABEL_FONT_SIZE, LABEL_LINE_HEIGHT, fit_label
 from app.modules.architecture.diagram_svg import _ROOT, _note_lines, _text, _wrap
 from app.modules.architecture.enums import StateKind
 from app.modules.architecture.labels import STATE_KIND_LABEL
 from app.modules.architecture.schemas import StateMachineModel, StateOut, TransitionOut
 from app.modules.architecture.state_shapes import (
     COMPOSITE_HEADER_HEIGHT,
-    LABEL_FONT_SIZE,
-    LABEL_LINE_HEIGHT,
-    LABEL_MAX_LINES,
     LABEL_ON_FILL,
-    LABELLED_MARKERS,
+    LABEL_ON_FILL_KINDS,
     SELF_LOOP_REACH,
     STATE_CORNER_RADIUS,
     STATE_MARKERS,
     action_lines,
+    labelled_svg,
     marker_frame,
     self_loop,
     self_loop_path,
@@ -92,14 +91,14 @@ def _marker(state: StateOut) -> str:
     when it is not just the kind's own label."""
     kind = StateKind(state.kind)
     x, y, w, h = _box(state)
-    labelled = bool(state.label.strip())
-    size, markup = (LABELLED_MARKERS[kind].size, LABELLED_MARKERS[kind].svg) if labelled else STATE_MARKERS[kind]
+    layout = fit_label(kind, state.label)
+    size, markup = (layout.size, labelled_svg(kind, layout.size)) if layout else STATE_MARKERS[kind]
     match = _ROOT.search(markup)
     inner = markup[match.end(): -len("</svg>")] if match else ""
     drawing = f'<g transform="translate({x:.1f} {y:.1f}) scale({w / size:.4f} {h / size:.4f})">{inner}</g>'
-    if labelled:
-        lines = _wrap(state.label.strip(), max(int(LABELLED_MARKERS[kind].text_width / 5.6), 3), LABEL_MAX_LINES)
-        colour = LABEL_ON_FILL if LABELLED_MARKERS[kind].on_fill else _TEXT_COLOR
+    if layout:
+        lines = layout.lines
+        colour = LABEL_ON_FILL if kind in LABEL_ON_FILL_KINDS else _TEXT_COLOR
         top = y + h / 2 - len(lines) * LABEL_LINE_HEIGHT / 2 + LABEL_FONT_SIZE
         drawing += "".join(
             f'<text x="{x + w / 2:.1f}" y="{top + i * LABEL_LINE_HEIGHT:.1f}" text-anchor="middle" '

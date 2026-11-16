@@ -45,14 +45,32 @@ export const AMarkerKindHidesTheActionsAndShowsTheSymbolLabel: Story = {
   },
 };
 
-/** The label is limited to 40 characters in the field, so a longer entry cannot be typed. */
-export const TheSymbolLabelTakesFortyCharacters: Story = {
+/** The label is limited to 256 characters in the field, so a longer entry cannot be typed; the count shows near the limit. */
+export const TheSymbolLabelTakes256Characters: Story = {
   args: { initial: buildState({ name: "Choice", kind: "choice" }) },
   play: async () => {
     const field = dialog().getByLabelText("Symbol label");
-    await expect(field).toHaveAttribute("maxlength", "40");
+    await expect(field).toHaveAttribute("maxlength", "256");
     await userEvent.type(field, "Battery low?");
     await expect(field).toHaveValue("Battery low?");
+    await expect(dialog().queryByText(/of 256 characters/)).not.toBeInTheDocument();
+    await userEvent.clear(field);
+    await userEvent.click(field);
+    await userEvent.paste("word ".repeat(40));
+    await expect(dialog().getByText("200 of 256 characters.")).toBeInTheDocument();
+  },
+};
+
+/** A word longer than the largest symbol holds is warned about on the field, and the warning goes when the label is changed. */
+export const AWordTooLongForTheLargestSymbolIsWarnedAbout: Story = {
+  args: { initial: buildState({ name: "Choice", kind: "choice", label: `before ${"x".repeat(60)} after` }) },
+  play: async () => {
+    const d = dialog();
+    await expect(d.getByRole("alert")).toHaveTextContent("A word in this label is longer than the largest symbol holds");
+    const field = d.getByLabelText("Symbol label");
+    await userEvent.clear(field);
+    await userEvent.type(field, "Fits?");
+    await expect(d.queryByRole("alert")).not.toBeInTheDocument();
   },
 };
 

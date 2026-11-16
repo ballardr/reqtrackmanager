@@ -897,7 +897,7 @@ class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
         parent_state_id: The composite state this state is nested in, or `None` at the top level. The database
             refuses to delete a state that still has children (the rules ask for them to be moved or deleted first).
         entry_action / exit_action / activity: Plain text a person reads, never evaluated or drawn as markup.
-        label: Up to 40 characters of plain text drawn inside an initial, final or choice symbol (`SYMBOL_LABEL_LENGTH`);
+        label: Up to 256 characters of plain text drawn inside an initial, final or choice symbol (`SYMBOL_LABEL_LENGTH`);
             empty for an ordinary state, whose name is drawn in its box.
         x / y / width / height / collapsed: The box in diagram units; a collapsed composite state is drawn as one box.
         creator_id: The author.

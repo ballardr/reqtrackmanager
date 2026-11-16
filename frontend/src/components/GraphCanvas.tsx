@@ -48,13 +48,10 @@ export type GraphNodeOutline = "rectangle" | "pointed-right" | "pointed-left" | 
  */
 export type GraphNodeTone = "none" | "neutral" | "info" | "success" | "warning" | "danger";
 
-/** Plain text drawn inside a marker, centred and wrapped to `width` canvas units, cut with an ellipsis after `lines` lines. */
+/** Plain text drawn inside a marker, centred, one line per entry of `lines` (the consumer breaks them; none is wrapped or cut here). */
 export interface GraphMarkerText {
-  text: string;
-  /** The width the text may use, in canvas units. */
-  width: number;
-  /** The most lines drawn. */
-  lines: number;
+  /** The lines drawn, top to bottom. */
+  lines: string[];
   /** True when the text sits on the marker's fill (drawn in a light colour); false when it sits on the page. */
   onFill: boolean;
 }

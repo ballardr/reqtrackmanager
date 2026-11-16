@@ -3,7 +3,8 @@ import { expect } from "storybook/test";
 
 import { safeSvgImage } from "../../utils/safeSvgImage";
 import cases from "./stateShapeCases.json";
-import { LABELLED_MARKERS, markerFrame, STATE_MARKERS, stateShapeTable } from "./stateShapes";
+import { labelledSvg, markerFrame, STATE_MARKERS, stateShapeTable, type StateMarkerKind } from "./stateShapes";
+import { BASE_SIZE } from "./symbolLabelLayout";
 
 function Host() {
   return <p>Runs the browser copy of the state shape table against the table the server produced.</p>;
@@ -34,15 +35,17 @@ export const EveryMarkerSurvivesTheSanitiser: Story = {
   },
 };
 
-/** Every labelled marker is a larger square drawing that passes the sanitiser and keeps room for its text. */
-export const EveryLabelledMarkerSurvivesTheSanitiserAndIsLarger: Story = {
+/** A labelled marker is a larger square drawing at any size, passes the sanitiser and keeps its stroke width. */
+export const EveryLabelledMarkerSurvivesTheSanitiserAtAnySizeAndIsLarger: Story = {
   play: async () => {
-    for (const [kind, marker] of Object.entries(LABELLED_MARKERS)) {
-      const uri = safeSvgImage(marker.svg);
-      await expect(uri).not.toBeNull();
-      await expect(decodeURIComponent((uri ?? "").split(",")[1] ?? "")).toContain(`viewBox="0 0 ${marker.size} ${marker.size}"`);
-      await expect(marker.size).toBeGreaterThan(STATE_MARKERS[kind as keyof typeof STATE_MARKERS].size);
-      await expect(marker.textWidth).toBeLessThan(marker.size);
+    for (const kind of Object.keys(BASE_SIZE) as StateMarkerKind[]) {
+      for (const size of [BASE_SIZE[kind], 200]) {
+        const uri = safeSvgImage(labelledSvg(kind, size));
+        await expect(uri).not.toBeNull();
+        await expect(decodeURIComponent((uri ?? "").split(",")[1] ?? "")).toContain(`viewBox="0 0 ${size} ${size}"`);
+        await expect(size).toBeGreaterThan(STATE_MARKERS[kind].size);
+      }
+      if (kind !== "initial") await expect(labelledSvg(kind, 200)).toContain('stroke-width="2"');
     }
   },
 };
@@ -56,6 +59,10 @@ export const AMarkerFrameGrowsAroundItsCentreOnlyForALabel: Story = {
     const frame = markerFrame("choice", box, "Full?");
     await expect(frame).toEqual({ x: 70, y: 20, width: 96, height: 96 });
     await expect(frame.x + frame.width / 2).toBe(118);
+    // A longer label grows the frame, still around the same centre.
+    const grown = markerFrame("choice", box, "Is the tank level above the high-level alarm threshold for more than ten seconds");
+    await expect(grown.width).toBeGreaterThan(96);
+    await expect(grown.x + grown.width / 2).toBe(118);
     await expect(markerFrame("initial", { x: 0, y: 0, width: 200, height: 100 }, "x")).toEqual({ x: 0, y: 0, width: 200, height: 100 });
   },
 };

@@ -806,7 +806,7 @@ export interface StateFieldValues {
 }
 
 /** The longest symbol label the server stores (characters). */
-export const SYMBOL_LABEL_MAX = 40;
+export const SYMBOL_LABEL_MAX = 256;
 
 /** A transition with the codes of its two states and the diagram's version after the change. */
 export interface StateTransition {

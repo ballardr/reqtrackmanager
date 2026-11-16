@@ -19,7 +19,7 @@ import enum
 DISPLAY_NOTE_MAX = 500
 
 #: The longest label an initial, final or choice symbol may carry (characters): the text drawn inside the symbol.
-SYMBOL_LABEL_LENGTH = 40
+SYMBOL_LABEL_LENGTH = 256
 
 
 class Domain(str, enum.Enum):

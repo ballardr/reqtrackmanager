@@ -1,0 +1,211 @@
+"""
+Module: modules.architecture.diagram_symbol_label
+
+The layout of the label drawn inside an initial, final or choice symbol of a state machine diagram: where its lines break and
+how large the symbol must be to hold them.
+
+Responsibilities:
+- Measure a text with a fixed, font-independent width table (`text_width`).
+- Break a label into lines **between words only** (`wrap_label`): at spaces, after a hyphen and between East Asian characters,
+  and at a line break the person typed; a word is never split.
+- Find the smallest symbol that holds the label (`fit_label`): the symbol grows from its labelled base size in steps until the
+  text, with `LABEL_PADDING` clear of the symbol's inner edge on every side, fits inside it (`holds`).
+
+Design decisions:
+- **One rule, two implementations.** The browser draws the label from the lines this module gives
+  (`frontend/src/modules/architecture/symbolLabelLayout.ts` is the TypeScript copy) and the server's SVG draws the same lines, so
+  the screen and the exports break a label at the same words. `symbolLabelCases.json`, written by
+  `tests/test_architecture_symbol_label.py`, holds the cases both are tested against; a change is made in both.
+- **A fixed width table, not font metrics.** The server has no font, and a browser's glyph widths differ by platform; a table of
+  average widths (in thousandths of the font size, integers only so both languages agree exactly) is the one measure both can
+  share. It errs wide, so the real text does not overflow the symbol.
+- **Padding is measured, not implied.** The text block's rectangle (widest line by line count) is centred on the symbol and its
+  nearest corner must be at least `LABEL_PADDING` from the inner edge of the circle, the ring's disc or the diamond (the
+  diamond's edge is measured at right angles, inside its stroke); all in integers (thousandths of a unit, squares instead of
+  roots) so both languages agree exactly. `TEXT_PERCENT` only sets how wide a line is first tried (the square that fits), so
+  lines wrap before the exact check.
+- **Text outside a symbol keeps the same gap** (`LABEL_PADDING` from the symbol's outer edge), used by the label position.
+- **A word longer than the largest symbol's text area** has no good drawing: it is kept whole on one line at the largest size and
+  `fits` is False, so the Selection card can warn; it is never broken mid-word and never clipped.
+
+Dependencies: `enums` (the state kinds).
+"""
+
+from __future__ import annotations
+
+from typing import NamedTuple
+
+from app.modules.architecture.enums import StateKind
+
+#: The label's font size and line height (diagram units).
+LABEL_FONT_SIZE = 10
+LABEL_LINE_HEIGHT = 12
+
+#: The smallest labelled symbol of each kind (its square frame), the share of the symbol's size a line is first wrapped to
+#: (percent), the step a symbol grows by while the label does not fit, and the largest size.
+BASE_SIZE: dict[StateKind, int] = {StateKind.INITIAL: 52, StateKind.FINAL: 72, StateKind.CHOICE: 96}
+TEXT_PERCENT: dict[StateKind, int] = {StateKind.INITIAL: 56, StateKind.FINAL: 42, StateKind.CHOICE: 40}
+
+#: The least distance (diagram units) between text and a symbol's edge: inside the symbol from its inner edge, outside it from
+#: its outer edge.
+LABEL_PADDING = 4
+SIZE_STEP = 4
+MAX_SIZE = 320
+
+#: Glyph widths in thousandths of the font size: a space, narrow glyphs, capitals, the widest capitals and signs, a full-width
+#: (East Asian) character, and everything else.
+_SPACE, _NARROW, _CAPITAL, _WIDE, _FULL, _OTHER = 280, 300, 680, 850, 1000, 560
+_NARROW_GLYPHS = frozenset("iljtfI.,:;'|!()[]/\\")
+_WIDE_GLYPHS = frozenset("MWmw@%")
+#: Code point ranges drawn full width, and so broken between any two characters.
+_FULL_WIDTH = (
+    (0x1100, 0x11FF), (0x2E80, 0xA4CF), (0xAC00, 0xD7AF), (0xF900, 0xFAFF), (0xFE30, 0xFE6F), (0xFF00, 0xFF60), (0xFFE0, 0xFFE6),
+)
+
+
+class SymbolLabelLayout(NamedTuple):
+    """The drawing of a label inside its symbol.
+
+    Attributes:
+        size: The side of the square symbol that holds the label (a multiple of `SIZE_STEP`).
+        lines: The label's lines, top to bottom.
+        fits: False when the text does not fit the largest symbol with its padding (a word longer than its text area, drawn
+            whole on a line of its own and wider than the symbol, or lines taller than it).
+    """
+
+    size: int
+    lines: list[str]
+    fits: bool
+
+
+def _is_full_width(code: int) -> bool:
+    """True when the code point is a full-width character (drawn one em wide, and a place a line may break)."""
+    return any(low <= code <= high for low, high in _FULL_WIDTH)
+
+
+def _glyph(char: str) -> int:
+    """The width of one character, in thousandths of the font size."""
+    if char == " ":
+        return _SPACE
+    if char in _NARROW_GLYPHS:
+        return _NARROW
+    if char in _WIDE_GLYPHS:
+        return _WIDE
+    if "A" <= char <= "Z":
+        return _CAPITAL
+    return _FULL if _is_full_width(ord(char)) else _OTHER
+
+
+def text_width(text: str) -> int:
+    """The width a text takes at the label's font size.
+
+    Args:
+        text: Plain text.
+
+    Returns:
+        The width in thousandths of a diagram unit (an integer, so the browser's copy agrees exactly).
+    """
+    return sum(_glyph(char) for char in text) * LABEL_FONT_SIZE
+
+
+def _pieces(paragraph: str) -> list[tuple[str, str]]:
+    """The pieces a paragraph may be broken into, each with the separator that joins it to the one before (a space between
+    words, nothing after a hyphen or between full-width characters)."""
+    pieces: list[tuple[str, str]] = []
+    for word in paragraph.split():
+        parts: list[str] = []
+        current = ""
+        for char in word:
+            if _is_full_width(ord(char)):
+                if current:
+                    parts.append(current)
+                parts.append(char)
+                current = ""
+                continue
+            current += char
+            if char == "-":
+                parts.append(current)
+                current = ""
+        if current:
+            parts.append(current)
+        for index, part in enumerate(parts):
+            pieces.append((" " if index == 0 and pieces else "", part))
+    return pieces
+
+
+def wrap_label(label: str, limit: int) -> list[str]:
+    """Break a label into lines, between words only.
+
+    Args:
+        label: The label text; a line break the person typed starts a new line.
+        limit: The widest a line may be, in thousandths of a diagram unit.
+
+    Returns:
+        The lines, none empty. A word wider than `limit` is kept whole on a line of its own.
+    """
+    lines: list[str] = []
+    for paragraph in label.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        current, current_width = "", 0
+        for separator, part in _pieces(paragraph):
+            part_width = text_width(part)
+            if current and current_width + text_width(separator) + part_width > limit:
+                lines.append(current)
+                current, current_width = part, part_width
+            elif current:
+                current += separator + part
+                current_width += text_width(separator) + part_width
+            else:
+                current, current_width = part, part_width
+        if current:
+            lines.append(current)
+    return lines
+
+
+def holds(kind: StateKind, size: int, lines: list[str]) -> bool:
+    """Whether a symbol of `size` holds the lines with `LABEL_PADDING` clear of its inner edge.
+
+    Args:
+        kind: An initial, final or choice state kind.
+        size: The side of the square frame.
+        lines: The label's lines.
+
+    Returns:
+        True when the corner of the text block nearest the edge is at least `LABEL_PADDING` inside it.
+    """
+    width = max(text_width(line) for line in lines)  # thousandths of a unit
+    height = len(lines) * LABEL_LINE_HEIGHT * 1000
+    half = size // 2
+    if kind is StateKind.CHOICE:
+        # The diamond's inner edge is |x| + |y| = half - 2 (inside the 2-unit stroke); the corner (width/2, height/2) must be
+        # `LABEL_PADDING` from it measured at right angles, i.e. slack >= padding * sqrt(2) (compared squared).
+        slack2 = (half - 2) * 2000 - (width + height)
+        return slack2 >= 0 and slack2 * slack2 >= 8_000_000 * LABEL_PADDING * LABEL_PADDING
+    # A circle: the dot's radius, or the final state's inner disc (the text sits on the disc).
+    radius = half - 1 if kind is StateKind.INITIAL else (26 * size + 36) // 72
+    room = radius - LABEL_PADDING
+    return room > 0 and width * width + height * height <= 4 * room * room * 1_000_000
+
+
+def text_side(kind: StateKind, size: int) -> int:
+    """The width a line is first tried at in a symbol of `size`: the side of the square that fits it (diagram units, whole)."""
+    return size * TEXT_PERCENT[kind] // 100
+
+
+def fit_label(kind: StateKind, label: str) -> SymbolLabelLayout | None:
+    """The smallest symbol that holds a label, and the lines drawn in it.
+
+    Args:
+        kind: An initial, final or choice state kind.
+        label: The symbol's label.
+
+    Returns:
+        The size and lines, or None when the label is blank (no label, so the symbol keeps its plain size).
+    """
+    text = label.strip()
+    if not text:
+        return None
+    for size in range(BASE_SIZE[kind], MAX_SIZE + 1, SIZE_STEP):
+        lines = wrap_label(text, text_side(kind, size) * 1000)
+        if holds(kind, size, lines):
+            return SymbolLabelLayout(size, lines, True)
+    return SymbolLabelLayout(MAX_SIZE, wrap_label(text, text_side(kind, MAX_SIZE) * 1000), False)

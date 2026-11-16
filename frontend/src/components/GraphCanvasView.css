@@ -316,16 +316,13 @@
   height: 100%;
 }
 
-/* A marker's label sits in the middle of the drawing, wrapped, centred and cut with an ellipsis at its line limit. */
+/* A marker's label sits in the middle of the drawing, centred, one line per line break the consumer put in it (never wrapped or cut here). */
 .graph-node-marker-text {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
+  white-space: pre;
   text-align: center;
   font-size: 10px;
   line-height: 12px;

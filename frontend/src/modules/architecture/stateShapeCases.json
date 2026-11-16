@@ -15,28 +15,33 @@
   },
   "labelled_markers": {
     "initial": {
-      "size": 52,
-      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 52 52\" width=\"52\" height=\"52\"><circle cx=\"26\" cy=\"26\" r=\"25\" fill=\"#64748b\"/></svg>",
-      "text_width": 36,
-      "on_fill": true
+      "base_size": 52,
+      "text_percent": 56,
+      "on_fill": true,
+      "svg_at_base": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 52 52\" width=\"52\" height=\"52\"><circle cx=\"26\" cy=\"26\" r=\"25\" fill=\"#64748b\"/></svg>",
+      "svg_at_sample": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" width=\"200\" height=\"200\"><circle cx=\"100\" cy=\"100\" r=\"99\" fill=\"#64748b\"/></svg>"
     },
     "final": {
-      "size": 72,
-      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 72 72\" width=\"72\" height=\"72\"><circle cx=\"36\" cy=\"36\" r=\"34\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\"/><circle cx=\"36\" cy=\"36\" r=\"26\" fill=\"#64748b\"/></svg>",
-      "text_width": 38,
-      "on_fill": true
+      "base_size": 72,
+      "text_percent": 42,
+      "on_fill": true,
+      "svg_at_base": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 72 72\" width=\"72\" height=\"72\"><circle cx=\"36\" cy=\"36\" r=\"35\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\"/><circle cx=\"36\" cy=\"36\" r=\"26\" fill=\"#64748b\"/></svg>",
+      "svg_at_sample": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" width=\"200\" height=\"200\"><circle cx=\"100\" cy=\"100\" r=\"99\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\"/><circle cx=\"100\" cy=\"100\" r=\"72\" fill=\"#64748b\"/></svg>"
     },
     "choice": {
-      "size": 96,
-      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 96\" width=\"96\" height=\"96\"><polygon points=\"48,1 95,48 48,95 1,48\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>",
-      "text_width": 48,
-      "on_fill": false
+      "base_size": 96,
+      "text_percent": 40,
+      "on_fill": false,
+      "svg_at_base": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 96\" width=\"96\" height=\"96\"><polygon points=\"48,1 95,48 48,95 1,48\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>",
+      "svg_at_sample": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\" width=\"200\" height=\"200\"><polygon points=\"100,1 199,100 100,199 1,100\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>"
     }
   },
   "label": {
-    "max_lines": 3,
     "font_size": 10,
-    "line_height": 12
+    "line_height": 12,
+    "size_step": 4,
+    "max_size": 320,
+    "sample_size": 200
   },
   "state": {
     "width": 160,

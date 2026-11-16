@@ -157,14 +157,14 @@ export const MarkerNodesDrawOnlyTheirDrawing: Story = {
   },
 };
 
-/** A marker's text sits inside its drawing, wrapped to the width given and cut at the line limit; it is plain text, never markup. */
+/** A marker's text sits inside its drawing, one line per entry the consumer gives (none is wrapped or cut); it is plain text, never markup. */
 export const MarkerNodesDrawTheirTextInsideTheDrawing: Story = {
   render: () => (
     <GraphCanvas
       ariaLabel="Order processing" showViewToggle={false}
       nodes={[
-        { id: "start", label: "Start", x: 0, y: 0, width: 52, height: 52, marker: true, symbolSvg: DOT, markerText: { text: "Order <b>placed</b>", width: 36, lines: 3, onFill: true } },
-        { id: "check", label: "Payment check", x: 200, y: 0, width: 96, height: 96, marker: true, symbolSvg: DIAMOND, markerText: { text: "Paid?", width: 48, lines: 3, onFill: false } },
+        { id: "start", label: "Start", x: 0, y: 0, width: 52, height: 52, marker: true, symbolSvg: DOT, markerText: { lines: ["Order", "<b>placed</b>"], onFill: true } },
+        { id: "check", label: "Payment check", x: 200, y: 0, width: 96, height: 96, marker: true, symbolSvg: DIAMOND, markerText: { lines: ["Paid?"], onFill: false } },
         { id: "other", label: "Other", x: 400, y: 0, width: 20, height: 20, marker: true, symbolSvg: DOT },
       ]}
       edges={[]}

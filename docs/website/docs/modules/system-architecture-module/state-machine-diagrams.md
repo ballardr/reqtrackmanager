@@ -48,7 +48,7 @@ The diagrams use UML state machine notation, which is also the SysML state machi
 | Composite state | Frame that contains other states |
 | Transition | Arrow labelled `event [condition] / action`; a transition from a state to itself is drawn as a loop |
 
-An initial state, final state or choice can carry a **symbol label**, up to 40 characters of text drawn inside the symbol, so a branch can say what it decides ("Battery low?"). The symbol is drawn larger while it has a label, and a long label wraps over up to three lines and ends with an ellipsis; the full text is in the Selection card and the Outline.
+An initial state, final state or choice can carry a **symbol label**, up to 256 characters of text drawn inside the symbol, so a branch can say what it decides ("Battery low?"). The text breaks between words, after a hyphen or at a line break typed in the field, never inside a word, and the symbol is drawn as large as the text needs (a long label makes a large symbol; a long remark reads better as a note). A single word longer than the largest symbol holds is drawn whole on one line and extends past the symbol, and the field warns about it. The screen, the SVG and PNG exports break the text at the same words; the full text is also in the Selection card and the Outline.
 
 Conditions (guards) and actions are text that a person reads. The module does not simulate a diagram or generate code from it.
 

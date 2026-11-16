@@ -1,0 +1,519 @@
+{
+  "cases": [
+    {
+      "kind": "initial",
+      "name": "short",
+      "label": "Full?",
+      "size": 52,
+      "lines": [
+        "Full?"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "two words",
+      "label": "Power on",
+      "size": 52,
+      "lines": [
+        "Power",
+        "on"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "size": 116,
+      "lines": [
+        "Is the tank",
+        "level above",
+        "the high-",
+        "level alarm",
+        "threshold for",
+        "more than",
+        "ten seconds"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "size": 88,
+      "lines": [
+        "Over-",
+        "temperature",
+        "protection",
+        "trip"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "size": 172,
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "size": 320,
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "fits": false
+    },
+    {
+      "kind": "initial",
+      "name": "a word that just fits the choice at its base size",
+      "label": "Verification",
+      "size": 68,
+      "lines": [
+        "Verification"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "capitals and signs are wider",
+      "label": "ABS MWM @ 100%",
+      "size": 68,
+      "lines": [
+        "ABS",
+        "MWM @",
+        "100%"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "narrow glyphs are narrower",
+      "label": "illi jilt fl.",
+      "size": 52,
+      "lines": [
+        "illi jilt",
+        "fl."
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "size": 84,
+      "lines": [
+        "電源が入",
+        "っている",
+        "かどうか",
+        "を確認す",
+        "る"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "size": 72,
+      "lines": [
+        "First",
+        "line",
+        "Second",
+        "line"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "spaces around and between words",
+      "label": "  spaced    out  ",
+      "size": 52,
+      "lines": [
+        "spaced",
+        "out"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "the longest label",
+      "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
+      "size": 200,
+      "lines": [
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum d"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "short",
+      "label": "Full?",
+      "size": 72,
+      "lines": [
+        "Full?"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "two words",
+      "label": "Power on",
+      "size": 72,
+      "lines": [
+        "Power",
+        "on"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "size": 160,
+      "lines": [
+        "Is the tank",
+        "level above",
+        "the high-level",
+        "alarm",
+        "threshold for",
+        "more than ten",
+        "seconds"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "size": 120,
+      "lines": [
+        "Over-",
+        "temperature",
+        "protection",
+        "trip"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "size": 236,
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "size": 320,
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "fits": false
+    },
+    {
+      "kind": "final",
+      "name": "a word that just fits the choice at its base size",
+      "label": "Verification",
+      "size": 92,
+      "lines": [
+        "Verification"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "capitals and signs are wider",
+      "label": "ABS MWM @ 100%",
+      "size": 88,
+      "lines": [
+        "ABS",
+        "MWM",
+        "@",
+        "100%"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "narrow glyphs are narrower",
+      "label": "illi jilt fl.",
+      "size": 72,
+      "lines": [
+        "illi jilt",
+        "fl."
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "size": 116,
+      "lines": [
+        "電源が入",
+        "っている",
+        "かどうか",
+        "を確認す",
+        "る"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "size": 96,
+      "lines": [
+        "First",
+        "line",
+        "Second",
+        "line"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "spaces around and between words",
+      "label": "  spaced    out  ",
+      "size": 72,
+      "lines": [
+        "spaced",
+        "out"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "the longest label",
+      "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
+      "size": 272,
+      "lines": [
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum d"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "short",
+      "label": "Full?",
+      "size": 96,
+      "lines": [
+        "Full?"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "two words",
+      "label": "Power on",
+      "size": 96,
+      "lines": [
+        "Power",
+        "on"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "size": 168,
+      "lines": [
+        "Is the tank",
+        "level above",
+        "the high-level",
+        "alarm",
+        "threshold for",
+        "more than ten",
+        "seconds"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "size": 124,
+      "lines": [
+        "Over-",
+        "temperature",
+        "protection",
+        "trip"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "size": 188,
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "size": 320,
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "fits": false
+    },
+    {
+      "kind": "choice",
+      "name": "a word that just fits the choice at its base size",
+      "label": "Verification",
+      "size": 96,
+      "lines": [
+        "Verification"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "capitals and signs are wider",
+      "label": "ABS MWM @ 100%",
+      "size": 96,
+      "lines": [
+        "ABS",
+        "MWM @",
+        "100%"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "narrow glyphs are narrower",
+      "label": "illi jilt fl.",
+      "size": 96,
+      "lines": [
+        "illi jilt",
+        "fl."
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "size": 116,
+      "lines": [
+        "電源が入",
+        "っている",
+        "かどうか",
+        "を確認す",
+        "る"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "size": 100,
+      "lines": [
+        "First",
+        "line",
+        "Second",
+        "line"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "spaces around and between words",
+      "label": "  spaced    out  ",
+      "size": 96,
+      "lines": [
+        "spaced",
+        "out"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "the longest label",
+      "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
+      "size": 276,
+      "lines": [
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum d"
+      ],
+      "fits": true
+    }
+  ],
+  "widths": [
+    {
+      "text": "",
+      "width": 0
+    },
+    {
+      "text": "iii",
+      "width": 9000
+    },
+    {
+      "text": "WWW",
+      "width": 25500
+    },
+    {
+      "text": "abc 123",
+      "width": 36400
+    },
+    {
+      "text": "電源",
+      "width": 20000
+    },
+    {
+      "text": "A-b",
+      "width": 18000
+    }
+  ]
+}

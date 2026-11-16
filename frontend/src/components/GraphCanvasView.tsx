@@ -198,12 +198,11 @@ function GraphNodeBox({ data, selected }: NodeProps<GraphFlowNode>) {
     return (
       <div className={data.symbol ? "graph-node-marker" : "graph-node-marker graph-node-marker-empty"}>
         {data.symbol && <img className="graph-node-marker-image" src={data.symbol} alt="" />}
-        {data.markerText && data.markerText.text && (
+        {data.markerText && data.markerText.lines.length > 0 && (
           <span
             className={data.markerText.onFill ? "graph-node-marker-text graph-node-marker-text-on-fill" : "graph-node-marker-text"}
-            style={{ width: data.markerText.width, WebkitLineClamp: data.markerText.lines }}
           >
-            {data.markerText.text}
+            {data.markerText.lines.join("\n")}
           </span>
         )}
         {SIDE_POINTS.map((point) => (
