@@ -14,19 +14,21 @@ function Host() {
   const snap = useSnapToGrid();
   const points = useAttachPointVisibility();
   const [blockHops, setBlockHops] = useState(false);
+  const [blockNames, setBlockNames] = useState(false);
   const [machineHops, setMachineHops] = useState(false);
   const [blockShape, setBlockShape] = useState<LineShape>("straight");
   const [machineShape, setMachineShape] = useState<LineShape>("straight");
   return (
     <div className="row" style={{ gap: "var(--space-4)" }}>
       <DiagramSettingsButton
-        connectionDetail={false} disabled={false} onConnectionDetailChange={() => undefined} lineHops={blockHops} onLineHopsChange={setBlockHops} lineShape={blockShape} onLineShapeChange={setBlockShape} showNotes onShowNotesChange={() => undefined}
+        connectionDetail={false} disabled={false} onConnectionDetailChange={() => undefined} lineHops={blockHops} onLineHopsChange={setBlockHops} showConnectionNames={blockNames} onShowConnectionNamesChange={setBlockNames} lineShape={blockShape} onLineShapeChange={setBlockShape} showNotes onShowNotesChange={() => undefined}
         showComments onShowCommentsChange={() => undefined} showResolved onShowResolvedChange={() => undefined}
         snapToGrid={snap.on} onSnapToGridChange={snap.setOn}
         attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways}
       />
       <StateMachineSettingsButton lineHops={machineHops} disabled={false} onLineHopsChange={setMachineHops} lineShape={machineShape} onLineShapeChange={setMachineShape} snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways} />
       <span data-testid="hops">{`${blockHops}/${machineHops}`}</span>
+      <span data-testid="names">{String(blockNames)}</span>
       <span data-testid="shapes">{`${blockShape}/${machineShape}`}</span>
       <span data-testid="stored">{String(snap.on)}</span>
       <span data-testid="points">{points.canvasProps.attachPointVisibility}</span>
@@ -126,6 +128,40 @@ export const LineHopsIsASwitchInEachGear: Story = {
     await userEvent.click(within(machine).getByRole("switch", { name: "Line hops" }));
     await userEvent.keyboard("{Escape}");
     await expect(canvas.getByTestId("hops")).toHaveTextContent("true/true");
+  },
+};
+
+/** Show connection names is off by default, is a switch in the block diagram's gear only (a state machine has no connections) and marks the gear while on. */
+export const ShowConnectionNamesIsASwitchInTheBlockDiagramGear: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId("names")).toHaveTextContent("false");
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: connection detail off, line hops off, connection names off/ }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    const names = within(dialog).getByRole("switch", { name: "Show connection names" });
+    await expect(names).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(names);
+    await expect(names).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByTestId("names")).toHaveTextContent("true");
+    await expect(canvas.getByRole("button", { name: /^Diagram settings: connection detail off, line hops off, connection names on/ })).toHaveClass("btn-marked");
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off/ }));
+    const machine = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    await expect(within(machine).queryByRole("switch", { name: "Show connection names" })).toBeNull();
+  },
+};
+
+/** The help describes both states, one line each, and says what an unnamed connection and a merged line do. */
+export const TheShowConnectionNamesHelpNamesBothStates: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Diagram settings: connection detail off, line hops off/ }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^Help: Show connection names/ }));
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("On: each line is labelled with the name of its connection");
+    await expect(tip).toHaveTextContent("up to three names");
+    await expect(tip).toHaveTextContent("a connection with no name adds nothing");
+    await expect(tip).toHaveTextContent("Off: lines carry no name.");
   },
 };
 

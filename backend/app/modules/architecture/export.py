@@ -943,7 +943,8 @@ def _diagrams_json(
         {
             "unique_code": d.unique_code, "name": d.name, "purpose": d.purpose,
             "scope": _element_ref(codes, foreign, d.scope_element_id) if d.scope_element_id else None,
-            "connection_detail": d.connection_detail, "line_hops": d.line_hops, "line_shape": d.line_shape, "status": d.status,
+            "connection_detail": d.connection_detail, "line_hops": d.line_hops, "show_connection_names": d.show_connection_names,
+            "line_shape": d.line_shape, "status": d.status,
             "folder": folder_paths.get(d.folder_id) if d.folder_id else None,
             "boxes": [
                 {**_element_ref(codes, foreign, b.element_id), "x": b.x, "y": b.y, "width": b.width, "height": b.height,
@@ -1217,7 +1218,7 @@ def _import_diagrams(
             project_id=project.id, unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
             name=entry["name"], purpose=entry.get("purpose", ""), scope_element_id=scope_id,
             connection_detail=bool(entry.get("connection_detail")), line_hops=bool(entry.get("line_hops")),
-            line_shape=bundle_default_shape(entry),
+            show_connection_names=bool(entry.get("show_connection_names")), line_shape=bundle_default_shape(entry),
             folder_id=folder_importer.ensure("diagram", entry.get("folder")),
             status=entry.get("status", "draft"), version=1,
             creator_id=creator, is_archived=archived, archived_at=_instant(entry.get("archived_at")),

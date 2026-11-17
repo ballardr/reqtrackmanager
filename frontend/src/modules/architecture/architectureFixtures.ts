@@ -77,7 +77,8 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
 export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): ArchitectureDiagram {
   return {
     id: "dgm-1", project_id: PROJECT_ID, unique_code: "DGM-001", name: "Platform overview", purpose: "How traffic reaches the services.",
-    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, line_hops: false, line_shape: "straight",
+    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, line_hops: false, show_connection_names: false,
+    line_shape: "straight",
     folder_id: null, folder_path: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", placement_count: 3, note_count: 0, toggle_count: 1, ...overrides,
   };

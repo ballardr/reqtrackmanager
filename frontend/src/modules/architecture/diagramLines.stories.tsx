@@ -3,6 +3,7 @@ import { expect } from "storybook/test";
 
 import { buildConnection, buildDiagramModel, buildModelElement, MODEL_REST_TYPE } from "./architectureFixtures";
 import { edgeLabelText, resolveDiagram } from "./diagramLines";
+import labelCases from "./diagramLabelCases.json";
 
 const state = (overrides: Partial<Parameters<typeof resolveDiagram>[1]> = {}) => ({
   placed: ["el-1", "el-2", "el-3"], togglesOff: new Set<string>(), connectionDetail: true, ...overrides,
@@ -113,11 +114,64 @@ export const AConnectionToAnUnknownElementIsLeftOut: Story = {
 
 export const TheLabelOfASingleConnectionNamesItsTypeAndProtocol: Story = {
   play: async () => {
-    expect(edgeLabelText(1, "REST API", "HTTPS")).toBe("REST API · HTTPS");
-    expect(edgeLabelText(1, "REST API", "")).toBe("REST API");
-    expect(edgeLabelText(1, undefined, "HTTPS")).toBe("HTTPS");
-    expect(edgeLabelText(1, undefined, "")).toBeNull();
-    expect(edgeLabelText(3, "REST API", "HTTPS")).toBe("REST API ×3");
-    expect(edgeLabelText(3, undefined, "")).toBe("3 connections");
+    expect(edgeLabelText(1, "REST API", "HTTPS", true)).toBe("REST API · HTTPS");
+    expect(edgeLabelText(1, "REST API", "", true)).toBe("REST API");
+    expect(edgeLabelText(1, undefined, "HTTPS", true)).toBe("HTTPS");
+    expect(edgeLabelText(1, undefined, "", true)).toBeNull();
+    expect(edgeLabelText(3, "REST API", "HTTPS", true)).toBe("REST API ×3");
+    expect(edgeLabelText(3, undefined, "", true)).toBe("3 connections");
+    expect(edgeLabelText(3, "REST API", "HTTPS", false)).toBeNull();
+  },
+};
+
+/** The server's label rule (`diagram_edge_label`) written out as cases; the browser must give exactly the same text. */
+export const TheLabelRuleGivesEveryCaseTheServerGives: Story = {
+  play: async () => {
+    expect(labelCases.length).toBeGreaterThan(10);
+    for (const c of labelCases) {
+      expect(edgeLabelText(c.count, c.type_name ?? undefined, c.protocol, c.detail, c.names), c.name).toBe(c.label);
+    }
+  },
+};
+
+export const ALineIsLabelledWithTheNameOfItsConnectionOnlyWhenTheSettingIsOn: Story = {
+  play: async () => {
+    const model = buildDiagramModel();
+    expect(resolveDiagram(model, state({ connectionDetail: false })).edges[0].label).toBeNull();
+    expect(resolveDiagram(model, state({ connectionDetail: false, showConnectionNames: true })).edges[0].label).toBe("Client traffic");
+    expect(resolveDiagram(model, state({ showConnectionNames: true })).edges[0].label).toBe("Client traffic\nREST API · HTTPS/1.1");
+    const unnamed = buildDiagramModel({ connections: [buildConnection({ name: "" })] });
+    expect(resolveDiagram(unnamed, state({ showConnectionNames: true })).edges[0].label).toBe("REST API · HTTPS/1.1");
+  },
+};
+
+export const AMergedLineListsItsNamesInCodeOrderThenCountsTheRest: Story = {
+  play: async () => {
+    // Created out of order, with a code that only sorts right as a number (CON-9 before CON-10).
+    const model = buildDiagramModel({
+      connections: [
+        buildConnection({ id: "c10", unique_code: "CON-10", name: "Tenth" }),
+        buildConnection({ id: "c9", unique_code: "CON-9", name: "Ninth" }),
+        buildConnection({ id: "c2", unique_code: "CON-2", name: "Second" }),
+        buildConnection({ id: "c1", unique_code: "CON-1", name: "First" }),
+      ],
+    });
+    const [edge] = resolveDiagram(model, state({ connectionDetail: false, showConnectionNames: true })).edges;
+    expect(edge.count).toBe(4);
+    expect(edge.label).toBe("First\nSecond\nNinth\n+1 more\n×4");
+  },
+};
+
+export const ARolledUpLineNamesTheConnectionsBehindIt: Story = {
+  play: async () => {
+    const model = buildDiagramModel({
+      ...ROLLED_UP,
+      connections: [
+        buildConnection({ id: "con-a", unique_code: "CON-001", name: "Orders in", target_element_id: "el-5" }),
+        buildConnection({ id: "con-b", unique_code: "CON-002", name: "Orders out", target_element_id: "el-6" }),
+      ],
+    });
+    const [edge] = resolveDiagram(model, state({ showConnectionNames: true })).edges;
+    expect(edge).toMatchObject({ rolled_up: true, count: 2, label: "Orders in\nOrders out\nREST API ×2" });
   },
 };

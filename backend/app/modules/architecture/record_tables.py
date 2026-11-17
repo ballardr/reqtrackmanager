@@ -687,6 +687,9 @@ def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
         ),
         RecordColumn("line_hops", "Line hops", lambda t, r: "Yes" if r.line_hops else "No", text_parser),
+        RecordColumn(
+            "show_connection_names", "Connection names", lambda t, r: "Yes" if r.show_connection_names else "No", text_parser,
+        ),
         RecordColumn("line_shape", "Line shape", lambda t, r: LineShape(r.line_shape).value.capitalize(), text_parser),
         RecordColumn("placements", "Elements", lambda t, r: str(t.counts[r.id].placement_count), text_parser),
         _folder_column("diagram"),

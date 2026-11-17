@@ -450,10 +450,7 @@ def _edges(runs: list[_Run], hops: dict[str, str]) -> tuple[str, str]:
                 f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{color}" stroke-width="2"{dash}{arrow}/>'
             )
         if edge.label:
-            lines.append(
-                f'<text x="{mx:.1f}" y="{my - 5:.1f}" text-anchor="middle" font-size="10" fill="{_TEXT_COLOR}" '
-                f'stroke="#FFFFFF" stroke-width="3" paint-order="stroke">{_text(edge.label)}</text>'
-            )
+            lines.append(_edge_label_text(edge.label, mx, my - 5))
         if edge.count > 1:
             lines.append(
                 f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="9" fill="#FFFFFF" stroke="{color}" stroke-width="1.5"/>'
@@ -465,6 +462,26 @@ def _edges(runs: list[_Run], hops: dict[str, str]) -> tuple[str, str]:
         for color, i in colors.items()
     )
     return defs, "".join(lines)
+
+
+def _edge_label_text(label: str, x: float, bottom: float) -> str:
+    """A line's label: one `<text>` per line of it, the last line's baseline at `bottom`, with a white halo so it stays
+    readable over a line.
+
+    Args:
+        label: The label text; a `\\n` starts a new line (connection names, then the type and protocol).
+        x: The middle of the line.
+        bottom: The baseline of the last line.
+
+    Returns:
+        The SVG text elements, every line XML-escaped.
+    """
+    rows = [row for row in label.split("\n") if row]
+    return "".join(
+        f'<text x="{x:.1f}" y="{bottom - (len(rows) - 1 - i) * 12:.1f}" text-anchor="middle" font-size="10" fill="{_TEXT_COLOR}" '
+        f'stroke="#FFFFFF" stroke-width="3" paint-order="stroke">{_text(row)}</text>'
+        for i, row in enumerate(rows)
+    )
 
 
 #: Fill and stroke of an annotation note by tone (the light-theme values of the product's tone colours).

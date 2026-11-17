@@ -10,7 +10,7 @@ Responsibilities:
   toggle or bridged through.
 - Evaluate each toggle's state (the saved default unless the request overrides it), find its members (manual members
   plus what its rule matches) and hand the plain ids to `diagram_resolver.resolve`.
-- Shape the answer for the API (`DiagramView`).
+- Shape the answer for the API (`DiagramView`); a line's label comes from `diagram_edge_label`.
 
 Design decisions:
 - **The viewer's project's connections only.** A connection belongs to the project that created it, so a diagram draws
@@ -43,6 +43,7 @@ from sqlalchemy.orm import Session
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import diagrams, records
 from app.modules.architecture.connection_tree import descendant_map
+from app.modules.architecture.diagram_edge_label import edge_label
 from app.modules.architecture.diagram_resolver import Boundary, ModelConnection, Resolution, outer_side, resolve
 from app.modules.architecture.enums import AttachPoint, ElementShape, LineShape
 from app.modules.architecture.labels import INACTIVE_STATUSES
@@ -364,11 +365,9 @@ def _nodes(
     return nodes
 
 
-def _edge_label(count: int, type_name: str | None, protocol: str) -> str | None:
-    """The text on a line when connection detail is on."""
-    if count == 1:
-        return f"{type_name} · {protocol}" if type_name and protocol else (type_name or protocol or None)
-    return f"{type_name} ×{count}" if type_name else f"{count} connections"
+def _code_order(code: str) -> tuple[int, str]:
+    """A sort key for `PREFIX-nnn` codes that puts `CON-9` before `CON-10` (the shared rule of the browser's port)."""
+    return len(code), code
 
 
 def _edges(
@@ -386,6 +385,7 @@ def _edges(
         type_ids = {m.connection_type_id for m in members}
         kind = connection_types.get(next(iter(type_ids))) if len(type_ids) == 1 else None
         detail = diagram.connection_detail
+        names = diagram.show_connection_names
         protocols = {m.protocol for m in members}
         edges.append(ViewEdge(
             id=f"{line.source_id}-{line.target_id}-{line.connection_ids[0]}", source_element_id=line.source_id,
@@ -396,8 +396,10 @@ def _edges(
             line_style=kind.line_style if detail and kind is not None else None,
             color_light=kind.color_light if detail and kind is not None else None,
             color_dark=kind.color_dark if detail and kind is not None else None,
-            label=_edge_label(len(members), kind.name if kind is not None else None, next(iter(protocols)) if len(protocols) == 1 else "")
-            if detail else None,
+            label=edge_label(
+                len(members), kind.name if kind is not None else None, next(iter(protocols)) if len(protocols) == 1 else "",
+                detail=detail, names=[m.name for m in sorted(members, key=lambda m: _code_order(m.unique_code))] if names else (),
+            ),
             connections=members, routable_connection_ids=list(line.routable), route_connection_id=line.own_route,
             hops=[
                 ViewHop(element_id=h, unique_code=elements[h].unique_code, name=elements[h].name)

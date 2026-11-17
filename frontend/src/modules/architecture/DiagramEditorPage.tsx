@@ -314,16 +314,17 @@ export function DiagramEditorPage() {
     },
   );
   const connectionDetail = diagram?.connection_detail ?? false;
+  const showConnectionNames = diagram?.show_connection_names ?? false;
   const scopeId = diagram?.scope_element_id ?? null;
   const routed = useMemo(() => routedConnections(layout.anchors), [layout.anchors]);
   const resolved = useMemo(
     () => (model
       ? resolveDiagram(model, {
-        placed: layout.boxes.map((b) => b.elementId), togglesOff: new Set(toggles.filter((t) => !t.on).map((t) => t.id)), connectionDetail,
+        placed: layout.boxes.map((b) => b.elementId), togglesOff: new Set(toggles.filter((t) => !t.on).map((t) => t.id)), connectionDetail, showConnectionNames,
         scopeId, boundaries: layout.boundaries.map((b) => ({ id: boundaryNodeId(b.connectionId), connectionId: b.connectionId })), routed,
       })
       : NO_LINES),
-    [model, layout.boxes, layout.boundaries, toggles, connectionDetail, scopeId, routed],
+    [model, layout.boxes, layout.boundaries, toggles, connectionDetail, showConnectionNames, scopeId, routed],
   );
   /** The model's connections by id, the outer connections realised, and which connection realises which. */
   const connectionsById = useMemo(() => new Map((model?.connections ?? []).map((c) => [c.id, c])), [model]);
@@ -798,6 +799,7 @@ export function DiagramEditorPage() {
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
         lineHops={diagram.line_hops} onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
+        showConnectionNames={diagram.show_connection_names} onShowConnectionNamesChange={(next) => void editor.updateFields({ show_connection_names: next })}
         lineShape={diagram.line_shape} onLineShapeChange={(next) => void editor.updateFields({ line_shape: next })}
         showNotes={showNotes} onShowNotesChange={setShowNotes}
         showComments={commentLayer.showComments} onShowCommentsChange={commentLayer.setShowComments}

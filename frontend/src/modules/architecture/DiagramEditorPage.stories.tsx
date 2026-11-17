@@ -1279,6 +1279,35 @@ export const LineHopsIsStoredFromTheGear: Story = {
   },
 };
 
+/** Show connection names is a setting of the diagram: the gear's switch stores it with the version, as Line hops is stored. */
+export const ShowConnectionNamesIsStoredFromTheGear: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, show_connection_names: true }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const names = await within(document.body).findByRole("switch", { name: "Show connection names" });
+    await expect(names).not.toBeChecked();
+    await userEvent.click(names);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, show_connection_names: true }),
+    ));
+  },
+};
+
+/** With Show connection names on, a line is labelled with its connection's name above the type and protocol, as the server draws it. */
+export const ALineCarriesTheNameOfItsConnectionWhenTheSettingIsOn: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({ diagram: buildDiagram({ connection_detail: true, show_connection_names: true }) }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByLabelText(/^Client traffic\s+REST API · HTTPS\/1\.1, connection from Gateway to Orders$/)).toBeInTheDocument();
+  },
+};
+
 /** The diagram's default line shape is a select in the gear, stored with the version as Line hops is. */
 export const TheDefaultLineShapeIsStoredFromTheGear: Story = {
   beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, line_shape: "curved" }) as never); },

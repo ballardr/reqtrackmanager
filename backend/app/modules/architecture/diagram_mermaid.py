@@ -80,9 +80,9 @@ def _boundary(key: str, box: ViewBoundary) -> str:
 def _edge(source: str, target: str, edge: ViewEdge) -> str:
     """One line: an arrow head at each end for a two-way line, dotted for an indirect one, labelled when it has a
     label or stands for several connections."""
-    text = edge.label or (f"×{edge.count}" if edge.count > 1 else "")
+    text = "<br/>".join(_text(row) for row in (edge.label or "").split("\n") if row) or (f"×{edge.count}" if edge.count > 1 else "")
     arrow = ("<-.->" if edge.indirect else "<-->") if edge.two_way else ("-.->" if edge.indirect else "-->")
-    return f'    {source} {arrow}|"{_text(text)}"| {target}' if text else f"    {source} {arrow} {target}"
+    return f'    {source} {arrow}|"{text}"| {target}' if text else f"    {source} {arrow} {target}"
 
 
 def _note(key: str, note: NoteOut) -> str:

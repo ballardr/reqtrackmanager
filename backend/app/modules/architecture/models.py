@@ -637,6 +637,8 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
         connection_detail: When false the diagram draws plain lines (no type, protocol or port labels) and
             parallel lines collapse into one; when true connections are typed and labelled.
         line_hops: When true a line that crosses another is drawn with a small arc over it (the later line by id hops).
+        show_connection_names: When true a line is labelled with the names of the connections behind it (a connection with
+            no name adds nothing), above the type and protocol text that connection detail adds.
         line_shape: A `LineShape` value: how a line with no shape of its own is drawn (new diagrams are straight).
         folder_id: The project's diagram folder the diagram is listed in, or `None` for the top level.
         status: A `RecordStatus` value.
@@ -661,6 +663,7 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
     )
     connection_detail: Mapped[bool] = mapped_column(Boolean, default=False)
     line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    show_connection_names: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     line_shape: Mapped[str] = mapped_column(String(16), default="straight", server_default="straight")
     folder_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True

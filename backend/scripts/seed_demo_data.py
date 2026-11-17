@@ -2622,7 +2622,8 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     diagram = httpx.post(
         f"{base}/diagrams", headers=headers, timeout=30,
         json={"name": "Airframe data flow", "purpose": "How readings reach the ground station.", "activate": True,
-              "scope_element_id": airframe["id"], "connection_detail": True, "line_hops": True, "folder_id": overviews},
+              "scope_element_id": airframe["id"], "connection_detail": True, "line_hops": True, "show_connection_names": True,
+              "folder_id": overviews},
     )
     diagram.raise_for_status()
     placed = diagram.json()

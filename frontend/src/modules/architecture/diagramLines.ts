@@ -14,7 +14,8 @@
  * Design decisions:
  * - Display only. Nothing here is stored or sent: a diagram saves its boxes and notes, and the server validates them, so a
  *   wrong line can never change stored data and the next load shows the server's own view.
- * - The line shaping mirrors `diagram_view._edges` and `_edge_label`; the rule behind the lines is `diagramResolver`.
+ * - The line shaping mirrors `diagram_view._edges`; the label is `diagram_edge_label.edge_label`'s port; the rule behind the
+ *   lines is `diagramResolver`.
  *
  * Dependencies: `diagramResolver`, `types`.
  */
@@ -29,6 +30,8 @@ export interface LineState {
   togglesOff: ReadonlySet<string>;
   /** Whether the diagram shows connection detail (types, labels); off merges parallel lines. */
   connectionDetail: boolean;
+  /** Whether a line is labelled with the names of its connections. */
+  showConnectionNames?: boolean;
   /** The element the diagram shows the inside of, or null for the system context (no boundary boxes). */
   scopeId?: string | null;
   /** The boundary boxes drawn on the diagram (a scoped diagram's outer connections); none for the system context. */
@@ -52,16 +55,54 @@ export interface ResolvedDiagram {
   internal: Map<string, string[]>;
 }
 
+/** The most connection names written beside one line; the rest are counted ("+2 more"). Mirrors `diagram_edge_label.NAME_LINES_MAX`. */
+const NAME_LINES_MAX = 3;
+
+/** The longest a written name may be before it is cut with an ellipsis. Mirrors `diagram_edge_label.NAME_LINE_MAX`. */
+const NAME_LINE_MAX = 60;
+
+/** @param names The connection names in the order to write them. @returns The name lines (blank names ignored, at most three, then "+N more"). */
+function nameLines(names: readonly string[]): string[] {
+  const named = names.map((n) => n.split(/\s+/).filter(Boolean).join(" ")).filter((n) => n !== "");
+  // `Array.from` counts characters as the server does (a code point, not a UTF-16 unit).
+  const shown = named.slice(0, NAME_LINES_MAX).map((n) => (Array.from(n).length <= NAME_LINE_MAX ? n : `${Array.from(n).slice(0, NAME_LINE_MAX - 1).join("")}…`));
+  if (named.length > NAME_LINES_MAX) shown.push(`+${named.length - NAME_LINES_MAX} more`);
+  return shown;
+}
+
 /**
- * The text on a line when connection detail is on.
+ * The text on a line: the names of its connections (when the diagram shows them), then the type and protocol connection
+ * detail adds, or the count of a merged line. The port of `diagram_edge_label.edge_label`, pinned by `diagramLabelCases.json`.
  *
  * @param count How many connections the line stands for.
  * @param typeName The connections' shared type, when they have one.
  * @param protocol The connections' shared protocol, or blank.
+ * @param detail Whether the diagram shows connection detail.
+ * @param names The connection names to write, in code order; empty when the diagram does not show connection names.
+ * @returns The label (lines joined by a line break), or null when there is nothing to write.
  */
-export function edgeLabelText(count: number, typeName: string | undefined, protocol: string): string | null {
-  if (count === 1) return typeName && protocol ? `${typeName} · ${protocol}` : typeName || protocol || null;
-  return typeName ? `${typeName} ×${count}` : `${count} connections`;
+export function edgeLabelText(count: number, typeName: string | undefined, protocol: string, detail: boolean, names: readonly string[] = []): string | null {
+  const parts = nameLines(names);
+  if (detail) {
+    const text = count === 1
+      ? (typeName && protocol ? `${typeName} · ${protocol}` : typeName || protocol || null)
+      : (typeName ? `${typeName} ×${count}` : `${count} connections`);
+    if (text) parts.push(text);
+  } else if (parts.length > 0 && count > 1) {
+    parts.push(`×${count}`);
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+/**
+ * Orders two connections by code so `CON-9` comes before `CON-10` (the order the server writes names in).
+ *
+ * @param a A connection.
+ * @param b Another connection.
+ * @returns Negative when `a` comes first.
+ */
+function codeOrder(a: { unique_code: string }, b: { unique_code: string }): number {
+  return a.unique_code.length - b.unique_code.length || (a.unique_code < b.unique_code ? -1 : a.unique_code > b.unique_code ? 1 : 0);
 }
 
 /** @returns The lines to draw, the hidden boxes and the internal connections for the editor's current state. */
@@ -105,14 +146,14 @@ export function resolveDiagram(model: DiagramModel, state: LineState): ResolvedD
   });
 
   const boundaryIds = new Set((state.boundaries ?? []).map((b) => b.id));
-  const edges = resolution.lines.map((line) => edgeOf(line, byId, kinds, known, state.connectionDetail, boundaryIds));
+  const edges = resolution.lines.map((line) => edgeOf(line, byId, kinds, known, state.connectionDetail, state.showConnectionNames ?? false, boundaryIds));
   return { edges, hidden: resolution.hiddenPlaced, internal: resolution.internal };
 }
 
 /** One resolved line in the server's `ViewEdge` shape. */
 function edgeOf(
   line: ResolvedLine, connections: ReadonlyMap<string, ArchitectureConnection>, kinds: ReadonlyMap<string, ModelConnectionType>,
-  elements: ReadonlyMap<string, { unique_code: string; name: string; locked: boolean }>, detail: boolean,
+  elements: ReadonlyMap<string, { unique_code: string; name: string; locked: boolean }>, detail: boolean, showNames: boolean,
   boundaryIds: ReadonlySet<string>,
 ): DiagramViewEdge {
   const members = line.connectionIds.map((id) => connections.get(id)).filter((c): c is ArchitectureConnection => c !== undefined);
@@ -139,7 +180,10 @@ function edgeOf(
     line_style: detail && kind ? kind.line_style : null,
     color_light: detail && kind ? kind.color_light : null,
     color_dark: detail && kind ? kind.color_dark : null,
-    label: detail ? edgeLabelText(members.length, kind?.name, protocols.size === 1 ? [...protocols][0] : "") : null,
+    label: edgeLabelText(
+      members.length, kind?.name, protocols.size === 1 ? [...protocols][0] : "", detail,
+      showNames ? [...members].sort(codeOrder).map((m) => m.name) : [],
+    ),
     connections: members,
     hops,
     routable_connection_ids: line.routable,

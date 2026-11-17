@@ -518,6 +518,7 @@ class DiagramCreate(BaseModel):
         scope_element_id: The element whose inside the diagram shows, or `None` for the system context.
         connection_detail: Draw typed, labelled connections (otherwise plain lines).
         line_hops: Draw a small arc where a line crosses another.
+        show_connection_names: Label each line with the names of its connections.
         line_shape: How a line with no shape of its own is drawn.
         activate: Create the diagram `active` instead of `draft` (Save and activate).
         populate: Place the scope element's children (the root elements for the system context) in a grid.
@@ -528,6 +529,7 @@ class DiagramCreate(BaseModel):
     scope_element_id: UUID | None = None
     connection_detail: bool = False
     line_hops: bool = False
+    show_connection_names: bool = False
     line_shape: LineShape = LineShape.STRAIGHT
     folder_id: UUID | None = None
     activate: bool = False
@@ -544,6 +546,7 @@ class DiagramUpdate(BaseModel):
     scope_element_id: UUID | None = None
     connection_detail: bool | None = None
     line_hops: bool | None = None
+    show_connection_names: bool | None = None
     line_shape: LineShape | None = None
     folder_id: UUID | None = None
 
@@ -562,6 +565,7 @@ class DiagramOut(ProjectScopedRow):
     scope_element_name: str | None = None
     connection_detail: bool
     line_hops: bool
+    show_connection_names: bool
     line_shape: LineShape
     folder_id: UUID | None = None
     folder_path: str | None = None

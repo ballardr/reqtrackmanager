@@ -14,6 +14,7 @@ export const ARCHITECTURE_HELP = {
   elementParent: "The element this one is a part of. Parents form a tree up to 12 levels deep; a diagram can open a parent to show its children.",
   elementDescription: "What the element is and does, for readers of its record, reports and search. It is not drawn on a diagram; use the display note for the line a diagram shows.",
   elementDisplayNote: "A short line drawn inside the element's box on every diagram that places it, under its name. Keep it brief (up to 500 characters): the box clips what does not fit, and a larger box shows more of it.",
+  diagramShowConnectionNames: "On: each line is labelled with the name of its connection, above the type and protocol when Connection detail is on. A line that merges several connections lists up to three names, in code order, then how many more; a connection with no name adds nothing.\nOff: lines carry no name.\nThis is a setting of the diagram, so everyone who opens it sees the same drawing, and the SVG, PNG and Mermaid downloads carry the names.",
   diagramShowNotes: "Shows or hides the display note inside each box on this screen. The choice is not saved and does not change what is exported.",
   elementOwner: "The person or group accountable for this part of the product.",
   elementSymbol: "A drawing shown instead of the type's. Leave it empty to use the type's own symbol or shape.",

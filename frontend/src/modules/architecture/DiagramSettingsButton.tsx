@@ -3,8 +3,9 @@
  *
  * The gear beside Export in the editor toolbar: a `SettingsPopoverButton` holding the diagram-level setting that is
  * stored when changed (the connection-detail switch, which sets whether the diagram draws plain lines or typed,
- * labelled ones, and the Line hops switch, which sets whether a line that crosses another is drawn with a small arc; both
- * belong to the diagram and apply to every viewer and every export) and the viewer's own display switches: Show
+ * labelled ones, the Line hops switch, which sets whether a line that crosses another is drawn with a small arc, the Show
+ * connection names switch, which sets whether a line is labelled with the names of its connections, and the default line
+ * shape; all belong to the diagram and apply to every viewer and every export) and the viewer's own display switches: Show
  * notes (whether a box draws its display note; kept in the page address), and Show comments and Show resolved (whether the
  * comment markers, and those of resolved threads, are drawn), Snap to grid (whether boxes snap to the grid while they are
  * moved or resized; kept in this browser) and Always show attach points (kept in the person's account). None of the five is
@@ -27,6 +28,8 @@ import { ARCHITECTURE_HELP } from "./help";
  * @param onConnectionDetailChange Called with the new connection-detail setting.
  * @param lineHops Whether the diagram draws a small arc where a line crosses another.
  * @param onLineHopsChange Called with the new Line hops setting.
+ * @param showConnectionNames Whether a line is labelled with the names of its connections.
+ * @param onShowConnectionNamesChange Called with the new Show connection names setting.
  * @param lineShape How a line or leader with no shape of its own is drawn.
  * @param onLineShapeChange Called with the new default shape.
  * @param showNotes Whether boxes draw their display notes on this screen.
@@ -41,7 +44,7 @@ import { ARCHITECTURE_HELP } from "./help";
  * @param onAttachPointsAlwaysChange Called with the new setting.
  */
 export function DiagramSettingsButton({
-  connectionDetail, disabled, onConnectionDetailChange, lineHops, onLineHopsChange, lineShape, onLineShapeChange, showNotes, onShowNotesChange, showComments, onShowCommentsChange,
+  connectionDetail, disabled, onConnectionDetailChange, lineHops, onLineHopsChange, showConnectionNames, onShowConnectionNamesChange, lineShape, onLineShapeChange, showNotes, onShowNotesChange, showComments, onShowCommentsChange,
   showResolved, onShowResolvedChange, snapToGrid, onSnapToGridChange, attachPointsAlways, onAttachPointsAlwaysChange,
 }: {
   connectionDetail: boolean;
@@ -49,6 +52,8 @@ export function DiagramSettingsButton({
   onConnectionDetailChange: (next: boolean) => void;
   lineHops: boolean;
   onLineHopsChange: (next: boolean) => void;
+  showConnectionNames: boolean;
+  onShowConnectionNamesChange: (next: boolean) => void;
   lineShape: LineShape;
   onLineShapeChange: (next: LineShape) => void;
   showNotes: boolean;
@@ -65,13 +70,17 @@ export function DiagramSettingsButton({
   const text = useStrings().canvasComments;
   return (
     <SettingsPopoverButton
-      label={`Diagram settings: connection detail ${connectionDetail ? "on" : "off"}, line hops ${lineHops ? "on" : "off"}, notes ${showNotes ? "shown" : "hidden"}, comments ${showComments ? "shown" : "hidden"}, snap to grid ${snapToGrid ? "on" : "off"}, attach points ${attachPointsAlways ? "always shown" : "near the pointer"}${lineShape === "straight" ? "" : `, line shape ${lineShape}`}`}
-      title="Diagram settings" marked={connectionDetail || lineHops || lineShape !== "straight" || !showNotes || !showComments || snapToGrid || attachPointsAlways}
+      label={`Diagram settings: connection detail ${connectionDetail ? "on" : "off"}, line hops ${lineHops ? "on" : "off"}, connection names ${showConnectionNames ? "on" : "off"}, notes ${showNotes ? "shown" : "hidden"}, comments ${showComments ? "shown" : "hidden"}, snap to grid ${snapToGrid ? "on" : "off"}, attach points ${attachPointsAlways ? "always shown" : "near the pointer"}${lineShape === "straight" ? "" : `, line shape ${lineShape}`}`}
+      title="Diagram settings" marked={connectionDetail || lineHops || showConnectionNames || lineShape !== "straight" || !showNotes || !showComments || snapToGrid || attachPointsAlways}
     >
       <div className="stack" style={{ gap: "var(--space-2)" }}>
         <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
           <ToggleSwitch checked={connectionDetail} disabled={disabled} label="Connection detail" onChange={onConnectionDetailChange} />
           <FieldCaption label="Connection detail" help={ARCHITECTURE_HELP.diagramConnectionDetail} />
+        </span>
+        <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+          <ToggleSwitch checked={showConnectionNames} disabled={disabled} label="Show connection names" onChange={onShowConnectionNamesChange} />
+          <FieldCaption label="Show connection names" help={ARCHITECTURE_HELP.diagramShowConnectionNames} />
         </span>
         <LineHopsSetting checked={lineHops} disabled={disabled} onChange={onLineHopsChange} />
         <LineShapeSelect value={lineShape} disabled={disabled} onChange={(next) => { if (next) onLineShapeChange(next); }} />

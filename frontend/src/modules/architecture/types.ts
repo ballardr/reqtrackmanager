@@ -386,6 +386,8 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
   connection_detail: boolean;
   /** Whether a line that crosses another is drawn with a small arc over it. */
   line_hops: boolean;
+  /** Whether a line is labelled with the names of the connections behind it. */
+  show_connection_names: boolean;
   /** How a line with no shape of its own is drawn. */
   line_shape: LineShape;
   folder_id: string | null;
@@ -408,6 +410,11 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
 export interface DiagramSettingValues {
   line_hops: boolean;
   line_shape: LineShape;
+}
+
+/** A drawing option of the block diagram only (the state machine diagram has no connections), set from the editor's settings. */
+export interface DiagramLabelSettingValues {
+  show_connection_names: boolean;
 }
 
 /** The fields the diagram create and edit forms share. */

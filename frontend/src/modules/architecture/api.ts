@@ -37,6 +37,7 @@ import type {
   ConnectionTypeValues,
   DiagramCreateValues,
   DiagramFieldValues,
+  DiagramLabelSettingValues,
   DiagramSettingValues,
   DiagramToggleValues,
   DiagramModel,
@@ -252,7 +253,7 @@ export const projectDiagramApi = (projectId: string) => {
     list: (filters: DiagramListFilters = {}) => api.get<ArchitectureDiagram[]>(`${base}${listQuery(filters)}`),
     create: (values: DiagramCreateValues) => api.post<ArchitectureDiagram>(base, values),
     get: (id: string) => api.get<ArchitectureDiagram>(`${base}/${id}`),
-    update: (id: string, version: number, values: Partial<DiagramFieldValues & DiagramSettingValues>) =>
+    update: (id: string, version: number, values: Partial<DiagramFieldValues & DiagramSettingValues & DiagramLabelSettingValues>) =>
       api.put<ArchitectureDiagram>(`${base}/${id}`, { version, ...values }),
     setStatus: (id: string, version: number, status: ArchitectureRecordStatus) =>
       api.post<ArchitectureDiagram>(`${base}/${id}/status`, { version, status }),
