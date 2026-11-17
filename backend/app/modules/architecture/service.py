@@ -799,11 +799,13 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
                 row.parent_links.append(ArchitectureConnectionTypeParent(parent_id=parent_id))
 
     def create(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, **fields):
-        """As the base class, plus `parent_ids` and `domain_ids`.
+        """As the base class, plus `parent_ids` and `domain_ids`; a `default_protocol` is trimmed.
 
         Raises:
             ValueError: On a clashing name, an invalid parent or a domain the owner cannot use.
         """
+        if isinstance(fields.get("default_protocol"), str):
+            fields["default_protocol"] = fields["default_protocol"].strip()
         parent_ids = self._check_parents(
             db, project_id=project_id, organization_id=organization_id, child=None, parent_ids=fields.pop("parent_ids", None) or [],
         )
@@ -817,11 +819,14 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
         return row
 
     def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
-        """As the base class, plus `parent_ids` and `domain_ids` (a list replaces them, `None` or omitted leaves them).
+        """As the base class, plus `parent_ids` and `domain_ids` (a list replaces them, `None` or omitted leaves them);
+        a `default_protocol` is trimmed (an empty string clears it).
 
         Raises:
             ValueError: On a clashing name, an invalid parent or a domain the owner cannot use.
         """
+        if isinstance(fields.get("default_protocol"), str):
+            fields["default_protocol"] = fields["default_protocol"].strip()
         given = fields.pop("parent_ids", None)
         parent_ids = None
         if given is not None:

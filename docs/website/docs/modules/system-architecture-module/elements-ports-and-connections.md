@@ -53,9 +53,11 @@ A port may also name the connection type it expects. This is guidance: a connect
 
 ## Connections
 
-A connection joins a source element to a target element, which must differ. Each end may name one of its element's ports. A connection has a type, an optional protocol (for example HTTPS/1.1 or SPI mode 0) and a description. A connection of a one-way type runs from source to target; a two-way type shows no arrow and the order of its ends is for display only.
+A connection joins a source element to a target element, which must differ. Each end may name one of its element's ports. A connection has a type, an optional [protocol](../../reference/glossary.md#protocol) (for example HTTPS/1.1 or SPI mode 0) and a description. A connection of a one-way type runs from source to target; a two-way type shows no arrow and the order of its ends is for display only.
 
 Connection types are organised in groups: a type such as I2C can sit under Serial bus and under Board-to-board, and choosing a group also reaches every type beneath it when connections are filtered. When a connection is created, the type list offers the types that suit both elements first: a type suits an element when the two share a [domain](../../reference/glossary.md#domain), or when either is in no domain.
+
+**Default protocol.** A connection type can carry a **Default protocol** (set in the type's form under **Connection Types** in the System Architecture settings, for the organisation or for one project). A new connection of that type starts with it in its **Protocol** field, whether it is created from a list, from an element, from a diagram's Selection card or at once from a diagram. Changing the type of a connection replaces the protocol with the new type's default only while the protocol is empty or still the previous type's default, so a protocol that was typed is never overwritten. The default only pre-fills: it is stored on the connection, changing it later leaves existing connections alone, and any protocol can still be typed. A client of the API that leaves the protocol out of a new connection receives the type's default; an empty value means none.
 
 ## Domains
 

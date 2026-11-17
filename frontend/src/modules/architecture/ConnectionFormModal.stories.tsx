@@ -175,3 +175,89 @@ export const EditKeepsAHiddenTypeInTheList: Story = {
     await expect(d.queryByText("1 hidden")).not.toBeInTheDocument();
   },
 };
+
+const BOARDS = [
+  buildElement({ id: "b-1", unique_code: "ELM-011", name: "Board A", element_type_id: "et-2", ports: [] }),
+  buildElement({ id: "b-2", unique_code: "ELM-012", name: "Board B", element_type_id: "et-2", ports: [] }),
+];
+
+/** Chooses `name` in the type picker; "Show all types" is on first so a type that does not fit the ends can be reached. */
+async function chooseType(name: string) {
+  const d = dialog();
+  const showAll = d.queryByRole("switch", { name: "Show all types" });
+  if (showAll && showAll.getAttribute("aria-checked") !== "true") await userEvent.click(showAll);
+  await userEvent.click(d.getByRole("button", { name: "Connection type" }));
+  await userEvent.click(within(document.body).getAllByRole("radio", { name })[0]);
+}
+
+/** The type the two boards suggest (I2C) has a default protocol, so a new connection starts with it and saves it. */
+export const ANewConnectionStartsWithTheTypesDefaultProtocol: Story = {
+  args: { elements: BOARDS },
+  play: async ({ args }) => {
+    const d = dialog();
+    await expect(d.getByLabelText("Protocol")).toHaveValue("");
+    await userEvent.selectOptions(d.getByLabelText("Source element"), "b-1");
+    await userEvent.selectOptions(d.getByLabelText("Target element"), "b-2");
+    await expect(d.getByLabelText("Protocol")).toHaveValue("I2C 400 kHz");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ connection_type_id: "ct-2", protocol: "I2C 400 kHz" }), expect.anything(),
+    );
+  },
+};
+
+/** Changing the type while the protocol is empty or still the previous type's default replaces it with the new default. */
+export const ChangingTheTypeReplacesAnEmptyOrDefaultProtocol: Story = {
+  args: { elements: BOARDS },
+  play: async () => {
+    const d = dialog();
+    await userEvent.selectOptions(d.getByLabelText("Source element"), "b-1");
+    await userEvent.selectOptions(d.getByLabelText("Target element"), "b-2");
+    await expect(d.getByLabelText("Protocol")).toHaveValue("I2C 400 kHz");
+    await chooseType("REST API"); // no default: the previous default goes
+    await expect(d.getByLabelText("Protocol")).toHaveValue("");
+    await chooseType("I2C"); // the protocol was empty: the new default fills it
+    await expect(d.getByLabelText("Protocol")).toHaveValue("I2C 400 kHz");
+  },
+};
+
+/** A protocol the person typed is never overwritten by a type change. */
+export const ATypedProtocolSurvivesAChangeOfType: Story = {
+  args: { elements: BOARDS },
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.selectOptions(d.getByLabelText("Source element"), "b-1");
+    await userEvent.selectOptions(d.getByLabelText("Target element"), "b-2");
+    await userEvent.clear(d.getByLabelText("Protocol"));
+    await userEvent.type(d.getByLabelText("Protocol"), "I2C fast mode plus");
+    await chooseType("Serial bus");
+    await expect(d.getByLabelText("Protocol")).toHaveValue("I2C fast mode plus");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ connection_type_id: "ct-3", protocol: "I2C fast mode plus" }), expect.anything(),
+    );
+  },
+};
+
+/** Emptying the protocol is kept: the form never puts the default back on its own, so a connection can have none. */
+export const AnEmptiedProtocolStaysEmpty: Story = {
+  args: { elements: BOARDS },
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.selectOptions(d.getByLabelText("Source element"), "b-1");
+    await userEvent.selectOptions(d.getByLabelText("Target element"), "b-2");
+    await userEvent.clear(d.getByLabelText("Protocol"));
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ protocol: "" }), expect.anything());
+  },
+};
+
+/** Editing a connection never applies a default: its stored protocol stays until the type changes while it is a default. */
+export const EditKeepsTheStoredProtocolWhenTheTypeStaysTheSame: Story = {
+  args: { initial: buildConnection({ connection_type_id: "ct-2", protocol: "I2C 100 kHz" }), elements: BOARDS },
+  play: async () => {
+    await expect(dialog().getByLabelText("Protocol")).toHaveValue("I2C 100 kHz");
+    await chooseType("REST API");
+    await expect(dialog().getByLabelText("Protocol")).toHaveValue("I2C 100 kHz"); // typed, not the default, so kept
+  },
+};

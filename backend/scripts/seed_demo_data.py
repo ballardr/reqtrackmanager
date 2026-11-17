@@ -2505,6 +2505,15 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         r.raise_for_status()
         return {row["name"]: row["id"] for row in r.json()}
 
+    # A connection type's default protocol pre-fills a new connection of that type: the buses and the REST interface below
+    # take it where a protocol is left out. A type that already has one is left alone, so a second run changes nothing.
+    org_connection_types = httpx.get(f"{org_arch}/connection-types", headers=headers, timeout=30).json()
+    for row in org_connection_types:
+        default = {"SPI": "SPI mode 3, 8 MHz", "UART": "UART 115200 baud", "REST API": "HTTPS, JSON"}.get(row["name"])
+        if default and not row["default_protocol"]:
+            httpx.patch(
+                f"{org_arch}/connection-types/{row['id']}", headers=headers, timeout=30, json={"default_protocol": default},
+            ).raise_for_status()
     element_types, connection_types = effective("element-types"), effective("connection-types")
 
     def make_folder(url: str, kind: str, name: str, parent: str | None = None) -> str:
@@ -2546,16 +2555,18 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         return r.json()
 
     def connect(
-        name: str, type_name: str, source: dict, source_port: str, target: dict, target_port: str, protocol: str,
+        name: str, type_name: str, source: dict, source_port: str, target: dict, target_port: str, protocol: str | None,
         folder: str | None = None,
     ) -> dict:
+        """Creates a connection; a `protocol` of `None` is left out of the request, so the type's default applies."""
         def port(item: dict, port_name: str) -> str | None:
             return next((p["id"] for p in item["ports"] if p["name"] == port_name), None)
 
         r = httpx.post(
             f"{base}/connections", headers=headers, timeout=30,
             json={
-                "name": name, "connection_type_id": connection_types[type_name], "protocol": protocol,
+                "name": name, "connection_type_id": connection_types[type_name],
+                **({} if protocol is None else {"protocol": protocol}),
                 "source_element_id": source["id"], "source_port_id": port(source, source_port),
                 "target_element_id": target["id"], "target_port_id": port(target, target_port), "activate": True,
                 "folder_id": folder,
@@ -2585,14 +2596,14 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     ground = element("Ground station service", "Service", "Receives telemetry and sends missions.", parent=drone["id"],
                      ports=(("Telemetry API", "in", "REST API"),),
                      folder=software, note="Receives telemetry, sends missions")
-    connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz", folder=buses)
+    connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", None, folder=buses)
     imu_interrupt = connect("IMU data-ready interrupt", "Serial bus", imu, "", fc, "", "GPIO, active low", folder=buses)
     connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud", folder=buses)
     # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.
     connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2", folder=buses)
-    upload = connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", "HTTPS, JSON")
+    upload = connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", None)
     # The interface as the layer above declares it (the airframe to the ground station); the radio's upload realises it.
-    downlink = connect("Airframe downlink", "REST API", airframe, "", ground, "Telemetry API", "HTTPS, JSON")
+    downlink = connect("Airframe downlink", "REST API", airframe, "", ground, "Telemetry API", None)
     httpx.put(
         f"{base}/connections/{upload['id']}/realisations", headers=headers, timeout=30,
         json={"version": upload["version"], "outer_connection_ids": [downlink["id"]]},

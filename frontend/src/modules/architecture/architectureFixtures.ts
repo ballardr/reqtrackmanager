@@ -310,9 +310,9 @@ export const ELEMENT_TYPES: ElementType[] = [
 ];
 
 export const CONNECTION_TYPES: ConnectionType[] = [
-  { id: "ct-1", project_id: null, organization_id: ORG_ID, name: "REST API", domain_ids: ["dm-1"], line_style: "solid", directional: true, color_light: null, color_dark: null, sort_order: 0, parent_ids: [] },
-  { id: "ct-2", project_id: PROJECT_ID, organization_id: null, name: "I2C", domain_ids: ["dm-2"], line_style: "dashed", directional: false, color_light: "#065f46", color_dark: "#6ee7b7", sort_order: 1, parent_ids: ["ct-3"] },
-  { id: "ct-3", project_id: null, organization_id: ORG_ID, name: "Serial bus", domain_ids: ["dm-2"], line_style: "solid", directional: false, color_light: null, color_dark: null, sort_order: 2, parent_ids: [] },
+  { id: "ct-1", project_id: null, organization_id: ORG_ID, name: "REST API", domain_ids: ["dm-1"], line_style: "solid", directional: true, default_protocol: "", color_light: null, color_dark: null, sort_order: 0, parent_ids: [] },
+  { id: "ct-2", project_id: PROJECT_ID, organization_id: null, name: "I2C", domain_ids: ["dm-2"], line_style: "dashed", directional: false, default_protocol: "I2C 400 kHz", color_light: "#065f46", color_dark: "#6ee7b7", sort_order: 1, parent_ids: ["ct-3"] },
+  { id: "ct-3", project_id: null, organization_id: ORG_ID, name: "Serial bus", domain_ids: ["dm-2"], line_style: "solid", directional: false, default_protocol: "", color_light: null, color_dark: null, sort_order: 2, parent_ids: [] },
 ];
 
 export const SYMBOLS: ArchitectureSymbol[] = [

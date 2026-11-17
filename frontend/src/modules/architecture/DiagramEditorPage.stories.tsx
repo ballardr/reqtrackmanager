@@ -13,6 +13,7 @@ import {
   buildViewNode, captureDownloads, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
 } from "./architectureFixtures";
 import { DiagramEditorPage } from "./DiagramEditorPage";
+import type { ConnectionType } from "./types";
 import { chooseMenuRow } from "../../testing/menuTree";
 
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/architecture`;
@@ -945,7 +946,7 @@ export const ADetailedLineShowsItsTypeAndCount: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByLabelText("REST API ×2, connection from Gateway to Orders")).toBeInTheDocument();
+    await expect(await canvas.findByLabelText("REST API ×2 · HTTPS/1.1, connection from Gateway to Orders")).toBeInTheDocument();
     await expect(await openSettings(canvas)).toBeChecked();
   },
 };
@@ -1063,6 +1064,32 @@ export const ConnectToCreatesAConnectionAtOnceAndSelectsItsLine: Story = {
     const details = within(group);
     await waitFor(() => expect(details.getByRole("textbox", { name: "Name" })).toHaveFocus());
     await expect(requiredCaptions(group)).toEqual(["Connection type", "Source element", "Target element"]);
+  },
+};
+
+/** A connection added at once starts with the default protocol of the type it is created with. */
+export const ConnectToStartsTheConnectionWithTheTypesDefaultProtocol: Story = {
+  beforeEach: () => {
+    mockCreatedConnection(buildConnection({ ...NEW_CONNECTION, protocol: "HTTPS, JSON" }));
+    const get = api.get as unknown as { getMockImplementation: () => (...args: unknown[]) => Promise<unknown>; mockImplementation: (fn: unknown) => void };
+    const original = get.getMockImplementation();
+    get.mockImplementation(async (...args: unknown[]) => {
+      const result = await original(...args);
+      return String(args[0]).split("?")[0].endsWith("/modules/architecture/connection-types")
+        ? (result as ConnectionType[]).map((t) => (t.id === "ct-1" ? { ...t, default_protocol: "HTTPS, JSON" } : t))
+        : result;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await select(canvas, "Gateway");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: /Connect to/ }), "el-3");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `${BASE}/connections`, expect.objectContaining({ connection_type_id: "ct-1", protocol: "HTTPS, JSON" }),
+    ));
+    const details = within(await canvas.findByRole("group", { name: "Connection details" }));
+    await expect(details.getByRole("textbox", { name: "Protocol" })).toHaveValue("HTTPS, JSON");
   },
 };
 

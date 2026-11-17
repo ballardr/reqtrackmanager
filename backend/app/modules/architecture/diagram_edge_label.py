@@ -15,6 +15,8 @@ Design decisions:
   `NAME_LINES_MAX` names are written, in code order, then "+N more". A name is one line of text: its whitespace is collapsed
   and one longer than `NAME_LINE_MAX` characters is cut with an ellipsis, so a line's label stays a readable size on the screen
   and in the exports.
+- **A merged line shows the protocol its connections share.** The caller passes the protocol only when every connection of
+  the line has the same one (blank otherwise), so the text reads `Type ×N · protocol` or just `Type ×N`.
 - **A merged line keeps its count.** With connection detail off the label is only the names, so a merged line ends with its
   `×N` as it would have been drawn without the names.
 
@@ -59,11 +61,13 @@ def detail_text(count: int, type_name: str | None, protocol: str) -> str | None:
 
     Returns:
         `Type · protocol` for one connection (either part alone when the other is missing, `None` when both are), and
-        `Type ×N` (`N connections` when the types differ) for several.
+        `Type ×N` (`N connections` when the types differ) for several, followed by ` · protocol` when every connection of
+        the line has the same protocol.
     """
     if count == 1:
         return f"{type_name} · {protocol}" if type_name and protocol else (type_name or protocol or None)
-    return f"{type_name} ×{count}" if type_name else f"{count} connections"
+    text = f"{type_name} ×{count}" if type_name else f"{count} connections"
+    return f"{text} · {protocol}" if protocol else text
 
 
 def edge_label(count: int, type_name: str | None, protocol: str, *, detail: bool, names: Iterable[str] = ()) -> str | None:
@@ -72,7 +76,7 @@ def edge_label(count: int, type_name: str | None, protocol: str, *, detail: bool
     Args:
         count: How many connections the line stands for.
         type_name: The connections' shared type, or `None` when they differ.
-        protocol: The connections' shared protocol, or blank.
+        protocol: The connections' shared protocol, or blank (also blank when they differ).
         detail: Whether the diagram shows connection detail (types and protocols).
         names: The connection names to write, in code order; empty when the diagram does not show connection names.
 

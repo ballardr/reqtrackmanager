@@ -499,7 +499,7 @@ export function DiagramEditorPage() {
       return;
     }
     try {
-      const created = await projectConnectionApi(projectId).create({ ...blankConnectionValues(type.id, source, target), activate: false });
+      const created = await projectConnectionApi(projectId).create({ ...blankConnectionValues(type.id, source, target, null, type.default_protocol), activate: false });
       showToast("Connection created.");
       connectionCreated(created.id, realises);
     } catch (err) {

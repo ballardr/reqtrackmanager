@@ -13,7 +13,7 @@ const DOMAINS: ArchitectureDomain[] = [
 
 const connection = (id: string, name: string, domain_ids: string[]): ConnectionType => ({
   id, name, domain_ids, sort_order: 0, parent_ids: [], project_id: null, organization_id: "org", line_style: "solid",
-  directional: true, color_light: null, color_dark: null,
+  directional: true, default_protocol: "", color_light: null, color_dark: null,
 });
 const element = (id: string, name: string, domain_ids: string[], suggested: string[] = []): ElementType => ({
   id, name, domain_ids, sort_order: 0, project_id: null, organization_id: "org", shape: "rectangle", symbol_id: null,

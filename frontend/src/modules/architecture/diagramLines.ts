@@ -76,7 +76,7 @@ function nameLines(names: readonly string[]): string[] {
  *
  * @param count How many connections the line stands for.
  * @param typeName The connections' shared type, when they have one.
- * @param protocol The connections' shared protocol, or blank.
+ * @param protocol The connections' shared protocol, or blank (also blank when they differ).
  * @param detail Whether the diagram shows connection detail.
  * @param names The connection names to write, in code order; empty when the diagram does not show connection names.
  * @returns The label (lines joined by a line break), or null when there is nothing to write.
@@ -84,9 +84,14 @@ function nameLines(names: readonly string[]): string[] {
 export function edgeLabelText(count: number, typeName: string | undefined, protocol: string, detail: boolean, names: readonly string[] = []): string | null {
   const parts = nameLines(names);
   if (detail) {
-    const text = count === 1
-      ? (typeName && protocol ? `${typeName} · ${protocol}` : typeName || protocol || null)
-      : (typeName ? `${typeName} ×${count}` : `${count} connections`);
+    let text: string | null;
+    if (count === 1) {
+      text = typeName && protocol ? `${typeName} · ${protocol}` : typeName || protocol || null;
+    } else {
+      // A merged line also names the protocol its connections all share.
+      const merged = typeName ? `${typeName} ×${count}` : `${count} connections`;
+      text = protocol ? `${merged} · ${protocol}` : merged;
+    }
     if (text) parts.push(text);
   } else if (parts.length > 0 && count > 1) {
     parts.push(`×${count}`);

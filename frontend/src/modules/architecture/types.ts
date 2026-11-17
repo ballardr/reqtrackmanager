@@ -159,6 +159,8 @@ export interface ElementType extends VocabularyRow {
 export interface ConnectionType extends VocabularyRow {
   line_style: LineStyle;
   directional: boolean;
+  /** The protocol a new connection of this type starts with (empty for none); it pre-fills only. */
+  default_protocol: string;
   /** The types this one sits under (empty for a root); a type may have several parents, to any depth. */
   parent_ids: string[];
 }
@@ -180,6 +182,7 @@ export interface ConnectionTypeValues {
   domain_ids: string[];
   line_style: LineStyle;
   directional: boolean;
+  default_protocol: string;
   color_light: string | null;
   color_dark: string | null;
   /** The types this one sits under; an empty list makes it a root. */

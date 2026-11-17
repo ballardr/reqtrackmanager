@@ -262,6 +262,10 @@ A project marked usable as a template; creating a new project from it copies its
 
 A link a change request carries and an approver merges, or declines, when approving it. See [Change requests → Proposing links](../core-features/change-requests.md#proposing-links).
 
+#### Protocol
+
+The protocol or version a [connection](#connection) carries, such as HTTPS/1.1 or SPI mode 0, held as free text on the connection. A [connection type](#connection-type) can give a default protocol that a new connection of that type starts with. A diagram with connection detail on writes it beside the line, and beside a merged line when all its connections share it. See [Elements, ports and connections](../modules/system-architecture-module/elements-ports-and-connections.md).
+
 #### Qualified code
 
 A record code with its owner's code in front, such as `ACME-REQ-001` (project code) or `ACME-PER-001` (the organisation's code, for a record the organisation owns). The same `REQ-001` exists in every project, so a qualified code is the unambiguous way to name a record. See [Administering an organisation → Project codes](../workflows/administering-an-organisation.md#project-codes).

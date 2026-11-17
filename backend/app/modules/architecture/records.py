@@ -816,7 +816,7 @@ def create_connection(db: Session, project: Project, actor: User, payload: Conne
         RuleError: 400 for an invalid type, end or port, or when both ends are the same element.
     """
     viewer = Viewer.of_user(actor, project)
-    _usable_connection_type(db, project, payload.connection_type_id)
+    kind = _usable_connection_type(db, project, payload.connection_type_id)
     if payload.source_element_id == payload.target_element_id:
         raise RuleError("A connection joins two different elements.", 400)
     _check_end(db, viewer, payload.source_element_id, payload.source_port_id, "source")
@@ -829,7 +829,8 @@ def create_connection(db: Session, project: Project, actor: User, payload: Conne
         name=payload.name.strip(), connection_type_id=payload.connection_type_id,
         source_element_id=payload.source_element_id, source_port_id=payload.source_port_id,
         target_element_id=payload.target_element_id, target_port_id=payload.target_port_id,
-        protocol=payload.protocol.strip(), description=payload.description, folder_id=payload.folder_id,
+        protocol=(kind.default_protocol if payload.protocol is None else payload.protocol).strip(),
+        description=payload.description, folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value,
         version=1, creator_id=actor.id, is_archived=False,
     )

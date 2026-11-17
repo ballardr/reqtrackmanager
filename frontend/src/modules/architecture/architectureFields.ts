@@ -7,7 +7,8 @@
  */
 import { principalRef } from "../../api/types";
 import type {
-  ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ConnectionFieldValues, DiagramFieldValues, ElementFieldValues,
+  ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ConnectionFieldValues, ConnectionType, DiagramFieldValues,
+  ElementFieldValues,
 } from "./types";
 
 /** An empty element form; `elementTypeId` preselects the first type. */
@@ -58,14 +59,37 @@ export function diffElementFields(before: ElementFieldValues, after: ElementFiel
   return changed;
 }
 
-/** An empty connection form. */
+/**
+ * An empty connection form.
+ *
+ * @param connectionTypeId The type the connection starts with.
+ * @param sourceElementId The source element, when known.
+ * @param targetElementId The target element, when known.
+ * @param folderId The folder the connection starts in.
+ * @param protocol The protocol to start with: the type's default protocol (`ConnectionType.default_protocol`).
+ */
 export function blankConnectionValues(
-  connectionTypeId = "", sourceElementId = "", targetElementId = "", folderId: string | null = null,
+  connectionTypeId = "", sourceElementId = "", targetElementId = "", folderId: string | null = null, protocol = "",
 ): ConnectionFieldValues {
   return {
     name: "", connection_type_id: connectionTypeId, source_element_id: sourceElementId, source_port_id: null,
-    target_element_id: targetElementId, target_port_id: null, protocol: "", description: "", folder_id: folderId,
+    target_element_id: targetElementId, target_port_id: null, protocol, description: "", folder_id: folderId,
   };
+}
+
+/**
+ * The Protocol a connection form holds after its type changes. A default protocol pre-fills; it never overwrites what a person
+ * typed: the new type's default replaces the Protocol only while it is empty or still equals the previous type's default.
+ *
+ * @param protocol The Protocol as it stands.
+ * @param previous The type the form had (undefined when none).
+ * @param next The type chosen (undefined when none, which leaves the Protocol alone).
+ * @returns The Protocol to hold.
+ */
+export function protocolAfterTypeChange(protocol: string, previous: ConnectionType | undefined, next: ConnectionType | undefined): string {
+  if (!next) return protocol;
+  const untouched = protocol.trim() === "" || protocol === (previous?.default_protocol ?? "");
+  return untouched ? next.default_protocol : protocol;
 }
 
 /** The editable fields of a connection, as the form holds them. */

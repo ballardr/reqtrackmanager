@@ -44,13 +44,13 @@ function ColourDots({ row }: { row: TypeRow }) {
   );
 }
 
-/** "Software · Cylinder" / "Hardware · Dashed, one-way": what a type's row shows beside its name; a domain shows nothing. */
+/** "Software · Cylinder" / "Hardware · Dashed, one-way, default protocol SPI mode 0": what a type's row shows beside its name; a domain shows nothing. */
 function summaryOf(row: TypeRow, rows: TypeRow[], domains: ArchitectureDomain[]): string {
   if (!("domain_ids" in row)) return "";
   const domainNames = row.domain_ids.map((id) => domains.find((d) => d.id === id)?.name).filter(Boolean);
   const detail = "shape" in row
     ? ELEMENT_SHAPE_LABEL[row.shape]
-    : `${LINE_STYLE_LABEL[row.line_style]}, ${row.directional ? "one-way" : "two-way"}`;
+    : `${LINE_STYLE_LABEL[row.line_style]}, ${row.directional ? "one-way" : "two-way"}${row.default_protocol ? `, default protocol ${row.default_protocol}` : ""}`;
   const parents = "parent_ids" in row ? row.parent_ids.map((id) => rows.find((r) => r.id === id)?.name).filter(Boolean) : [];
   return `${domainNames.length > 0 ? domainNames.join(", ") : "Any domain"} · ${detail}${parents.length > 0 ? ` · Under ${parents.join(", ")}` : ""}`;
 }
@@ -166,7 +166,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
             ? { name: values.name }
             : kind === "element"
               ? { name: values.name, domain_ids: [], shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, suggested_connection_type_ids: [] }
-              : { name: values.name, domain_ids: [], line_style: "solid", directional: true, color_light: null, color_dark: null, parent_ids: [] };
+              : { name: values.name, domain_ids: [], line_style: "solid", directional: true, default_protocol: "", color_light: null, color_dark: null, parent_ids: [] };
           await (scope.kind === "project" ? calls.projectCreate(scopeId, blank as never) : calls.orgCreate(scopeId, blank as never));
           showToast(`${noun[0].toUpperCase()}${noun.slice(1)} created.`);
           reload();

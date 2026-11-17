@@ -109,6 +109,47 @@
     "label": "Telemetry\nCommands\n2 connections"
   },
   {
+    "name": "a merged line with a shared protocol and detail",
+    "count": 2,
+    "type_name": "SPI",
+    "protocol": "SPI mode 0",
+    "detail": true,
+    "names": [],
+    "label": "SPI ×2 · SPI mode 0"
+  },
+  {
+    "name": "a merged line of mixed types with a shared protocol",
+    "count": 2,
+    "type_name": null,
+    "protocol": "UART 115200",
+    "detail": true,
+    "names": [],
+    "label": "2 connections · UART 115200"
+  },
+  {
+    "name": "a merged line with a shared protocol and no detail shows no protocol",
+    "count": 2,
+    "type_name": "SPI",
+    "protocol": "SPI mode 0",
+    "detail": false,
+    "names": [
+      "A"
+    ],
+    "label": "A\n×2"
+  },
+  {
+    "name": "a merged line with a shared protocol, names and detail",
+    "count": 3,
+    "type_name": "SPI",
+    "protocol": "SPI mode 0",
+    "detail": true,
+    "names": [
+      "A",
+      "B"
+    ],
+    "label": "A\nB\nSPI ×3 · SPI mode 0"
+  },
+  {
     "name": "three names fit",
     "count": 3,
     "type_name": "SPI",

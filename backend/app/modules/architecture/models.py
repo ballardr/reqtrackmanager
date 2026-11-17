@@ -250,6 +250,8 @@ class ArchitectureConnectionType(OwnedVocabularyMixin, Base):
     Attributes:
         line_style: A `LineStyle` value.
         directional: Whether the interface has a direction (one-way); `False` is two-way.
+        default_protocol: The protocol a new connection of this type starts with (blank for none); it pre-fills only and is
+            never applied to a connection that exists.
     """
 
     __tablename__ = "architecture_connection_types"
@@ -263,6 +265,7 @@ class ArchitectureConnectionType(OwnedVocabularyMixin, Base):
 
     line_style: Mapped[str] = mapped_column(String(20), default="solid")
     directional: Mapped[bool] = mapped_column(Boolean, default=True)
+    default_protocol: Mapped[str] = mapped_column(String(200), default="", server_default="")
     # Loaded with the row (one extra statement per list) so an API list carries `parent_ids` without a read per row.
     parent_links: Mapped[list[ArchitectureConnectionTypeParent]] = relationship(
         "ArchitectureConnectionTypeParent", foreign_keys="ArchitectureConnectionTypeParent.child_id", lazy="selectin",

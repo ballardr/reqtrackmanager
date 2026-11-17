@@ -57,7 +57,22 @@ export const RolledUpConnectionsOfOneTypeShareALabelWithTheirCount: Story = {
       connections: [buildConnection({ id: "con-a", target_element_id: "el-5" }), buildConnection({ id: "con-b", target_element_id: "el-6" })],
     });
     const [edge] = resolveDiagram(model, state()).edges;
-    expect(edge).toMatchObject({ target_element_id: "el-2", rolled_up: true, indirect: true, count: 2, type_name: "REST API", label: "REST API ×2" });
+    expect(edge).toMatchObject({ target_element_id: "el-2", rolled_up: true, indirect: true, count: 2, type_name: "REST API", label: "REST API ×2 · HTTPS/1.1" });
+  },
+};
+
+/** Connections that carry different protocols name none on the merged line. */
+export const RolledUpConnectionsWithDifferentProtocolsNameNone: Story = {
+  play: async () => {
+    const model = buildDiagramModel({
+      ...ROLLED_UP,
+      connections: [
+        buildConnection({ id: "con-a", target_element_id: "el-5" }),
+        buildConnection({ id: "con-b", target_element_id: "el-6", protocol: "gRPC" }),
+      ],
+    });
+    const [edge] = resolveDiagram(model, state()).edges;
+    expect(edge).toMatchObject({ count: 2, type_name: "REST API", label: "REST API ×2" });
   },
 };
 
@@ -72,7 +87,7 @@ export const ConnectionsOfDifferentTypesShareNoType: Story = {
       connection_types: [MODEL_REST_TYPE, { ...MODEL_REST_TYPE, id: "ct-2", name: "I2C" }],
     });
     const [edge] = resolveDiagram(model, state()).edges;
-    expect(edge).toMatchObject({ count: 2, type_name: null, label: "2 connections" });
+    expect(edge).toMatchObject({ count: 2, type_name: null, label: "2 connections · HTTPS/1.1" });
   },
 };
 
@@ -112,13 +127,14 @@ export const AConnectionToAnUnknownElementIsLeftOut: Story = {
   },
 };
 
-export const TheLabelOfASingleConnectionNamesItsTypeAndProtocol: Story = {
+export const TheLabelNamesTheTypeAndProtocolAndAMergedLineTheProtocolItsConnectionsShare: Story = {
   play: async () => {
     expect(edgeLabelText(1, "REST API", "HTTPS", true)).toBe("REST API · HTTPS");
     expect(edgeLabelText(1, "REST API", "", true)).toBe("REST API");
     expect(edgeLabelText(1, undefined, "HTTPS", true)).toBe("HTTPS");
     expect(edgeLabelText(1, undefined, "", true)).toBeNull();
-    expect(edgeLabelText(3, "REST API", "HTTPS", true)).toBe("REST API ×3");
+    expect(edgeLabelText(3, "REST API", "HTTPS", true)).toBe("REST API ×3 · HTTPS");
+    expect(edgeLabelText(3, "REST API", "", true)).toBe("REST API ×3");
     expect(edgeLabelText(3, undefined, "", true)).toBe("3 connections");
     expect(edgeLabelText(3, "REST API", "HTTPS", false)).toBeNull();
   },
@@ -172,6 +188,6 @@ export const ARolledUpLineNamesTheConnectionsBehindIt: Story = {
       ],
     });
     const [edge] = resolveDiagram(model, state({ showConnectionNames: true })).edges;
-    expect(edge).toMatchObject({ rolled_up: true, count: 2, label: "Orders in\nOrders out\nREST API ×2" });
+    expect(edge).toMatchObject({ rolled_up: true, count: 2, label: "Orders in\nOrders out\nREST API ×2 · HTTPS/1.1" });
   },
 };

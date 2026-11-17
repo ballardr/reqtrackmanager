@@ -76,13 +76,13 @@ export const EditDialogSavesTheOtherAttributes: Story = {
   },
 };
 
-/** A connection type adds a line style and whether it is one-way, and the groups it sits under. */
+/** A connection type adds a line style, whether it is one-way, its default protocol when it has one, and the groups it sits under. */
 export const ConnectionTypesShowLineStyleAndDirection: Story = {
   args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "connection" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Software · Solid, one-way")).toBeInTheDocument();
-    await expect(canvas.getByText("Hardware · Dashed, two-way · Under Serial bus")).toBeInTheDocument();
+    await expect(canvas.getByText("Hardware · Dashed, two-way, default protocol I2C 400 kHz · Under Serial bus")).toBeInTheDocument();
   },
 };
 

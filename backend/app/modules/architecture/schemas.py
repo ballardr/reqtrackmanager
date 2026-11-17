@@ -127,6 +127,7 @@ class ConnectionTypeCreate(_VocabularyCreate):
 
     line_style: LineStyle = LineStyle.SOLID
     directional: bool = True
+    default_protocol: str = Field(default="", max_length=200)
     parent_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
@@ -135,6 +136,7 @@ class ConnectionTypeUpdate(_VocabularyUpdate):
 
     line_style: LineStyle | None = None
     directional: bool | None = None
+    default_protocol: str | None = Field(default=None, max_length=200)
     parent_ids: list[UUID] | None = Field(default=None, max_length=20)
 
 
@@ -166,6 +168,7 @@ class ConnectionTypeOut(_VocabularyOut):
 
     line_style: str
     directional: bool
+    default_protocol: str
     parent_ids: list[UUID]
 
 
@@ -305,7 +308,10 @@ class ElementOut(ProjectScopedRow):
 
 
 class ConnectionCreate(BaseModel):
-    """Create payload for a connection between two elements (a port on each end is optional)."""
+    """Create payload for a connection between two elements (a port on each end is optional).
+
+    `protocol` left out takes the connection type's default protocol; an explicit empty string means none.
+    """
 
     name: str = Field(default="", max_length=200)
     connection_type_id: UUID
@@ -313,7 +319,7 @@ class ConnectionCreate(BaseModel):
     source_port_id: UUID | None = None
     target_element_id: UUID
     target_port_id: UUID | None = None
-    protocol: str = Field(default="", max_length=200)
+    protocol: str | None = Field(default=None, max_length=200)
     description: str = Field(default="", max_length=20000)
     folder_id: UUID | None = None
     activate: bool = False

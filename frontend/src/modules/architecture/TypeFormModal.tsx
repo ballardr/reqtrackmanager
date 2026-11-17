@@ -36,6 +36,7 @@ interface Draft {
   symbol_id: string | null;
   line_style: LineStyle;
   directional: boolean;
+  default_protocol: string;
   parent_ids: string[];
   suggested_connection_type_ids: string[];
 }
@@ -43,7 +44,7 @@ interface Draft {
 function blankDraft(): Draft {
   return {
     name: "", domain_ids: [], color_light: "", color_dark: "", shape: "rectangle", symbol_id: null,
-    line_style: "solid", directional: true, parent_ids: [], suggested_connection_type_ids: [],
+    line_style: "solid", directional: true, default_protocol: "", parent_ids: [], suggested_connection_type_ids: [],
   };
 }
 
@@ -53,7 +54,7 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
     name: row.name, domain_ids: row.domain_ids, color_light: row.color_light ?? "", color_dark: row.color_dark ?? "",
     ...("shape" in row
       ? { shape: row.shape, symbol_id: row.symbol_id, suggested_connection_type_ids: row.suggested_connection_type_ids }
-      : { line_style: row.line_style, directional: row.directional, parent_ids: row.parent_ids }),
+      : { line_style: row.line_style, directional: row.directional, default_protocol: row.default_protocol, parent_ids: row.parent_ids }),
   };
 }
 
@@ -95,7 +96,10 @@ export function TypeFormModal({
     };
     onSave(kind === "element"
       ? { ...common, shape: draft.shape, symbol_id: draft.symbol_id, suggested_connection_type_ids: draft.suggested_connection_type_ids }
-      : { ...common, line_style: draft.line_style, directional: draft.directional, parent_ids: draft.parent_ids });
+      : {
+        ...common, line_style: draft.line_style, directional: draft.directional, default_protocol: draft.default_protocol.trim(),
+        parent_ids: draft.parent_ids,
+      });
   }
 
   return (
@@ -155,6 +159,12 @@ export function TypeFormModal({
                 nodes={connectionTypeNodes(connectionTypes, cycleReasons(connectionTypes, initial?.id))}
               />
             </FormGridFull>
+          )}
+          {kind === "connection" && (
+            <TextField
+              help={ARCHITECTURE_HELP.connectionDefaultProtocol} label="Default protocol" value={draft.default_protocol}
+              onChange={(value) => set("default_protocol", value)}
+            />
           )}
           {kind === "connection" && (
             <FormGridFull>

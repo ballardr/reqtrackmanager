@@ -139,3 +139,33 @@ export const ConnectionTypeHasNoSuggestions: Story = {
     await expect(dialog().queryByRole("button", { name: "Suggested connection types" })).not.toBeInTheDocument();
   },
 };
+
+/** A connection type has a Default protocol (trimmed when saved); an element type has no such field. */
+export const ConnectionTypeSavesATrimmedDefaultProtocol: Story = {
+  args: { kind: "connection", initial: CONNECTION_TYPES[1] },
+  play: async ({ args }) => {
+    const d = dialog();
+    await expect(d.getByLabelText("Default protocol")).toHaveValue("I2C 400 kHz");
+    await userEvent.clear(d.getByLabelText("Default protocol"));
+    await userEvent.type(d.getByLabelText("Default protocol"), "  SPI mode 0  ");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "I2C", default_protocol: "SPI mode 0" }));
+  },
+};
+
+export const ANewConnectionTypeHasNoDefaultProtocolAndAnElementTypeHasNoField: Story = {
+  args: { kind: "connection" },
+  play: async ({ args }) => {
+    const d = dialog();
+    await expect(d.getByLabelText("Default protocol")).toHaveValue("");
+    await userEvent.type(d.getByLabelText("Name"), "Bus");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Bus", default_protocol: "" }));
+  },
+};
+
+export const ElementTypeHasNoDefaultProtocol: Story = {
+  play: async () => {
+    await expect(dialog().queryByLabelText("Default protocol")).not.toBeInTheDocument();
+  },
+};
