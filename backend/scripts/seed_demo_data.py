@@ -2488,13 +2488,15 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     org_arch = f"{BASE}/orgs/{org_id}/modules/architecture"
     org_symbols = {row["name"]: row["id"] for row in httpx.get(f"{org_arch}/symbols", headers=headers, timeout=30).json()}
     have = {row["name"] for row in httpx.get(f"{org_arch}/element-types", headers=headers, timeout=30).json()}
+    # Software and Hardware are seeded for a new organisation; a type is in the domains it names (none fits every domain).
+    org_domains = {row["name"].lower(): row["id"] for row in httpx.get(f"{org_arch}/domains", headers=headers, timeout=30).json()}
     for name, shape, domain, symbol_name in (
         ("Board", "chip", "hardware", "Board"), ("Sensor", "ellipse", "hardware", "Sensor"), ("Service", "hexagon", "software", "Server"),
     ):
         if name not in have:
             created = httpx.post(
                 f"{org_arch}/element-types", headers=headers, timeout=30,
-                json={"name": name, "shape": shape, "domain": domain, "symbol_id": org_symbols.get(symbol_name)},
+                json={"name": name, "shape": shape, "domain_ids": [org_domains[domain]], "symbol_id": org_symbols.get(symbol_name)},
             )
             created.raise_for_status()
 

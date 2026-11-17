@@ -20,8 +20,13 @@ import { guideConnectionTypes, mismatchWarning, suggestedGroup } from "./connect
 import { connectionTypeNodes } from "./connectionTypeTree";
 import { FolderField } from "./FolderField";
 import { ARCHITECTURE_HELP } from "./help";
-import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType } from "./types";
+import type {
+  ArchitectureConnection, ArchitectureDomain, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType,
+} from "./types";
 import { isOutOfUse } from "./types";
+
+/** The domains of a form given none: the mismatch warning then names no domain. */
+const NO_DOMAINS: ArchitectureDomain[] = [];
 
 /**
  * @param values The current values; `connection_type_id` is the type shown as chosen.
@@ -29,18 +34,20 @@ import { isOutOfUse } from "./types";
  * @param connectionTypes The types that may be chosen.
  * @param elementTypes The project's element types, which give each end's domain and suggested connection types; with none the
  *   picker offers every connection type.
+ * @param domains The project's domains, whose names the mismatch warning uses.
  * @param elements Every element either end may be (the project's own and those shared with it).
  * @param projectId The connection's project, for the folder choice.
  * @param saved The connection being edited, so an end that is now out of use stays selectable.
  * @param autoFocusName True to put the cursor in the name when the group first appears (a connection just added to a diagram).
  */
 export function ConnectionFieldGroup({
-  values, onChange, connectionTypes, elementTypes, elements, projectId, saved, autoFocusName = false,
+  values, onChange, connectionTypes, elementTypes, domains = NO_DOMAINS, elements, projectId, saved, autoFocusName = false,
 }: {
   values: ConnectionFieldValues;
   onChange: <K extends keyof ConnectionFieldValues>(key: K, value: ConnectionFieldValues[K]) => void;
   connectionTypes: ConnectionType[];
   elementTypes: ElementType[];
+  domains?: ArchitectureDomain[];
   elements: ArchitectureElement[];
   projectId: string;
   saved?: ArchitectureConnection;
@@ -69,7 +76,7 @@ export function ConnectionFieldGroup({
     ? connectionTypes
     : connectionTypes.filter((t) => guidance.offered.includes(t) || t.id === typeId);
   const typeNodes = [...suggestedGroup(guidance.suggested), ...connectionTypeNodes(listed)];
-  const warning = mismatchWarning(chosen, ends);
+  const warning = mismatchWarning(chosen, ends, domains);
 
   return (
     <>

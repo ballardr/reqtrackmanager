@@ -40,6 +40,9 @@ from app.modules.architecture.schemas import (
     ConnectionTypeCreate,
     ConnectionTypeOut,
     ConnectionTypeUpdate,
+    DomainCreate,
+    DomainOut,
+    DomainUpdate,
     ElementTypeCreate,
     ElementTypeOut,
     ElementTypeUpdate,
@@ -49,6 +52,7 @@ from app.modules.architecture.schemas import (
 from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_TYPES,
+    DOMAINS,
     ELEMENT_TYPES,
     SYMBOLS,
     TYPE_SUBCOMPONENT_KEY,
@@ -71,6 +75,10 @@ vocabulary_routes.add_project_routes(
     router, path="connection-types", vocabulary=CONNECTION_TYPES, create_schema=ConnectionTypeCreate,
     update_schema=ConnectionTypeUpdate, out_schema=ConnectionTypeOut, entity_type="architecture_connection_type",
     require_view=_require_view,
+)
+vocabulary_routes.add_project_routes(
+    router, path="domains", vocabulary=DOMAINS, create_schema=DomainCreate, update_schema=DomainUpdate, out_schema=DomainOut,
+    entity_type="architecture_domain", require_view=_require_view,
 )
 vocabulary_routes.add_project_routes(
     router, path="symbols", vocabulary=SYMBOLS, create_schema=None, update_schema=SymbolUpdate, out_schema=SymbolOut,

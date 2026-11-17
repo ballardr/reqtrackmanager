@@ -98,14 +98,6 @@ export const ARCHITECTURE_STATUS_TONE: Record<ArchitectureRecordStatus, BadgeTon
   rejected: "danger",
 };
 
-export type Domain = "software" | "hardware" | "any";
-
-export const DOMAIN_LABEL: Record<Domain, string> = {
-  software: "Software",
-  hardware: "Hardware",
-  any: "Software and hardware",
-};
-
 export type ElementShape =
   | "rectangle" | "rounded" | "cylinder" | "hexagon" | "ellipse" | "parallelogram" | "folder" | "chip";
 
@@ -130,16 +122,31 @@ export const LINE_STYLE_LABEL: Record<LineStyle, string> = {
 
 // --- Response and request shapes (mirror `backend/app/modules/architecture/schemas.py`) ---
 
-/** A vocabulary row. Exactly one of `project_id` and `organization_id` is set (its owner). */
+/** A domain (Software, Hardware, ...): a name a type can be in. Exactly one of `project_id` and `organization_id` is set. */
+export interface ArchitectureDomain {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  name: string;
+  sort_order: number;
+}
+
+/** The writable fields of a domain. */
+export interface ArchitectureDomainValues {
+  name: string;
+}
+
+/** A type vocabulary row. Exactly one of `project_id` and `organization_id` is set (its owner). */
 interface VocabularyRow {
   id: string;
   project_id: string | null;
   organization_id: string | null;
   name: string;
-  domain: Domain;
   color_light: string | null;
   color_dark: string | null;
   sort_order: number;
+  /** The domains the type is in; empty means it fits every domain. */
+  domain_ids: string[];
 }
 
 export interface ElementType extends VocabularyRow {
@@ -159,7 +166,7 @@ export interface ConnectionType extends VocabularyRow {
 /** The writable fields of an element type (`symbol_id: null` clears the symbol). */
 export interface ElementTypeValues {
   name: string;
-  domain: Domain;
+  domain_ids: string[];
   shape: ElementShape;
   color_light: string | null;
   color_dark: string | null;
@@ -170,7 +177,7 @@ export interface ElementTypeValues {
 
 export interface ConnectionTypeValues {
   name: string;
-  domain: Domain;
+  domain_ids: string[];
   line_style: LineStyle;
   directional: boolean;
   color_light: string | null;
@@ -422,7 +429,7 @@ export interface DiagramCreateValues extends DiagramFieldValues {
 export interface DiagramToggleRule {
   element_type_ids: string[];
   connection_type_ids: string[];
-  domains: Domain[];
+  domain_ids: string[];
   tags: string[];
 }
 

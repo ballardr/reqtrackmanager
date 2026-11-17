@@ -19,12 +19,9 @@ import { useRecordCode } from "../../hooks/useRecordCode";
 import { connectionTypeNodes } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import { blankToggle } from "./diagramToggles";
-import {
-  DOMAIN_LABEL, type ArchitectureConnection, type ArchitectureElement, type ConnectionType, type DiagramToggleValues, type Domain,
-  type ElementType,
+import type {
+  ArchitectureConnection, ArchitectureDomain, ArchitectureElement, ConnectionType, DiagramToggleValues, ElementType,
 } from "./types";
-
-const DOMAINS = Object.keys(DOMAIN_LABEL) as Domain[];
 
 function toggled<T>(list: T[], item: T): T[] {
   return list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
@@ -32,16 +29,18 @@ function toggled<T>(list: T[], item: T): T[] {
 
 /**
  * @param initial The switch being edited; omit to create.
+ * @param domains The project's domains, which the rule may match by.
  * @param elements Elements that may be chosen by hand.
  * @param connections Connections that may be chosen by hand.
  * @param onSave Called with the switch to store.
  */
 export function ToggleFormModal({
-  initial, elementTypes, connectionTypes, elements, connections, onCancel, onSave,
+  initial, elementTypes, connectionTypes, domains, elements, connections, onCancel, onSave,
 }: {
   initial?: DiagramToggleValues;
   elementTypes: ElementType[];
   connectionTypes: ConnectionType[];
+  domains: ArchitectureDomain[];
   elements: ArchitectureElement[];
   connections: ArchitectureConnection[];
   onCancel: () => void;
@@ -84,9 +83,9 @@ export function ToggleFormModal({
           />
           <MultiSelectDropdown
             triggerLabel="Domains" emptyLabel="No domains"
-            options={DOMAINS.map((d) => ({
-              value: d, label: DOMAIN_LABEL[d], checked: rule.domains.includes(d), optionLabel: `Match domain ${DOMAIN_LABEL[d]}`,
-              onToggle: () => setRule({ domains: toggled(rule.domains, d) }),
+            options={domains.map((d) => ({
+              value: d.id, label: d.name, checked: rule.domain_ids.includes(d.id), optionLabel: `Match domain ${d.name}`,
+              onToggle: () => setRule({ domain_ids: toggled(rule.domain_ids, d.id) }),
             }))}
           />
           <TextField helpNotNeeded label="Tags" value={tagText} onChange={setTagText} hint="Separate tags with commas" />

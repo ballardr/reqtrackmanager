@@ -784,7 +784,7 @@ export function DiagramEditorPage() {
         Save
       </button>
       <DiagramAddMenu
-        elementTypes={elementTypes} disabled={!editable}
+        elementTypes={elementTypes} domains={reference.domains} disabled={!editable}
         onAddType={(typeId) => void addElementAt(typeId, nextFreePosition(layout))}
         onAddExisting={() => setAdding(true)} onAddNote={addNewNote}
         outerConnections={outerChoices.map((c) => ({ id: c.connection.id, label: `${c.connection.unique_code} · ${boundaryOutsideName(c.box)}` }))}
@@ -831,7 +831,7 @@ export function DiagramEditorPage() {
           commentLayer.startAt(pinPlaceOf(at, target, layout.boxes, drawnLines(resolved.edges, drawnEdgeIds)));
         }}
         elements={elements} connectionTypes={reference.connectionTypes}
-        elementEditor={elementEditor} elementTypes={elementTypes} onSaveElement={saveElementFields} onSaveConnection={saveConnectionFields}
+        elementEditor={elementEditor} elementTypes={elementTypes} domains={reference.domains} onSaveElement={saveElementFields} onSaveConnection={saveConnectionFields}
         focusNew={focusNew} onFocused={() => setFocusNew(null)}
         chosenConnectionId={chosenConnectionId}
         onChooseConnection={(connectionId) => setChosenConnection(connectionId !== null && selection?.kind === "edge" ? { edgeId: selection.id, connectionId } : null)}
@@ -996,15 +996,15 @@ export function DiagramEditorPage() {
       )}
       {editingConnection && (
         <ConnectionFormModal
-          initial={editingConnection} connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
+          initial={editingConnection} connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} domains={reference.domains} elements={elements}
           projectId={projectId} error={connectionFormError}
           onCancel={() => { setEditingConnection(null); setConnectionFormError(null); }} onSave={saveConnectionEdit}
         />
       )}
-      {adding && <AddElementsDialog projectId={projectId} candidates={candidates} elementTypes={elementTypes} onCancel={() => setAdding(false)} onAdd={addExisting} />}
+      {adding && <AddElementsDialog projectId={projectId} candidates={candidates} elementTypes={elementTypes} domains={reference.domains} onCancel={() => setAdding(false)} onAdd={addExisting} />}
       {connecting && (
         <ConnectionFormModal
-          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
+          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} domains={reference.domains} elements={elements}
           projectId={projectId} defaultSourceId={connecting.source} defaultTargetId={connecting.target} error={createConnection.error}
           setupPath={CONNECTION_SETUP_PATH(projectId)}
           onCancel={() => { setConnecting(null); createConnection.clearError(); }} onSave={createConnection.create}
@@ -1030,7 +1030,7 @@ export function DiagramEditorPage() {
       )}
       {toggleForm && (
         <ToggleFormModal
-          initial={toggleForm.initial} elementTypes={elementTypes} connectionTypes={reference.connectionTypes}
+          initial={toggleForm.initial} elementTypes={elementTypes} connectionTypes={reference.connectionTypes} domains={reference.domains}
           elements={elements} connections={connections} onCancel={() => setToggleForm(null)} onSave={(t) => void storeToggle(t)}
         />
       )}

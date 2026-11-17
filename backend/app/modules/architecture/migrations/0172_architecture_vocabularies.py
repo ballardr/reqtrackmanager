@@ -85,6 +85,11 @@ def upgrade() -> None:
         "ck_architecture_connection_types_one_owner",
     )
 
+    # A database built from the current models has no `domain` column (a later revision replaced it with domain rows and
+    # drops it again), so the backfill below adds it first.
+    for table in ("architecture_element_types", "architecture_connection_types"):
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS domain VARCHAR(20) NOT NULL DEFAULT 'any'")
+
     element_values = ", ".join(
         f"({i}, {_sql_text(name)}, {_sql_text(shape)}, {_sql_text(domain)}, "
         f"{_sql_text(_COLORS[domain][0])}, {_sql_text(_COLORS[domain][1])})"

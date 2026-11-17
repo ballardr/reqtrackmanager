@@ -1,22 +1,29 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { defaultConnectionType, domainFits, guideConnectionTypes, mismatchWarning, suggestedGroup, SUGGESTED_GROUP_ID } from "./connectionGuidance";
-import type { ConnectionType, Domain, ElementType } from "./types";
+import { defaultConnectionType, domainsFit, guideConnectionTypes, mismatchWarning, suggestedGroup, SUGGESTED_GROUP_ID } from "./connectionGuidance";
+import type { ArchitectureDomain, ConnectionType, ElementType } from "./types";
 
-const connection = (id: string, name: string, domain: Domain): ConnectionType => ({
-  id, name, domain, sort_order: 0, parent_ids: [], project_id: null, organization_id: "org", line_style: "solid",
+/** The domains of the examples: a custom one beside the two a new organisation has. */
+const DOMAINS: ArchitectureDomain[] = [
+  { id: "sw", name: "Software", project_id: null, organization_id: "org", sort_order: 0 },
+  { id: "hw", name: "Hardware", project_id: null, organization_id: "org", sort_order: 1 },
+  { id: "mech", name: "Mechanical", project_id: null, organization_id: "org", sort_order: 2 },
+];
+
+const connection = (id: string, name: string, domain_ids: string[]): ConnectionType => ({
+  id, name, domain_ids, sort_order: 0, parent_ids: [], project_id: null, organization_id: "org", line_style: "solid",
   directional: true, color_light: null, color_dark: null,
 });
-const element = (id: string, name: string, domain: Domain, suggested: string[] = []): ElementType => ({
-  id, name, domain, sort_order: 0, project_id: null, organization_id: "org", shape: "rectangle", symbol_id: null,
+const element = (id: string, name: string, domain_ids: string[], suggested: string[] = []): ElementType => ({
+  id, name, domain_ids, sort_order: 0, project_id: null, organization_id: "org", shape: "rectangle", symbol_id: null,
   color_light: null, color_dark: null, suggested_connection_type_ids: suggested,
 });
 
-const TYPES = [connection("rest", "REST API", "software"), connection("i2c", "I2C", "hardware"), connection("eth", "Ethernet", "any")];
-const BOARD = element("board", "Board", "hardware", ["i2c"]);
-const SERVICE = element("service", "Service", "software", ["rest"]);
-const SYSTEM = element("system", "System", "any");
+const TYPES = [connection("rest", "REST API", ["sw"]), connection("i2c", "I2C", ["hw"]), connection("eth", "Ethernet", [])];
+const BOARD = element("board", "Board", ["hw"], ["i2c"]);
+const SERVICE = element("service", "Service", ["sw"], ["rest"]);
+const SYSTEM = element("system", "System", []);
 
 function Host() {
   return <p>Checks the connection type guidance rules.</p>;
@@ -27,12 +34,25 @@ export default meta;
 
 type Story = StoryObj<typeof Host>;
 
-export const AnyFitsEverythingAndEqualDomainsFit: Story = {
+export const NoDomainFitsEverythingAndASharedDomainFits: Story = {
   play: async () => {
-    await expect(domainFits("any", "hardware")).toBe(true);
-    await expect(domainFits("software", "any")).toBe(true);
-    await expect(domainFits("hardware", "hardware")).toBe(true);
-    await expect(domainFits("hardware", "software")).toBe(false);
+    await expect(domainsFit([], ["hw"])).toBe(true);
+    await expect(domainsFit(["sw"], [])).toBe(true);
+    await expect(domainsFit([], [])).toBe(true);
+    await expect(domainsFit(["hw"], ["hw"])).toBe(true);
+    await expect(domainsFit(["hw"], ["sw"])).toBe(false);
+  },
+};
+
+/** A type or element in several domains fits whatever shares any one of them. */
+export const SeveralDomainsFitWhateverSharesOneOfThem: Story = {
+  play: async () => {
+    await expect(domainsFit(["sw", "hw"], ["hw"])).toBe(true);
+    await expect(domainsFit(["sw", "hw"], ["mech"])).toBe(false);
+    await expect(domainsFit(["sw", "hw"], ["mech", "sw"])).toBe(true);
+    const gateway = connection("gw", "Gateway link", ["sw", "hw"]);
+    await expect(guideConnectionTypes([gateway, ...TYPES], [BOARD, BOARD]).offered.map((t) => t.name)).toEqual(["Gateway link", "I2C", "Ethernet"]);
+    await expect(guideConnectionTypes([gateway, ...TYPES], [element("m", "Frame", ["mech"]), BOARD]).offered.map((t) => t.name)).toEqual(["Ethernet"]);
   },
 };
 
@@ -70,17 +90,17 @@ export const ASuggestionNotInTheListIsDropped: Story = {
 
 export const TheWarningNamesEachEndThatDoesNotFit: Story = {
   play: async () => {
-    await expect(mismatchWarning(TYPES[0], [BOARD, BOARD])).toBe(
-      "REST API is a software connection type, but the source element (Board) is hardware and the target element (Board) is hardware. The connection can still be saved.",
+    await expect(mismatchWarning(TYPES[0], [BOARD, BOARD], DOMAINS)).toBe(
+      "REST API is in Software, but the source element (Board) is in Hardware and the target element (Board) is in Hardware. The connection can still be saved.",
     );
     // The service suggests REST API, which excuses the pair; a type neither end suggests is warned about per end.
-    await expect(mismatchWarning(TYPES[0], [SERVICE, BOARD])).toBeNull();
-    await expect(mismatchWarning(TYPES[0], [SYSTEM, BOARD])).toBe(
-      "REST API is a software connection type, but the target element (Board) is hardware. The connection can still be saved.",
+    await expect(mismatchWarning(TYPES[0], [SERVICE, BOARD], DOMAINS)).toBeNull();
+    await expect(mismatchWarning(TYPES[0], [SYSTEM, BOARD], DOMAINS)).toBe(
+      "REST API is in Software, but the target element (Board) is in Hardware. The connection can still be saved.",
     );
-    await expect(mismatchWarning(TYPES[1], [BOARD, BOARD])).toBeNull();
-    await expect(mismatchWarning(TYPES[2], [BOARD, SERVICE])).toBeNull();
-    await expect(mismatchWarning(undefined, [BOARD, BOARD])).toBeNull();
+    await expect(mismatchWarning(TYPES[1], [BOARD, BOARD], DOMAINS)).toBeNull();
+    await expect(mismatchWarning(TYPES[2], [BOARD, SERVICE], DOMAINS)).toBeNull();
+    await expect(mismatchWarning(undefined, [BOARD, BOARD], DOMAINS)).toBeNull();
   },
 };
 
@@ -100,7 +120,7 @@ export const ADrawnConnectionStartsWithTheSuggestedTypeElseTheFirstFittingTopLev
     await expect(defaultConnectionType(TYPES, [BOARD, BOARD])?.name).toBe("I2C");
     await expect(defaultConnectionType(TYPES, [SERVICE, BOARD])?.name).toBe("REST API"); // the source's suggestion comes first
     await expect(defaultConnectionType(TYPES, [SYSTEM, SYSTEM])?.name).toBe("REST API"); // nothing suggested: first fitting top-level
-    const nested: ConnectionType[] = [{ ...connection("child", "Child", "any"), parent_ids: ["rest"] }, ...TYPES];
+    const nested: ConnectionType[] = [{ ...connection("child", "Child", []), parent_ids: ["rest"] }, ...TYPES];
     await expect(defaultConnectionType(nested, [SYSTEM, SYSTEM])?.name).toBe("REST API"); // a nested type is not the default
   },
 };

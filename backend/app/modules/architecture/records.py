@@ -63,9 +63,12 @@ from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
+    ArchitectureConnectionTypeDomain,
     ArchitectureDiagram,
+    ArchitectureDiagramToggle,
     ArchitectureElement,
     ArchitectureElementType,
+    ArchitectureElementTypeDomain,
     ArchitecturePort,
     ArchitectureStateMachineDiagram,
 )
@@ -86,6 +89,7 @@ from app.modules.architecture.service import (
     CONNECTION_ARTEFACT_TYPE,
     CONNECTION_CODE_PREFIX,
     CONNECTION_TYPES,
+    DOMAINS,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_TYPES,
@@ -1121,6 +1125,20 @@ def _connection_type_in_use(db: Session, type_id: uuid.UUID) -> bool:
     )
 
 
+def _domain_in_use(db: Session, domain_id: uuid.UUID) -> bool:
+    """Whether a type is in the domain or a diagram toggle's rule names it."""
+    return (
+        db.scalar(select(ArchitectureElementTypeDomain.domain_id).where(ArchitectureElementTypeDomain.domain_id == domain_id).limit(1))
+        is not None
+        or db.scalar(
+            select(ArchitectureConnectionTypeDomain.domain_id).where(ArchitectureConnectionTypeDomain.domain_id == domain_id).limit(1)
+        ) is not None
+        or db.scalar(
+            select(ArchitectureDiagramToggle.id).where(ArchitectureDiagramToggle.rule.contains({"domain_ids": [str(domain_id)]})).limit(1)
+        ) is not None
+    )
+
+
 def _symbol_in_use(db: Session, symbol_id: uuid.UUID) -> bool:
     return (
         db.scalar(select(ArchitectureElement.id).where(ArchitectureElement.symbol_id == symbol_id).limit(1)) is not None
@@ -1129,10 +1147,11 @@ def _symbol_in_use(db: Session, symbol_id: uuid.UUID) -> bool:
 
 
 def register_usage_checks() -> None:
-    """Registers the checks that stop a type or symbol a record uses from being deleted (idempotent). Called when the
+    """Registers the checks that stop a type, symbol or domain that is in use from being deleted (idempotent). Called when the
     module is registered, so it holds whichever router a request arrives through."""
     for vocabulary, check in (
         (ELEMENT_TYPES, _element_type_in_use), (CONNECTION_TYPES, _connection_type_in_use), (SYMBOLS, _symbol_in_use),
+        (DOMAINS, _domain_in_use),
     ):
         if check not in vocabulary.usage_checks:
             vocabulary.usage_checks.append(check)

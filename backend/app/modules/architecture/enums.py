@@ -4,8 +4,7 @@ Module: modules.architecture.enums
 Architecture-owned vocabulary, kept in this package rather than
 `app.models.enums` because these are domain concepts this module owns.
 
-`Domain`, `ElementShape` and `LineStyle` are rendering and classification choices
-of a type; `RecordStatus` and `PortDirection` classify a record and its ports;
+`ElementShape` and `LineStyle` are rendering choices of a type; `RecordStatus` and `PortDirection` classify a record and its ports;
 `AttachPoint` names the eight places a line can meet a box on a diagram; `NoteTone` and `LeaderKind` describe an
 annotation note and what its leader points at; `LineEnd` is how a leader begins or ends. All are stored as plain
 strings, so adding a value needs no column change.
@@ -23,14 +22,6 @@ NOTE_TITLE_MAX = 120
 
 #: The longest label an initial, final or choice symbol may carry (characters): the text drawn inside the symbol.
 SYMBOL_LABEL_LENGTH = 256
-
-
-class Domain(str, enum.Enum):
-    """Which kind of architecture a type belongs to; `ANY` suits both."""
-
-    SOFTWARE = "software"
-    HARDWARE = "hardware"
-    ANY = "any"
 
 
 class ElementShape(str, enum.Enum):

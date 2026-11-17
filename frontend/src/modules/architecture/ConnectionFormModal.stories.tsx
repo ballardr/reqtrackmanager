@@ -3,7 +3,7 @@ import { expect, fn, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { requiredCaptions } from "../../testing/requiredMarkers";
-import { buildConnection, buildElement, CONNECTION_TYPES, ELEMENT_TYPES, PROJECT_ID } from "./architectureFixtures";
+import { buildConnection, buildElement, CONNECTION_TYPES, DOMAINS, ELEMENT_TYPES, PROJECT_ID } from "./architectureFixtures";
 import { ConnectionFormModal } from "./ConnectionFormModal";
 
 const ELEMENTS = [
@@ -16,7 +16,7 @@ const ELEMENTS = [
 const meta: Meta<typeof ConnectionFormModal> = {
   title: "Modules/Architecture/ConnectionFormModal",
   component: ConnectionFormModal,
-  args: { connectionTypes: CONNECTION_TYPES, elementTypes: ELEMENT_TYPES, elements: ELEMENTS, projectId: PROJECT_ID, onCancel: fn(), onSave: fn() },
+  args: { connectionTypes: CONNECTION_TYPES, elementTypes: ELEMENT_TYPES, domains: DOMAINS, elements: ELEMENTS, projectId: PROJECT_ID, onCancel: fn(), onSave: fn() },
   beforeEach: () => { spyOn(api, "get").mockResolvedValue({ members: [], external: null } as never); },
 };
 export default meta;
@@ -134,7 +134,7 @@ export const ChoosingATypeThatDoesNotFitWarnsButSaves: Story = {
     await userEvent.click(d.getByRole("button", { name: "Connection type" }));
     await userEvent.click(within(document.body).getAllByRole("radio", { name: "REST API" })[0]);
     await expect(d.getByRole("status")).toHaveTextContent(
-      "REST API is a software connection type, but the source element (Board) is hardware and the target element (Board) is hardware. The connection can still be saved.",
+      "REST API is in Software, but the source element (Board) is in Hardware and the target element (Board) is in Hardware. The connection can still be saved.",
     );
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ connection_type_id: "ct-1" }), expect.anything());

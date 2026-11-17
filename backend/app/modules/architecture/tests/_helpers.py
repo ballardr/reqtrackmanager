@@ -46,11 +46,13 @@ def add_domain_types(client, token, org_id) -> None:
     symbols = {
         r["name"]: r["id"] for r in client.get(f"{org_base(org_id)}/symbols", headers=auth_headers(token)).json()
     }
+    domains = {r["name"].lower(): r["id"] for r in client.get(f"{org_base(org_id)}/domains", headers=auth_headers(token)).json()}
     for name, shape, domain, suggested, symbol in DOMAIN_ELEMENT_TYPES:
         resp = client.post(
             f"{org_base(org_id)}/element-types",
             json={
-                "name": name, "shape": shape, "domain": domain, "suggested_connection_type_ids": [connections[n] for n in suggested],
+                "name": name, "shape": shape, "domain_ids": [domains[domain]],
+                "suggested_connection_type_ids": [connections[n] for n in suggested],
                 "symbol_id": symbols[symbol] if symbol else None,
             },
             headers=auth_headers(token),
@@ -104,6 +106,12 @@ def element_types(client, token, project_id) -> dict[str, str]:
 def connection_types(client, token, project_id) -> dict[str, str]:
     """`{name: id}` of the project's effective connection types."""
     rows = client.get(f"{project_base(project_id)}/connection-types", headers=auth_headers(token)).json()
+    return {r["name"]: r["id"] for r in rows}
+
+
+def domains(client, token, project_id) -> dict[str, str]:
+    """`{name: id}` of the project's effective domains."""
+    rows = client.get(f"{project_base(project_id)}/domains", headers=auth_headers(token)).json()
     return {r["name"]: r["id"] for r in rows}
 
 

@@ -1,7 +1,7 @@
 """
 Module: modules.architecture.service
 
-The element type and connection type vocabularies and the symbol library: seeding
+The domain, element type and connection type vocabularies and the symbol library: seeding
 an organisation's defaults, resolving a project's effective list, and creating,
 editing, hiding and deleting rows.
 
@@ -13,6 +13,9 @@ Responsibilities:
   parent and copied with an inherited configuration).
 - `ConnectionTypeVocabulary` adds the type tree: a type's parents are validated (same tier or a visible
   organisation default, no cycle, depth cap in `connection_tree`) and copied with an inherited configuration.
+- `DomainVocabulary` is the vocabulary of domains (Software, Hardware, ...) a type can be in: any number, none meaning every
+  domain. Links are validated like a parent; when a project copies an inherited configuration, `heal_links` re-points the
+  project's type links and its diagrams' toggle rules at the project's own copy of a domain (matched by name).
 - `SymbolLibrary` is a vocabulary of drawings (built-in or an uploaded SVG file) that
   element types and elements are assigned; it uses the same two tiers, hiding and nested
   fallback as the types. A symbol file is shared by the copies of an inherited project row,
@@ -47,11 +50,16 @@ from sqlalchemy.orm import Session
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.modules.architecture.connection_tree import check_tree
-from app.modules.architecture.enums import Domain, ElementShape, LineStyle
+from app.modules.architecture.enums import ElementShape, LineStyle
 from app.modules.architecture.models import (
     ArchitectureConnectionType,
+    ArchitectureConnectionTypeDomain,
     ArchitectureConnectionTypeParent,
+    ArchitectureDiagram,
+    ArchitectureDiagramToggle,
+    ArchitectureDomain,
     ArchitectureElementType,
+    ArchitectureElementTypeDomain,
     ArchitectureElementTypeSuggestion,
     ArchitectureSymbol,
 )
@@ -59,7 +67,9 @@ from app.services import definition_suppression
 from app.services.files import delete_file
 
 #: A vocabulary's model class.
-VocabularyModel = type[ArchitectureElementType] | type[ArchitectureConnectionType] | type[ArchitectureSymbol]
+VocabularyModel = (
+    type[ArchitectureElementType] | type[ArchitectureConnectionType] | type[ArchitectureSymbol] | type[ArchitectureDomain]
+)
 
 ARCHITECTURE_MODULE_KEY = "architecture"
 TYPE_SUBCOMPONENT_KEY = "architecture_type"
@@ -84,49 +94,54 @@ STATE_CODE_PREFIX = "STE"
 ELEMENT_TYPE_KIND = "architecture_element_type"
 CONNECTION_TYPE_KIND = "architecture_connection_type"
 SYMBOL_KIND = "architecture_symbol"
+DOMAIN_KIND = "architecture_domain"
 
 #: How many ancestors `configuration_source` walks (a guard against a corrupt tree).
 _ANCESTOR_CAP = 50
 
 #: Accent colour pair `(light, dark)` a seeded type gets, by domain.
 DOMAIN_COLORS: dict[str, tuple[str, str]] = {
-    Domain.SOFTWARE.value: ("#2563EB", "#60A5FA"),
-    Domain.HARDWARE.value: ("#B45309", "#FBBF24"),
-    Domain.ANY.value: ("#475569", "#94A3B8"),
+    "software": ("#2563EB", "#60A5FA"),
+    "hardware": ("#B45309", "#FBBF24"),
+    "any": ("#475569", "#94A3B8"),
 }
+
+#: `(seed key, name)` for each domain a new organisation is given, in order. The seed key is what the default type tables
+#: below name (`"any"` is no domain: a type that fits every domain), never a stored value.
+DEFAULT_DOMAINS: tuple[tuple[str, str], ...] = (("software", "Software"), ("hardware", "Hardware"))
 
 #: `(name, shape, domain)` for each element type a new organisation is given. They are neutral (no software or hardware
 #: technology is named, no symbol or suggested connection type is attached): an organisation adds the types it wants.
 DEFAULT_ELEMENT_TYPES: tuple[tuple[str, str, str], ...] = (
-    ("System", ElementShape.ROUNDED.value, Domain.ANY.value),
-    ("Subsystem", ElementShape.ROUNDED.value, Domain.ANY.value),
-    ("Component", ElementShape.RECTANGLE.value, Domain.ANY.value),
+    ("System", ElementShape.ROUNDED.value, "any"),
+    ("Subsystem", ElementShape.ROUNDED.value, "any"),
+    ("Component", ElementShape.RECTANGLE.value, "any"),
 )
 
 #: `(name, domain, directional)` for each connection type a new organisation is given, in seed order: the groups first
 #: (each is itself a usable type), then the types that sit under them, then the unspecified types.
 DEFAULT_CONNECTION_TYPES: tuple[tuple[str, str, bool], ...] = (
-    ("Network", Domain.ANY.value, False),
-    ("Serial bus", Domain.HARDWARE.value, False),
-    ("Power", Domain.HARDWARE.value, True),
-    ("Wired signal", Domain.HARDWARE.value, True),
-    ("Software interface", Domain.SOFTWARE.value, True),
-    ("Data exchange", Domain.SOFTWARE.value, True),
-    ("REST API", Domain.SOFTWARE.value, True),
-    ("gRPC", Domain.SOFTWARE.value, True),
-    ("Message queue", Domain.SOFTWARE.value, True),
-    ("Event stream", Domain.SOFTWARE.value, True),
-    ("Database access", Domain.SOFTWARE.value, True),
-    ("File exchange", Domain.SOFTWARE.value, True),
-    ("SPI", Domain.HARDWARE.value, False),
-    ("I2C", Domain.HARDWARE.value, False),
-    ("UART", Domain.HARDWARE.value, False),
-    ("CAN", Domain.HARDWARE.value, False),
-    ("Ethernet", Domain.ANY.value, False),
-    ("USB", Domain.HARDWARE.value, False),
-    ("Analogue signal", Domain.HARDWARE.value, True),
-    ("Unspecified hardware link", Domain.HARDWARE.value, False),
-    ("Unspecified software interface", Domain.SOFTWARE.value, True),
+    ("Network", "any", False),
+    ("Serial bus", "hardware", False),
+    ("Power", "hardware", True),
+    ("Wired signal", "hardware", True),
+    ("Software interface", "software", True),
+    ("Data exchange", "software", True),
+    ("REST API", "software", True),
+    ("gRPC", "software", True),
+    ("Message queue", "software", True),
+    ("Event stream", "software", True),
+    ("Database access", "software", True),
+    ("File exchange", "software", True),
+    ("SPI", "hardware", False),
+    ("I2C", "hardware", False),
+    ("UART", "hardware", False),
+    ("CAN", "hardware", False),
+    ("Ethernet", "any", False),
+    ("USB", "hardware", False),
+    ("Analogue signal", "hardware", True),
+    ("Unspecified hardware link", "hardware", False),
+    ("Unspecified software interface", "software", True),
 )
 
 #: `{type name: names of the types it sits under}` for the seeded connection types; a name not listed is a root.
@@ -418,17 +433,160 @@ class ArchitectureVocabulary(ABC):
         return db.get(self.model, mapping.get(row.id, row.id))
 
 
+class DomainVocabulary(ArchitectureVocabulary):
+    """The domain vocabulary: Software, Hardware and the organisation's or project's own. A type is in any number of
+    domains (`ElementTypeVocabulary`/`ConnectionTypeVocabulary` take `domain_ids`); none means every domain. The rules for
+    the two tiers, hiding and the nested fallback are the base class's."""
+
+    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
+        """Adds Software and Hardware to a new organisation. The caller owns the transaction.
+
+        Returns:
+            `{seed key: row id}` (`DEFAULT_DOMAINS`' keys), for the default types' links.
+        """
+        ids: dict[str, uuid.UUID] = {}
+        for i, (key, name) in enumerate(DEFAULT_DOMAINS):
+            ids[key] = uuid.uuid4()
+            db.add(ArchitectureDomain(id=ids[key], organization_id=organization_id, name=name, sort_order=i))
+        return ids
+
+    def check_links(
+        self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID,
+        row: ArchitectureElementType | ArchitectureConnectionType | None, domain_ids: list[uuid.UUID],
+    ) -> list[uuid.UUID]:
+        """Validates the domains a type is to be in and returns them without duplicates.
+
+        A domain is one of the owner's own tier or, for a project row, one the project lists. One the row already has is
+        kept even when the project has since hidden it.
+
+        Raises:
+            ValueError: If an id is not a domain this owner can use.
+        """
+        wanted = list(dict.fromkeys(domain_ids))
+        if project_id is None:
+            visible = self.org_rows(db, organization_id)
+        else:
+            visible = self.resolve_effective(db, project_id, organization_id).rows
+        allowed = {r.id for r in visible} | (set(row.domain_ids) if row is not None else set())
+        if any(d not in allowed for d in wanted):
+            raise ValueError("A domain must be a domain this owner can use.")
+        return wanted
+
+    def set_links(self, row: ArchitectureElementType | ArchitectureConnectionType, domain_ids: list[uuid.UUID]) -> None:
+        """Replaces a type's domains with `domain_ids` (already validated)."""
+        keep = set(domain_ids)
+        if isinstance(row, ArchitectureElementType):
+            for element_link in list(row.domain_links):
+                if element_link.domain_id not in keep:
+                    row.domain_links.remove(element_link)
+            have = {link.domain_id for link in row.domain_links}
+            row.domain_links.extend(ArchitectureElementTypeDomain(domain_id=d) for d in domain_ids if d not in have)
+        else:
+            for connection_link in list(row.domain_links):
+                if connection_link.domain_id not in keep:
+                    row.domain_links.remove(connection_link)
+            have = {link.domain_id for link in row.domain_links}
+            row.domain_links.extend(ArchitectureConnectionTypeDomain(domain_id=d) for d in domain_ids if d not in have)
+
+    def link_by_names(
+        self, db: Session, row: ArchitectureElementType | ArchitectureConnectionType, *, project_id: uuid.UUID | None,
+        organization_id: uuid.UUID, names: list[str], context: str,
+    ) -> list[str]:
+        """Puts a type in the domains named in a bundle (the project's own rows first, then the organisation's, a hidden
+        default included); a name the owner has no domain for is created in the owner's tier so the type keeps its meaning.
+
+        Returns:
+            One message for each domain created because it was missing.
+        """
+        visible = {r.name.casefold(): r for r in self.org_rows(db, organization_id)}
+        if project_id is not None:
+            # A default the project hides still names the domain a type was in; the project's own rows win a name.
+            visible.update({r.name.casefold(): r for r in self.resolve_effective(db, project_id, organization_id).rows})
+        problems: list[str] = []
+        ids: list[uuid.UUID] = []
+        for name in dict.fromkeys(n.strip() for n in names if isinstance(n, str) and n.strip()):
+            found = visible.get(name.casefold())
+            if found is None:
+                found = self.create(db, project_id=project_id, organization_id=organization_id, name=name[:100])
+                visible[name.casefold()] = found
+                problems.append(f"Domain {name!r} ({context}) was not found here and was created.")
+            ids.append(found.id)
+        self.set_links(row, ids)
+        db.flush()
+        return problems
+
+    def materialize_inherited(self, db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+        """As the base class, then gives the project its own copy of the type vocabularies as well and re-points every
+        link and toggle rule that named an inherited domain at the project's copy (`heal_links`), so a domain means the
+        same row to the types and the rules of one project."""
+        mapping = super().materialize_inherited(db, project_id)
+        if mapping:
+            ELEMENT_TYPES.materialize_inherited(db, project_id)
+            CONNECTION_TYPES.materialize_inherited(db, project_id)
+            self.heal_links(db, project_id)
+        return mapping
+
+    def heal_links(self, db: Session, project_id: uuid.UUID) -> None:
+        """Re-points the project's own types and its diagrams' toggle rules at the domains of the project's list.
+
+        A link or rule id that is neither in the project's effective list nor an organisation default (a hidden default
+        stays valid) belongs to an ancestor's domain that the project has since copied: it moves to the project's domain of
+        the same name, or is dropped when there is none. Does nothing when every id is valid.
+        """
+        project = db.get(Project, project_id)
+        if project is None:
+            return
+        effective = self.resolve_effective(db, project_id, project.organization_id).rows
+        by_name = {r.name.casefold(): r.id for r in effective}
+        valid = {r.id for r in effective} | {r.id for r in self.org_rows(db, project.organization_id)}
+
+        def fixed(ids: list[uuid.UUID]) -> list[uuid.UUID]:
+            out: list[uuid.UUID] = []
+            for domain_id in ids:
+                if domain_id in valid:
+                    out.append(domain_id)
+                    continue
+                stale = db.get(ArchitectureDomain, domain_id)
+                target = by_name.get(stale.name.casefold()) if stale is not None else None
+                if target is not None:
+                    out.append(target)
+            return list(dict.fromkeys(out))
+
+        for vocabulary in (ELEMENT_TYPES, CONNECTION_TYPES):
+            for row in vocabulary.project_rows(db, project_id):
+                if any(d not in valid for d in row.domain_ids):
+                    self.set_links(row, fixed(row.domain_ids))
+        for toggle in db.scalars(
+            select(ArchitectureDiagramToggle).join(ArchitectureDiagram, ArchitectureDiagram.id == ArchitectureDiagramToggle.diagram_id)
+            .where(ArchitectureDiagram.project_id == project_id)
+        ):
+            ids = [uuid.UUID(i) for i in (toggle.rule or {}).get("domain_ids", [])]
+            if any(d not in valid for d in ids):
+                rule = dict(toggle.rule)
+                healed = [str(d) for d in fixed(ids)]
+                if healed:
+                    rule["domain_ids"] = healed
+                else:
+                    rule.pop("domain_ids", None)
+                toggle.rule = rule
+        db.flush()
+
+
 class ElementTypeVocabulary(ArchitectureVocabulary):
     """The element type vocabulary. A type's `symbol_id` is validated against the symbols its owner may use."""
 
-    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
-        """Adds the default (neutral) element types to a new organisation. The caller owns the transaction."""
+    def seed_defaults(self, db: Session, organization_id: uuid.UUID, domain_ids: Mapping[str, uuid.UUID] | None = None) -> None:
+        """Adds the default (neutral) element types to a new organisation, in the domains `domain_ids` names by seed key
+        (none of the defaults is in one today). The caller owns the transaction."""
         for i, (name, shape, domain) in enumerate(DEFAULT_ELEMENT_TYPES):
             light, dark = DOMAIN_COLORS[domain]
-            db.add(ArchitectureElementType(
-                id=uuid.uuid4(), organization_id=organization_id, name=name, shape=shape, domain=domain,
+            row = ArchitectureElementType(
+                id=uuid.uuid4(), organization_id=organization_id, name=name, shape=shape,
                 color_light=light, color_dark=dark, sort_order=i,
-            ))
+            )
+            if domain in (domain_ids or {}):
+                row.domain_links.append(ArchitectureElementTypeDomain(domain_id=(domain_ids or {})[domain]))
+            db.add(row)
 
     def _check_suggestions(
         self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, row: ArchitectureElementType | None,
@@ -476,14 +634,18 @@ class ElementTypeVocabulary(ArchitectureVocabulary):
             db, project_id=project_id, organization_id=organization_id, row=None,
             connection_type_ids=fields.pop("suggested_connection_type_ids", None) or [],
         )
+        domains = DOMAINS.check_links(
+            db, project_id=project_id, organization_id=organization_id, row=None, domain_ids=fields.pop("domain_ids", None) or [],
+        )
         row = super().create(db, project_id=project_id, organization_id=organization_id, **fields)
         self._set_suggestions(row, suggested)
+        DOMAINS.set_links(row, domains)
         db.flush()
         return row
 
     def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
         """As the base class, plus `symbol_id`: given as `None` it clears the symbol, and a new one is checked against the
-        symbols the owner may use; and `suggested_connection_type_ids` (a list replaces the suggestions, `None` or
+        symbols the owner may use; `suggested_connection_type_ids` and `domain_ids` (a list replaces them, `None` or
         omitted leaves them).
 
         Raises:
@@ -499,11 +661,19 @@ class ElementTypeVocabulary(ArchitectureVocabulary):
             suggested = self._check_suggestions(
                 db, project_id=row.project_id, organization_id=organization_id, row=row, connection_type_ids=given_suggestions,
             )
+        given_domains = fields.pop("domain_ids", None)
+        domains = None
+        if given_domains is not None:
+            domains = DOMAINS.check_links(
+                db, project_id=row.project_id, organization_id=organization_id, row=row, domain_ids=given_domains,
+            )
         super().update(db, row, organization_id, **fields)
         if given:
             row.symbol_id = symbol_id
         if suggested is not None:
             self._set_suggestions(row, suggested)
+        if domains is not None:
+            DOMAINS.set_links(row, domains)
         db.flush()
 
     def link_suggestions_by_names(
@@ -557,7 +727,10 @@ class ElementTypeVocabulary(ArchitectureVocabulary):
             if source is None or copy is None:
                 continue
             self._set_suggestions(copy, list(source.suggested_connection_type_ids))
+            DOMAINS.set_links(copy, list(source.domain_ids))
         db.flush()
+        if mapping:
+            DOMAINS.heal_links(db, project_id)
         return mapping
 
 
@@ -565,9 +738,11 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
     """The connection type vocabulary, whose rows form a tree: any depth, several parents per type, and a group is
     itself a usable type. Create and update take `parent_ids` (a given list replaces the parents; omitted leaves them)."""
 
-    def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
-        """Adds the default connection types, nested under their groups, to a new organisation. The caller owns the
-        transaction.
+    def seed_defaults(
+        self, db: Session, organization_id: uuid.UUID, domain_ids: Mapping[str, uuid.UUID] | None = None,
+    ) -> dict[str, uuid.UUID]:
+        """Adds the default connection types, nested under their groups, to a new organisation, in the domains
+        `domain_ids` names by seed key (a type seeded as `"any"` is in none). The caller owns the transaction.
 
         Returns:
             `{connection type name: its new row id}`, for the element types' suggestions.
@@ -575,10 +750,13 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
         ids = {name: uuid.uuid4() for name, _domain, _directional in DEFAULT_CONNECTION_TYPES}
         for i, (name, domain, directional) in enumerate(DEFAULT_CONNECTION_TYPES):
             light, dark = DOMAIN_COLORS[domain]
-            db.add(ArchitectureConnectionType(
-                id=ids[name], organization_id=organization_id, name=name, domain=domain, directional=directional,
+            row = ArchitectureConnectionType(
+                id=ids[name], organization_id=organization_id, name=name, directional=directional,
                 line_style=LineStyle.SOLID.value, color_light=light, color_dark=dark, sort_order=i,
-            ))
+            )
+            if domain in (domain_ids or {}):
+                row.domain_links.append(ArchitectureConnectionTypeDomain(domain_id=(domain_ids or {})[domain]))
+            db.add(row)
         for name, parents in DEFAULT_CONNECTION_TYPE_PARENTS.items():
             for parent in parents:
                 db.add(ArchitectureConnectionTypeParent(child_id=ids[name], parent_id=ids[parent]))
@@ -621,24 +799,28 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
                 row.parent_links.append(ArchitectureConnectionTypeParent(parent_id=parent_id))
 
     def create(self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, **fields):
-        """As the base class, plus `parent_ids`.
+        """As the base class, plus `parent_ids` and `domain_ids`.
 
         Raises:
-            ValueError: On a clashing name or an invalid parent.
+            ValueError: On a clashing name, an invalid parent or a domain the owner cannot use.
         """
         parent_ids = self._check_parents(
             db, project_id=project_id, organization_id=organization_id, child=None, parent_ids=fields.pop("parent_ids", None) or [],
         )
+        domains = DOMAINS.check_links(
+            db, project_id=project_id, organization_id=organization_id, row=None, domain_ids=fields.pop("domain_ids", None) or [],
+        )
         row = super().create(db, project_id=project_id, organization_id=organization_id, **fields)
         self._set_parents(row, parent_ids)
+        DOMAINS.set_links(row, domains)
         db.flush()
         return row
 
     def update(self, db: Session, row, organization_id: uuid.UUID, **fields) -> None:
-        """As the base class, plus `parent_ids` (a list replaces the parents, `None` or omitted leaves them).
+        """As the base class, plus `parent_ids` and `domain_ids` (a list replaces them, `None` or omitted leaves them).
 
         Raises:
-            ValueError: On a clashing name or an invalid parent.
+            ValueError: On a clashing name, an invalid parent or a domain the owner cannot use.
         """
         given = fields.pop("parent_ids", None)
         parent_ids = None
@@ -646,10 +828,18 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
             parent_ids = self._check_parents(
                 db, project_id=row.project_id, organization_id=organization_id, child=row, parent_ids=given,
             )
+        given_domains = fields.pop("domain_ids", None)
+        domains = None
+        if given_domains is not None:
+            domains = DOMAINS.check_links(
+                db, project_id=row.project_id, organization_id=organization_id, row=row, domain_ids=given_domains,
+            )
         super().update(db, row, organization_id, **fields)
         if parent_ids is not None:
             self._set_parents(row, parent_ids)
-            db.flush()
+        if domains is not None:
+            DOMAINS.set_links(row, domains)
+        db.flush()
 
     def link_by_names(
         self, db: Session, *, project_id: uuid.UUID | None, organization_id: uuid.UUID, parents_by_child: Mapping[str, list[str]],
@@ -699,6 +889,7 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
             if source is None or copy is None:
                 continue
             self._set_parents(copy, [mapping.get(p, p) for p in source.parent_ids])
+            DOMAINS.set_links(copy, list(source.domain_ids))
         if mapping:
             # The project's own element types may suggest a type that is now the project's copy.
             for element_type in ELEMENT_TYPES.project_rows(db, project_id):
@@ -706,6 +897,8 @@ class ConnectionTypeVocabulary(ArchitectureVocabulary):
                     element_type, list(dict.fromkeys(mapping.get(c, c) for c in element_type.suggested_connection_type_ids)),
                 )
         db.flush()
+        if mapping:
+            DOMAINS.heal_links(db, project_id)
         return mapping
 
 
@@ -789,6 +982,7 @@ class SymbolLibrary(ArchitectureVocabulary):
         self._drop_file(db, file_asset_id)
 
 
+DOMAINS = DomainVocabulary(kind=DOMAIN_KIND, label="Domain", model=ArchitectureDomain)
 ELEMENT_TYPES = ElementTypeVocabulary(kind=ELEMENT_TYPE_KIND, label="Element type", model=ArchitectureElementType)
 CONNECTION_TYPES = ConnectionTypeVocabulary(
     kind=CONNECTION_TYPE_KIND, label="Connection type", model=ArchitectureConnectionType,
@@ -797,8 +991,9 @@ SYMBOLS = SymbolLibrary(kind=SYMBOL_KIND, label="Symbol", model=ArchitectureSymb
 
 
 def seed_org_defaults(db: Session, organization_id: uuid.UUID) -> None:
-    """`ModuleDefinition.on_org_created`: gives a new organisation the built-in symbols and the default element and
-    connection types."""
+    """`ModuleDefinition.on_org_created`: gives a new organisation the built-in symbols, the Software and Hardware domains
+    and the default element and connection types."""
     SYMBOLS.add_builtins(db, organization_id)
-    CONNECTION_TYPES.seed_defaults(db, organization_id)
-    ELEMENT_TYPES.seed_defaults(db, organization_id)
+    domain_ids = DOMAINS.seed_defaults(db, organization_id)
+    CONNECTION_TYPES.seed_defaults(db, organization_id, domain_ids)
+    ELEMENT_TYPES.seed_defaults(db, organization_id, domain_ids)

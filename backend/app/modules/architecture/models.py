@@ -4,6 +4,8 @@ Module: modules.architecture.models
 The two vocabularies every architecture record is typed by, and the records:
 
 - `ArchitectureSymbol` — a drawing (a sanitised SVG, or one of the built-in set) an element type or element is shown with.
+- `ArchitectureDomain` — a name (Software, Hardware, ...) a type can be in; a type is in any number of domains (a link
+  table each), and none means every domain.
 - `ArchitectureElementType` — what an element is (System, Service, Board, ...); it may name suggested connection types
   (`ArchitectureElementTypeSuggestion`) that a connection picker lists first.
 - `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...); a type sits in a tree of any depth
@@ -87,17 +89,32 @@ class OwnedNamedMixin(UUIDPKMixin, TimestampMixin):
 
 
 class OwnedVocabularyMixin(OwnedNamedMixin):
-    """Columns shared by both vocabularies, on top of `OwnedNamedMixin`.
+    """Columns shared by both type vocabularies, on top of `OwnedNamedMixin`.
 
     Attributes:
-        domain: A `Domain` value.
         color_light: Accent colour on a light theme, `#RRGGBB`, or `NULL` for the theme default.
         color_dark: Accent colour on a dark theme, `#RRGGBB`, or `NULL` for the theme default.
     """
 
-    domain: Mapped[str] = mapped_column(String(20), default="any")
     color_light: Mapped[str | None] = mapped_column(String(7), nullable=True)
     color_dark: Mapped[str | None] = mapped_column(String(7), nullable=True)
+
+
+class ArchitectureDomain(OwnedNamedMixin, Base):
+    """A domain (Software, Hardware, Mechanical, ...): a name an element type or a connection type can be in, used to
+    narrow the pickers and a diagram's toggle rules. A vocabulary of its own with the two tiers of the types; it has no
+    colour. A type with no domain fits every domain.
+
+    A domain a type links to (`ArchitectureElementTypeDomain`, `ArchitectureConnectionTypeDomain`) or a toggle rule names
+    is never deleted (`records.register_usage_checks`).
+    """
+
+    __tablename__ = "architecture_domains"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_domains_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_domains_org_name"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_domains_one_owner"),
+    )
 
 
 class ArchitectureSymbol(OwnedNamedMixin, Base):
@@ -164,10 +181,20 @@ class ArchitectureElementType(OwnedVocabularyMixin, Base):
         back_populates="element_type",
     )
 
+    domain_links: Mapped[list[ArchitectureElementTypeDomain]] = relationship(
+        "ArchitectureElementTypeDomain", foreign_keys="ArchitectureElementTypeDomain.element_type_id", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ArchitectureElementTypeDomain.domain_id", back_populates="element_type",
+    )
+
     @property
     def suggested_connection_type_ids(self) -> list[uuid.UUID]:
         """The ids of the connection types suggested for this element type (empty for none)."""
         return [link.connection_type_id for link in self.suggestion_links]
+
+    @property
+    def domain_ids(self) -> list[uuid.UUID]:
+        """The ids of the domains this type is in (empty: it fits every domain)."""
+        return [link.domain_id for link in self.domain_links]
 
 
 class ArchitectureElementTypeSuggestion(Base):
@@ -192,6 +219,28 @@ class ArchitectureElementTypeSuggestion(Base):
     )
     element_type: Mapped[ArchitectureElementType] = relationship(
         "ArchitectureElementType", foreign_keys=[element_type_id], back_populates="suggestion_links", lazy="raise",
+    )
+
+
+class ArchitectureElementTypeDomain(Base):
+    """One domain an element type is in. The domain is in the type's own tier or an organisation default visible to it
+    (the service checks); deleting either removes the row.
+
+    Attributes:
+        element_type_id: The element type.
+        domain_id: The domain it is in.
+    """
+
+    __tablename__ = "architecture_element_type_domains"
+
+    element_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_element_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_domains.id", ondelete="CASCADE"), primary_key=True, index=True,
+    )
+    element_type: Mapped[ArchitectureElementType] = relationship(
+        "ArchitectureElementType", foreign_keys=[element_type_id], back_populates="domain_links", lazy="raise",
     )
 
 
@@ -220,10 +269,41 @@ class ArchitectureConnectionType(OwnedVocabularyMixin, Base):
         cascade="all, delete-orphan", order_by="ArchitectureConnectionTypeParent.parent_id", back_populates="child",
     )
 
+    domain_links: Mapped[list[ArchitectureConnectionTypeDomain]] = relationship(
+        "ArchitectureConnectionTypeDomain", foreign_keys="ArchitectureConnectionTypeDomain.connection_type_id", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ArchitectureConnectionTypeDomain.domain_id", back_populates="connection_type",
+    )
+
     @property
     def parent_ids(self) -> list[uuid.UUID]:
         """The ids of the types this one sits under (empty for a root)."""
         return [link.parent_id for link in self.parent_links]
+
+    @property
+    def domain_ids(self) -> list[uuid.UUID]:
+        """The ids of the domains this type is in (empty: it fits every domain)."""
+        return [link.domain_id for link in self.domain_links]
+
+
+class ArchitectureConnectionTypeDomain(Base):
+    """One domain a connection type is in (see `ArchitectureElementTypeDomain`).
+
+    Attributes:
+        connection_type_id: The connection type.
+        domain_id: The domain it is in.
+    """
+
+    __tablename__ = "architecture_connection_type_domains"
+
+    connection_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_domains.id", ondelete="CASCADE"), primary_key=True, index=True,
+    )
+    connection_type: Mapped[ArchitectureConnectionType] = relationship(
+        "ArchitectureConnectionType", foreign_keys=[connection_type_id], back_populates="domain_links", lazy="raise",
+    )
 
 
 class ArchitectureConnectionTypeParent(Base):
@@ -851,7 +931,7 @@ class ArchitectureDiagramToggle(UUIDPKMixin, TimestampMixin, Base):
         diagram_id: The diagram; deleting it removes its toggles.
         name: Unique within the diagram.
         default_on: The state a report or export uses unless a call names the states.
-        rule: `{"element_type_ids", "domains", "connection_type_ids", "tags"}`, each a list (all optional). It names
+        rule: `{"element_type_ids", "domain_ids", "connection_type_ids", "tags"}`, each a list (all optional). It names
             vocabulary rows, domains and tag names, never a record, so it travels in a bundle without references.
         sort_order: Order among the diagram's toggles.
     """

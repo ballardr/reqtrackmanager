@@ -13,6 +13,7 @@ from typing import Any
 
 from app.modules.architecture.export import reset_for_template
 from app.modules.architecture.tests._helpers import (
+    domains,
     element_types,
     grant,
     make_architect,
@@ -82,7 +83,10 @@ def test_a_diagram_round_trips_with_boxes_notes_toggles_tags_and_places_and_is_n
     }, headers=h).json()
     save_toggles(client, token, project["id"], saved, [{
         "name": "Security", "default_on": False, "element_ids": [firewall["id"]], "connection_ids": [link["id"]],
-        "rule": {"element_type_ids": [types["Sensor"]], "domains": ["hardware"], "tags": ["security"]},
+        "rule": {
+            "element_type_ids": [types["Sensor"]], "domain_ids": [domains(client, token, project["id"])["Hardware"]],
+            "tags": ["security"],
+        },
     }])
     assert client.put(
         f"/api/v1/projects/{project['id']}/artefacts/{DIAGRAM}/{diagram['id']}/tags", json={"tags": ["context"]}, headers=h,
@@ -97,7 +101,8 @@ def test_a_diagram_round_trips_with_boxes_notes_toggles_tags_and_places_and_is_n
     assert entry["unique_code"] == "DGM-001" and entry["scope"] == {"code": cloud["unique_code"]}
     assert [b["code"] for b in entry["boxes"]] == [sensor["unique_code"], firewall["unique_code"], cloud["unique_code"]]
     assert entry["toggles"][0]["rule"]["element_type_names"] == ["Sensor"]
-    assert "id" not in json.dumps(entry["toggles"][0]["rule"]).replace("domains", "")  # names, never ids
+    assert entry["toggles"][0]["rule"]["domain_names"] == ["Hardware"]
+    assert "_ids" not in json.dumps(entry["toggles"][0]["rule"])  # names, never ids
 
     copy = _import(client, token, org["id"], content, "Arch diagram bundle copy")["project"]
     (imported,) = _diagrams(client, token, copy["id"]).values()
@@ -113,7 +118,7 @@ def test_a_diagram_round_trips_with_boxes_notes_toggles_tags_and_places_and_is_n
     (toggle,) = shown["toggles"]
     assert (toggle["name"], toggle["default_on"], toggle["on"]) == ("Security", False, False)
     assert len(toggle["element_ids"]) == 1 and len(toggle["connection_ids"]) == 1
-    assert toggle["rule"]["domains"] == ["hardware"] and toggle["rule"]["tags"] == ["security"]
+    assert toggle["rule"]["domain_ids"] == [domains(client, token, copy["id"])["Hardware"]] and toggle["rule"]["tags"] == ["security"]
     assert len(toggle["rule"]["element_type_ids"]) == 1
     # The imported toggle is switched off by default, so the firewall is bridged exactly as in the source.
     assert shown["notes"][0]["text"] == "Edge of trust"

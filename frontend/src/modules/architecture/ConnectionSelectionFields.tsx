@@ -17,13 +17,16 @@ import { FormGrid } from "../../components/FormGrid";
 import { useLatest } from "../../hooks/useLatest";
 import { diffConnectionFields, valuesFromConnection } from "./architectureFields";
 import { ConnectionFieldGroup } from "./ConnectionFieldGroup";
-import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType } from "./types";
+import type {
+  ArchitectureConnection, ArchitectureDomain, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType,
+} from "./types";
 import { useSelectionDraft } from "./useSelectionDraft";
 
 /**
  * @param connection The connection as last read.
  * @param connectionTypes The types that may be chosen.
  * @param elementTypes The project's element types (each end's domain and suggested connection types).
+ * @param domains The project's domains, whose names the mismatch warning uses.
  * @param elements Every element either end may be.
  * @param projectId The connection's project.
  * @param autoFocusName True to select the name when the card first appears (a connection just added).
@@ -31,11 +34,12 @@ import { useSelectionDraft } from "./useSelectionDraft";
  * @param onSave Stores the changed fields; resolves true when stored.
  */
 export function ConnectionSelectionFields({
-  connection, connectionTypes, elementTypes, elements, projectId, autoFocusName, onFocused, onSave,
+  connection, connectionTypes, elementTypes, domains, elements, projectId, autoFocusName, onFocused, onSave,
 }: {
   connection: ArchitectureConnection;
   connectionTypes: ConnectionType[];
   elementTypes: ElementType[];
+  domains?: ArchitectureDomain[];
   elements: ArchitectureElement[];
   projectId: string;
   autoFocusName: boolean;
@@ -59,7 +63,7 @@ export function ConnectionSelectionFields({
     >
       <FormGrid minColumn="14rem">
         <ConnectionFieldGroup
-          values={draft} onChange={set} connectionTypes={connectionTypes} elementTypes={elementTypes} elements={elements}
+          values={draft} onChange={set} connectionTypes={connectionTypes} elementTypes={elementTypes} domains={domains} elements={elements}
           projectId={projectId} saved={connection} autoFocusName={autoFocusName}
         />
       </FormGrid>

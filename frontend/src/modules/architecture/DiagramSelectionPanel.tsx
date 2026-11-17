@@ -69,7 +69,7 @@ import { selectionAction, type SelectionAction } from "./selectionAction";
 import { SelectionActions } from "./SelectionActions";
 import type {
   ArchitectureConnection, ArchitectureElement, ArchitectureSymbol, ConnectionFieldValues, ConnectionRef, ConnectionType, DiagramAnchor, LineRouteChange,
-  DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, PortValues,
+  DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, PortValues, ArchitectureDomain,
 } from "./types";
 import type { OrgUser } from "../../api/types";
 
@@ -118,6 +118,7 @@ function stateMachineActions(
  * @param connectionTypes The connection types a port may name.
  * @param elementEditor What the element's in-place fields need; without it a box is shown as text.
  * @param elementTypes The project's element types (a connection's type guidance reads them).
+ * @param domains The project's domains, whose names a connection's type warning uses.
  * @param onSaveElement Stores changed fields of an element (version lock); resolves true when stored.
  * @param onSaveConnection Stores changed fields of a connection (version lock); resolves true when stored.
  * @param focusNew The id of the element or connection just added, whose name field takes the focus, or null.
@@ -153,7 +154,7 @@ function stateMachineActions(
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, lineEnds, defaultShape, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, onJoinLine, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, onJoinLine, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, domains, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
@@ -195,6 +196,7 @@ export function DiagramSelectionPanel({
   connectionTypes: ConnectionType[];
   elementEditor: ElementEditorReference | null;
   elementTypes: ElementType[];
+  domains: ArchitectureDomain[];
   onSaveElement: (element: ArchitectureElement, changed: Partial<ElementFieldValues>) => Promise<boolean>;
   onSaveConnection: (connection: ArchitectureConnection, changed: Partial<ConnectionFieldValues>) => Promise<boolean>;
   focusNew: string | null;
@@ -404,7 +406,7 @@ export function DiagramSelectionPanel({
             fields={chosenFields && (
               <>
                 <ConnectionSelectionFields
-                  key={`fields-${chosenFields.id}`} connection={chosenFields} connectionTypes={connectionTypes} elementTypes={elementTypes}
+                  key={`fields-${chosenFields.id}`} connection={chosenFields} connectionTypes={connectionTypes} elementTypes={elementTypes} domains={domains}
                   elements={elements} projectId={projectId} autoFocusName={false} onFocused={onFocused}
                   onSave={(changed) => onSaveConnection(chosenFields, changed)}
                 />
@@ -433,7 +435,7 @@ export function DiagramSelectionPanel({
         <SelectionActions actions={[onComment && selectionAction.comment(commentText.commentOnLine, () => onComment({ kind: "edge", id: edge.id }))]} />
         {ownConnection && (
           <ConnectionSelectionFields
-            key={`fields-${ownConnection.id}`} connection={ownConnection} connectionTypes={connectionTypes} elementTypes={elementTypes}
+            key={`fields-${ownConnection.id}`} connection={ownConnection} connectionTypes={connectionTypes} elementTypes={elementTypes} domains={domains}
             elements={elements} projectId={projectId} autoFocusName={focusNew === ownConnection.id} onFocused={onFocused}
             onSave={(changed) => onSaveConnection(ownConnection, changed)}
           />

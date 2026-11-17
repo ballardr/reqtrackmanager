@@ -1,71 +1,21 @@
 /**
  * Module: modules/architecture/DiagramAddMenu
  *
- * The editor's "Add to diagram" menu button: one entry per element type (grouped by domain, the domain-neutral ones under "New element"; choosing one creates an element
+ * The editor's "Add to diagram" menu button: one entry per element type (listed under each domain the type is in, in the
+ * domains' order, and a type in no domain under "New element"; choosing one creates an element
  * at the next free place, dragging one onto the canvas creates it where it is dropped), then "Add existing elements" and
  * "Add note". On a diagram of an element's inside, a last group "Outside this element" lists the connections that cross the
  * element's boundary, each drawn as a boundary box. Dragging is only one way in: every entry is a menu item, so the menu is usable from the keyboard.
  * For a person who may manage the project's types, a last entry (a gear) leads to the Element Types settings, so a type
  * that is missing can be added without hunting for the page.
  */
-import { Settings } from "lucide-react";
-
-import { GRAPH_DROP_MIME } from "../../components/GraphCanvas";
 import { MenuButton } from "../../components/MenuButton";
-import type { ActionMenuItem } from "../../components/ActionMenu";
-import { PALETTE_TYPE_PREFIX } from "./diagramToggles";
-import { DOMAIN_LABEL, type Domain, type ElementType } from "./types";
-
-const DOMAIN_ORDER: Domain[] = ["software", "hardware", "any"];
-
-/** An outer connection that can still be added as a boundary box: its id and the text the menu shows. */
-export interface OuterConnectionChoice {
-  id: string;
-  label: string;
-}
-
-/**
- * Builds the menu's entries: the element types in domain groups, then the two non-type entries.
- *
- * @param elementTypes The types that may be created.
- * @param handlers What each kind of entry does when chosen.
- * @returns The entries in display order; the items of one group are adjacent, as the menu requires.
- */
-function addMenuItems(
-  elementTypes: ElementType[],
-  handlers: {
-    onAddType: (typeId: string) => void; onAddExisting: () => void; onAddNote: () => void; onSetup?: () => void;
-    outerConnections: readonly OuterConnectionChoice[]; onAddOuter: (connectionId: string) => void;
-  },
-): ActionMenuItem[] {
-  const typeItems = DOMAIN_ORDER.flatMap((domain) => elementTypes
-    .filter((t) => t.domain === domain)
-    .map((t): ActionMenuItem => ({
-      label: t.name,
-      key: `type:${t.id}`,
-      group: domain === "any" ? "New element" : `New ${DOMAIN_LABEL[domain].toLowerCase()} element`,
-      onSelect: () => handlers.onAddType(t.id),
-      onDragStart: (event) => {
-        event.dataTransfer.setData(GRAPH_DROP_MIME, PALETTE_TYPE_PREFIX + t.id);
-        event.dataTransfer.effectAllowed = "copy";
-      },
-    })));
-  const outerItems = handlers.outerConnections.map((c): ActionMenuItem => ({
-    label: c.label, key: `outer:${c.id}`, group: "Outside this element", onSelect: () => handlers.onAddOuter(c.id),
-  }));
-  return [
-    ...typeItems,
-    ...outerItems,
-    { label: "Add existing elements", key: "existing", group: "Other", onSelect: handlers.onAddExisting },
-    { label: "Add note", key: "note", group: "Other", onSelect: handlers.onAddNote },
-    ...(handlers.onSetup
-      ? [{ label: "Set up element types", key: "setup", group: "Settings", icon: <Settings size={14} aria-hidden="true" />, onSelect: handlers.onSetup }]
-      : []),
-  ];
-}
+import { addMenuItems, type OuterConnectionChoice } from "./diagramAddItems";
+import type { ArchitectureDomain, ElementType } from "./types";
 
 /**
  * @param elementTypes The types that may be created.
+ * @param domains The project's domains (the menu's groups).
  * @param disabled True when the diagram cannot be edited (read-only).
  * @param onAddType Called with the type's id when a type is chosen.
  * @param onAddExisting Called by "Add existing elements".
@@ -75,9 +25,10 @@ function addMenuItems(
  * @param onAddOuter Called with an outer connection's id when it is chosen.
  */
 export function DiagramAddMenu({
-  elementTypes, disabled, onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter,
+  elementTypes, domains, disabled, onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter,
 }: {
   elementTypes: ElementType[];
+  domains: ArchitectureDomain[];
   disabled: boolean;
   onAddType: (typeId: string) => void;
   onAddExisting: () => void;
@@ -89,7 +40,7 @@ export function DiagramAddMenu({
   return (
     <MenuButton
       label="Add to diagram" menuLabel="Add to diagram" size="sm" disabled={disabled}
-      items={addMenuItems(elementTypes, { onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter })}
+      items={addMenuItems(elementTypes, domains, { onAddType, onAddExisting, onAddNote, onSetup, outerConnections, onAddOuter })}
     />
   );
 }

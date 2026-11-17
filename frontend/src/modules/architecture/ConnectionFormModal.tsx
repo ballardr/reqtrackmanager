@@ -23,7 +23,9 @@ import { TagField } from "../../components/TagField";
 import { blankConnectionValues, valuesFromConnection } from "./architectureFields";
 import { ConnectionFieldGroup } from "./ConnectionFieldGroup";
 import { defaultConnectionType } from "./connectionGuidance";
-import type { ArchitectureConnection, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType } from "./types";
+import type {
+  ArchitectureConnection, ArchitectureDomain, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType,
+} from "./types";
 
 /** What a new connection takes beyond the shared fields. */
 export interface ConnectionCreateExtras {
@@ -37,6 +39,7 @@ export interface ConnectionCreateExtras {
  * @param connectionTypes The types that may be chosen.
  * @param elementTypes The project's element types, which give each end's domain and suggested connection types; with
  *   none the picker offers every connection type.
+ * @param domains The project's domains, whose names the mismatch warning uses.
  * @param elements Every element either end may be (the project's own and those shared with it).
  * @param projectId The connection's project, for quick links and tags.
  * @param defaultSourceId An element to preselect as the source of a new connection.
@@ -46,12 +49,13 @@ export interface ConnectionCreateExtras {
  * @param onSave Called with the values and, for a new connection, the extras.
  */
 export function ConnectionFormModal({
-  initial, connectionTypes, elementTypes = [], elements, projectId, defaultSourceId = "", defaultTargetId = "", setupPath, error,
+  initial, connectionTypes, elementTypes = [], domains, elements, projectId, defaultSourceId = "", defaultTargetId = "", setupPath, error,
   onCancel, onSave,
 }: {
   initial?: ArchitectureConnection;
   connectionTypes: ConnectionType[];
   elementTypes?: ElementType[];
+  domains?: ArchitectureDomain[];
   elements: ArchitectureElement[];
   projectId: string;
   defaultSourceId?: string;
@@ -98,7 +102,7 @@ export function ConnectionFormModal({
         <FormGrid minColumn="18rem">
           <ConnectionFieldGroup
             values={{ ...values, connection_type_id: typeId }} onChange={set} connectionTypes={connectionTypes}
-            elementTypes={elementTypes} elements={elements} projectId={projectId} saved={initial}
+            elementTypes={elementTypes} domains={domains} elements={elements} projectId={projectId} saved={initial}
           />
           {!initial && (
             <FormGridFull>

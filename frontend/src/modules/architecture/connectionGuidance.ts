@@ -2,14 +2,14 @@
  * Module: modules/architecture/connectionGuidance
  *
  * The soft guidance a connection form gives when a type is chosen: which connection types fit both ends by domain
- * (hardware, software or any), which the two ends' element types suggest, and the warning for a choice that does not
- * fit. Guidance only: nothing here refuses a type; the form lists the fitting types first, offers the rest on request
+ * (a type is in any number of domains; one in none fits every domain), which the two ends' element types suggest, and
+ * the warning for a choice that does not fit. Guidance only: nothing here refuses a type; the form lists the fitting types first, offers the rest on request
  * and warns, because a firmware service on a board legitimately speaks an API.
  *
  * Pure functions over the vocabulary rows, so the rules are tested without a screen.
  */
 import type { TreeSelectNode } from "../../components/TreeSelect";
-import { DOMAIN_LABEL, type ConnectionType, type Domain, type ElementType } from "./types";
+import type { ArchitectureDomain, ConnectionType, ElementType } from "./types";
 
 /** The id of the "Suggested" group the picker shows above the tree (never a connection type's id). */
 export const SUGGESTED_GROUP_ID = "__suggested__";
@@ -24,9 +24,12 @@ export interface ConnectionGuidance {
   suggested: ConnectionType[];
 }
 
-/** Whether something of `typeDomain` fits an end of `endDomain`: either side `any`, or the same domain. */
-export function domainFits(typeDomain: Domain, endDomain: Domain): boolean {
-  return typeDomain === "any" || endDomain === "any" || typeDomain === endDomain;
+/**
+ * Whether something in the domains `typeDomains` fits an end in `endDomains` (ids): either side is in none (it fits every
+ * domain), or the two share a domain. The browser twin of the server's rule for a toggle rule's domains.
+ */
+export function domainsFit(typeDomains: readonly string[], endDomains: readonly string[]): boolean {
+  return typeDomains.length === 0 || endDomains.length === 0 || typeDomains.some((d) => endDomains.includes(d));
 }
 
 /**
@@ -38,7 +41,7 @@ export function guideConnectionTypes(
   connectionTypes: ConnectionType[], ends: Array<ElementType | undefined>,
 ): ConnectionGuidance {
   const known = ends.filter((e): e is ElementType => e !== undefined);
-  const offered = connectionTypes.filter((t) => known.every((e) => domainFits(t.domain, e.domain)));
+  const offered = connectionTypes.filter((t) => known.every((e) => domainsFit(t.domain_ids, e.domain_ids)));
   const fitting = new Set(offered.map((t) => t.id));
   const byId = new Map(connectionTypes.map((t) => [t.id, t]));
   const suggestedIds = [...new Set(known.flatMap((e) => e.suggested_connection_type_ids))];
@@ -79,14 +82,18 @@ export function suggestedGroup(suggested: ConnectionType[]): TreeSelectNode[] {
  *
  * @param selected The chosen connection type.
  * @param ends The element types at the source and target, in that order.
+ * @param domains The project's domains, which give the names the warning uses.
  */
-export function mismatchWarning(selected: ConnectionType | undefined, ends: Array<ElementType | undefined>): string | null {
+export function mismatchWarning(
+  selected: ConnectionType | undefined, ends: Array<ElementType | undefined>, domains: readonly ArchitectureDomain[],
+): string | null {
   if (!selected || ends.some((end) => end?.suggested_connection_type_ids.includes(selected.id))) return null;
+  const named = (ids: readonly string[]) => ids.map((id) => domains.find((d) => d.id === id)?.name ?? "another domain").join(" and ");
   const names = ["source", "target"];
   const problems = ends.flatMap((end, index) =>
-    end && !domainFits(selected.domain, end.domain)
-      ? [`the ${names[index]} element (${end.name}) is ${DOMAIN_LABEL[end.domain].toLowerCase()}`]
+    end && !domainsFit(selected.domain_ids, end.domain_ids)
+      ? [`the ${names[index]} element (${end.name}) is in ${named(end.domain_ids)}`]
       : []);
   if (problems.length === 0) return null;
-  return `${selected.name} is a ${DOMAIN_LABEL[selected.domain].toLowerCase()} connection type, but ${problems.join(" and ")}. The connection can still be saved.`;
+  return `${selected.name} is in ${named(selected.domain_ids)}, but ${problems.join(" and ")}. The connection can still be saved.`;
 }

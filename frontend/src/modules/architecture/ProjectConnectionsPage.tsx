@@ -207,7 +207,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
       {folders.dialog}
       {creating && (
         <ConnectionFormModal
-          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements} projectId={projectId}
+          connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} domains={reference.domains} elements={elements} projectId={projectId}
           error={createForm.error}
           onCancel={() => { setCreating(false); createForm.clearError(); }} onSave={createForm.create}
         />

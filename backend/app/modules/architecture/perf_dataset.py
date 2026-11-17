@@ -17,7 +17,7 @@ Design decisions:
   (`order`), so their ends exist, and diagrams after both.
 - The first diagram of a project is the large one (up to `_LARGE_DIAGRAM` elements, with a toggle and a note), so the
   view and the SVG are measured on a big drawing; the others place a handful of elements. A share of the lines between
-  neighbouring boxes carry anchors. Toggle rules name a domain, never a record. The first diagram and a few others are
+  neighbouring boxes carry anchors. Toggle rules name a domain row, never a record. The first diagram and a few others are
   scoped to an element that has outer connections and carry boundary boxes for them, with a realising inner connection
   for some (the cap keeps the connection scan bounded at any size).
 - Each kind has its own folder tree (about one folder per twenty records, up to four deep) and about two thirds of its
@@ -63,6 +63,7 @@ from app.modules.architecture.models import (
     ArchitectureDiagramPlacement,
     ArchitectureDiagramToggle,
     ArchitectureDiagramToggleMember,
+    ArchitectureDomain,
     ArchitectureElement,
     ArchitectureElementType,
     ArchitectureFolder,
@@ -425,6 +426,10 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
         return {}
     start = dict(ctx.counts)
     folder_ids = _write_folders(ctx, "diagram", count)
+    # The organisation's seeded Hardware domain, which a toggle rule names (never a record).
+    hardware_domain = ctx.db.scalar(select(ArchitectureDomain.id).where(
+        ArchitectureDomain.organization_id == ctx.organization_uuid, ArchitectureDomain.name == "Hardware",
+    ))
     batch = RecordBatch.start(ctx, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX, ArchitectureDiagram)
     scoped_left = _SCOPED_DIAGRAMS + 1
     used_scopes: set[uuid.UUID] = set()
@@ -496,7 +501,8 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
             toggle_id = batch.new_id()
             batch.satellite(ArchitectureDiagramToggle, {
                 "id": toggle_id, "diagram_id": record_id, "name": "Hardware", "default_on": rng.random() < 0.8,
-                "rule": {"domains": ["hardware"]}, "sort_order": 0, "created_at": created, "updated_at": created,
+                "rule": {"domain_ids": [str(hardware_domain)]} if hardware_domain else {}, "sort_order": 0,
+                "created_at": created, "updated_at": created,
             })
             batch.satellite(ArchitectureDiagramToggleMember, {
                 "id": batch.new_id(), "toggle_id": toggle_id, "element_id": rng.choice(elements), "connection_id": None,

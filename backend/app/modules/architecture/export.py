@@ -110,6 +110,7 @@ from app.modules.architecture.service import (
     CONNECTION_TYPES,
     DIAGRAM_ARTEFACT_TYPE,
     DIAGRAM_CODE_PREFIX,
+    DOMAINS,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_CODE_PREFIX,
     ELEMENT_TYPES,
@@ -131,6 +132,9 @@ from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 from app.services.template_reset import fresh_drafts
 
+ORG_DOMAINS_KEY = "architecture_domains"
+PROJECT_DOMAINS_KEY = "architecture_project_domains"
+HIDDEN_DOMAINS_KEY = "architecture_hidden_domains"
 ORG_ELEMENT_TYPES_KEY = "architecture_element_types"
 ORG_CONNECTION_TYPES_KEY = "architecture_connection_types"
 PROJECT_ELEMENT_TYPES_KEY = "architecture_project_element_types"
@@ -138,8 +142,10 @@ PROJECT_CONNECTION_TYPES_KEY = "architecture_project_connection_types"
 HIDDEN_ELEMENT_TYPES_KEY = "architecture_hidden_element_types"
 HIDDEN_CONNECTION_TYPES_KEY = "architecture_hidden_connection_types"
 
-#: Each vocabulary with the bundle key of its organisation rows, its project rows and its hidden defaults.
+#: Each vocabulary with the bundle key of its organisation rows, its project rows and its hidden defaults. The domains
+#: come first: a type names its domains, so they exist when the types are added.
 _VOCABULARIES: tuple[tuple[ArchitectureVocabulary, str, str, str], ...] = (
+    (DOMAINS, ORG_DOMAINS_KEY, PROJECT_DOMAINS_KEY, HIDDEN_DOMAINS_KEY),
     (ELEMENT_TYPES, ORG_ELEMENT_TYPES_KEY, PROJECT_ELEMENT_TYPES_KEY, HIDDEN_ELEMENT_TYPES_KEY),
     (CONNECTION_TYPES, ORG_CONNECTION_TYPES_KEY, PROJECT_CONNECTION_TYPES_KEY, HIDDEN_CONNECTION_TYPES_KEY),
 )
@@ -177,12 +183,14 @@ def _no_anchor(_kind: str, _key: str) -> str | None:
 
 def _row_json(
     vocabulary: ArchitectureVocabulary, row, symbol_refs: dict[UUID, dict[str, str]], parent_names: dict[UUID, str],
-    suggested_names: dict[UUID, str],
+    suggested_names: dict[UUID, str], domain_names: dict[UUID, str],
 ) -> dict[str, Any]:
     """A row's bundle form: every column except identity, owner and timestamps, with a symbol as a `symbol` reference
-    (`{"tier", "name"}`) in place of its id, an element type's suggestions as `suggested_names` and a connection type's
-    parents as `parent_names`."""
+    (`{"tier", "name"}`) in place of its id, an element type's suggestions as `suggested_names`, a connection type's
+    parents as `parent_names` and a type's domains as `domain_names`."""
     entry = {column: getattr(row, column) for column in vocabulary.copied_columns() if column != "symbol_id"}
+    if vocabulary is ELEMENT_TYPES or vocabulary is CONNECTION_TYPES:
+        entry["domain_names"] = sorted(domain_names[d] for d in row.domain_ids if d in domain_names)
     if vocabulary is ELEMENT_TYPES:
         entry["symbol"] = symbol_refs.get(row.symbol_id) if row.symbol_id else None
         entry["suggested_names"] = sorted(suggested_names[c] for c in row.suggested_connection_type_ids if c in suggested_names)
@@ -207,6 +215,25 @@ def _suggested_names(db: Session, rows: Iterable) -> dict[UUID, str]:
         return {}
     model = CONNECTION_TYPES.model
     return dict(db.execute(select(model.id, model.name).where(model.id.in_(wanted))).tuples().all())
+
+
+def _domain_names(db: Session, rows: Iterable) -> dict[UUID, str]:
+    """`{id: name}` of every domain the given types are in, in one statement."""
+    wanted = {d for row in rows for d in getattr(row, "domain_ids", ())}
+    if not wanted:
+        return {}
+    model = DOMAINS.model
+    return dict(db.execute(select(model.id, model.name).where(model.id.in_(wanted))).tuples().all())
+
+
+def _entry_domain_names(entry: dict[str, Any]) -> list[str]:
+    """The domain names a bundled type row is in: `domain_names`, or for a bundle written before domains were rows its
+    single `domain` value (`software` and `hardware` become Software and Hardware, `any` is none)."""
+    names = entry.get("domain_names")
+    if isinstance(names, list):
+        return [n for n in names if isinstance(n, str)]
+    legacy = entry.get("domain")
+    return [legacy.title()] if legacy in ("software", "hardware") else []
 
 
 def _symbol_refs(db: Session, symbol_ids: Iterable[UUID | None]) -> dict[UUID, dict[str, str]]:
@@ -237,18 +264,28 @@ def _add_rows(
     columns = set(vocabulary.copied_columns()) - {"symbol_id"}
     parents_by_child: dict[str, list[str]] = {}
     suggestions: dict[str, list[str]] = {}
+    added: list[tuple[Any, dict[str, Any]]] = []
     for entry in entries:
         name = entry.get("name")
         if not name or name.lower() in taken:
             continue
         extra = {"symbol_id": symbol_for(entry.get("symbol"))} if vocabulary is ELEMENT_TYPES else {}
-        db.add(vocabulary.model(**owner, **{k: v for k, v in entry.items() if k in columns}, **extra))
+        row = vocabulary.model(**owner, **{k: v for k, v in entry.items() if k in columns}, **extra)
+        db.add(row)
+        added.append((row, entry))
         taken.add(name.lower())
         if entry.get("parent_names"):
             parents_by_child[name] = [p for p in entry["parent_names"] if isinstance(p, str)]
         if vocabulary is ELEMENT_TYPES and entry.get("suggested_names"):
             suggestions[name] = [c for c in entry["suggested_names"] if isinstance(c, str)]
     db.flush()
+    if vocabulary is ELEMENT_TYPES or vocabulary is CONNECTION_TYPES:
+        for row, entry in added:
+            for problem in DOMAINS.link_by_names(
+                db, row, project_id=owner.get("project_id"), organization_id=organization_id,
+                names=_entry_domain_names(entry), context=f"{vocabulary.label} {row.name!r}",
+            ):
+                warnings.add(problem)
     if parents_by_child and vocabulary is CONNECTION_TYPES:
         for problem in CONNECTION_TYPES.link_by_names(
             db, project_id=owner.get("project_id"), organization_id=organization_id, parents_by_child=parents_by_child,
@@ -405,8 +442,11 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     symbol_refs = _symbol_refs(db, (r.symbol_id for r in org_types[ELEMENT_TYPES]))
     parent_names = _parent_names(db, org_types[CONNECTION_TYPES])
     suggested_names = _suggested_names(db, org_types[ELEMENT_TYPES])
+    domain_names = _domain_names(db, [*org_types[ELEMENT_TYPES], *org_types[CONNECTION_TYPES]])
     data: dict[str, Any] = {
-        org_key: [_row_json(vocabulary, row, symbol_refs, parent_names, suggested_names) for row in org_types[vocabulary]]
+        org_key: [
+            _row_json(vocabulary, row, symbol_refs, parent_names, suggested_names, domain_names) for row in org_types[vocabulary]
+        ]
         for vocabulary, org_key, _project_key, _hidden_key in _VOCABULARIES
     }
     data[ORG_FOLDERS_KEY] = folder_rules.export_entries(db, ElementOwner.of_organization(org))
@@ -650,8 +690,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     symbol_refs = _symbol_refs(db, [*(r.symbol_id for r in own_types[ELEMENT_TYPES]), *(e.symbol_id for e in elements)])
     parent_names = _parent_names(db, own_types[CONNECTION_TYPES])
     suggested_names = _suggested_names(db, own_types[ELEMENT_TYPES])
+    domain_names = _domain_names(db, [*own_types[ELEMENT_TYPES], *own_types[CONNECTION_TYPES]])
     for vocabulary, _org_key, project_key, hidden_key in _VOCABULARIES:
-        data[project_key] = [_row_json(vocabulary, row, symbol_refs, parent_names, suggested_names) for row in own_types[vocabulary]]
+        data[project_key] = [
+            _row_json(vocabulary, row, symbol_refs, parent_names, suggested_names, domain_names) for row in own_types[vocabulary]
+        ]
         hidden = definition_suppression.get_suppressed_ids(db, project.id, vocabulary.kind)
         data[hidden_key] = [r.name for r in vocabulary.org_rows(db, project.organization_id) if r.id in hidden]
     data[PROJECT_SYMBOLS_KEY] = _symbol_entries(db, SYMBOLS.project_rows(db, project.id), assets)
@@ -667,7 +710,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     connection_ids = [c.id for c in connections]
     codes = {e.id: e.unique_code for e in elements}
     type_names: dict[UUID, str] = {}
-    for vocabulary in (ELEMENT_TYPES, CONNECTION_TYPES):
+    for vocabulary in (ELEMENT_TYPES, CONNECTION_TYPES, DOMAINS):
         # Only this project's rows and its organisation's: a record never names a type of another organisation.
         model = vocabulary.model
         type_names.update(db.execute(select(model.id, model.name).where(
@@ -890,7 +933,7 @@ def _diagrams_json(
             "rule": {
                 "element_type_names": type_list(rule, "element_type_ids"),
                 "connection_type_names": type_list(rule, "connection_type_ids"),
-                "domains": rule.get("domains", []), "tags": rule.get("tags", []),
+                "domain_names": type_list(rule, "domain_ids"), "tags": rule.get("tags", []),
             },
             "elements": [_element_ref(codes, foreign, m.element_id) for m in ms if m.element_id],
             "connection_codes": [connection_codes[m.connection_id] for m in ms if m.connection_id in connection_codes],
@@ -1012,6 +1055,15 @@ def _rule_ids(rule: dict[str, Any], key: str, vocabulary: ArchitectureVocabulary
     ]
     by_name = {r.name.casefold(): r.id for r in rows}
     return [str(by_name[n.casefold()]) for n in rule.get(key, []) if n.casefold() in by_name]
+
+
+def _rule_domain_ids(rule: dict[str, Any], db: Session, project: Project) -> list[str]:
+    """The ids (as text) of the domains a bundled rule names (`domain_names`; a bundle written before domains were rows names
+    `software` or `hardware` in `domains`), skipping a name the project cannot resolve."""
+    names = rule.get("domain_names")
+    if not isinstance(names, list):
+        names = [d.title() for d in rule.get("domains", []) if d in ("software", "hardware")]
+    return _rule_ids({"domain_names": names}, "domain_names", DOMAINS, db, project)
 
 
 def _legacy_leader(entry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1214,7 +1266,7 @@ def _import_diagrams(
                     key: value for key, value in {
                         "element_type_ids": _rule_ids(rule, "element_type_names", ELEMENT_TYPES, db, project),
                         "connection_type_ids": _rule_ids(rule, "connection_type_names", CONNECTION_TYPES, db, project),
-                        "domains": list(rule.get("domains", [])), "tags": list(rule.get("tags", [])),
+                        "domain_ids": _rule_domain_ids(rule, db, project), "tags": list(rule.get("tags", [])),
                     }.items() if value
                 },
             )
@@ -1291,7 +1343,9 @@ def import_project_data(
                 organization_id=project.organization_id, warnings=warnings,
             ))
         for name in vocabulary.hide_by_names(db, project.id, project.organization_id, data.get(hidden_key, [])):
-            warnings.add(f"{vocabulary.label} {name!r} was hidden in the source project but the organisation has no such type.")
+            warnings.add(
+                f"{vocabulary.label} {name!r} was hidden in the source project but the organisation has no such {vocabulary.label.lower()}."
+            )
     for problem in ELEMENT_TYPES.link_suggestions_by_names(
         db, project_id=project.id, organization_id=project.organization_id, suggestions_by_element_type=suggestions,
     ):

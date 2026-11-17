@@ -117,11 +117,11 @@ def matched_by_rules(
     hidden_connections: set[uuid.UUID] = set()
     for toggle_id in toggles_off:
         rule = rules[toggle_id]
-        type_ids, domains, tag_names = set(rule.element_type_ids), {d.value for d in rule.domains}, set(rule.tags)
+        type_ids, domains, tag_names = set(rule.element_type_ids), set(rule.domain_ids), set(rule.tags)
         for element in elements.values():
             kind = element_types.get(element.element_type_id)
             if (
-                element.element_type_id in type_ids or (kind is not None and kind.domain in domains)
+                element.element_type_id in type_ids or (kind is not None and not domains.isdisjoint(kind.domain_ids))
                 or tag_names.intersection(element_tags.get(element.id, ()))
             ):
                 hidden_elements.add(element.id)
@@ -130,7 +130,7 @@ def matched_by_rules(
             connection_kind = connection_types.get(connection.connection_type_id)
             if (
                 connection.connection_type_id in connection_type_ids
-                or (connection_kind is not None and connection_kind.domain in domains)
+                or (connection_kind is not None and not domains.isdisjoint(connection_kind.domain_ids))
                 or tag_names.intersection(connection_tags.get(connection.id, ()))
             ):
                 hidden_connections.add(connection.id)

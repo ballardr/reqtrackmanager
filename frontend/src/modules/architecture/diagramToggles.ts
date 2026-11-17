@@ -10,7 +10,7 @@ import type { DiagramToggle, DiagramToggleValues } from "./types";
 export function blankToggle(): DiagramToggleValues {
   return {
     id: null, name: "", default_on: true, element_ids: [], connection_ids: [],
-    rule: { element_type_ids: [], connection_type_ids: [], domains: [], tags: [] },
+    rule: { element_type_ids: [], connection_type_ids: [], domain_ids: [], tags: [] },
   };
 }
 

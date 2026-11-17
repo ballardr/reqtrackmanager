@@ -102,6 +102,10 @@ Informal comments (which can carry file attachments) for the conversation around
 
 A short line of text, up to 500 characters, drawn inside an element's box on every diagram that places it. It differs from a note, which belongs to one diagram. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
+#### Domain
+
+A name that element types and connection types of the System Architecture module can be in, such as Software, Hardware or Mechanical. An organisation and each project can add its own; a type in several domains is listed under each, and a type in none fits every domain. See [Elements, ports and connections](../modules/system-architecture-module/elements-ports-and-connections.md#domains).
+
 #### Element
 
 A part of the product: a service, a board, a datastore. It has a code (`ELM-001`), a type, an optional parent and any number of [ports](#port). Elements are drawn as boxes on block diagrams, each at least as large as its symbol, code and name need. See [Elements, ports and connections](../modules/system-architecture-module/elements-ports-and-connections.md).

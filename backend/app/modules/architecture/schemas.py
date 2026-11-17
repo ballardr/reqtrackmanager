@@ -2,7 +2,7 @@
 Module: modules.architecture.schemas
 
 Request and response bodies of the module's APIs: the vocabularies (an element type
-and a connection type share the name, domain and colour fields; each adds its own
+and a connection type share the name, colour and `domain_ids` fields; each adds its own
 `shape` and `symbol_id`, or `line_style` and `directional`), the symbol library, and the
 records (elements with their ports, connections, and diagrams with their placements, notes, toggles and the resolved
 view a diagram draws).
@@ -27,7 +27,6 @@ from app.modules.architecture.enums import (
     NOTE_TITLE_MAX,
     SYMBOL_LABEL_LENGTH,
     AttachPoint,
-    Domain,
     ElementShape,
     FolderKind,
     LabelPosition,
@@ -66,18 +65,43 @@ class _VocabularyCreate(BaseModel):
     """Fields every vocabulary row is created with."""
 
     name: str = Field(min_length=1, max_length=100)
-    domain: Domain = Domain.ANY
     color_light: str | None = Field(default=None, pattern=_HEX_COLOR)
     color_dark: str | None = Field(default=None, pattern=_HEX_COLOR)
+    domain_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
 
 class _VocabularyUpdate(BaseModel):
-    """Fields every vocabulary row may change; `None` leaves a field as it is."""
+    """Fields every vocabulary row may change; `None` leaves a field as it is. `domain_ids` replaces the domains the type
+    is in (an empty list puts it in none, so it fits every domain)."""
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    domain: Domain | None = None
     color_light: str | None = Field(default=None, pattern=_HEX_COLOR)
     color_dark: str | None = Field(default=None, pattern=_HEX_COLOR)
+    domain_ids: list[UUID] | None = Field(default=None, max_length=50)
+
+
+class DomainCreate(BaseModel):
+    """Create payload for a domain: a name."""
+
+    name: str = Field(min_length=1, max_length=100)
+
+
+class DomainUpdate(BaseModel):
+    """Rename of a domain; `None` leaves the name as it is."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class DomainOut(BaseModel):
+    """A domain. Exactly one of `project_id` and `organization_id` is set (the owner)."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    sort_order: int
 
 
 class ElementTypeCreate(_VocabularyCreate):
@@ -123,10 +147,10 @@ class _VocabularyOut(BaseModel):
     project_id: UUID | None
     organization_id: UUID | None
     name: str
-    domain: str
     color_light: str | None
     color_dark: str | None
     sort_order: int
+    domain_ids: list[UUID]
 
 
 class ElementTypeOut(_VocabularyOut):
@@ -718,12 +742,12 @@ class PlacementAdd(PlacementIn):
 
 
 class ToggleRule(BaseModel):
-    """What a toggle matches besides its manual members: elements of the given types or domains, connections of the given
-    types or domains, and records tagged with any of the tags. All lists are optional."""
+    """What a toggle matches besides its manual members: elements of the given types or in the given domains, connections of
+    the given types or in the given domains, and records tagged with any of the tags. All lists are optional."""
 
     element_type_ids: list[UUID] = Field(default_factory=list, max_length=100)
     connection_type_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    domains: list[Domain] = Field(default_factory=list, max_length=3)
+    domain_ids: list[UUID] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
 
 

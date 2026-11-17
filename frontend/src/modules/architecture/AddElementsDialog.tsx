@@ -24,10 +24,9 @@ import { placementNodes, placesOfNodeIds } from "../../components/placementTree"
 import { TreeSelect } from "../../components/TreeSelect";
 import { useStrings } from "../../context/TerminologyContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
-import { labelOptions } from "../../utils/labelOptions";
 import { inChosenOwnerFolders, ownerFolderNodes } from "./folderTree";
 import { ARCHITECTURE_HELP } from "./help";
-import { DOMAIN_LABEL, type ArchitectureElement, type Domain, type ElementType } from "./types";
+import type { ArchitectureDomain, ArchitectureElement, ElementType } from "./types";
 
 /** Who owns an element, as a key for the Folder filter: this project (`own`), the organisation, or another project. */
 function ownerOf(e: ArchitectureElement, projectId: string): string {
@@ -79,17 +78,19 @@ function useCandidatePlacements(projectId: string, candidates: ArchitectureEleme
 /**
  * @param projectId The project the diagram belongs to (its component tree is offered as a filter).
  * @param candidates Elements that may be added (already filtered of those on the diagram and of archived ones).
- * @param elementTypes The project's element types, for the type filter and each element's domain.
+ * @param elementTypes The project's element types, for the type filter and each element's domains.
+ * @param domains The project's domains, for the domain filter.
  * @param onAdd Called with the chosen elements.
  * @param placementsApi Injectable calls (stories pass a fake).
  */
 export function AddElementsDialog({
-  projectId, candidates, elementTypes, onCancel, onAdd, placementsApi = recordPlacementsApi,
+  projectId, candidates, elementTypes, domains, onCancel, onAdd, placementsApi = recordPlacementsApi,
 }: {
   projectId: string;
   placementsApi?: RecordPlacementsApi;
   candidates: ArchitectureElement[];
   elementTypes: ElementType[];
+  domains: ArchitectureDomain[];
   onCancel: () => void;
   onAdd: (elements: ArchitectureElement[]) => void;
 }) {
@@ -100,10 +101,10 @@ export function AddElementsDialog({
   const [search, setSearch] = useState("");
   const [folderNodeIds, setFolderNodeIds] = useState<string[]>([]);
   const [typeId, setTypeId] = useState("");
-  const [domain, setDomain] = useState<Domain | "">("");
+  const [domainId, setDomainId] = useState("");
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
-  const domainOf = useMemo(() => new Map(elementTypes.map((t) => [t.id, t.domain])), [elementTypes]);
+  const domainsOf = useMemo(() => new Map(elementTypes.map((t) => [t.id, t.domain_ids])), [elementTypes]);
   const folderNodes = useMemo(
     () => ownerFolderNodes(candidates.map((e) => ({ ownerKey: ownerOf(e, projectId), ownerLabel: ownerLabel(e, projectId), folderPath: e.folder_path })), "own"),
     [candidates, projectId],
@@ -119,10 +120,12 @@ export function AddElementsDialog({
       }
       if (!inChosenOwnerFolders(folderNodeIds, ownerOf(e, projectId), e.folder_path)) return false;
       if (typeId && e.element_type_id !== typeId) return false;
-      if (domain && domainOf.get(e.element_type_id) !== domain && domainOf.get(e.element_type_id) !== "any") return false;
+      // An element matches a domain when its type is in it, or in none (a type in no domain fits every domain).
+      const typeDomains = domainsOf.get(e.element_type_id) ?? [];
+      if (domainId && typeDomains.length > 0 && !typeDomains.includes(domainId)) return false;
       return !needle || `${e.unique_code} ${e.name} ${e.element_type_name}`.toLowerCase().includes(needle);
     });
-  }, [candidates, search, typeId, domain, domainOf, wanted, places, folderNodeIds, projectId]);
+  }, [candidates, search, typeId, domainId, domainsOf, wanted, places, folderNodeIds, projectId]);
   const chosen = candidates.filter((e) => ticked.has(e.id));
 
   const toggle = (id: string) => setTicked((current) => {
@@ -141,8 +144,8 @@ export function AddElementsDialog({
             options={elementTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
           <LabeledSelect
-            helpNotNeeded label="Domain" value={domain} placeholder="All domains" onChange={(next) => setDomain(next as Domain | "")}
-            options={labelOptions(DOMAIN_LABEL)}
+            helpNotNeeded label="Domain" value={domainId} placeholder="All domains" onChange={setDomainId}
+            options={domains.map((d) => ({ value: d.id, label: d.name }))}
           />
           {candidates.some((e) => e.folder_path) && (
             <div className="stack" style={{ gap: "var(--space-1)", minWidth: "14rem" }}>

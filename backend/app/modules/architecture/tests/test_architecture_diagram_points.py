@@ -91,18 +91,42 @@ def cases() -> list[dict]:
         _case("two vertices: each end follows the vertex beside it", a, (300, 0, 160, 80), None, None, False, False, [(80, 200), (380, 200)]),
         _case("a marker end follows the vertex on a side", (0, 0, 36, 36), (300, 0, 160, 80), None, None, True, False, [(18, 200)]),
         # A corner leaves along the least-bent of the diagonal and its two side normals toward the line's next point.
-        _case("a top right corner with the other end straight above leaves upward", a, (60, -300, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM),
-        _case("a top right corner with the other end level to the right leaves rightward", a, (400, -20, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.LEFT),
-        _case("a top right corner with the other end up and to the right leaves along the diagonal", a, (400, -300, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM_LEFT),
+        _case(
+            "a top right corner with the other end straight above leaves upward",
+            a, (60, -300, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM,
+        ),
+        _case(
+            "a top right corner with the other end level to the right leaves rightward",
+            a, (400, -20, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.LEFT,
+        ),
+        _case(
+            "a top right corner with the other end up and to the right leaves along the diagonal",
+            a, (400, -300, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM_LEFT,
+        ),
         _case("a top right corner with the other end below leaves rightward", a, (400, 200, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.TOP),
         _case("a bottom right corner with the other end below leaves downward", a, (60, 300, 100, 80), AttachPoint.BOTTOM_RIGHT, AttachPoint.TOP),
-        _case("a bottom left corner with the other end to the left leaves leftward", a, (-400, 60, 100, 80), AttachPoint.BOTTOM_LEFT, AttachPoint.RIGHT),
-        _case("a bottom left corner with the other end down and to the left leaves along the diagonal", a, (-400, 300, 100, 80), AttachPoint.BOTTOM_LEFT, AttachPoint.TOP_RIGHT),
-        _case("a top left corner with the other end up and to the left leaves along the diagonal", a, (-400, -300, 100, 80), AttachPoint.TOP_LEFT, AttachPoint.BOTTOM_RIGHT),
+        _case(
+            "a bottom left corner with the other end to the left leaves leftward",
+            a, (-400, 60, 100, 80), AttachPoint.BOTTOM_LEFT, AttachPoint.RIGHT,
+        ),
+        _case(
+            "a bottom left corner with the other end down and to the left leaves along the diagonal",
+            a, (-400, 300, 100, 80), AttachPoint.BOTTOM_LEFT, AttachPoint.TOP_RIGHT,
+        ),
+        _case(
+            "a top left corner with the other end up and to the left leaves along the diagonal",
+            a, (-400, -300, 100, 80), AttachPoint.TOP_LEFT, AttachPoint.BOTTOM_RIGHT,
+        ),
         _case("a top left corner with the other end above leaves upward", a, (-20, -300, 100, 80), AttachPoint.TOP_LEFT, AttachPoint.BOTTOM),
         _case("a corner of a wide box has a flatter diagonal", (0, 0, 400, 40), (600, -400, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM_LEFT),
-        _case("a corner with the other end at the corner itself takes the diagonal", a, (160, 0, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.TOP_LEFT),
-        _case("a corner with a vertex leaves toward the vertex, not the other box", a, (400, -300, 100, 80), AttachPoint.TOP_RIGHT, None, False, False, [(160, 200)]),
+        _case(
+            "a corner with the other end at the corner itself takes the diagonal",
+            a, (160, 0, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.TOP_LEFT,
+        ),
+        _case(
+            "a corner with a vertex leaves toward the vertex, not the other box",
+            a, (400, -300, 100, 80), AttachPoint.TOP_RIGHT, None, False, False, [(160, 200)],
+        ),
     ]
 
 

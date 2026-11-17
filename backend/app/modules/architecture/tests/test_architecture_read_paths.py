@@ -121,7 +121,7 @@ def test_the_shared_reads_use_the_same_number_of_statements_however_many_element
 def test_the_diagram_view_svg_and_mermaid_use_the_same_number_of_statements_however_large_the_diagram(client, admin_token):
     """The resolved view, the server SVG and the Mermaid text read a diagram's placements, connections, toggles and ancestors in bulk, so
     a larger diagram (more boxes, connections, toggles and shared elements) costs no more statements."""
-    from app.modules.architecture.tests._helpers import make_diagram, place_all, save_toggles, view
+    from app.modules.architecture.tests._helpers import domains, make_diagram, place_all, save_toggles, view
 
     org, owner, consumer, _o, token, member, _out = _world(client, admin_token, "Arch reads diagram")
     base = project_base(owner["id"])
@@ -135,7 +135,9 @@ def test_the_diagram_view_svg_and_mermaid_use_the_same_number_of_statements_howe
     make_connection(client, architect, consumer["id"], first[0]["id"], first[1]["id"])
     make_connection(client, architect, consumer["id"], first[0]["id"], shared["id"])
     diagram = place_all(client, architect, consumer["id"], diagram, root["id"], shared["id"], *[e["id"] for e in first])
-    diagram = save_toggles(client, architect, consumer["id"], diagram, [{"name": "Hardware", "rule": {"domains": ["hardware"], "tags": ["x"]}}])
+    diagram = save_toggles(client, architect, consumer["id"], diagram, [
+        {"name": "Hardware", "rule": {"domain_ids": [domains(client, architect, consumer["id"])["Hardware"]], "tags": ["x"]}},
+    ])
     toggle_id = view(client, architect, consumer["id"], diagram["id"])["toggles"][0]["id"]
     urls = [
         f"{project_base(consumer['id'])}/diagrams/{diagram['id']}/view",

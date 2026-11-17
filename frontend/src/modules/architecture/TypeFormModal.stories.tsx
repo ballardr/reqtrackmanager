@@ -2,13 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { requiredCaptions } from "../../testing/requiredMarkers";
-import { CONNECTION_TYPES, ELEMENT_TYPES, mockArchitectureReads, SYMBOLS } from "./architectureFixtures";
+import { CONNECTION_TYPES, DOMAINS, ELEMENT_TYPES, mockArchitectureReads, SYMBOLS } from "./architectureFixtures";
 import { TypeFormModal } from "./TypeFormModal";
 
 const meta: Meta<typeof TypeFormModal> = {
   title: "Modules/Architecture/TypeFormModal",
   component: TypeFormModal,
-  args: { kind: "element", symbols: SYMBOLS, symbolUrl: (id) => `/symbols/${id}`, onCancel: fn(), onSave: fn() },
+  args: { kind: "element", domains: DOMAINS, symbols: SYMBOLS, symbolUrl: (id) => `/symbols/${id}`, onCancel: fn(), onSave: fn() },
   beforeEach: () => { mockArchitectureReads(); },
 };
 export default meta;
@@ -28,7 +28,7 @@ export const ElementTypeNeedsANameAndSavesShapeAndSymbol: Story = {
     await userEvent.click(await within(document.body).findByRole("option", { name: "Server" }));
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith({
-      name: "Sensor", domain: "any", shape: "hexagon", color_light: null, color_dark: null, symbol_id: "sym-1",
+      name: "Sensor", domain_ids: [], shape: "hexagon", color_light: null, color_dark: null, symbol_id: "sym-1",
       suggested_connection_type_ids: [],
     });
   },
@@ -43,8 +43,37 @@ export const ConnectionTypeSavesLineStyleAndDirection: Story = {
     await userEvent.selectOptions(d.getByLabelText("Line style"), "dotted");
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({
-      name: "I2C", domain: "hardware", line_style: "dotted", directional: false, color_light: "#065f46", color_dark: "#6ee7b7",
+      name: "I2C", domain_ids: ["dm-2"], line_style: "dotted", directional: false, color_light: "#065f46", color_dark: "#6ee7b7",
     }));
+  },
+};
+
+/** A type is in any number of domains: none chosen fits every domain, and the choice is made from the owner's list. */
+export const ATypeIsInSeveralDomainsOrNone: Story = {
+  play: async ({ args }) => {
+    const d = dialog();
+    await expect(d.getByRole("button", { name: "Domains" })).toHaveTextContent("Any domain");
+    await userEvent.type(d.getByLabelText("Name"), "Gateway");
+    await userEvent.click(d.getByRole("button", { name: "Domains" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Software" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Hardware" }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Gateway", domain_ids: ["dm-1", "dm-2"] }));
+  },
+};
+
+/** Editing shows the stored domains, and unticking every one puts the type in none again. */
+export const EditShowsTheStoredDomainsAndCanClearThem: Story = {
+  args: { initial: ELEMENT_TYPES[0] },
+  play: async ({ args }) => {
+    const d = dialog();
+    await expect(d.getByRole("button", { name: "Domains" })).toHaveTextContent("Software");
+    await userEvent.click(d.getByRole("button", { name: "Domains" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Software" }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ domain_ids: [] }));
   },
 };
 

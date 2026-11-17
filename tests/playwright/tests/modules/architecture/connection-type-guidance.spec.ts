@@ -29,7 +29,9 @@ test.describe("System Architecture: soft guidance for connection types", () => {
       await page.getByRole("button", { name: "New element type with details" }).click();
       const dialog = page.getByRole("dialog", { name: "New element type" });
       await dialog.getByLabel("Name", { exact: true }).fill(radio);
-      await dialog.getByLabel("Domain", { exact: true }).selectOption({ label: "Hardware" });
+      await dialog.getByRole("button", { name: "Domains", exact: true }).click();
+      await page.getByRole("checkbox", { name: "Hardware", exact: true }).check();
+      await page.keyboard.press("Escape");
       await dialog.getByRole("button", { name: "Suggested connection types", exact: true }).click();
       const tree = page.getByRole("group", { name: "Suggested connection types" });
       await tree.getByRole("checkbox", { name: "UART", exact: true }).check();
@@ -70,7 +72,7 @@ test.describe("System Architecture: soft guidance for connection types", () => {
       await dialog.getByRole("button", { name: "Connection type", exact: true }).click();
       await page.getByRole("searchbox", { name: "Search Connection type" }).fill("rest");
       await page.getByRole("radio", { name: "REST API", exact: true }).first().click();
-      await expect(dialog.getByRole("status")).toContainText("REST API is a software connection type");
+      await expect(dialog.getByRole("status")).toContainText("REST API is in Software");
       await expect(dialog.getByRole("status")).toContainText("The connection can still be saved.");
       await dialog.getByRole("button", { name: "Save and activate" }).click();
       await expect(page.getByText("Connection created.")).toBeVisible();

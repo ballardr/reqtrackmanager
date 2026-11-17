@@ -3,7 +3,7 @@
  *
  * Create and edit dialog for an element type or a connection type, shared by the project and organisation panels
  * (and told apart from create by whether `initial` is passed, as the other module forms are). The two kinds share
- * the name, domain and colour pair; an element type adds a shape, a symbol and the connection types it suggests, a
+ * the name, the domains it is in and the colour pair; an element type adds a shape, a symbol and the connection types it suggests, a
  * connection type a line style, the groups it sits under and whether it is one-way. Colours are optional and given for the light and the dark theme, so a type stays legible
  * in both.
  */
@@ -21,15 +21,15 @@ import { connectionTypeNodes, cycleReasons } from "./connectionTypeTree";
 import { ARCHITECTURE_HELP } from "./help";
 import { SymbolPicker } from "./SymbolPicker";
 import {
-  DOMAIN_LABEL, ELEMENT_SHAPE_LABEL, LINE_STYLE_LABEL,
-  type ArchitectureSymbol, type ConnectionType, type ConnectionTypeValues, type Domain, type ElementShape,
+  ELEMENT_SHAPE_LABEL, LINE_STYLE_LABEL,
+  type ArchitectureDomain, type ArchitectureSymbol, type ConnectionType, type ConnectionTypeValues, type ElementShape,
   type ElementType, type ElementTypeValues, type LineStyle,
 } from "./types";
 
 /** The fields of either kind in one draft; the unused kind's fields are never sent. */
 interface Draft {
   name: string;
-  domain: Domain;
+  domain_ids: string[];
   color_light: string;
   color_dark: string;
   shape: ElementShape;
@@ -42,7 +42,7 @@ interface Draft {
 
 function blankDraft(): Draft {
   return {
-    name: "", domain: "any", color_light: "", color_dark: "", shape: "rectangle", symbol_id: null,
+    name: "", domain_ids: [], color_light: "", color_dark: "", shape: "rectangle", symbol_id: null,
     line_style: "solid", directional: true, parent_ids: [], suggested_connection_type_ids: [],
   };
 }
@@ -50,7 +50,7 @@ function blankDraft(): Draft {
 function draftFrom(row: ElementType | ConnectionType): Draft {
   return {
     ...blankDraft(),
-    name: row.name, domain: row.domain, color_light: row.color_light ?? "", color_dark: row.color_dark ?? "",
+    name: row.name, domain_ids: row.domain_ids, color_light: row.color_light ?? "", color_dark: row.color_dark ?? "",
     ...("shape" in row
       ? { shape: row.shape, symbol_id: row.symbol_id, suggested_connection_type_ids: row.suggested_connection_type_ids }
       : { line_style: row.line_style, directional: row.directional, parent_ids: row.parent_ids }),
@@ -64,12 +64,13 @@ function draftFrom(row: ElementType | ConnectionType): Draft {
  * @param symbolUrl The API path of a symbol's content, for the preview.
  * @param scope The project or organisation the type belongs to, for the symbol picker's upload.
  * @param onSymbolsChanged Called after a symbol is uploaded from the picker, so the caller reloads `symbols`.
+ * @param domains The domains the type may be in (the owner's list); none chosen means it fits every domain.
  * @param connectionTypes The connection types a connection type may sit under, or an element type may suggest.
  * @param error A save error to show.
  * @param onSave Called with the values for the kind.
  */
 export function TypeFormModal({
-  kind, initial, symbols = [], symbolUrl = () => "", scope, onSymbolsChanged, connectionTypes = [], error, onCancel, onSave,
+  kind, initial, symbols = [], symbolUrl = () => "", scope, onSymbolsChanged, domains = [], connectionTypes = [], error, onCancel, onSave,
 }: {
   kind: "element" | "connection";
   initial?: ElementType | ConnectionType;
@@ -77,6 +78,7 @@ export function TypeFormModal({
   symbolUrl?: (symbolId: string) => string;
   scope?: TypesScope;
   onSymbolsChanged?: () => void;
+  domains?: ArchitectureDomain[];
   connectionTypes?: ConnectionType[];
   error?: string | null;
   onCancel: () => void;
@@ -88,7 +90,7 @@ export function TypeFormModal({
 
   function save() {
     const common = {
-      name: draft.name.trim(), domain: draft.domain,
+      name: draft.name.trim(), domain_ids: draft.domain_ids,
       color_light: draft.color_light || null, color_dark: draft.color_dark || null,
     };
     onSave(kind === "element"
@@ -103,9 +105,10 @@ export function TypeFormModal({
           <FormGridFull>
             <TextField helpNotNeeded required label="Name" value={draft.name} onChange={(value) => set("name", value)} />
           </FormGridFull>
-          <LabeledSelect
-            help={ARCHITECTURE_HELP.typeDomain} label="Domain" value={draft.domain} placeholder={null}
-            onChange={(next) => set("domain", next as Domain)} options={labelOptions(DOMAIN_LABEL)}
+          <TreeSelectField
+            help={ARCHITECTURE_HELP.typeDomain} label="Domains" emptyLabel="Any domain" value={draft.domain_ids}
+            onChange={(next) => set("domain_ids", next)}
+            nodes={domains.map((d) => ({ id: d.id, label: d.name, children: [] }))}
           />
           {kind === "element" ? (
             <LabeledSelect

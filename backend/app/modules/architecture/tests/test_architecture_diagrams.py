@@ -17,6 +17,7 @@ from app.models.user import User
 from app.modules.architecture.tests._helpers import (
     add_member,
     connection_types,
+    domains,
     element_types,
     grant,
     make_architect,
@@ -378,7 +379,7 @@ def test_a_toggle_rule_matches_by_element_type_domain_connection_type_and_tag(cl
     assert _layout(shown)[sensor["unique_code"]]["hidden"] is True and shown["edges"][0]["source_element_id"] == firewall["id"]
 
     by_domain = save_toggles(client, token, project["id"], by_type, [
-        {"name": "Hardware", "default_on": False, "rule": {"domains": ["hardware"]}},
+        {"name": "Hardware", "default_on": False, "rule": {"domain_ids": [domains(client, token, project["id"])["Hardware"]]}},
     ])
     assert _layout(view(client, token, project["id"], by_domain["id"]))[sensor["unique_code"]]["hidden"] is True
 

@@ -208,7 +208,7 @@ export function ConnectionDetailPage() {
 
       {editing && (
         <ConnectionFormModal
-          initial={connection} connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} elements={elements}
+          initial={connection} connectionTypes={reference.connectionTypes} elementTypes={reference.elementTypes} domains={reference.domains} elements={elements}
           projectId={projectId} error={formError}
           onCancel={() => { setEditing(false); setFormError(null); }} onSave={saveEdit}
         />

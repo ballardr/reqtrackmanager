@@ -37,7 +37,7 @@ Design decisions:
 - **Boundary boxes follow the scope.** A box stands for an outer connection of the diagram's scope (`boundaries`), is
   saved with the layout, and is removed when the scope changes; a stored box whose connection later stops being outer is
   kept and not drawn.
-- **Toggle rules name vocabulary rows, domains and tag names, never records;** a toggle's manual members are the only
+- **Toggle rules name vocabulary rows (types and domains) and tag names, never records;** a toggle's manual members are the only
   record references, and each must be readable.
 
 Dependencies: `records` (the shared rule errors, version lock and audit helpers), `visibility`, `service`, core
@@ -101,6 +101,7 @@ from app.modules.architecture.service import (
     CONNECTION_TYPES,
     DIAGRAM_ARTEFACT_TYPE,
     DIAGRAM_CODE_PREFIX,
+    DOMAINS,
     ELEMENT_TYPES,
 )
 from app.modules.architecture.transitions import allowed_moves, move_refusal
@@ -802,9 +803,9 @@ def toggle_members(db: Session, toggle_ids: Sequence[uuid.UUID]) -> dict[uuid.UU
     return found
 
 
-def _usable_type_ids(db: Session, project: Any) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
-    """The element type ids and connection type ids a toggle rule may name: the project's effective rows, its own, and
-    its organisation's (a type a hidden default still holds)."""
+def _usable_type_ids(db: Session, project: Any) -> tuple[set[uuid.UUID], set[uuid.UUID], set[uuid.UUID]]:
+    """The element type, connection type and domain ids a toggle rule may name: the project's effective rows, its own, and
+    its organisation's (a row a hidden default still holds)."""
     def ids(vocabulary: Any) -> set[uuid.UUID]:
         rows = [
             *vocabulary.resolve_effective(db, project.id, project.organization_id).rows,
@@ -812,18 +813,18 @@ def _usable_type_ids(db: Session, project: Any) -> tuple[set[uuid.UUID], set[uui
         ]
         return {r.id for r in rows}
 
-    return ids(ELEMENT_TYPES), ids(CONNECTION_TYPES)
+    return ids(ELEMENT_TYPES), ids(CONNECTION_TYPES), ids(DOMAINS)
 
 
 def _clean_rule(rule: Any) -> dict[str, list[str]]:
-    """A rule as stored: ids as strings, domains as values, tags trimmed and de-duplicated (empty lists dropped)."""
+    """A rule as stored: ids as strings, tags trimmed and de-duplicated (empty lists dropped)."""
     tags = list(dict.fromkeys(t.strip() for t in rule.tags if t.strip()))
     if any(len(t) > 100 for t in tags):
         raise RuleError("A tag name in a rule can be at most 100 characters.", 400)
     cleaned = {
         "element_type_ids": [str(i) for i in dict.fromkeys(rule.element_type_ids)],
         "connection_type_ids": [str(i) for i in dict.fromkeys(rule.connection_type_ids)],
-        "domains": [d.value for d in dict.fromkeys(rule.domains)],
+        "domain_ids": [str(i) for i in dict.fromkeys(rule.domain_ids)],
         "tags": tags,
     }
     return {key: value for key, value in cleaned.items() if value}
@@ -850,7 +851,7 @@ def save_toggles(
     given_ids = [t.id for t in payload.toggles if t.id is not None]
     if len(set(given_ids)) != len(given_ids):
         raise RuleError("A toggle can be listed once.", 400)
-    element_types, connection_types = _usable_type_ids(db, project)
+    element_types, connection_types, domains = _usable_type_ids(db, project)
     viewer = Viewer.of_user(actor, project)
     wanted_elements = {e for t in payload.toggles for e in t.element_ids}
     readable = visible_element_ids(db, viewer, wanted_elements)
@@ -861,6 +862,8 @@ def save_toggles(
     for toggle in payload.toggles:
         if not set(toggle.rule.element_type_ids) <= element_types or not set(toggle.rule.connection_type_ids) <= connection_types:
             raise RuleError("A rule names a type this project cannot use.", 400)
+        if not set(toggle.rule.domain_ids) <= domains:
+            raise RuleError("A rule names a domain this project cannot use.", 400)
         if not set(toggle.element_ids) <= readable or not set(toggle.connection_ids) <= own_connections:
             raise RuleError("A toggle names an element or connection that is not available for this project.", 400)
 

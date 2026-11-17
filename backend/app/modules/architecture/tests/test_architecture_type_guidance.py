@@ -57,7 +57,7 @@ def test_a_new_organisation_seeds_neutral_element_types_that_suggest_nothing(cli
     elements = _rows(client, token, f"{org_base(org['id'])}/element-types")
     assert list(elements) == ["System", "Subsystem", "Component"]
     assert all(row["suggested_connection_type_ids"] == [] for row in elements.values())
-    assert all(row["domain"] == "any" for row in elements.values())
+    assert all(row["domain_ids"] == [] for row in elements.values())
 
 
 def test_suggestions_given_to_an_element_type_are_listed_by_the_project(client, admin_token):
@@ -78,7 +78,7 @@ def test_suggestions_are_set_replaced_kept_and_cleared(client, admin_token):
     base = f"{org_base(org['id'])}/element-types"
     i2c, spi, power = connections["I2C"]["id"], connections["SPI"]["id"], connections["Power"]["id"]
 
-    created = _post(client, token, base, name="Radio", domain="hardware", suggested_connection_type_ids=[i2c, spi, i2c])
+    created = _post(client, token, base, name="Radio", suggested_connection_type_ids=[i2c, spi, i2c])
     assert sorted(created["suggested_connection_type_ids"]) == sorted([i2c, spi])  # a repeat counts once
 
     renamed = _patch(client, token, f"{base}/{created['id']}", name="Radio module")

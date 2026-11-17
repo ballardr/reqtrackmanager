@@ -1,9 +1,9 @@
 /**
  * Module: modules/architecture/ArchitectureTypesPanel
  *
- * The settings list of one type vocabulary (element types or connection types) for a project or for an organisation,
+ * The settings list of one vocabulary (element types, connection types or domains) for a project or for an organisation,
  * on the shared `DefinitionList`: inline rename, reorder, add and delete, with an Edit dialog (`TypeFormModal`) for
- * the other attributes. In a project, a row that is an organisation default is read-only there: deleting it hides it
+ * the other attributes (a domain is only a name, so it has none). In a project, a row that is an organisation default is read-only there: deleting it hides it
  * in this project (after a confirmation) and `RestoreOrgDefaultsButton` shows it again; to change a default, hide it
  * and add a type of the project's own. A type in use cannot be deleted (the server answers 409), so the message tells
  * the administrator to hide it instead.
@@ -16,21 +16,25 @@ import { RestoreOrgDefaultsButton, type HiddenDefinition } from "../../component
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { blockedError } from "../../utils/blockedError";
-import { connectionTypeApi, elementTypeApi, orgSymbolUrl, projectSymbolUrl, symbolApi } from "./api";
+import { connectionTypeApi, domainApi, elementTypeApi, orgSymbolUrl, projectSymbolUrl, symbolApi } from "./api";
 import { TypeFormModal } from "./TypeFormModal";
 import {
-  DOMAIN_LABEL, ELEMENT_SHAPE_LABEL, LINE_STYLE_LABEL,
-  type ArchitectureSymbol, type ConnectionType, type ConnectionTypeValues, type ElementType, type ElementTypeValues,
+  ELEMENT_SHAPE_LABEL, LINE_STYLE_LABEL,
+  type ArchitectureDomain, type ArchitectureSymbol, type ConnectionType, type ConnectionTypeValues, type ElementType,
+  type ElementTypeValues,
 } from "./types";
 
-type TypeRow = ElementType | ConnectionType;
+type TypeRow = ElementType | ConnectionType | ArchitectureDomain;
+
+/** The vocabulary a panel manages: the two type vocabularies and the domains they refer to. */
+export type TypesKind = "element" | "connection" | "domain";
 
 /** Where the vocabulary is managed: a project (its effective list) or an organisation (its defaults). */
 export type TypesScope = { kind: "project"; projectId: string } | { kind: "org"; organizationId: string };
 
 /** The inline colour dots of a row (light, dark); nothing when the type has no colour. */
 function ColourDots({ row }: { row: TypeRow }) {
-  if (!row.color_light && !row.color_dark) return null;
+  if (!("color_light" in row) || (!row.color_light && !row.color_dark)) return null;
   return (
     <span className="row" style={{ gap: "var(--space-1)" }} aria-label={`Colours of ${row.name}`}>
       {[row.color_light, row.color_dark].map((hex, index) => hex && (
@@ -40,26 +44,29 @@ function ColourDots({ row }: { row: TypeRow }) {
   );
 }
 
-/** "Software · Cylinder" / "Hardware · Dashed, one-way": what the row shows beside its name. */
-function summaryOf(row: TypeRow, rows: TypeRow[]): string {
+/** "Software · Cylinder" / "Hardware · Dashed, one-way": what a type's row shows beside its name; a domain shows nothing. */
+function summaryOf(row: TypeRow, rows: TypeRow[], domains: ArchitectureDomain[]): string {
+  if (!("domain_ids" in row)) return "";
+  const domainNames = row.domain_ids.map((id) => domains.find((d) => d.id === id)?.name).filter(Boolean);
   const detail = "shape" in row
     ? ELEMENT_SHAPE_LABEL[row.shape]
     : `${LINE_STYLE_LABEL[row.line_style]}, ${row.directional ? "one-way" : "two-way"}`;
   const parents = "parent_ids" in row ? row.parent_ids.map((id) => rows.find((r) => r.id === id)?.name).filter(Boolean) : [];
-  return `${DOMAIN_LABEL[row.domain]} · ${detail}${parents.length > 0 ? ` · Under ${parents.join(", ")}` : ""}`;
+  return `${domainNames.length > 0 ? domainNames.join(", ") : "Any domain"} · ${detail}${parents.length > 0 ? ` · Under ${parents.join(", ")}` : ""}`;
 }
 
 /**
  * @param scope The project or organisation whose vocabulary is managed.
- * @param kind Which vocabulary: element types or connection types.
+ * @param kind Which vocabulary: element types, connection types or domains.
  */
-export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kind: "element" | "connection" }) {
+export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kind: TypesKind }) {
   const { showToast } = useToast();
-  const noun = kind === "element" ? "element type" : "connection type";
+  const noun = kind === "element" ? "element type" : kind === "connection" ? "connection type" : "domain";
   const [rows, setRows] = useState<TypeRow[] | null>(null);
   const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
   const [symbols, setSymbols] = useState<ArchitectureSymbol[]>([]);
   const [connectionTypes, setConnectionTypes] = useState<ConnectionType[]>([]);
+  const [domains, setDomains] = useState<ArchitectureDomain[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<TypeRow | "new" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -67,7 +74,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
   const reload = useCallback(() => setRefresh((n) => n + 1), []);
 
   const scopeId = scope.kind === "project" ? scope.projectId : scope.organizationId;
-  const calls = kind === "element" ? elementTypeApi : connectionTypeApi;
+  const calls = (kind === "element" ? elementTypeApi : kind === "connection" ? connectionTypeApi : domainApi) as typeof elementTypeApi;
   const symbolUrl = (id: string) => (scope.kind === "project" ? projectSymbolUrl(scopeId, id) : orgSymbolUrl(scopeId, id));
 
   useEffect(() => {
@@ -81,11 +88,16 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
       const connections = kind === "element"
         ? await (scope.kind === "project" ? connectionTypeApi.projectList(scopeId) : connectionTypeApi.orgList(scopeId)).catch(() => [])
         : [];
+      // A type's dialog and summary choose and name its domains.
+      const foundDomains = kind === "domain"
+        ? []
+        : await (scope.kind === "project" ? domainApi.projectList(scopeId) : domainApi.orgList(scopeId)).catch(() => []);
       const hiddenRows = scope.kind === "project" ? await calls.projectHidden(scopeId).catch(() => []) : [];
       if (!live) return;
       setRows(list);
       setSymbols(found);
       setConnectionTypes(connections);
+      setDomains(foundDomains);
       setHidden(hiddenRows);
       setLoadError(null);
     };
@@ -150,9 +162,11 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
           reload();
         }}
         onAdd={async (values) => {
-          const blank = kind === "element"
-            ? { name: values.name, domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, suggested_connection_type_ids: [] }
-            : { name: values.name, domain: "any", line_style: "solid", directional: true, color_light: null, color_dark: null, parent_ids: [] };
+          const blank = kind === "domain"
+            ? { name: values.name }
+            : kind === "element"
+              ? { name: values.name, domain_ids: [], shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, suggested_connection_type_ids: [] }
+              : { name: values.name, domain_ids: [], line_style: "solid", directional: true, color_light: null, color_dark: null, parent_ids: [] };
           await (scope.kind === "project" ? calls.projectCreate(scopeId, blank as never) : calls.orgCreate(scopeId, blank as never));
           showToast(`${noun[0].toUpperCase()}${noun.slice(1)} created.`);
           reload();
@@ -163,7 +177,10 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
             await (scope.kind === "project" ? calls.projectDelete(scopeId, id) : calls.orgDelete(scopeId, id));
           } catch (err) {
             throw blockedError(
-              err, `This ${noun} is still used by a record. ${scope.kind === "project" ? "Hide it instead of deleting it." : "Change those records first."}`,
+              err,
+              kind === "domain"
+                ? `This domain is still used by a type or a diagram switch. ${scope.kind === "project" ? "Hide it instead of deleting it." : "Change those first."}`
+                : `This ${noun} is still used by a record. ${scope.kind === "project" ? "Hide it instead of deleting it." : "Change those records first."}`,
             );
           }
           showToast(row && isOrgDefault(row) ? `${noun[0].toUpperCase()}${noun.slice(1)} hidden in this project.` : `${noun[0].toUpperCase()}${noun.slice(1)} deleted.`);
@@ -181,10 +198,10 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
         addLabel={`Add ${noun}`}
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows)}</span>
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows, domains)}</span>
             <ColourDots row={item} />
             {scope.kind === "project" && item.project_id === null && <span className="text-muted" style={{ fontSize: "0.75rem" }}>Org default</span>}
-            {!isOrgDefault(item) && (
+            {kind !== "domain" && !isOrgDefault(item) && (
               <button
                 className="btn" aria-label={`Edit ${item.name}`} title={`Edit ${item.name}`}
                 onClick={() => { setFormError(null); setEditing(item); }}
@@ -196,9 +213,11 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
         )}
       />
       <div className="row" style={{ gap: "var(--space-3)" }}>
-        <button className="btn" onClick={() => { setFormError(null); setEditing("new"); }}>
-          {`New ${noun} with details`}
-        </button>
+        {kind !== "domain" && (
+          <button className="btn" onClick={() => { setFormError(null); setEditing("new"); }}>
+            {`New ${noun} with details`}
+          </button>
+        )}
         {scope.kind === "project" && (
           <RestoreOrgDefaultsButton
             hidden={hidden}
@@ -211,10 +230,11 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
           />
         )}
       </div>
-      {editing && (
+      {editing && kind !== "domain" && (
         <TypeFormModal
           kind={kind}
-          initial={editing === "new" ? undefined : editing}
+          initial={editing === "new" ? undefined : (editing as ElementType | ConnectionType)}
+          domains={domains}
           symbols={symbols}
           symbolUrl={symbolUrl}
           scope={scope}

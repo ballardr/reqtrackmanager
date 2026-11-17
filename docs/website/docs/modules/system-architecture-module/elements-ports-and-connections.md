@@ -14,6 +14,7 @@ The architecture of a product is recorded as **elements** (its parts) and **conn
 | [Port](../../reference/glossary.md#port) | A named point where a connection meets an element |
 | [Connection](../../reference/glossary.md#connection) | A link between two elements (`CON-001`) |
 | [Connection type](../../reference/glossary.md#connection-type) | The kind of interface, such as REST API or I2C bus |
+| [Domain](../../reference/glossary.md#domain) | A name an element type or connection type can be in, such as Software or Hardware |
 | [Display note](../../reference/glossary.md#display-note) | A short line drawn inside an element's box on every diagram |
 | [Symbol](../../reference/glossary.md#symbol) | A drawing from the symbol library, shown in an element's box |
 
@@ -54,6 +55,19 @@ A port may also name the connection type it expects. This is guidance: a connect
 
 A connection joins a source element to a target element, which must differ. Each end may name one of its element's ports. A connection has a type, an optional protocol (for example HTTPS/1.1 or SPI mode 0) and a description. A connection of a one-way type runs from source to target; a two-way type shows no arrow and the order of its ends is for display only.
 
-Connection types are organised in groups: a type such as I2C can sit under Serial bus and under Board-to-board, and choosing a group also reaches every type beneath it when connections are filtered. When a connection is created, the type list offers the types that suit both elements first.
+Connection types are organised in groups: a type such as I2C can sit under Serial bus and under Board-to-board, and choosing a group also reaches every type beneath it when connections are filtered. When a connection is created, the type list offers the types that suit both elements first: a type suits an element when the two share a [domain](../../reference/glossary.md#domain), or when either is in no domain.
+
+## Domains
+
+A **domain** is a name that element types and connection types can be in, such as Software, Hardware or Mechanical. A new organisation has Software and Hardware; add the domains your teams work in under **Domains** in the System Architecture settings, for the organisation or for one project. A type can be in several domains, or in none, which means it fits every domain.
+
+Domains narrow the choices; they never forbid one:
+
+- The connection type list offers the types that share a domain with both elements, and a type that does not fit can still be chosen, with a warning that names the domains.
+- **Add to diagram** lists an element type under each domain it is in (for example **New hardware element**), and a type in no domain under **New element**.
+- The **Domain** filter of **Add existing elements** shows the elements whose type is in the domain, or in none.
+- A view switch can match by domain: it matches the elements and connections whose type is in any chosen domain.
+
+The two tiers work as for the types: an organisation's domains are offered in every project, a project can add its own and hide an organisation default it does not use (**Add organisation defaults** brings it back), and a child project without domains of its own shows the nearest parent's. A domain that a type is in, or that a view switch names, cannot be deleted. Hiding a domain stops new use only: a type already in it keeps it.
 
 Either end may be an element the project can read from elsewhere: another project's element shared with it, or an organisation element. The connection belongs to the project that created it.

@@ -43,6 +43,8 @@ import type {
   DiagramView,
   ElementCreateValues,
   ElementFieldValues,
+  ArchitectureDomain,
+  ArchitectureDomainValues,
   ElementType,
   ElementTypeValues,
   FolderKind,
@@ -135,6 +137,7 @@ function vocabulary<Row, Values>(path: string) {
   };
 }
 
+export const domainApi = vocabulary<ArchitectureDomain, ArchitectureDomainValues>("domains");
 export const elementTypeApi = vocabulary<ElementType, ElementTypeValues>("element-types");
 export const connectionTypeApi = vocabulary<ConnectionType, ConnectionTypeValues>("connection-types");
 

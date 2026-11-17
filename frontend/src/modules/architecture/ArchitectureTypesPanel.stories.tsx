@@ -65,11 +65,13 @@ export const EditDialogSavesTheOtherAttributes: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Edit Custom block" }));
     const dialog = within(within(document.body).getByRole("dialog"));
     await userEvent.selectOptions(dialog.getByLabelText("Shape"), "cylinder");
-    await userEvent.selectOptions(dialog.getByLabelText("Domain"), "hardware");
+    await userEvent.click(dialog.getByRole("button", { name: "Domains" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Hardware" }));
+    await userEvent.keyboard("{Escape}");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/architecture/element-types/et-3`,
-      expect.objectContaining({ name: "Custom block", shape: "cylinder", domain: "hardware", symbol_id: null }),
+      expect.objectContaining({ name: "Custom block", shape: "cylinder", domain_ids: ["dm-2"], symbol_id: null }),
     ));
   },
 };
@@ -97,6 +99,46 @@ export const ANewConnectionTypeStartsAtTheTopLevel: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add connection type" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/architecture/connection-types`, expect.objectContaining({ name: "Radio link", parent_ids: [] }),
+    ));
+  },
+};
+
+/** The domains are a vocabulary of their own: a name each, an organisation default read-only in a project and hidden there. */
+export const DomainsAreListedByNameAndAnOrganisationDefaultIsHiddenNotDeleted: Story = {
+  args: { scope: { kind: "project", projectId: PROJECT_ID }, kind: "domain" },
+  beforeEach: () => {
+    const del = spyOn(api, "delete").mockResolvedValue(undefined as never);
+    return () => del.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getAllByLabelText("Domain name", { selector: "input:not([placeholder])" }).length).toBe(2));
+    const names = canvas.getAllByLabelText("Domain name", { selector: "input:not([placeholder])" }) as HTMLInputElement[];
+    await expect(names.map((n) => [n.value, n.disabled])).toEqual([["Software", true], ["Hardware", true]]);
+    // A domain is only a name: there is no details dialog.
+    await expect(canvas.queryByRole("button", { name: /with details/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
+    const [hide] = await canvas.findAllByRole("button", { name: "Hide domain in this project" });
+    await userEvent.click(hide);
+    const dialog = within(within(document.body).getByRole("dialog"));
+    await userEvent.click(dialog.getByRole("button", { name: "Hide" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/modules/architecture/domains/dm-1`));
+  },
+};
+
+/** A new domain is created with only its name. */
+export const ANewDomainIsCreatedWithItsName: Story = {
+  args: { scope: { kind: "org", organizationId: ORG_ID }, kind: "domain" },
+  beforeEach: () => {
+    const post = spyOn(api, "post").mockResolvedValue({} as never);
+    return () => post.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(await canvas.findByPlaceholderText("Domain name"), "Mechanical");
+    await userEvent.click(canvas.getByRole("button", { name: "Add domain" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/architecture/domains`, { name: "Mechanical" },
     ));
   },
 };

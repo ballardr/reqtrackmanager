@@ -14,7 +14,7 @@ import type { OrgUser } from "../../api/types";
 import { buildTree } from "../../testing/placementsFixtures";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import type {
-  ArchitectureCollection, ArchitectureConnection, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
+  ArchitectureCollection, ArchitectureConnection, ArchitectureDomain, ArchitectureFolder, ArchitectureRecordStatus, ArchitectureDiagram, ArchitectureElement, ArchitectureSymbol, ConnectionType,
   DiagramLeader, DiagramModel, DiagramNote, DiagramToggle, DiagramView, DiagramViewBoundary, DiagramViewEdge, DiagramViewNode, ElementType, ModelConnectionType,
   ModelElement, Port, AllocationPair, AllocationView, ArchitectureState, StateMachineDiagram, RecordDiagram, StateMachineValidationIssue, StateMachineModel, StateTransition,
   BaselineComparison,
@@ -176,7 +176,7 @@ export function buildLeader(overrides: Partial<DiagramLeader> = {}): DiagramLead
 
 export const FIREWALL_TOGGLE: DiagramToggle = {
   id: "tg-1", name: "Security devices", default_on: true, on: true, sort_order: 0, element_ids: ["el-3"], connection_ids: [],
-  rule: { element_type_ids: [], connection_type_ids: [], domains: [], tags: [] },
+  rule: { element_type_ids: [], connection_type_ids: [], domain_ids: [], tags: [] },
 };
 
 /** Three placed elements (Gateway, Orders, Firewall), one line between the first two and one switch. */
@@ -296,16 +296,22 @@ export function buildBoundaryScene(opts: { realised?: boolean } = {}): { view: D
   return { view, model, elements };
 }
 
+/** The two seeded domains of the organisation, which the fixture types are in. */
+export const DOMAINS: ArchitectureDomain[] = [
+  { id: "dm-1", project_id: null, organization_id: ORG_ID, name: "Software", sort_order: 0 },
+  { id: "dm-2", project_id: null, organization_id: ORG_ID, name: "Hardware", sort_order: 1 },
+];
+
 export const ELEMENT_TYPES: ElementType[] = [
-  { id: "et-1", project_id: null, organization_id: ORG_ID, name: "Service", domain: "software", shape: "rounded", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, sort_order: 0, suggested_connection_type_ids: ["ct-1"] },
-  { id: "et-2", project_id: null, organization_id: ORG_ID, name: "Board", domain: "hardware", shape: "chip", color_light: null, color_dark: null, symbol_id: null, sort_order: 1, suggested_connection_type_ids: ["ct-2"] },
-  { id: "et-3", project_id: PROJECT_ID, organization_id: null, name: "Custom block", domain: "any", shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, sort_order: 2, suggested_connection_type_ids: [] },
+  { id: "et-1", project_id: null, organization_id: ORG_ID, name: "Service", domain_ids: ["dm-1"], shape: "rounded", color_light: "#dbeafe", color_dark: "#1e3a8a", symbol_id: null, sort_order: 0, suggested_connection_type_ids: ["ct-1"] },
+  { id: "et-2", project_id: null, organization_id: ORG_ID, name: "Board", domain_ids: ["dm-2"], shape: "chip", color_light: null, color_dark: null, symbol_id: null, sort_order: 1, suggested_connection_type_ids: ["ct-2"] },
+  { id: "et-3", project_id: PROJECT_ID, organization_id: null, name: "Custom block", domain_ids: [], shape: "rectangle", color_light: null, color_dark: null, symbol_id: null, sort_order: 2, suggested_connection_type_ids: [] },
 ];
 
 export const CONNECTION_TYPES: ConnectionType[] = [
-  { id: "ct-1", project_id: null, organization_id: ORG_ID, name: "REST API", domain: "software", line_style: "solid", directional: true, color_light: null, color_dark: null, sort_order: 0, parent_ids: [] },
-  { id: "ct-2", project_id: PROJECT_ID, organization_id: null, name: "I2C", domain: "hardware", line_style: "dashed", directional: false, color_light: "#065f46", color_dark: "#6ee7b7", sort_order: 1, parent_ids: ["ct-3"] },
-  { id: "ct-3", project_id: null, organization_id: ORG_ID, name: "Serial bus", domain: "hardware", line_style: "solid", directional: false, color_light: null, color_dark: null, sort_order: 2, parent_ids: [] },
+  { id: "ct-1", project_id: null, organization_id: ORG_ID, name: "REST API", domain_ids: ["dm-1"], line_style: "solid", directional: true, color_light: null, color_dark: null, sort_order: 0, parent_ids: [] },
+  { id: "ct-2", project_id: PROJECT_ID, organization_id: null, name: "I2C", domain_ids: ["dm-2"], line_style: "dashed", directional: false, color_light: "#065f46", color_dark: "#6ee7b7", sort_order: 1, parent_ids: ["ct-3"] },
+  { id: "ct-3", project_id: null, organization_id: ORG_ID, name: "Serial bus", domain_ids: ["dm-2"], line_style: "solid", directional: false, color_light: null, color_dark: null, sort_order: 2, parent_ids: [] },
 ];
 
 export const SYMBOLS: ArchitectureSymbol[] = [
@@ -412,6 +418,7 @@ export function mockArchitectureReads(reads: ArchitectureReads = {}) {
     if (path.endsWith("/records/architecture_connection/columns")) return buildRecordColumns({ label: "Connections" });
     const folderKind = /\/modules\/architecture\/(element|connection|diagram)-folders$/.exec(base);
     if (folderKind) return (reads.folders ?? []).filter((f) => f.kind === folderKind[1]);
+    if (base.endsWith("/modules/architecture/domains")) return DOMAINS;
     if (base.endsWith("/modules/architecture/element-types")) return ELEMENT_TYPES;
     if (base.endsWith("/modules/architecture/connection-types")) return CONNECTION_TYPES;
     if (base.endsWith("/modules/architecture/symbols")) return SYMBOLS;

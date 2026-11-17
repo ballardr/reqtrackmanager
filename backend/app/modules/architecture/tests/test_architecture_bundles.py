@@ -12,7 +12,7 @@ import zipfile
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.modules.architecture.models import ArchitectureConnectionType, ArchitectureElementType
+from app.modules.architecture.models import ArchitectureConnectionType, ArchitectureDomain, ArchitectureElementType
 from app.modules.architecture.tests._helpers import org_base, project_base, setup
 from tests.conftest import auth_headers
 
@@ -26,7 +26,10 @@ def _names(client, url, token) -> list[str]:
 def test_organisation_defaults_round_trip_without_doubling_the_seeds(client, admin_token):
     org, _project, token = setup(client, admin_token, "Arch bundle org")
     h = auth_headers(token)
-    client.post(f"{org_base(org['id'])}/element-types", json={"name": "Radar", "shape": "ellipse", "domain": "hardware"}, headers=h)
+    hardware = next(d["id"] for d in client.get(f"{org_base(org['id'])}/domains", headers=h).json() if d["name"] == "Hardware")
+    client.post(
+        f"{org_base(org['id'])}/element-types", json={"name": "Radar", "shape": "ellipse", "domain_ids": [hardware]}, headers=h,
+    )
     client.post(f"{org_base(org['id'])}/connection-types", json={"name": "LIN", "directional": False}, headers=h)
 
     export = client.get(f"/api/v1/orgs/{org['id']}/export", headers=h)
@@ -46,7 +49,10 @@ def test_organisation_defaults_round_trip_without_doubling_the_seeds(client, adm
         connections = list(db.scalars(select(ArchitectureConnectionType).where(ArchitectureConnectionType.organization_id == new_org_id)))
     assert len({e.name for e in elements}) == len(elements) and {"Radar", "System"} <= {e.name for e in elements}
     radar = next(e for e in elements if e.name == "Radar")
-    assert (radar.shape, radar.domain) == ("ellipse", "hardware")
+    assert radar.shape == "ellipse"
+    with SessionLocal() as db:
+        names = [d.name for d in db.scalars(select(ArchitectureDomain).where(ArchitectureDomain.id.in_(radar.domain_ids)))]
+    assert names == ["Hardware"]
     lin = next(c for c in connections if c.name == "LIN")
     assert lin.directional is False and len({c.name for c in connections}) == len(connections)
 

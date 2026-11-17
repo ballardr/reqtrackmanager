@@ -41,7 +41,7 @@ test.describe("System Architecture: an element box fits its symbol and text", ()
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchBoxFit", true, "System Architecture");
     const arch = `${API}/api/v1/projects/${project.id}/modules/architecture`;
     // The project's own type, so the test can change its symbol (the seeded types belong to the organisation).
-    const type = await (await page.request.post(`${arch}/element-types`, { headers: adminHeaders, data: { name: "Board", domain: "any" } })).json();
+    const type = await (await page.request.post(`${arch}/element-types`, { headers: adminHeaders, data: { name: "Board" } })).json();
     const name = `${LONG_NAME} ${suffix}`;
     const made = await page.request.post(`${arch}/elements`, { headers: adminHeaders, data: { name, element_type_id: type.id, activate: true } });
     expect(made.ok(), await made.text()).toBeTruthy();

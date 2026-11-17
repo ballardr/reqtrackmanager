@@ -7,7 +7,7 @@ import type { ConnectionType } from "./types";
 
 /** A type with only what the tree needs. */
 const type = (id: string, name: string, sort_order: number, parent_ids: string[] = []): ConnectionType => ({
-  id, name, sort_order, parent_ids, project_id: null, organization_id: "org", domain: "any", line_style: "solid",
+  id, name, sort_order, parent_ids, project_id: null, organization_id: "org", domain_ids: [], line_style: "solid",
   directional: true, color_light: null, color_dark: null,
 });
 

@@ -114,6 +114,10 @@ export const moduleDefinition: TierAModuleDefinition = {
       render: ({ projectId }) => createElement(ArchitectureTypesPanel, { scope: { kind: "project", projectId }, kind: "connection" }),
     },
     {
+      key: "architecture-domains", label: "Domains", group: ARCHITECTURE_ADMIN_GROUP,
+      render: ({ projectId }) => createElement(ArchitectureTypesPanel, { scope: { kind: "project", projectId }, kind: "domain" }),
+    },
+    {
       key: "architecture-symbols", label: "Symbols", group: ARCHITECTURE_ADMIN_GROUP,
       render: ({ projectId }) => createElement(SymbolLibraryPanel, { scope: { kind: "project", projectId } }),
     },
@@ -126,6 +130,10 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "architecture-connection-types", label: "Connection Types", group: ARCHITECTURE_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ArchitectureTypesPanel, { scope: { kind: "org", organizationId: orgId }, kind: "connection" }),
+    },
+    {
+      key: "architecture-domains", label: "Domains", group: ARCHITECTURE_ADMIN_GROUP,
+      render: ({ orgId }) => createElement(ArchitectureTypesPanel, { scope: { kind: "org", organizationId: orgId }, kind: "domain" }),
     },
     {
       key: "architecture-symbols", label: "Symbols", group: ARCHITECTURE_ADMIN_GROUP,

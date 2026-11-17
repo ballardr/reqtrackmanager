@@ -55,11 +55,12 @@ def test_a_disabled_module_is_not_found(client, admin_token):
 def test_organisation_admin_manages_defaults(client, admin_token, path, defaults, extra):
     org, _project, token = setup(client, admin_token, f"Arch org crud {path}", domain_types=False)
     base, h = f"{org_base(org['id'])}/{path}", auth_headers(token)
+    hardware = next(d["id"] for d in client.get(f"{org_base(org['id'])}/domains", headers=h).json() if d["name"] == "Hardware")
 
-    created = client.post(base, json={"name": "Radar", "domain": "hardware", "color_light": "#112233", **extra}, headers=h)
+    created = client.post(base, json={"name": "Radar", "domain_ids": [hardware], "color_light": "#112233", **extra}, headers=h)
     assert created.status_code == 201, created.text
     row = created.json()
-    assert row["sort_order"] == len(defaults) and row["domain"] == "hardware" and row["color_light"] == "#112233"
+    assert row["sort_order"] == len(defaults) and row["domain_ids"] == [hardware] and row["color_light"] == "#112233"
     for key, value in extra.items():
         assert row[key] == value
 
@@ -78,7 +79,7 @@ def test_organisation_admin_manages_defaults(client, admin_token, path, defaults
 
 @pytest.mark.parametrize("payload", [
     {"name": "Bad", "color_light": "red"},
-    {"name": "Bad", "domain": "marine"},
+    {"name": "Bad", "domain_ids": ["marine"]},
     {"name": ""},
 ])
 def test_invalid_vocabulary_fields_are_rejected(client, admin_token, payload):
