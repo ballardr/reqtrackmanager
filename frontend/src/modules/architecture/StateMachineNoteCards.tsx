@@ -65,7 +65,7 @@ export function StateMachineNoteCards({
     };
     return (
       <DiagramLeaderEditor
-        key={leader.leader.key} leader={leader.leader} index={leader.index} editable={editable}
+        key={leader.leader.key} leader={leader.leader} editable={editable}
         targets={leaderTargetOptions(model, codeOf)} help={ARCHITECTURE_HELP.leaderPointsAtStates}
         drawn={leaderIsDrawn(leader.leader, model)} newPoint={leaderVertexSuggestion(leader.note, leader.leader, centreOf)}
         defaultShape={model.diagram.line_shape}

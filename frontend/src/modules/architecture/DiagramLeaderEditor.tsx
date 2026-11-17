@@ -42,7 +42,6 @@ export interface LeaderTargetOption {
 
 /**
  * @param leader The selected leader.
- * @param index Its position among the note's leaders, from 1 (names the card).
  * @param editable Whether the layout can be changed.
  * @param targets What the diagram draws that a leader can end at (the page names them: boxes and connections, or states and transitions).
  * @param help The "Points at" field's help; by default the block diagram's wording (boxes and connections).
@@ -54,10 +53,9 @@ export interface LeaderTargetOption {
  * @param onRemove Called to remove the leader.
  */
 export function DiagramLeaderEditor({
-  leader, index, editable, targets, help = ARCHITECTURE_HELP.leaderPointsAt, drawn, newPoint, defaultShape, onTarget, onChange, onOpenNote, onRemove,
+  leader, editable, targets, help = ARCHITECTURE_HELP.leaderPointsAt, drawn, newPoint, defaultShape, onTarget, onChange, onOpenNote, onRemove,
 }: {
   leader: EditorLeader;
-  index: number;
   editable: boolean;
   targets: LeaderTargetOption[];
   help?: string;
@@ -95,7 +93,6 @@ export function DiagramLeaderEditor({
   ];
   return (
     <div className="stack">
-      <p><strong>Leader {index}</strong></p>
       <LabeledSelect
         label="Points at" help={help} placeholder={null} disabled={!editable} value={current}
         options={[...options, ...(options.some((o) => o.value === LEADER_SPOT_OPTION) ? [] : [spot])]} onChange={choose}

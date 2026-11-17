@@ -8,7 +8,7 @@
  *
  * Design decisions:
  * - The draft and its commit are the shared `useSelectionDraft`; an element is stored at once, not with the drawing.
- * - The Save button is always present and disabled while nothing has changed, so the card does not change size as the person types.
+ * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing has changed, so the header does not change size as the person types.
  * - A component or category, tags and ports are separate controls of the card (each stored on its own), not part of this draft.
  */
 import { useEffect, useRef } from "react";
@@ -20,6 +20,7 @@ import { diffElementFields, subtreeIds, valuesFromElement } from "./architecture
 import { ElementFields } from "./ElementFields";
 import type { ArchitectureElement, ArchitectureSymbol, ElementFieldValues, ElementType } from "./types";
 import { isOutOfUse } from "./types";
+import { SelectionSaveButton } from "./SelectionSaveButton";
 import { useSelectionDraft } from "./useSelectionDraft";
 
 /**
@@ -76,12 +77,7 @@ export function ElementSelectionFields({
         />
       </FormGrid>
       {nameMissing && <p role="alert" style={{ color: "var(--color-danger)" }}>A name is required.</p>}
-      <button
-        type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save element"
-      >
-        Save
-      </button>
+      <SelectionSaveButton label="Save element" disabled={!hasChanges} onSave={() => void commit()} />
     </div>
   );
 }

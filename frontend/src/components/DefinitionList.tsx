@@ -116,8 +116,10 @@ export interface DefinitionListProps<T extends { id: string }> {
    * `"stack"` (default): each row is a line of unlabelled inputs. `"grid"`: one CSS grid with a heading per field
    * (`DefinitionListField.label`/`track`), every row and the add row aligned under it and the row actions in a
    * last column, for a list of several fields (a scoring level's name, weight and guidance) or one with a per-row
-   * control beside the fields (`renderExtra` gets its own right-aligned column; keep its width the same on every
-   * row so the controls line up). `renderDetails` is ignored in a grid.
+   * control beside the fields (`renderExtra` gets its own right-aligned column, as wide as its controls but shrinking them when the container is short; keep its width the same on every
+   * row so the controls line up). In a container narrower than 34rem a list with `renderExtra` drops the columns: each
+   * row is its fields and actions on one line with the extra controls wrapping onto the line below, so a narrow card
+   * (the diagram editors' Selection card) holds the row instead of cutting it off. `renderDetails` is ignored in a grid.
    */
   layout?: "stack" | "grid";
 }
@@ -281,10 +283,10 @@ export function DefinitionList<T extends { id: string }>({
   }
 
   if (layout === "grid") {
-    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? " max-content" : ""} max-content`;
+    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? " minmax(0, max-content)" : ""} max-content`;
     const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
     return (
-      <div className="stack">
+      <div className={renderExtra ? "stack definition-list--extra" : "stack"}>
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <div className="definition-grid" style={{ gridTemplateColumns: columns }}>
           {fields.map((f) => <span key={f.key} className="definition-grid__head">{f.label ?? f.placeholder ?? f.key}</span>)}
@@ -302,7 +304,7 @@ export function DefinitionList<T extends { id: string }>({
                     {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })), false, readOnly)}
                   </div>
                 ))}
-                {renderExtra && <div className="definition-grid__actions">{renderExtra(item)}</div>}
+                {renderExtra && <div className="definition-grid__actions definition-grid__extra">{renderExtra(item)}</div>}
                 <div className="definition-grid__actions">
                   {/* Always laid out so the columns do not shift when a row becomes dirty; hidden (and out of
                       the accessibility tree) until there is something to save. */}
@@ -337,16 +339,18 @@ export function DefinitionList<T extends { id: string }>({
               </div>
             );
           })}
-          {fields.map((f) => (
-            <div key={`add-${f.key}`} className="definition-grid__cell definition-grid__add">
-              {gridControl(f, newDraft[f.key], (next) => setNewDraft((d) => ({ ...d, [f.key]: next })), true)}
+          <div className="definition-grid__row">
+            {fields.map((f) => (
+              <div key={`add-${f.key}`} className="definition-grid__cell definition-grid__add">
+                {gridControl(f, newDraft[f.key], (next) => setNewDraft((d) => ({ ...d, [f.key]: next })), true)}
+              </div>
+            ))}
+            {renderExtra && <div className="definition-grid__add definition-grid__extra" />}
+            <div className="definition-grid__actions definition-grid__add">
+              <button className="btn btn-primary" title={addLabel} aria-label={addLabel} onClick={handleAdd} disabled={!isValid(newDraft)}>
+                <Plus /> Add
+              </button>
             </div>
-          ))}
-          {renderExtra && <div className="definition-grid__add" />}
-          <div className="definition-grid__actions definition-grid__add">
-            <button className="btn btn-primary" title={addLabel} aria-label={addLabel} onClick={handleAdd} disabled={!isValid(newDraft)}>
-              <Plus /> Add
-            </button>
           </div>
         </div>
         {dialogs}

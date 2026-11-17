@@ -631,7 +631,7 @@ test.describe("System Architecture: state machine diagrams", () => {
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByText(/with its 1 transition and 0 links/)).toBeVisible();
       // Active holds Idle, so the server refuses until Idle is moved out; the refusal is shown, nothing is deleted.
-      const code = (await selectionCard(page).locator("strong").first().textContent())!.match(/STE-\d+/)![0];
+      const code = (await selectionCard(page).locator(".detail-card__title").textContent())!.match(/STE-\d+/)![0];
       await dialog.getByRole("textbox").fill(code);
       await dialog.getByRole("button", { name: "Delete", exact: true }).click();
       await expect(page.getByRole("alert").filter({ hasText: /contains other states/ })).toBeVisible();
@@ -777,7 +777,7 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect(states.getByText("Routing", { exact: true })).toBeVisible();
       await states.getByRole("link", { name: /STE-\d+$/ }).last().click();
       await expect(page).toHaveURL(new RegExp(`/state-machine-diagrams/${diagram.id}\\?state=`));
-      await expect(selectionCard(page).locator("strong").first()).toBeVisible();
+      await expect(selectionCard(page).locator(".detail-card__title")).toBeVisible();
     });
 
     await test.step("the element's Diagrams card lists its state machine diagrams", async () => {

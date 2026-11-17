@@ -30,7 +30,7 @@ export function SelectionActions({ actions, label = "Actions" }: { actions: (Sel
     label: a.label, icon: a.icon, danger: a.danger, onSelect: () => a.onSelect?.(),
   }));
   return (
-    <div className="row" role="group" aria-label={label} style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
+    <div className="row selection-actions" role="group" aria-label={label} style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
       {buttons.map((a) => (
         <IconAction key={a.label} label={a.label} to={a.to} danger={a.danger} help={a.help} onClick={a.onSelect}>{a.icon}</IconAction>
       ))}

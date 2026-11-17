@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { popoverFitViolations } from "../testing/popoverFit";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 
 const meta: Meta<typeof MultiSelectDropdown> = {
@@ -201,5 +202,22 @@ export const GroupedOptions: Story = {
     await expect(group.getByRole("checkbox", { name: "Links and files" })).toBeChecked();
     await expect(group.getByRole("checkbox", { name: "Link" })).toBeDisabled();
     await expect(group.getByText("Core")).toHaveStyle({ fontWeight: "600" });
+  },
+};
+
+/** In a narrow field the opened list holds a long option, one that cannot break included: nothing runs out of the bubble or the window. */
+export const LongOptionsFitANarrowField: Story = {
+  args: {
+    options: [
+      { value: "a", label: "Programmable logic controller with redundant power supply", checked: true, optionLabel: "Toggle a", onToggle: fn() },
+      { value: "b", label: "Supercalifragilisticexpialidocious_transceiver_module_without_any_break", checked: false, optionLabel: "Toggle b", onToggle: fn() },
+    ],
+  },
+  decorators: [(Story) => <div style={{ width: 280 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Alex Morgan's roles" });
+    await userEvent.click(trigger);
+    const bubble = await within(document.body).findByRole("dialog", { name: "Alex Morgan's roles" });
+    await expect(popoverFitViolations(bubble, trigger)).toEqual([]);
   },
 };

@@ -505,6 +505,7 @@ export function StateMachineEditorPage() {
   const selectionColumn = (
     <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
       <StateMachineSelectionPanel
+        maxHeight={canvasHeight}
         projectId={projectId} model={model} layout={layout} selection={selection} editable={editable}
         onSaveState={saveStateFields} focusNameOf={focusNameOf} onNameFocused={() => setFocusNameOf(null)}
         onSaveTransition={saveTransitionFields} focusTransition={focusTransition} onTransitionFocused={() => setFocusTransition(null)}

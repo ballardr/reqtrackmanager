@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { page } from "vitest/browser";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../../api/client";
 import { buttonHeightViolations } from "../../testing/buttonHeights";
+import { expectContainerFits } from "../../testing/containerFits";
 import { expectLabelInName } from "../../testing/labelInName";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
 import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
@@ -491,7 +493,8 @@ export const EditingATransitionInTheCardStoresOnlyWhatChangedWhenTheFocusLeavesI
     await openTab(canvas, "Outline");
     await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
     const card = within(await canvas.findByRole("group", { name: "Transition details" }));
-    const save = card.getByRole("button", { name: "Save transition" });
+    // The Save button is on the card's heading line, outside the fields' group.
+    const save = within(await canvas.findByRole("region", { name: "Selection" })).getByRole("button", { name: "Save transition" });
     await expect(save).toBeDisabled();
     const guard = card.getByLabelText("Condition (guard)");
     await userEvent.clear(guard);
@@ -545,8 +548,7 @@ export const TheSaveButtonsReadSaveAndAreNamedForWhatTheyStore: Story = {
     await expect(canvas.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     await openTab(canvas, "Outline");
     await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
-    const card = within(await canvas.findByRole("group", { name: "Transition details" }));
-    await expectLabelInName(card.getByRole("button", { name: "Save transition" }), "Save", "Save transition");
+    await expectLabelInName(within(await canvas.findByRole("region", { name: "Selection" })).getByRole("button", { name: "Save transition" }), "Save", "Save transition");
   },
 };
 
@@ -806,7 +808,7 @@ export const ValidationIsCountedListedAndSelectsItsState: Story = {
     await expect(list.getByText(/has an incoming transition/)).toBeInTheDocument();
     // A row selects its state and closes the list.
     await userEvent.click(list.getByRole("button", { name: /STE-003 cannot be reached/ }));
-    await expect(await within(await canvas.findByRole("region", { name: "Selection" })).findByText("STE-003 Final state", { selector: "strong" })).toBeInTheDocument();
+    await expect(await within(await canvas.findByRole("region", { name: "Selection" })).findByText("STE-003 Final state", { selector: "h2" })).toBeInTheDocument();
     await expect(within(document.body).queryByRole("group", { name: "Validation issues" })).not.toBeInTheDocument();
     // The card keeps one line, never the list, and its button opens the list again.
     const card = within(canvas.getByRole("region", { name: "Selection" }));
@@ -1334,5 +1336,24 @@ export const ALabelledSymbolMovesByTheDragWhateverTheSnapSetting: Story = {
       await expect(Math.abs(moved.dy - free[0].dy)).toBeLessThanOrEqual(2);
     }
     await expect(free[0].dx).toBeGreaterThan(40);
+  },
+};
+
+/** The Selection card holds a state's and a transition's fields at a phone width and beside the drawing, and is never taller than the drawing. */
+export const TheSelectionCardFitsAtEveryWidthAndNeverOutgrowsTheDrawing: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    for (const width of [320, 520, 1280]) {
+      await page.viewport(width, 800);
+      await select(canvas, "Idle");
+      const stateCard = await canvas.findByRole("region", { name: "Selection" });
+      await expectContainerFits(stateCard, "Selection card (state)");
+      (await canvas.findByLabelText("start [ready], connection from Idle to Running")).focus();
+      await userEvent.keyboard("{Enter}");
+      const transitionCard = await canvas.findByRole("region", { name: "Selection" });
+      await expectContainerFits(transitionCard, "Selection card (transition)");
+      const drawing = canvasElement.querySelector<HTMLElement>(".react-flow");
+      await expect(transitionCard.getBoundingClientRect().height).toBeLessThanOrEqual(drawing!.getBoundingClientRect().height + 1);
+    }
   },
 };

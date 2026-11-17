@@ -79,7 +79,7 @@ function geometry(layout: StateMachineLayout, state: ArchitectureState): BoxGeom
  */
 export function StateMachineSelectionPanel({
   projectId, model, layout, selection, editable, onSaveState, focusNameOf, onNameFocused, onSaveTransition, focusTransition, onTransitionFocused, onDeleteState, onDeleteTransition, onParentChange,
-  lineEnds, onPointsChange, onComment, onOpenValidation, onConnect, notes,
+  lineEnds, onPointsChange, onComment, onOpenValidation, onConnect, notes, maxHeight,
 }: {
   projectId: string;
   model: StateMachineModel;
@@ -101,6 +101,8 @@ export function StateMachineSelectionPanel({
   onComment: (target: { kind: "node" | "edge"; id: string }) => void;
   onOpenValidation: (subject: string) => void;
   notes: StateMachineNoteHandlers;
+  /** The tallest the card may be (the drawing's height); it scrolls inside beyond that. */
+  maxHeight?: number;
 }) {
   const commentText = useStrings().canvasComments;
   const stateName = useStateLabel().label;
@@ -114,7 +116,10 @@ export function StateMachineSelectionPanel({
   const transition = selection?.kind === "edge" ? model.transitions.find((t) => t.id === selection.id) ?? null : null;
 
   let body;
+  // The card's title is what is selected, so the heading line (with the Save button beside it) says what the card is about.
+  let title: string | undefined;
   if (note || leader) {
+    title = leader ? `Leader ${leader.index}` : "Note";
     body = <StateMachineNoteCards model={model} layout={layout} note={note} leader={leader} editable={editable} handlers={notes} />;
   } else if (state) {
     const holds = layout.boxes.some((b) => b.parent_state_id === state.id);
@@ -122,12 +127,10 @@ export function StateMachineSelectionPanel({
     const blocked = new Set([state.id, ...descendantIds(layout, state.id)]);
     const parents = model.states.filter((s) => s.kind === "state" && !blocked.has(s.id));
     const issues = issuesFor(model.validation, state.unique_code);
+    title = stateName(state);
     body = (
       <>
-        <p>
-          <strong>{stateName(state)}</strong>
-          {!editable && <span className="text-muted"> · {STATE_KIND_LABEL[state.kind]}</span>}
-        </p>
+        {!editable && <p className="text-muted">{STATE_KIND_LABEL[state.kind]}</p>}
         {editable ? (
           <StateSelectionFields
             key={`fields:${state.id}`} state={state} holdsStates={holds} autoFocusName={focusNameOf === state.id} onFocused={onNameFocused}
@@ -189,14 +192,10 @@ export function StateMachineSelectionPanel({
     const points = layout.points.find((p) => p.id === transition.id);
     // A transition's own issue is the ambiguity of two transitions leaving the same state, named by that state's code.
     const issues = issuesFor(model.validation, transition.source_state_code).filter((f) => f.code === "ambiguous");
+    title = `${from ? stateName(from) : transition.source_state_code} → ${to ? stateName(to) : transition.target_state_code}`;
     body = (
       <>
-        <p>
-          <strong>{from ? stateName(from) : transition.source_state_code}</strong>
-          {" → "}
-          <strong>{to ? stateName(to) : transition.target_state_code}</strong>
-          {loop && <span className="text-muted"> · loop</span>}
-        </p>
+        {loop && <p className="text-muted">Loop</p>}
         {editable ? (
           <TransitionSelectionFields
             key={`fields:${transition.id}`} transition={transition} states={model.states}
@@ -234,7 +233,7 @@ export function StateMachineSelectionPanel({
   }
 
   return (
-    <DetailCard heading="Selection" onKeyDown={(event) => returnFocusToCanvas(event, selection)}>
+    <DetailCard heading="Selection" title={title} maxHeight={maxHeight} onKeyDown={(event) => returnFocusToCanvas(event, selection)}>
       {body}
     </DetailCard>
   );

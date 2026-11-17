@@ -2209,6 +2209,127 @@ given to the entity quick-switch chevron itself since it
   padding-top: var(--space-2);
 }
 
+/* A list with a per-row control (`renderExtra`) measures its own width, not the window's, because the same list sits in
+   a wide page and in a narrow card: below 34rem the columns give way to one flowing row per item, the fields and the
+   actions on the first line and the extra controls on the line below. */
+.definition-list--extra {
+  container-type: inline-size;
+}
+
+.definition-grid__extra {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.definition-grid__extra span,
+.definition-grid__extra select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.definition-grid__extra:empty {
+  display: none;
+}
+
+@container (max-width: 34rem) {
+  .definition-list--extra .definition-grid {
+    display: flex;
+    flex-direction: column;
+    /* The grid's own `start` would size a row to its widest control, so a long select option widened the whole row. */
+    align-items: stretch;
+  }
+
+  .definition-list--extra .definition-grid__head {
+    display: none;
+  }
+
+  .definition-list--extra .definition-grid__row {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .definition-list--extra .definition-grid__cell {
+    flex: 1 1 8rem;
+    padding-right: 0;
+  }
+
+  .definition-list--extra .definition-grid__row > .definition-grid__actions {
+    order: 2;
+    margin-left: auto;
+    padding-top: 0;
+  }
+
+  .definition-list--extra .definition-grid__row > .definition-grid__extra {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .definition-list--extra .definition-grid__add {
+    padding-top: 0;
+  }
+}
+
+/* A card with a height cap (`DetailCard maxHeight`): the heading stays, the content scrolls inside and does not carry
+   the page's scroll with it; the actions row stays at the top of the scrolling content. */
+/* The heading's line: the title takes the room and wraps, the actions (a Save button) keep their size beside it. */
+.detail-card__head {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+
+.detail-card__head > .detail-card__title,
+.detail-card__head > .field-caption {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-card__actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detail-card__actions:empty {
+  display: none;
+}
+
+.detail-card--scrolls {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.detail-card__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The padding keeps a focused control's ring and the scrollbar inside the card, not cut at the scroll edge. */
+  padding: 2px var(--space-1) 2px 2px;
+  margin: -2px 0;
+}
+
+.detail-card__scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+.detail-card__scroll .selection-actions {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  padding-block: var(--space-1);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

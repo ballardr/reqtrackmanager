@@ -9,7 +9,7 @@
  * Design decisions:
  * - The draft and its commit are the shared `useSelectionDraft`; a connection is stored at once, not with the drawing.
  * - A line that stands for several connections (rolled up or merged) is not edited here: each row of its table opens the dialog.
- * - The Save button is always present and disabled while nothing has changed, so the card does not change size as the person types.
+ * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing has changed, so the header does not change size as the person types.
  */
 import { useEffect, useRef } from "react";
 
@@ -20,6 +20,7 @@ import { ConnectionFieldGroup } from "./ConnectionFieldGroup";
 import type {
   ArchitectureConnection, ArchitectureDomain, ArchitectureElement, ConnectionFieldValues, ConnectionType, ElementType,
 } from "./types";
+import { SelectionSaveButton } from "./SelectionSaveButton";
 import { useSelectionDraft } from "./useSelectionDraft";
 
 /**
@@ -76,12 +77,7 @@ export function ConnectionSelectionFields({
         />
       </FormGrid>
       {refused && <p role="alert" style={{ color: "var(--color-danger)" }}>A connection needs a type and two different elements.</p>}
-      <button
-        type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save connection"
-      >
-        Save
-      </button>
+      <SelectionSaveButton label="Save connection" disabled={!hasChanges} onSave={() => void commit()} />
     </div>
   );
 }

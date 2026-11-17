@@ -813,6 +813,7 @@ export function DiagramEditorPage() {
   const selectionColumn = (
     <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
       <DiagramSelectionPanel
+        maxHeight={canvasHeight}
         projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} lineEnds={lineEnds} defaultShape={diagram.line_shape} hidden={resolved.hidden} editable={editable}
         boundaries={layout.boundaries} connectionsById={connectionsById} realisedBy={realisedBy}
         onRemoveBoundary={(box) => { editor.edit((l) => removeBoundary(l, box.connectionId)); setSelection(null); }}

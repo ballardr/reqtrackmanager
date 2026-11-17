@@ -24,7 +24,7 @@ function Host({ initial, editable = true, drawn = true, onRemove = fn(), onOpenN
   return (
     <div style={{ maxWidth: "22rem" }}>
       <DiagramLeaderEditor
-        leader={leader} index={1} editable={editable} targets={TARGETS} drawn={drawn} newPoint={{ x: 120, y: 80 }} defaultShape="straight"
+        leader={leader} editable={editable} targets={TARGETS} drawn={drawn} newPoint={{ x: 120, y: 80 }} defaultShape="straight"
         onTarget={target} onChange={(change) => setLeader((l) => ({ ...l, ...change }))} onOpenNote={onOpenNote} onRemove={onRemove}
       />
     </div>
@@ -43,7 +43,6 @@ export const ASpotLeaderShowsXAndYAndTheDefaultEnds: Story = {
   args: { initial: SPOT },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Leader 1")).toBeInTheDocument();
     await expect(canvas.getByRole("combobox", { name: "Points at" })).toHaveDisplayValue("A spot on the canvas");
     await expect(canvas.getByRole("spinbutton", { name: "Spot X" })).toHaveValue(300);
     await expect(canvas.getByRole("spinbutton", { name: "Spot Y" })).toHaveValue(40);

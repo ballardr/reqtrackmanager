@@ -9,7 +9,7 @@
  * Design decisions:
  * - The draft and its commit are the shared `useSelectionDraft`; content is stored at once, not with the drawing (the issues and
  *   the state's code come from the server).
- * - The Save button is always present and disabled while nothing has changed, so the card does not change size as the person types.
+ * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing has changed, so the header does not change size as the person types.
  */
 import { useEffect, useRef } from "react";
 
@@ -18,6 +18,7 @@ import { useLatest } from "../../hooks/useLatest";
 import { StateFieldGroup } from "./StateFieldGroup";
 import { diffStateFields, normaliseStateValues, valuesFromState } from "./stateFields";
 import type { ArchitectureState, StateFieldValues } from "./types";
+import { SelectionSaveButton } from "./SelectionSaveButton";
 import { useSelectionDraft } from "./useSelectionDraft";
 
 /**
@@ -55,12 +56,7 @@ export function StateSelectionFields({
         <StateFieldGroup values={draft} onChange={set} holdsStates={holdsStates} autoFocusName={autoFocusName} />
       </FormGrid>
       {nameMissing && <p role="alert" style={{ color: "var(--color-danger)" }}>A name is required.</p>}
-      <button
-        type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save state"
-      >
-        Save
-      </button>
+      <SelectionSaveButton label="Save state" disabled={!hasChanges} onSave={() => void commit()} />
     </div>
   );
 }

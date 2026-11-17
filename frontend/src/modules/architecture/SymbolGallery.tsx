@@ -102,7 +102,7 @@ export function SymbolGallery({
   }
 
   return (
-    <div className="stack" style={{ gap: "var(--space-2)", minWidth: "min(26rem, 80vw)" }}>
+    <div className="stack" style={{ gap: "var(--space-2)", minWidth: 0 }}>
       <div
         role="radiogroup" aria-label="Symbols"
         style={{

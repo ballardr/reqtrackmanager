@@ -7,7 +7,7 @@
  *
  * Design decisions:
  * - The draft and its commit are the shared `useSelectionDraft`, the same as a state's card.
- * - The Save button is always present and disabled while nothing has changed, so the card does not change size as the person types.
+ * - The Save button (`SelectionSaveButton`) is on the card's heading line, always present and disabled while nothing has changed, so the header does not change size as the person types.
  */
 import { useEffect, useRef } from "react";
 
@@ -16,6 +16,7 @@ import { useLatest } from "../../hooks/useLatest";
 import { TransitionFieldGroup, type TransitionFocusField } from "./TransitionFieldGroup";
 import { diffTransitionFields, valuesFromTransition } from "./transitionFields";
 import type { ArchitectureState, StateTransition, TransitionFieldValues } from "./types";
+import { SelectionSaveButton } from "./SelectionSaveButton";
 import { useSelectionDraft } from "./useSelectionDraft";
 
 /**
@@ -51,12 +52,7 @@ export function TransitionSelectionFields({
       <FormGrid minColumn="14rem">
         <TransitionFieldGroup states={states} values={draft} onChange={set} autoFocus={autoFocus} />
       </FormGrid>
-      <button
-        type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }}
-        disabled={!hasChanges} onClick={() => void commit()} aria-label="Save transition"
-      >
-        Save
-      </button>
+      <SelectionSaveButton label="Save transition" disabled={!hasChanges} onSave={() => void commit()} />
     </div>
   );
 }

@@ -8,6 +8,9 @@ const VIEWPORT_MARGIN_PX = 8;
 const VERTICAL_GAP_PX = 6.4; // 0.4rem
 const HORIZONTAL_GAP_PX = 6.4; // 0.4rem
 const MATCH_ANCHOR_MIN_WIDTH_PX = 280;
+// A `matchAnchor` panel opens below its field whenever the room there is this much (or all of its height): scrolling
+// inside a usable panel is better than flipping above and covering the fields that sit over the anchor.
+const MATCH_ANCHOR_USABLE_ROOM_PX = 240;
 const CARET_INSET_PX = 14;
 
 /**
@@ -58,7 +61,10 @@ const CARET_INSET_PX = 14;
  * pointing at the anchor, on the side the panel opened (the caret is hidden while the panel is capped and scrolling).
  *
  * `matchAnchor` makes the panel open like a native select list: its left edge on the anchor's and at least
- * as wide as the anchor (never under 280px), for an anchor that is a form control and not a small button.
+ * as wide as the anchor (never under 280px), for an anchor that is a form control and not a small button. The panel's
+ * content takes the width it is given and must not set a minimum of its own: the bubble is only as wide as the field,
+ * so a wider fixed content runs out of the bubble, the card and the window. It also keeps below the field, scrolling
+ * inside, while at least 240px of room is there, so it does not flip over the fields above the anchor.
  */
 export function Popover({
   anchorRef,
@@ -107,7 +113,8 @@ export function Popover({
       // and scrolling inside, so every control in it can be reached however low the anchor sits.
       const spaceBelow = window.innerHeight - anchorRect.bottom - VERTICAL_GAP_PX - VIEWPORT_MARGIN_PX;
       const spaceAbove = anchorRect.top - VERTICAL_GAP_PX - VIEWPORT_MARGIN_PX;
-      const below = bubbleRect.height <= spaceBelow || spaceBelow >= spaceAbove;
+      const usableBelow = matchAnchor && spaceBelow >= Math.min(bubbleRect.height, MATCH_ANCHOR_USABLE_ROOM_PX);
+      const below = bubbleRect.height <= spaceBelow || spaceBelow >= spaceAbove || usableBelow;
       const room = Math.max(0, beside ? window.innerHeight - 2 * VIEWPORT_MARGIN_PX : below ? spaceBelow : spaceAbove);
       const height = Math.min(bubbleRect.height, room);
       if (bubbleRect.height > room) {

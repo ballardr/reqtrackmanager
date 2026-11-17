@@ -154,7 +154,7 @@ function stateMachineActions(
  */
 export function DiagramSelectionPanel({
   projectId, selection, boxes, notes, edges, anchors, lineEnds, defaultShape, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, onJoinLine, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, domains, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  onAnchorChange, onJoinLine, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, domains, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort, maxHeight,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
@@ -207,6 +207,8 @@ export function DiagramSelectionPanel({
   onAddPort: (elementId: string, values: PortValues) => Promise<void>;
   onChangePort: (elementId: string, portId: string, change: Partial<PortValues>) => Promise<void>;
   onRemovePort: (elementId: string, portId: string) => Promise<void>;
+  /** The tallest the card may be (the drawing's height); it scrolls inside beyond that. */
+  maxHeight?: number;
 }) {
   const formatCode = useRecordCode();
   const commentText = useStrings().canvasComments;
@@ -240,13 +242,13 @@ export function DiagramSelectionPanel({
   const routeCode = routedConnection ? formatCode.code(routedConnection.unique_code, routedConnection.from_project_code) : null;
 
   let body;
+  // The card's title is what is selected, so the heading line (with the Save button beside it) says what the card is about.
+  let title: string | undefined;
   if (box) {
+    title = box.locked ? box.unique_code : `${box.unique_code} ${box.name}`;
     body = (
       <>
-        <p>
-          <strong>{box.locked ? box.unique_code : `${box.unique_code} ${box.name}`}</strong>
-          {!box.locked && <span className="text-muted"> · {box.element_type_name}</span>}
-        </p>
+        {!box.locked && <p className="text-muted">{box.element_type_name}</p>}
         {!(editorFields && element) && !box.locked && box.display_note && (
           <div className="stack" style={{ gap: "var(--space-1)" }}>
             <FieldCaption label="Display note" help={ARCHITECTURE_HELP.elementDisplayNote} />
@@ -308,13 +310,11 @@ export function DiagramSelectionPanel({
     );
   } else if (boundary) {
     const realisers = (realisedBy.get(boundary.connectionId) ?? []).map((id) => connectionsById.get(id)).filter((c): c is ArchitectureConnection => c !== undefined);
+    title = boundary.connection_code;
     body = (
       <>
         <FieldCaption label="Boundary box" help={ARCHITECTURE_HELP.boundaryBox} muted />
-        <p>
-          <strong>{boundary.connection_code}</strong>
-          {!boundary.locked && boundary.type_name && <span className="text-muted"> · {boundary.type_name}</span>}
-        </p>
+        {!boundary.locked && boundary.type_name && <p className="text-muted">{boundary.type_name}</p>}
         <p>
           Outside: {boundaryOutsideName(boundary)} <span className="text-muted">· {BOUNDARY_SHAPE_LABEL[boundary.shape]}</span>
         </p>
@@ -349,9 +349,10 @@ export function DiagramSelectionPanel({
     const drawnConnections = new Map<string, ArchitectureConnection>();
     for (const e of edges) if (drawnEdgeIds.has(e.id)) for (const c of e.connections) drawnConnections.set(c.id, c);
     if (found) {
+      title = `Leader ${found.index}`;
       body = (
         <DiagramLeaderEditor
-          key={found.leader.key} leader={found.leader} index={found.index} editable={editable}
+          key={found.leader.key} leader={found.leader} editable={editable}
           targets={[
             ...drawnBoxes.map((b) => ({ value: `element:${b.elementId}`, label: `Box: ${boxName(b)}` })),
             ...[...drawnConnections.values()].map((c) => ({ value: `connection:${c.id}`, label: `Connection: ${c.unique_code}${c.name ? ` ${c.name}` : ""}` })),
@@ -369,6 +370,7 @@ export function DiagramSelectionPanel({
         />
       );
     } else if (note) {
+      title = "Note";
       body = (
         <DiagramNoteEditor
           key={note.key} note={note} editable={editable} autoFocusText={focusNew === NOTE_NODE_PREFIX + note.key} onFocused={onFocused}
@@ -395,6 +397,11 @@ export function DiagramSelectionPanel({
       <IconAction label={`Open ${formatCode.code(c.unique_code, c.from_project_code)}`} to={`${base}/connections/${c.id}`}><ExternalLink /></IconAction>
     );
     const chosenFields = chosen && editable && chosen.project_id === projectId ? chosen : null;
+    const named = (c: ArchitectureConnection) => `${formatCode.code(c.unique_code, c.from_project_code)}${c.name ? ` ${c.name}` : ""}`;
+    const endName = (id: string, boundaryEnd: boolean) => boundaryEnd ? "Boundary" : boxes.find((b) => b.elementId === id)?.name ?? "Element";
+    title = chosen ? named(chosen)
+      : edge.connections.length === 1 ? named(edge.connections[0])
+        : `${endName(edge.source_element_id, edge.source_is_boundary)} → ${endName(edge.target_element_id, edge.target_is_boundary)}`;
     body = (
       <>
         {lineHeading}
@@ -467,7 +474,7 @@ export function DiagramSelectionPanel({
 
   return (
     <DetailCard
-      heading="Selection"
+      heading="Selection" title={title} maxHeight={maxHeight}
       onKeyDown={(event) => {
         returnFocusToCanvas(event, selection);
         if (chosen && leavesChosenConnection(event)) { event.preventDefault(); chooseBack(); }

@@ -1596,9 +1596,11 @@ export const ChoosingAConnectionOfAMergedLineShowsItsFieldsAndBackReturnsToTheLi
     await expect(panel.getByRole("combobox", { name: "Line starts at" })).toBeInTheDocument();
     // The route fields say whose route they set: the chosen connection's, which is then a line of its own.
     await expect(panel.getByText("Route of CON-002")).toBeInTheDocument();
-    await expect(panel.getByRole("heading", { name: "Selection" })).toBeInTheDocument();
+    // The card is titled with the chosen connection; Back returns the title to the line.
+    await expect(panel.getByRole("heading", { level: 2, name: /CON-002 Admin traffic/ })).toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Back to the 2 connections" }));
     await expect(await panel.findByRole("list", { name: "Connections of this line" })).toBeInTheDocument();
+    await expect(panel.getByRole("heading", { level: 2, name: "Gateway → Orders" })).toBeInTheDocument();
     await expect(panel.queryByRole("group", { name: "Chosen connection" })).not.toBeInTheDocument();
     await waitFor(() => expect(panel.getByRole("button", { name: /^CON-002 / })).toHaveFocus());
   },
