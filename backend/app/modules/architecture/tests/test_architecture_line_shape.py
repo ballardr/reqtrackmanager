@@ -161,8 +161,9 @@ def test_the_svg_draws_each_shape_and_a_line_follows_the_diagram_unless_it_has_i
     assert "<line " in _svg(client, token, p, diagram["id"]) and " C " not in _svg(client, token, p, diagram["id"])
     curved = _edit(client, token, p, diagram, line_shape="curved").json()
     svg = _svg(client, token, p, curved["id"])
-    # The chord runs from (160, 40) to (400, 40), 240 long, so the arc bows by 60 to the left of its direction (up the screen).
-    assert 'd="M 160 40 C 240 -20 320 -20 400 40"' in svg and "<line " not in svg
+    # The boxes face each other in line, so the curve leaves and arrives square on and lies on the chord (the control points are
+    # 0.4 of the 240-unit chord from each end).
+    assert 'd="M 160 40 C 256 40 304 40 400 40"' in svg and "<line " not in svg
     own = {"source_element_id": a["id"], "target_element_id": b["id"], "points": [], "line_shape": "straight"}
     saved = _save(client, token, p, curved, a, b, [own])
     svg = _svg(client, token, p, saved["id"])
@@ -177,6 +178,105 @@ def test_a_curved_default_draws_a_leader_and_its_hop_paths_still_arrive(client, 
     saved = _save(client, token, p, diagram, a, b, notes=notes)
     svg = _svg(client, token, p, saved["id"])
     assert len(re.findall(r" C ", svg)) >= 2  # the connection and the leader are both arcs
+
+
+def _three_boxes(client, admin_token, name, reverse, fixed_points=False):
+    """Battery (0, 0), MCU (400, 30) and Sensor Head (800, 230), joined Battery to MCU and MCU to Sensor Head (each stored the other
+    way round when `reverse`), in a diagram that defaults to Curved. With `fixed_points` the lines meet the sides that face each
+    other, whatever the order they are stored in. Returns the SVG."""
+    _org, project, token = setup(client, admin_token, name)
+    p = project["id"]
+    battery, mcu, sensor = (make_element(client, token, p, n) for n in ("Battery Management", "MCU", "Sensor Head"))
+    anchors = []
+    for first, second in ((battery, mcu), (mcu, sensor)):
+        source, target = (second, first) if reverse else (first, second)
+        make_connection(client, token, p, source["id"], target["id"])
+        points = ("left", "right") if reverse else ("right", "left")
+        if fixed_points:
+            anchors.append({
+                "source_element_id": source["id"], "target_element_id": target["id"],
+                "source_point": points[0], "target_point": points[1], "points": [],
+            })
+    diagram = make_diagram(client, token, p, "Power", line_shape="curved")
+    layout = [
+        {"element_id": battery["id"], "x": 0, "y": 0}, {"element_id": mcu["id"], "x": 400, "y": 30},
+        {"element_id": sensor["id"], "x": 800, "y": 230},
+    ]
+    resp = client.put(
+        f"{project_base(p)}/diagrams/{diagram['id']}/layout",
+        json={"version": diagram["version"], "placements": layout, "notes": [], "anchors": anchors}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    return _svg(client, token, p, resp.json()["id"])
+
+
+def _curves(svg):
+    """Every drawn single-span curve as `(start, control 1, control 2, end)`, left to right."""
+    pattern = r'<path d="M ([\d.-]+) ([\d.-]+) C ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)"'
+    found = [tuple((float(m[i]), float(m[i + 1])) for i in range(0, 8, 2)) for m in re.findall(pattern, svg)]
+    return sorted(found, key=lambda curve: min(curve[0][0], curve[3][0]))
+
+
+def _deviation(curve):
+    """The furthest the curve strays from the straight line between its ends."""
+    (x0, y0), c1, c2, (x3, y3) = curve
+    length = ((x3 - x0) ** 2 + (y3 - y0) ** 2) ** 0.5
+    worst = 0.0
+    for i in range(1, 20):
+        t = i / 20
+        m = 1 - t
+        x = m**3 * x0 + 3 * m * m * t * c1[0] + 3 * m * t * t * c2[0] + t**3 * x3
+        y = m**3 * y0 + 3 * m * m * t * c1[1] + 3 * m * t * t * c2[1] + t**3 * y3
+        worst = max(worst, abs((x - x0) * (y3 - y0) - (y - y0) * (x3 - x0)) / length)
+    return worst
+
+
+#: The directions a line may leave a 160 x 80 box in: the four side normals and the four centre-to-corner diagonals.
+_OUTWARD = [(1, 0), (-1, 0), (0, 1), (0, -1)] + [(sx * 0.8944272, sy * 0.4472136) for sx in (1, -1) for sy in (1, -1)]
+
+
+def _leaves_outward(origin, control) -> bool:
+    length = ((control[0] - origin[0]) ** 2 + (control[1] - origin[1]) ** 2) ** 0.5
+    unit = ((control[0] - origin[0]) / length, (control[1] - origin[1]) / length)
+    return any(abs(unit[0] - d[0]) < 1e-3 and abs(unit[1] - d[1]) < 1e-3 for d in _OUTWARD)
+
+
+def test_a_curved_line_leaves_each_box_outward_and_bends_only_as_the_boxes_need(client, admin_token):
+    battery_mcu, mcu_sensor = _curves(_three_boxes(client, admin_token, "Arch curved three", reverse=False))
+    # Battery Management and the MCU are almost level: the line from one to the other is close to straight (it was bowed by 60).
+    assert _deviation(battery_mcu) < 8
+    for start, c1, c2, end in (battery_mcu, mcu_sensor):
+        assert _leaves_outward(start, c1) and _leaves_outward(end, c2)
+    # The Sensor Head sits lower and further on, so that line is an S that stays inside the boxes' offset.
+    assert 0 < _deviation(mcu_sensor) < 60
+
+
+def test_a_curved_line_is_the_same_whichever_way_the_connection_is_stored(client, admin_token):
+    forward = _curves(_three_boxes(client, admin_token, "Arch curved forward", reverse=False, fixed_points=True))
+    backward = _curves(_three_boxes(client, admin_token, "Arch curved backward", reverse=True, fixed_points=True))
+    assert len(forward) == len(backward) == 2
+    for a, b in zip(forward, backward, strict=True):
+        assert a == tuple(reversed(b))
+
+
+def test_three_lines_between_two_boxes_take_three_paths_and_stay_apart_when_curved():
+    from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
+    from app.modules.architecture.diagram_line_path import line_path
+    from app.modules.architecture.diagram_points import ATTACH_POINTS, line_directions, point_xy
+
+    boxes = {"a": AnchorBox(0, 0, 160, 80, ATTACH_POINTS), "b": AnchorBox(400, 0, 160, 80, ATTACH_POINTS)}
+    lines = [AnchorLine("l1", "a", "b", None, None, ()), AnchorLine("l2", "b", "a", None, None, ()), AnchorLine("l3", "a", "b", None, None, ())]
+    placed = assign_line_anchors(boxes, lines)
+    paths = set()
+    for line in lines:
+        anchor = placed[line.id]
+        source, target = boxes[line.source], boxes[line.target]
+        a, b = (source.x, source.y, source.width, source.height), (target.x, target.y, target.width, target.height)
+        start, end = point_xy(a, anchor.source), point_xy(b, anchor.target)
+        start = (start[0] + anchor.shift[0], start[1] + anchor.shift[1])
+        end = (end[0] + anchor.shift[0], end[1] + anchor.shift[1])
+        paths.add(line_path(start, [], end, "curved", line_directions(a, b, anchor.source, anchor.target, [])))
+    assert len(paths) == 3
 
 
 # --- State machines --------------------------------------------------------------------------------------------------------

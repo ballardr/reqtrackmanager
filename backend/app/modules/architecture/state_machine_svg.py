@@ -36,8 +36,8 @@ import uuid
 
 from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
-from app.modules.architecture.diagram_line_path import Point, effective_shape, line_middle, line_path
-from app.modules.architecture.diagram_points import ATTACH_POINTS, point_xy
+from app.modules.architecture.diagram_line_path import NO_DIRECTIONS, Directions, Point, effective_shape, line_middle, line_path
+from app.modules.architecture.diagram_points import ATTACH_POINTS, line_directions, point_xy
 from app.modules.architecture.diagram_svg import (
     _ROOT,
     _drawn_notes,
@@ -210,7 +210,7 @@ def _label(lines: list[str], x: float, bottom: float, anchor: str) -> str:
     )
 
 
-_Entry = tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point, str]
+_Entry = tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point, str, Directions]
 
 
 def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut], default_shape: str) -> list[_Entry]:
@@ -244,22 +244,28 @@ def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID,
         if anchor.loop_slot is not None:
             box = _box(source)
             loop = self_loop(box, anchor.loop_slot)
-            entries.append((t, lines, self_loop_path(box, anchor.loop_slot), (0, 0), [], (0, 0), loop["label"], loop["align"]))
+            entries.append((t, lines, self_loop_path(box, anchor.loop_slot), (0, 0), [], (0, 0), loop["label"], loop["align"], NO_DIRECTIONS))
             continue
         vertices: list[Point] = [(p.x, p.y) for p in t.points]
         (x1, y1), (x2, y2) = point_xy(_box(source), anchor.source), point_xy(_box(target), anchor.target)
         x1, y1, x2, y2 = x1 + anchor.shift[0], y1 + anchor.shift[1], x2 + anchor.shift[0], y2 + anchor.shift[1]
         shape = effective_shape(t.line_shape, default_shape)
-        middle = line_middle((x1, y1), vertices, (x2, y2), shape) if vertices or shape == "curved" else ((x1 + x2) / 2, (y1 + y2) / 2)
-        entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle, "start"))
+        # A Curved transition leaves each state along its outward direction; no other shape uses the directions.
+        directions: Directions = (
+            line_directions(_box(source), _box(target), anchor.source, anchor.target, vertices) if shape == "curved" else NO_DIRECTIONS
+        )
+        middle = (
+            line_middle((x1, y1), vertices, (x2, y2), shape, directions) if vertices or shape == "curved" else ((x1 + x2) / 2, (y1 + y2) / 2)
+        )
+        entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle, "start", directions))
     return entries
 
 
 def _hop_lines(entries: list[_Entry], default_shape: str) -> list[HopLine]:
     """The transitions that are lines (not loops) as hop candidates."""
     return [
-        HopLine(str(t.id), start, vertices, end, effective_shape(t.line_shape, default_shape))
-        for t, _, loop, start, vertices, end, _, _ in entries if loop is None
+        HopLine(str(t.id), start, vertices, end, effective_shape(t.line_shape, default_shape), directions)
+        for t, _, loop, start, vertices, end, _, _, directions in entries if loop is None
     ]
 
 
@@ -268,7 +274,7 @@ def _transitions(entries: list[_Entry], hops: dict[str, str], default_shape: str
     drawn along its hop path (`diagram_line_hops`)."""
     drawn: list[str] = []
     labels: list[str] = []
-    for t, lines, loop, (x1, y1), vertices, (x2, y2), (mx, my), align in entries:
+    for t, lines, loop, (x1, y1), vertices, (x2, y2), (mx, my), align, directions in entries:
         if loop is not None:
             drawn.append(f'<path d="{loop}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>')
             if lines:
@@ -276,7 +282,7 @@ def _transitions(entries: list[_Entry], hops: dict[str, str], default_shape: str
             continue
         shape = effective_shape(t.line_shape, default_shape)
         if vertices or str(t.id) in hops or shape != "straight":
-            path = hops.get(str(t.id)) or line_path((x1, y1), vertices, (x2, y2), shape)
+            path = hops.get(str(t.id)) or line_path((x1, y1), vertices, (x2, y2), shape, directions)
             drawn.append(f'<path d="{path}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>')
         else:
             drawn.append(
@@ -312,7 +318,7 @@ def render_state_machine(model: StateMachineModel) -> str:
         default_shape = model.diagram.line_shape.value
         entries = _transition_entries(model.transitions, boxes, default_shape)
         leader_runs = _leader_runs(
-            notes, {}, {}, [], {s.id: _box(s) for s in states}, {t.id: middle for t, _, _, _, _, _, middle, _ in entries},
+            notes, {}, {}, [], {s.id: _box(s) for s in states}, {entry[0].id: entry[6] for entry in entries},
         )
         hops: dict[str, str] = {}
         if model.diagram.line_hops:
@@ -320,8 +326,8 @@ def render_state_machine(model: StateMachineModel) -> str:
             for n in drawn_notes:
                 for leader in n.leaders:
                     if leader.id in leader_runs:
-                        start, vertices, end = leader_runs[leader.id]
-                        lines.append(HopLine(str(leader.id), start, vertices, end, leader_shape(leader, default_shape)))
+                        start, vertices, end, directions = leader_runs[leader.id]
+                        lines.append(HopLine(str(leader.id), start, vertices, end, leader_shape(leader, default_shape), directions))
             hops = line_hops(lines)
         lines_svg, labels = _transitions(entries, hops, default_shape)
         note_defs, leaders, note_blocks = _notes(notes, leader_runs, hops, default_shape)

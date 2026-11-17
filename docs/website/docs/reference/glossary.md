@@ -168,7 +168,7 @@ A small arc drawn where one line crosses another on a block diagram or a state m
 
 #### Line shape
 
-How a line runs between its two ends on a block diagram or a state machine diagram. **Straight** draws segments through the line's vertices. **Curved** draws one arc bowed to the left of the line's direction, so it needs no vertices (with vertices it passes through them). **Spline** draws a curve through the vertices, and is straight when the line has none. The diagram has a **Default line shape**, and a connection, transition or note leader can give its own shape or follow the default. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+How a line runs between its two ends on a block diagram or a state machine diagram. **Straight** draws segments through the line's vertices. **Curved** leaves each box straight out of the side or corner it meets and bends only as much as the positions of the boxes need, so it needs no vertices (with vertices it passes through them and still leaves each box outward). **Spline** draws a curve through the vertices, and is straight when the line has none. The diagram has a **Default line shape**, and a connection, transition or note leader can give its own shape or follow the default. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
 #### Link
 

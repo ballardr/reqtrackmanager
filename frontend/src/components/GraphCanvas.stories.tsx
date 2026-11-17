@@ -1478,13 +1478,14 @@ const ROUTE_NODES: GraphCanvasNode[] = [{ id: "a", label: "A", x: 0, y: 0 }, { i
 const SELECTED_LINE: GraphCanvasSelection = { kind: "edge", id: "e1" };
 
 /** Hosts one line `e1` between two boxes with real state for its vertices, as a consumer would. */
-function RouteHost({ initial = [], lineShape = "straight", readOnly = false, routable, onChange }: {
+function RouteHost({ initial = [], lineShape = "straight", readOnly = false, routable, onChange, nodes = ROUTE_NODES }: {
   initial?: { x: number; y: number }[]; lineShape?: LineShape; readOnly?: boolean; routable?: boolean; onChange?: (points: { x: number; y: number }[]) => void;
+  nodes?: GraphCanvasNode[];
 }) {
   const [points, setPoints] = useState(initial);
   return (
     <GraphCanvas
-      nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b", points, lineShape, routable }]} ariaLabel="Routes" showViewToggle={false}
+      nodes={nodes} edges={[{ id: "e1", source: "a", target: "b", points, lineShape, routable }]} ariaLabel="Routes" showViewToggle={false}
       readOnly={readOnly} selected={SELECTED_LINE}
       onEdgePointsChange={(_id, next) => { setPoints(next); onChange?.(next); }}
     />
@@ -1522,7 +1523,7 @@ export const ASmoothLineIsDrawnAsACurve: Story = {
   },
 };
 
-/** A Curved line with no vertices is one bowed arc, on a read-only canvas too, and its segment handle sits on the drawn arc. */
+/** A Curved line with no vertices is one curve, on a read-only canvas too, and its segment handle sits on the drawn arc. */
 export const ACurvedLineWithNoVerticesIsDrawnAsOneArc: Story = {
   render: () => <RouteHost lineShape="curved" />,
   play: async ({ canvasElement }) => {
@@ -1546,18 +1547,42 @@ export const ACurvedLineIsDrawnAsAnArcOnAReadOnlyCanvas: Story = {
   },
 };
 
-/** The bow is to the left of the direction of travel: the arc of a line running right rises above the line joining its ends. */
-export const ACurvedLineBowsToTheLeftOfItsDirection: Story = {
+/** Boxes that face each other in line are joined by a straight line, even when Curved: the line leaves each box straight out of its side. */
+export const ACurvedLineBetweenBoxesFacingEachOtherInLineIsStraight: Story = {
   render: () => <RouteHost lineShape="curved" readOnly />,
   play: async ({ canvasElement }) => {
     await within(canvasElement).findByLabelText("B, node");
     await waitFor(() => {
       const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
       const n = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
-      // M x0 y0 C c1x c1y c2x c2y x1 y1: both control points are above (smaller y than) the ends, which are level.
+      // M x0 y0 C c1x c1y c2x c2y x1 y1: the ends and both control points are on one horizontal line.
       expect(n).toHaveLength(8);
-      expect(n[3]).toBeLessThan(n[1]);
-      expect(n[5]).toBeLessThan(n[7]);
+      expect(new Set([n[1], n[3], n[5], n[7]]).size).toBe(1);
+    });
+  },
+};
+
+/** Offset boxes give an S that leaves and arrives along each box's outward direction (here, out of the corners straight sideways). */
+export const ACurvedLineBetweenOffsetBoxesLeavesTheBoxSquareOn: Story = {
+  render: () => (
+    <RouteHost
+      lineShape="curved" readOnly
+      nodes={[{ id: "a", label: "A", x: 0, y: 0, width: 160, height: 80 }, { id: "b", label: "B", x: 300, y: 100, width: 160, height: 80 }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
+      const n = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+      // M x0 y0 C c1x c1y c2x c2y x1 y1: the line runs from A's bottom right corner to B's top left corner, leaving and arriving
+      // along the horizontal (the least bent of each corner's candidates), not bowed to one side of the chord.
+      expect(n).toHaveLength(8);
+      expect(n[3]).toBe(n[1]);
+      expect(n[5]).toBe(n[7]);
+      expect(n[2]).toBeGreaterThan(n[0]);
+      expect(n[4]).toBeLessThan(n[6]);
+      expect(n[7]).toBeGreaterThan(n[1]);
     });
   },
 };

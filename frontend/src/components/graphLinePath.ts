@@ -13,8 +13,11 @@
  * Design decisions:
  * - Coordinates are absolute canvas units, so a box nested in another and the snap grid behave the same.
  * - Straight is segments through the waypoints; Spline is a Catmull-Rom curve (tension one half) written as cubic Beziers through
- *   them (straight with none); Curved is that same curve through the waypoints when there are any and, with none, one arc bowed to
- *   the left of the line's direction (`bowSpan`). A line stores its own shape or none, which follows its diagram's default.
+ *   them (straight with none) with free ends. Curved leaves each box along its outward direction (`graphAttachPoints`'
+ *   `outwardDirection`, passed as `LineDirections`): with no vertices it is one cubic whose control points lie that direction from
+ *   each end (`outwardSpan`), so boxes facing each other give a straight line and a line bends only as much as the boxes need; with
+ *   vertices it is the Spline through them with its two end tangents set to those directions. Without directions a Curved line
+ *   with no vertices is straight. A line stores its own shape or none, which follows its diagram's default.
  * - The server draws the same line with a Python copy (`diagram_line_path.py`); `graphLinePathCases.json` holds the cases
  *   both are tested against, so a change to the rule is made in both.
  */
@@ -22,15 +25,19 @@
 /** The most waypoints one line may have. */
 export const MAX_WAYPOINTS = 16;
 
-/** How a line runs between its ends: segments through its vertices, a bowed arc or a curve through the vertices. */
+/** How a line runs between its ends: segments through its vertices, a curve leaving each box outward, or a curve through the vertices with free ends. */
 export type LineShape = "straight" | "curved" | "spline";
 
 /** Every shape in the order a choice lists them. */
 export const LINE_SHAPES: readonly LineShape[] = ["straight", "curved", "spline"];
 
-/** How far a Curved line with no vertices bows from its chord, as a fraction of the chord's length, and the most it may bow. */
-export const BOW_RATIO = 0.25;
-export const BOW_LIMIT = 60;
+/**
+ * How far a Curved line's control points sit from its ends along the outward directions: this fraction of the chord, kept between
+ * the minimum and the maximum (canvas units), so a short line still has room to turn and a long one does not swing wide.
+ */
+export const HANDLE_RATIO = 0.4;
+export const HANDLE_MIN = 24;
+export const HANDLE_MAX = 120;
 
 /**
  * The shape a line is drawn in: its own when it has one, else its diagram's default.
@@ -66,38 +73,72 @@ export function formatPoint(point: LinePoint): string {
 /** One cubic Bezier span of a curved line: where it starts, its two control points and where it ends. */
 export type CurveSpan = readonly [LinePoint, LinePoint, LinePoint, LinePoint];
 
+/** The directions a line leaves its two ends in (unit vectors out of each box); an end with none is left to the line itself. */
+export interface LineDirections {
+  start?: LinePoint | null;
+  end?: LinePoint | null;
+}
+
 /**
- * The one span of a Curved line that has no vertices: an arc bowed to the left of the direction of travel. The control points
- * are a third and two thirds of the way along the chord, each moved sideways by the bow, so the curve leaves the chord by three
- * quarters of it at its middle.
+ * The one span of a Curved line that has no vertices: a cubic leaving `start` along its outward direction and arriving at `end`
+ * along its own, the control points `handle` from each end. An end with no direction leaves or arrives along the chord, so a line
+ * with one known end still bends only at that end; with neither it is straight.
  *
- * @returns The span, or null when the two points coincide (nothing to bow).
+ * @returns The span, or null when the two points coincide or no end has a direction (a straight line).
  */
-export function bowSpan(start: LinePoint, end: LinePoint): CurveSpan | null {
+export function outwardSpan(start: LinePoint, end: LinePoint, directions?: LineDirections): CurveSpan | null {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.sqrt(dx * dx + dy * dy);
-  if (length === 0) return null;
-  const bow = Math.min(length * BOW_RATIO, BOW_LIMIT);
-  const nx = (dy / length) * bow;
-  const ny = (-dx / length) * bow;
+  const from = directions?.start ?? null;
+  const to = directions?.end ?? null;
+  if (length === 0 || (!from && !to)) return null;
+  const ux = dx / length;
+  const uy = dy / length;
+  const out = from ?? { x: ux, y: uy };
+  const back = to ?? { x: -ux, y: -uy };
+  const handle = Math.min(Math.max(length * HANDLE_RATIO, HANDLE_MIN), HANDLE_MAX);
   return [
     start,
-    { x: start.x + dx / 3 + nx, y: start.y + dy / 3 + ny },
-    { x: start.x + (dx * 2) / 3 + nx, y: start.y + (dy * 2) / 3 + ny },
+    { x: start.x + out.x * handle, y: start.y + out.y * handle },
+    { x: end.x + back.x * handle, y: end.y + back.y * handle },
     end,
   ];
 }
 
+/** `spans` with the first leaving `start` along `directions.start` and the last arriving along `directions.end`, a third of the span's length from the end. */
+function withEndTangents(spans: CurveSpan[], directions?: LineDirections): CurveSpan[] {
+  if (!directions || spans.length === 0) return spans;
+  const out = spans.map(([a, b, c, d]): [LinePoint, LinePoint, LinePoint, LinePoint] => [a, b, c, d]);
+  const length = (a: LinePoint, b: LinePoint) => Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+  if (directions.start) {
+    const span = out[0];
+    const third = length(span[0], span[3]) / 3;
+    span[1] = { x: span[0].x + directions.start.x * third, y: span[0].y + directions.start.y * third };
+  }
+  if (directions.end) {
+    const span = out[out.length - 1];
+    const third = length(span[0], span[3]) / 3;
+    span[2] = { x: span[3].x + directions.end.x * third, y: span[3].y + directions.end.y * third };
+  }
+  return out;
+}
+
 /**
  * The cubic spans a line of `shape` is drawn with, or none when it is drawn as straight segments: Spline gives the Catmull-Rom
- * spans through the vertices (none without vertices); Curved gives the same spans, or the single bowed arc without vertices.
+ * spans through the vertices (none without vertices); Curved gives those spans with the end tangents along `directions`, or the
+ * single outward span without vertices.
  */
-export function shapeSpans(start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape): CurveSpan[] {
+export function shapeSpans(
+  start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape, directions?: LineDirections,
+): CurveSpan[] {
   if (shape === "straight") return [];
-  if (points.length > 0) return curveSpans(start, points, end);
+  if (points.length > 0) {
+    const spans = curveSpans(start, points, end);
+    return shape === "curved" ? withEndTangents(spans, directions) : spans;
+  }
   if (shape === "curved") {
-    const arc = bowSpan(start, end);
+    const arc = outwardSpan(start, end, directions);
     return arc ? [arc] : [];
   }
   return [];
@@ -129,10 +170,13 @@ export function curveSpans(start: LinePoint, points: readonly LinePoint[], end: 
  * @param points The waypoints in order from the source to the target (may be empty).
  * @param end The point on the target box.
  * @param shape How the line runs between the points.
+ * @param directions The directions the line leaves its boxes in, which a Curved line follows.
  * @returns `M … L …` for straight segments (and for a line that has nothing to curve), `M … C …` for a curved one.
  */
-export function linePath(start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape = "straight"): string {
-  const spans = shapeSpans(start, points, end, shape);
+export function linePath(
+  start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape = "straight", directions?: LineDirections,
+): string {
+  const spans = shapeSpans(start, points, end, shape, directions);
   if (spans.length === 0) return `M ${[start, ...points, end].map(p).join(" L ")}`;
   const parts = [`M ${p(start)}`];
   for (const [, c1, c2, p2] of spans) parts.push(`C ${p(c1)} ${p(c2)} ${p(p2)}`);
@@ -147,9 +191,11 @@ export function linePath(start: LinePoint, points: readonly LinePoint[], end: Li
  *
  * @returns The start when the line has no length.
  */
-export function lineMiddle(start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape = "straight"): LinePoint {
+export function lineMiddle(
+  start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape = "straight", directions?: LineDirections,
+): LinePoint {
   if (shape === "curved" && points.length === 0) {
-    const arc = bowSpan(start, end);
+    const arc = outwardSpan(start, end, directions);
     if (arc) return arcMiddle(arc);
   }
   const nodes = [start, ...points, end];
@@ -176,11 +222,13 @@ function arcMiddle([a, c1, c2, b]: CurveSpan): LinePoint {
 
 /**
  * The middle of each segment of a line, in order (`points.length + 1` of them): where a drag inserts a vertex. A Curved line with
- * no vertices has one, on its arc, so the handle sits on the line that is drawn.
+ * no vertices has one, on its curve, so the handle sits on the line that is drawn.
  */
-export function segmentMiddles(start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape = "straight"): LinePoint[] {
+export function segmentMiddles(
+  start: LinePoint, points: readonly LinePoint[], end: LinePoint, shape: LineShape = "straight", directions?: LineDirections,
+): LinePoint[] {
   if (shape === "curved" && points.length === 0) {
-    const arc = bowSpan(start, end);
+    const arc = outwardSpan(start, end, directions);
     if (arc) return [arcMiddle(arc)];
   }
   const nodes = [start, ...points, end];

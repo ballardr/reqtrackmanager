@@ -53,7 +53,7 @@ export const TheHelpNamesEveryOptionOnItsOwnLine: Story = {
     const tip = await within(document.body).findByRole("tooltip");
     await expect(tip).toHaveTextContent("Diagram default: the line follows the shape chosen for the diagram.");
     await expect(tip).toHaveTextContent("Straight: segments through the line's vertices.");
-    await expect(tip).toHaveTextContent("Curved: one arc bowed to the left of the line's direction");
+    await expect(tip).toHaveTextContent("Curved: leaves each box straight out");
     await expect(tip).toHaveTextContent("Spline: a curve through the line's vertices");
   },
 };

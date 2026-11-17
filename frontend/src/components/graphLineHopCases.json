@@ -616,7 +616,7 @@
     }
   },
   {
-    "name": "a bowed line with no vertices hops over a straight line",
+    "name": "a curved line with no vertices hops over a straight line",
     "lines": [
       {
         "id": "a",
@@ -635,20 +635,30 @@
         "id": "b",
         "start": [
           20,
-          40
+          140
         ],
         "points": [],
         "end": [
           220,
-          40
+          140
         ],
-        "shape": "curved"
+        "shape": "curved",
+        "start_direction": [
+          0,
+          -1
+        ],
+        "end_direction": [
+          0,
+          -1
+        ]
       }
     ],
-    "paths": {}
+    "paths": {
+      "b": "M 20 140 L 22.25 125.94 L 28.59 113.75 L 38.46 103.44 L 38.66 103.3 A 6 6 0 0 1 48.68 96.7 L 51.25 95 L 66.39 88.44 L 83.28 83.75 L 101.35 80.94 L 120 80 L 138.65 80.94 L 156.72 83.75 L 173.61 88.44 L 188.75 95 L 191.32 96.7 A 6 6 0 0 1 201.34 103.3 L 201.54 103.44 L 211.41 113.75 L 217.75 125.94 L 220 140"
+    }
   },
   {
-    "name": "a bowed line is crossed by a line through the middle of its chord",
+    "name": "a curved line is crossed by a line through the middle of its chord",
     "lines": [
       {
         "id": "a",
@@ -674,11 +684,66 @@
           240,
           100
         ],
-        "shape": "curved"
+        "shape": "curved",
+        "start_direction": [
+          0,
+          -1
+        ],
+        "end_direction": [
+          0,
+          -1
+        ]
       }
     ],
     "paths": {
-      "b": "M 0 100 L 15 89.45 L 30 80.31 L 45 72.58 L 60 66.25 L 75 61.33 L 90 57.81 L 105 55.7 L 114.01 55.28 A 6 6 0 0 1 125.99 55.28 L 135 55.7 L 150 57.81 L 165 61.33 L 180 66.25 L 195 72.58 L 210 80.31 L 225 89.45 L 240 100"
+      "b": "M 0 100 L 2.7 83.13 L 10.31 68.5 L 22.15 56.13 L 37.5 46 L 55.66 38.13 L 75.94 32.5 L 97.62 29.13 L 114.01 28.3 A 6 6 0 0 1 125.99 28.3 L 142.38 29.13 L 164.06 32.5 L 184.34 38.13 L 202.5 46 L 217.85 56.13 L 229.69 68.5 L 237.3 83.13 L 240 100"
+    }
+  },
+  {
+    "name": "a curved line through vertices with outward ends hops over a straight line",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          300,
+          100
+        ],
+        "shape": "straight"
+      },
+      {
+        "id": "b",
+        "start": [
+          20,
+          20
+        ],
+        "points": [
+          [
+            150,
+            180
+          ]
+        ],
+        "end": [
+          280,
+          20
+        ],
+        "shape": "curved",
+        "start_direction": [
+          0,
+          1
+        ],
+        "end_direction": [
+          0,
+          1
+        ]
+      }
+    ],
+    "paths": {
+      "b": "M 20 20 L 20.98 33.12 L 23.81 46.6 L 28.28 60.28 L 34.22 73.99 L 41.42 87.56 L 46.01 94.91 A 6 6 0 0 1 52.64 104.91 L 58.88 113.62 L 68.75 125.77 L 79.13 137.12 L 89.82 147.49 L 100.65 156.73 L 111.41 164.66 L 121.91 171.12 L 131.97 175.94 L 141.4 178.96 L 150 180 L 158.6 178.96 L 168.03 175.94 L 178.09 171.12 L 188.59 164.66 L 199.35 156.73 L 210.18 147.49 L 220.87 137.12 L 231.25 125.77 L 241.12 113.62 L 247.36 104.91 A 6 6 0 0 1 253.99 94.91 L 258.58 87.56 L 265.78 73.99 L 271.72 60.28 L 276.19 46.6 L 279.02 33.12 L 280 20"
     }
   },
   {

@@ -112,9 +112,20 @@ test.describe("System Architecture: line shape", () => {
       expect(view.anchors).toHaveLength(0);
     });
 
-    await test.step("the server's SVG draws the same arc", async () => {
+    await test.step("the server's SVG draws the same kind of curve, which leaves each box outward and is not bowed to one side", async () => {
       const svg = await (await page.request.get(`${arch}/diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
       expect(svg.match(/ C /g)).toHaveLength(1);
+      const numbers = (path: string) => (path.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+      const drawn = numbers(await pathOf(page, edgeId));
+      const exported = numbers(/<path d="(M [^"]* C [^"]*)"/.exec(svg)?.[1] ?? "");
+      expect(drawn).toHaveLength(8);
+      expect(exported).toHaveLength(8);
+      // Both leave the first box and arrive at the second the same way (the box heights differ slightly, so the numbers are not compared).
+      expect(exported[2]).toBeGreaterThan(exported[0]);
+      expect(exported[4]).toBeLessThan(exported[6]);
+      // M x0 y0 C c1x c1y c2x c2y x1 y1: each control point lies out of its box (no fixed bow to the left of the stored direction).
+      expect(drawn[2]).toBeGreaterThan(drawn[0]);
+      expect(drawn[4]).toBeLessThan(drawn[6]);
     });
   });
 

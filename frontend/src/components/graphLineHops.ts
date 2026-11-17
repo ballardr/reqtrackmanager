@@ -24,7 +24,7 @@
  *   segment that covers more than `MAX_CELLS` cells is compared with every other segment instead.
  */
 
-import { formatPoint, shapeSpans, type LinePoint, type LineShape } from "./graphLinePath";
+import { formatPoint, shapeSpans, type LineDirections, type LinePoint, type LineShape } from "./graphLinePath";
 
 /** Radius of a hop in canvas units (the arc is a semicircle, so it is twice this wide). */
 export const HOP_RADIUS = 6;
@@ -47,6 +47,8 @@ export interface HopLine {
   end: LinePoint;
   /** The drawn shape, already resolved against the diagram's default. */
   shape?: LineShape;
+  /** The directions the line leaves its boxes in, which a Curved line follows. */
+  directions?: LineDirections;
 }
 
 /** A line cut into segments: its points, the length along it at each, and the index range of each piece a hop must fit inside. */
@@ -61,7 +63,7 @@ function flatten(line: HopLine): Flat {
   const nodes = [line.start, ...line.points, line.end];
   const poly: LinePoint[] = [nodes[0]];
   const pieces: [number, number][] = [];
-  const spans = shapeSpans(line.start, line.points, line.end, line.shape ?? "straight");
+  const spans = shapeSpans(line.start, line.points, line.end, line.shape ?? "straight", line.directions);
   if (spans.length === 0) {
     for (let i = 1; i < nodes.length; i += 1) {
       pieces.push([i - 1, i]);

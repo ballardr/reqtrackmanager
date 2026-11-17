@@ -22,8 +22,10 @@ from app.modules.architecture.diagram_points import (
     ATTACH_POINTS,
     SIDE_POINTS,
     Box,
+    line_directions,
     line_points,
     nearest_pair,
+    outward_direction,
     point_xy,
     route_points,
 )
@@ -55,6 +57,8 @@ def _case(
     if via:
         result["via"] = [list(p) for p in via]
     result["expected"] = [chosen[0].value, chosen[1].value]
+    out_a, out_b = line_directions(source, target, chosen[0], chosen[1], via or [])
+    result["directions"] = [[round(out_a[0], 9), round(out_a[1], 9)], [round(out_b[0], 9), round(out_b[1], 9)]]
     return result
 
 
@@ -86,6 +90,19 @@ def cases() -> list[dict]:
         _case("a fixed end is kept and the other follows its vertex", a, (300, 0, 160, 80), AttachPoint.LEFT, None, False, False, [(230, 200)]),
         _case("two vertices: each end follows the vertex beside it", a, (300, 0, 160, 80), None, None, False, False, [(80, 200), (380, 200)]),
         _case("a marker end follows the vertex on a side", (0, 0, 36, 36), (300, 0, 160, 80), None, None, True, False, [(18, 200)]),
+        # A corner leaves along the least-bent of the diagonal and its two side normals toward the line's next point.
+        _case("a top right corner with the other end straight above leaves upward", a, (60, -300, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM),
+        _case("a top right corner with the other end level to the right leaves rightward", a, (400, -20, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.LEFT),
+        _case("a top right corner with the other end up and to the right leaves along the diagonal", a, (400, -300, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM_LEFT),
+        _case("a top right corner with the other end below leaves rightward", a, (400, 200, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.TOP),
+        _case("a bottom right corner with the other end below leaves downward", a, (60, 300, 100, 80), AttachPoint.BOTTOM_RIGHT, AttachPoint.TOP),
+        _case("a bottom left corner with the other end to the left leaves leftward", a, (-400, 60, 100, 80), AttachPoint.BOTTOM_LEFT, AttachPoint.RIGHT),
+        _case("a bottom left corner with the other end down and to the left leaves along the diagonal", a, (-400, 300, 100, 80), AttachPoint.BOTTOM_LEFT, AttachPoint.TOP_RIGHT),
+        _case("a top left corner with the other end up and to the left leaves along the diagonal", a, (-400, -300, 100, 80), AttachPoint.TOP_LEFT, AttachPoint.BOTTOM_RIGHT),
+        _case("a top left corner with the other end above leaves upward", a, (-20, -300, 100, 80), AttachPoint.TOP_LEFT, AttachPoint.BOTTOM),
+        _case("a corner of a wide box has a flatter diagonal", (0, 0, 400, 40), (600, -400, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM_LEFT),
+        _case("a corner with the other end at the corner itself takes the diagonal", a, (160, 0, 100, 80), AttachPoint.TOP_RIGHT, AttachPoint.TOP_LEFT),
+        _case("a corner with a vertex leaves toward the vertex, not the other box", a, (400, -300, 100, 80), AttachPoint.TOP_RIGHT, None, False, False, [(160, 200)]),
     ]
 
 
@@ -130,3 +147,32 @@ def test_a_marker_never_meets_a_line_at_a_corner_unless_one_is_fixed():
     for target in [(300, -200, 160, 80), (-300, 200, 160, 80), (200, 150, 160, 80), (100, -100, 50, 50)]:
         a, _ = line_points(marker, target, None, None, SIDE_POINTS, ATTACH_POINTS)
         assert a in SIDE_POINTS
+
+
+def test_a_side_point_leaves_along_its_sides_normal_and_the_corners_along_a_unit_vector():
+    box: Box = (10, 20, 100, 60)
+    assert outward_direction(box, AttachPoint.TOP, (500, 500)) == (0, -1)
+    assert outward_direction(box, AttachPoint.RIGHT, None) == (1, 0)
+    assert outward_direction(box, AttachPoint.BOTTOM, (0, 0)) == (0, 1)
+    assert outward_direction(box, AttachPoint.LEFT, (0, 0)) == (-1, 0)
+    for point in (AttachPoint.TOP_RIGHT, AttachPoint.BOTTOM_RIGHT, AttachPoint.BOTTOM_LEFT, AttachPoint.TOP_LEFT):
+        dx, dy = outward_direction(box, point, None)
+        assert abs(dx * dx + dy * dy - 1) < 1e-12
+
+
+def test_a_corner_with_no_target_or_a_target_on_it_takes_the_diagonal():
+    box: Box = (0, 0, 100, 100)
+    expected = outward_direction(box, AttachPoint.TOP_RIGHT, None)
+    assert expected[0] > 0 > expected[1] and abs(expected[0] + expected[1]) < 1e-12
+    assert outward_direction(box, AttachPoint.TOP_RIGHT, (100, 0)) == expected
+
+
+def test_a_corner_chooses_the_candidate_with_the_least_angle_to_the_line():
+    box: Box = (0, 0, 100, 100)
+    # Up and slightly right: the vertical normal is nearer than the diagonal.
+    assert outward_direction(box, AttachPoint.TOP_RIGHT, (110, -300)) == (0, -1)
+    # Right and slightly up: the horizontal normal.
+    assert outward_direction(box, AttachPoint.TOP_RIGHT, (400, -10)) == (1, 0)
+    # Exactly diagonal: the diagonal.
+    dx, dy = outward_direction(box, AttachPoint.TOP_RIGHT, (300, -200))
+    assert dx > 0 > dy and abs(dx + dy) < 1e-12

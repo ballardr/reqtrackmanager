@@ -10,6 +10,7 @@
  * - Choose the points of one line: an end the consumer fixed stays as given, an end left open is the point nearest the
  *   other end, and with both open the pair of points nearest each other. A box may offer fewer points (`points`): a marker
  *   (a dot or a diamond) offers only the middle of each side, since its corners are not on its outline.
+ * - Give the direction a line leaves a box at an attach point (`outwardDirection`), which a Curved line starts its curve along.
  *
  * Design decisions:
  * - The same rule runs on the server for the architecture SVG (`diagram_points.py`); `graphAttachPointCases.json` holds
@@ -117,6 +118,87 @@ export function lineAttachPoints(
   if (sourcePoint) return [sourcePoint, nearestPoint(target, pointXY(source, sourcePoint))];
   if (targetPoint) return [nearestPoint(source, pointXY(target, targetPoint)), targetPoint];
   return nearestPair(source, target);
+}
+
+/** A unit vector: the direction a line leaves a box. */
+export interface Direction {
+  x: number;
+  y: number;
+}
+
+/** Two directions are told apart only when their dot products differ by more than this, so a tie keeps the earlier candidate. */
+const DIRECTION_TOLERANCE = 1e-9;
+
+/** The side normals a corner lies on (the vertical one first), and the signs of its centre-to-corner diagonal. */
+const CORNER_NORMALS: Partial<Record<AttachPoint, { vertical: Direction; horizontal: Direction; sx: number; sy: number }>> = {
+  top_right: { vertical: { x: 0, y: -1 }, horizontal: { x: 1, y: 0 }, sx: 1, sy: -1 },
+  bottom_right: { vertical: { x: 0, y: 1 }, horizontal: { x: 1, y: 0 }, sx: 1, sy: 1 },
+  bottom_left: { vertical: { x: 0, y: 1 }, horizontal: { x: -1, y: 0 }, sx: -1, sy: 1 },
+  top_left: { vertical: { x: 0, y: -1 }, horizontal: { x: -1, y: 0 }, sx: -1, sy: -1 },
+};
+
+/**
+ * The direction a line leaves `box` at `point`: the way from the box's centre through the point. A side point has one (its side's
+ * normal); a corner has three candidates (the centre-to-corner diagonal and the two side normals it lies on) and takes the one
+ * with the smallest angle to the straight line toward `toward`, so a corner bends no more than the boxes' positions need. A tie
+ * goes to the diagonal, then to the vertical side.
+ *
+ * @param box The box the line meets.
+ * @param point The attach point on it.
+ * @param toward Where the line is heading from the point (the other end, or the nearest vertex); null chooses the diagonal.
+ * @returns A unit vector pointing out of the box.
+ */
+export function outwardDirection(box: BoxGeometry, point: AttachPoint, toward: { x: number; y: number } | null): Direction {
+  switch (point) {
+    case "top": return { x: 0, y: -1 };
+    case "right": return { x: 1, y: 0 };
+    case "bottom": return { x: 0, y: 1 };
+    case "left": return { x: -1, y: 0 };
+    default: break;
+  }
+  const corner = CORNER_NORMALS[point];
+  if (!corner) return { x: 0, y: -1 };
+  const dx = (corner.sx * box.width) / 2;
+  const dy = (corner.sy * box.height) / 2;
+  const norm = Math.sqrt(dx * dx + dy * dy);
+  const diagonal = norm === 0 ? corner.vertical : { x: dx / norm, y: dy / norm };
+  if (!toward) return diagonal;
+  const at = pointXY(box, point);
+  const lx = toward.x - at.x;
+  const ly = toward.y - at.y;
+  const length = Math.sqrt(lx * lx + ly * ly);
+  if (length === 0) return diagonal;
+  const ux = lx / length;
+  const uy = ly / length;
+  let best = diagonal;
+  let bestDot = diagonal.x * ux + diagonal.y * uy;
+  for (const candidate of [corner.vertical, corner.horizontal]) {
+    const dot = candidate.x * ux + candidate.y * uy;
+    if (dot > bestDot + DIRECTION_TOLERANCE) {
+      best = candidate;
+      bestDot = dot;
+    }
+  }
+  return best;
+}
+
+/**
+ * The directions a line leaves its two boxes in: each end's outward direction toward the line's next point (the nearest vertex,
+ * else the other end's attach point).
+ *
+ * @param source The source box.
+ * @param target The target box.
+ * @param sourcePoint The attach point used on the source box.
+ * @param targetPoint The attach point used on the target box.
+ * @param via The vertices in order from the source to the target.
+ * @returns `[source direction, target direction]`.
+ */
+export function lineDirections(
+  source: BoxGeometry, target: BoxGeometry, sourcePoint: AttachPoint, targetPoint: AttachPoint, via: readonly { x: number; y: number }[],
+): [Direction, Direction] {
+  const sourceToward = via.length > 0 ? via[0] : pointXY(target, targetPoint);
+  const targetToward = via.length > 0 ? via[via.length - 1] : pointXY(source, sourcePoint);
+  return [outwardDirection(source, sourcePoint, sourceToward), outwardDirection(target, targetPoint, targetToward)];
 }
 
 /**

@@ -4703,9 +4703,9 @@ const en = {
     lineShapeLabel: "Line shape",
     lineShapeDefaultLabel: "Default line shape",
     lineShapeDefaultHelp:
-      "How a line with no shape of its own is drawn.\nStraight: segments through the line's vertices.\nCurved: one arc bowed to the left of the line's direction; through its vertices when it has any.\nSpline: a curve through the line's vertices (straight when it has none).\nThis is a setting of the diagram, so everyone who opens it sees the same drawing; a line can give its own shape in its Selection card.",
+      "How a line with no shape of its own is drawn.\nStraight: segments through the line's vertices.\nCurved: leaves each box straight out and bends only as much as the boxes need; through its vertices when it has any.\nSpline: a curve through the line's vertices (straight when it has none).\nThis is a setting of the diagram, so everyone who opens it sees the same drawing; a line can give its own shape in its Selection card.",
     lineShapeOwnHelp:
-      "Diagram default: the line follows the shape chosen for the diagram.\nStraight: segments through the line's vertices.\nCurved: one arc bowed to the left of the line's direction; through its vertices when it has any.\nSpline: a curve through the line's vertices (straight when it has none).",
+      "Diagram default: the line follows the shape chosen for the diagram.\nStraight: segments through the line's vertices.\nCurved: leaves each box straight out and bends only as much as the boxes need; through its vertices when it has any.\nSpline: a curve through the line's vertices (straight when it has none).",
     lineShapeNames: { straight: "Straight", curved: "Curved", spline: "Spline" },
     lineShapeFollowing: (shape: string) => `Diagram default (${shape})`,
     lineHopsLabel: "Line hops",

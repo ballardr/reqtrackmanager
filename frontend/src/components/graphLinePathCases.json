@@ -82,7 +82,7 @@
     ]
   },
   {
-    "name": "one vertex, curved is the spline",
+    "name": "one vertex, curved without directions is the spline",
     "start": [
       0,
       0
@@ -240,7 +240,38 @@
     ]
   },
   {
-    "name": "curved with no vertices bows left of a line running right",
+    "name": "spline ignores the directions",
+    "start": [
+      0,
+      0
+    ],
+    "points": [
+      [
+        50,
+        60
+      ]
+    ],
+    "end": [
+      100,
+      0
+    ],
+    "shape": "spline",
+    "start_direction": [
+      0.0,
+      -1.0
+    ],
+    "end_direction": [
+      0.0,
+      -1.0
+    ],
+    "path": "M 0 0 C 8.33 10 33.33 60 50 60 C 66.67 60 91.67 10 100 0",
+    "middle": [
+      50.0,
+      60.0
+    ]
+  },
+  {
+    "name": "curved with no vertices and no directions is straight",
     "start": [
       0,
       0
@@ -248,35 +279,269 @@
     "points": [],
     "end": [
       100,
-      0
+      40
     ],
     "shape": "curved",
-    "path": "M 0 0 C 33.33 -25 66.67 -25 100 0",
+    "path": "M 0 0 L 100 40",
     "middle": [
       50.0,
-      -18.75
+      20.0
     ]
   },
   {
-    "name": "curved with no vertices bows left of a line running down",
+    "name": "curved boxes facing each other in line give a straight line",
+    "start": [
+      160,
+      40
+    ],
+    "points": [],
+    "end": [
+      300,
+      40
+    ],
+    "shape": "curved",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 160 40 C 216 40 244 40 300 40",
+    "middle": [
+      230.0,
+      40.0
+    ]
+  },
+  {
+    "name": "curved boxes facing each other, stored the other way round",
+    "start": [
+      300,
+      40
+    ],
+    "points": [],
+    "end": [
+      160,
+      40
+    ],
+    "shape": "curved",
+    "start_direction": [
+      -1.0,
+      0.0
+    ],
+    "end_direction": [
+      1.0,
+      0.0
+    ],
+    "path": "M 300 40 C 244 40 216 40 160 40",
+    "middle": [
+      230.0,
+      40.0
+    ]
+  },
+  {
+    "name": "curved boxes offset sideways give a gentle S",
+    "start": [
+      160,
+      40
+    ],
+    "points": [],
+    "end": [
+      300,
+      140
+    ],
+    "shape": "curved",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 160 40 C 228.82 40 231.18 140 300 140",
+    "middle": [
+      230.0,
+      90.0
+    ]
+  },
+  {
+    "name": "curved boxes offset sideways, stored the other way round",
+    "start": [
+      300,
+      140
+    ],
+    "points": [],
+    "end": [
+      160,
+      40
+    ],
+    "shape": "curved",
+    "start_direction": [
+      -1.0,
+      0.0
+    ],
+    "end_direction": [
+      1.0,
+      0.0
+    ],
+    "path": "M 300 140 C 231.18 140 228.82 40 160 40",
+    "middle": [
+      230.0,
+      90.0
+    ]
+  },
+  {
+    "name": "curved boxes stacked, offset sideways",
+    "start": [
+      80,
+      80
+    ],
+    "points": [],
+    "end": [
+      140,
+      220
+    ],
+    "shape": "curved",
+    "start_direction": [
+      0.0,
+      1.0
+    ],
+    "end_direction": [
+      0.0,
+      -1.0
+    ],
+    "path": "M 80 80 C 80 140.93 140 159.07 140 220",
+    "middle": [
+      110.0,
+      150.0
+    ]
+  },
+  {
+    "name": "curved line from a box whose end points away from the other box",
     "start": [
       0,
       0
     ],
     "points": [],
     "end": [
-      0,
-      100
+      -100,
+      60
     ],
     "shape": "curved",
-    "path": "M 0 0 C 25 33.33 25 66.67 0 100",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 0 0 C 46.65 0 -146.65 60 -100 60",
     "middle": [
-      18.75,
-      50.0
+      -50.0,
+      30.0
     ]
   },
   {
-    "name": "curved with no vertices on a short line",
+    "name": "curved line between two top sides is a bump",
+    "start": [
+      0,
+      100
+    ],
+    "points": [],
+    "end": [
+      200,
+      100
+    ],
+    "shape": "curved",
+    "start_direction": [
+      0.0,
+      -1.0
+    ],
+    "end_direction": [
+      0.0,
+      -1.0
+    ],
+    "path": "M 0 100 C 0 20 200 20 200 100",
+    "middle": [
+      100.0,
+      40.0
+    ]
+  },
+  {
+    "name": "curved line from a corner leaves along the diagonal",
+    "start": [
+      100,
+      100
+    ],
+    "points": [],
+    "end": [
+      300,
+      20
+    ],
+    "shape": "curved",
+    "start_direction": [
+      0.7071067811865476,
+      -0.7071067811865476
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 100 100 C 160.93 39.07 213.84 20 300 20",
+    "middle": [
+      190.53633,
+      37.152681
+    ]
+  },
+  {
+    "name": "curved with only the start direction arrives along the chord",
+    "start": [
+      0,
+      0
+    ],
+    "points": [],
+    "end": [
+      200,
+      100
+    ],
+    "shape": "curved",
+    "start_direction": [
+      0.0,
+      -1.0
+    ],
+    "path": "M 0 0 C 0 -89.44 120 60 200 100",
+    "middle": [
+      70.0,
+      1.45898
+    ]
+  },
+  {
+    "name": "curved with only the end direction leaves along the chord",
+    "start": [
+      0,
+      0
+    ],
+    "points": [],
+    "end": [
+      200,
+      100
+    ],
+    "shape": "curved",
+    "end_direction": [
+      0.0,
+      -1.0
+    ],
+    "path": "M 0 0 C 80 40 200 10.56 200 100",
+    "middle": [
+      130.0,
+      31.45898
+    ]
+  },
+  {
+    "name": "curved with no vertices on a short line keeps the least handle",
     "start": [
       10,
       10
@@ -287,14 +552,22 @@
       10
     ],
     "shape": "curved",
-    "path": "M 10 10 C 16.67 5 23.33 5 30 10",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 10 10 C 34 10 6 10 30 10",
     "middle": [
       20.0,
-      6.25
+      10.0
     ]
   },
   {
-    "name": "curved with no vertices on a long line bows by the limit",
+    "name": "curved with no vertices on a long line stops at the greatest handle",
     "start": [
       0,
       0
@@ -305,10 +578,18 @@
       400
     ],
     "shape": "curved",
-    "path": "M 0 0 C 355.62 77.62 688.95 210.96 1000 400",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 0 0 C 120 0 880 400 1000 400",
     "middle": [
-      516.71258,
-      158.218549
+      500.0,
+      200.0
     ]
   },
   {
@@ -323,6 +604,14 @@
       5
     ],
     "shape": "curved",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      -1.0,
+      0.0
+    ],
     "path": "M 5 5 L 5 5",
     "middle": [
       5,
@@ -341,10 +630,119 @@
       20.005
     ],
     "shape": "curved",
-    "path": "M -12.34 0.5 C 29.98 -21.08 67.43 -14.58 100 20.01",
+    "start_direction": [
+      1.0,
+      0.0
+    ],
+    "end_direction": [
+      0.0,
+      1.0
+    ],
+    "path": "M -12.34 0.5 C 33.26 0.5 100 65.61 100 20.01",
     "middle": [
-      47.484188,
-      -10.812
+      60.930697,
+      27.356197
+    ]
+  },
+  {
+    "name": "curved through one vertex with outward ends",
+    "start": [
+      0,
+      0
+    ],
+    "points": [
+      [
+        50,
+        60
+      ]
+    ],
+    "end": [
+      100,
+      0
+    ],
+    "shape": "curved",
+    "start_direction": [
+      0.0,
+      -1.0
+    ],
+    "end_direction": [
+      0.0,
+      -1.0
+    ],
+    "path": "M 0 0 C 0 -26.03 33.33 60 50 60 C 66.67 60 100 -26.03 100 0",
+    "middle": [
+      50.0,
+      60.0
+    ]
+  },
+  {
+    "name": "curved through vertices with only the start direction",
+    "start": [
+      0,
+      0
+    ],
+    "points": [
+      [
+        50,
+        60
+      ],
+      [
+        80,
+        10
+      ]
+    ],
+    "end": [
+      100,
+      0
+    ],
+    "shape": "curved",
+    "start_direction": [
+      -1.0,
+      0.0
+    ],
+    "path": "M 0 0 C -26.03 0 36.67 58.33 50 60 C 63.33 61.67 71.67 20 80 10 C 88.33 0 96.67 1.67 100 0",
+    "middle": [
+      50.660536,
+      58.899107
+    ]
+  },
+  {
+    "name": "curved through three vertices with outward ends",
+    "start": [
+      10,
+      10
+    ],
+    "points": [
+      [
+        60,
+        10
+      ],
+      [
+        60,
+        90
+      ],
+      [
+        140,
+        90
+      ]
+    ],
+    "end": [
+      140,
+      20
+    ],
+    "shape": "curved",
+    "start_direction": [
+      -1.0,
+      0.0
+    ],
+    "end_direction": [
+      1.0,
+      0.0
+    ],
+    "path": "M 10 10 C -6.67 10 51.67 -3.33 60 10 C 68.33 23.33 46.67 76.67 60 90 C 73.33 103.33 126.67 101.67 140 90 C 153.33 78.33 163.33 20 140 20",
+    "middle": [
+      70.0,
+      90.0
     ]
   }
 ]

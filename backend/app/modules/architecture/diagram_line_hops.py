@@ -36,7 +36,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.modules.architecture.diagram_line_path import Point, format_point, shape_spans
+from app.modules.architecture.diagram_line_path import NO_DIRECTIONS, Directions, Point, format_point, shape_spans
 
 #: Radius of a hop in canvas units (the arc is a semicircle, so it is twice this wide).
 HOP_RADIUS = 6.0
@@ -61,6 +61,7 @@ class HopLine:
         start / end: The points on the source and target.
         points: The waypoints in order from the start to the end.
         shape: The line's drawn shape (`diagram_line_path.LINE_SHAPES`, already resolved against the diagram's default).
+        directions: The directions the line leaves its boxes in, which a Curved line follows (`diagram_points.line_directions`).
     """
 
     id: str
@@ -68,6 +69,7 @@ class HopLine:
     points: Sequence[Point]
     end: Point
     shape: str = "straight"
+    directions: Directions = NO_DIRECTIONS
 
 
 @dataclass
@@ -85,7 +87,7 @@ def _flatten(line: HopLine) -> _Flat:
     nodes = [line.start, *line.points, line.end]
     poly: list[Point] = [nodes[0]]
     pieces: list[tuple[int, int]] = []
-    spans = shape_spans(line.start, line.points, line.end, line.shape)
+    spans = shape_spans(line.start, line.points, line.end, line.shape, line.directions)
     if not spans:
         for i in range(1, len(nodes)):
             pieces.append((i - 1, i))

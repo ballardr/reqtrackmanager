@@ -81,11 +81,11 @@ import {
   type GraphNodeOutline, type GraphNodeTone, type GraphPinContext, type GraphPointAnchor, type GraphTextAlign,
 } from "./GraphCanvas";
 import {
-  ATTACH_POINTS, SIDE_POINTS, nearestPoint, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
+  ATTACH_POINTS, SIDE_POINTS, lineDirections, nearestPoint, outwardDirection, pointXY, routeAttachPoints, type AttachPoint, type BoxGeometry,
 } from "./graphAttachPoints";
 import { nearBoxIds } from "./graphAttachProximity";
 import { lineHops, type HopLine } from "./graphLineHops";
-import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint, type LineShape } from "./graphLinePath";
+import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LineDirections, type LinePoint, type LineShape } from "./graphLinePath";
 import { GraphNodeBadges } from "./GraphNodeBadges";
 import { DEFAULT_BOX_HEIGHT, DEFAULT_BOX_WIDTH, assignLineAnchors, canvasLines, type LineAnchor } from "./graphLineAnchors";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
@@ -327,6 +327,8 @@ interface RoutedEdgeData extends Record<string, unknown> {
   hopPath?: string;
   /** The sideways shift of the line's lane (`graphLineAnchors`), applied to both ends; none for a line with vertices. */
   shift?: LinePoint;
+  /** The directions a Curved line leaves its boxes in (`graphAttachPoints`' `outwardDirection`); none for a free end. */
+  directions?: LineDirections;
 }
 
 /** How far the pointer must travel, in screen pixels, before a press on a segment's middle adds a vertex. */
@@ -348,7 +350,8 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
   const start = { x: sourceX + shift.x, y: sourceY + shift.y };
   const end = { x: targetX + shift.x, y: targetY + shift.y };
   const shape = data?.shape ?? "straight";
-  const middle = lineMiddle(start, points, end, shape);
+  const directions = data?.directions;
+  const middle = lineMiddle(start, points, end, shape, directions);
   const handles = Boolean(selected && data?.editable);
 
   /** Starts moving vertex `index`, or (`insertAt`) adding one at the segment's middle once the pointer has travelled. */
@@ -397,7 +400,7 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
   }, [screenToFlowPosition, latest]);
 
   const remove = (index: number) => latest.current?.onChange(removeWaypoint(stored, index));
-  const path = data?.hopPath && !drag ? data.hopPath : linePath(start, points, end, shape);
+  const path = data?.hopPath && !drag ? data.hopPath : linePath(start, points, end, shape, directions);
   return (
     <>
       <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
@@ -406,7 +409,7 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
         // The handles sit in the label layer, above the line's own end grips (React Flow draws those inside the line, so on a short line
         // they would cover the middle of the segment) and above the boxes.
         <EdgeLabelRenderer>
-          {segmentMiddles(start, points, end, shape).map((at, i) => (
+          {segmentMiddles(start, points, end, shape, directions).map((at, i) => (
             <div
               key={`segment-${i}`} className="graph-segment-handle nopan nodrag" aria-hidden="true"
               style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)` }}
@@ -458,6 +461,13 @@ function lineRun(from: Box, to: Box, anchor: LineAnchor): { start: LoopPoint; en
   return { start: { x: a.x + anchor.shift.x, y: a.y + anchor.shift.y }, end: { x: b.x + anchor.shift.x, y: b.y + anchor.shift.y } };
 }
 
+/** The directions a Curved line leaves the boxes of `from` and `to` in, or none for another shape (they only shape a Curved line). */
+function edgeDirections(from: Box, to: Box, anchor: LineAnchor, via: readonly LinePoint[], shape: LineShape): LineDirections | undefined {
+  if (shape !== "curved") return undefined;
+  const [start, end] = lineDirections(from, to, anchor.source, anchor.target, via);
+  return { start, end };
+}
+
 /** The middle of each drawn line, by edge id, from the attach points the line joins. */
 function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"], anchors: ReadonlyMap<string, LineAnchor>): Map<string, { x: number; y: number }> {
   const middles = new Map<string, { x: number; y: number }>();
@@ -471,7 +481,8 @@ function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"], 
       continue;
     }
     const run = lineRun(from, to, anchor);
-    middles.set(e.id, lineMiddle(run.start, e.points ?? [], run.end, e.lineShape ?? "straight"));
+    const shape = e.lineShape ?? "straight";
+    middles.set(e.id, lineMiddle(run.start, e.points ?? [], run.end, shape, edgeDirections(from, to, anchor, e.points ?? [], shape)));
   }
   return middles;
 }
@@ -897,6 +908,7 @@ export function GraphCanvasView({
             type: "routed",
             data: {
               label: e.label, points: via, shape: e.lineShape ?? "straight", editable, shift: anchor.shift,
+              directions: edgeDirections(from, to, anchor, via, e.lineShape ?? "straight"),
               onChange: (next: LinePoint[]) => onEdgePointsChange.current?.(e.id, next),
               grid: () => (snapRef.current.on ? snapRef.current.size : 0),
               open: () => onEdgeOpenRef.current?.(e.id),
@@ -947,12 +959,18 @@ export function GraphCanvasView({
           open: () => undefined,
         } satisfies RoutedEdgeData,
       };
+      const curved = (l.lineShape ?? "straight") === "curved";
       if (l.to.kind === "node") {
         const target = boxes.get(l.to.id);
         if (!target || l.to.id === l.from) return [];
         const [sourceHandle, targetHandle] = routeAttachPoints(start, target, l.fromPoint, undefined, via);
-        const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: pointXY(target, targetHandle), shape: l.lineShape ?? "straight" };
-        return [{ line: { ...common, target: l.to.id, sourceHandle, targetHandle }, run }];
+        let directions: LineDirections | undefined;
+        if (curved) {
+          const [from, into] = lineDirections(start, target, sourceHandle, targetHandle, via);
+          directions = { start: from, end: into };
+        }
+        const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: pointXY(target, targetHandle), shape: l.lineShape ?? "straight", directions };
+        return [{ line: { ...common, data: { ...common.data, directions }, target: l.to.id, sourceHandle, targetHandle }, run }];
       }
       let at: { x: number; y: number } | undefined;
       if (l.to.kind === "edge") at = middles.get(l.to.id);
@@ -968,8 +986,10 @@ export function GraphCanvasView({
         draggable: free && !readOnly && onLeaderTargetChange !== undefined,
       };
       const sourceHandle = l.fromPoint ?? nearestPoint(start, via[0] ?? at);
-      const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: at, shape: l.lineShape ?? "straight" };
-      return [{ end, line: { ...common, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE }, run }];
+      // The free end (a point, or the middle of a line) arrives along the chord, so only the end at the note has a direction.
+      const directions: LineDirections | undefined = curved ? { start: outwardDirection(start, sourceHandle, via[0] ?? at), end: null } : undefined;
+      const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: at, shape: l.lineShape ?? "straight", directions };
+      return [{ end, line: { ...common, data: { ...common.data, directions }, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE }, run }];
     });
     return { ends: built.flatMap((b) => (b.end ? [b.end] : [])), lines: built.map((b) => b.line), runs: built.map((b) => b.run) };
   }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, markerIds, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow, anchors]);
@@ -1241,7 +1261,8 @@ export function GraphCanvasView({
       const anchor = anchors.get(e.id);
       if (!from || !to || !anchor || anchor.loopSlot !== undefined) continue;
       const run = lineRun(from, to, anchor);
-      runs.push({ id: e.id, start: run.start, points: e.points ?? [], end: run.end, shape: e.lineShape ?? "straight" });
+      const shape = e.lineShape ?? "straight";
+      runs.push({ id: e.id, start: run.start, points: e.points ?? [], end: run.end, shape, directions: edgeDirections(from, to, anchor, e.points ?? [], shape) });
     }
     return lineHops([...runs, ...flowLeaders.runs]);
   }, [hopsOn, edges, boxes, anchors, flowLeaders]);

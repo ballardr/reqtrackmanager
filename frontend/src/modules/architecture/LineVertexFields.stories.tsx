@@ -87,7 +87,7 @@ export const TheShapeHelpNamesEveryOption: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: /^Help: Line shape/ }));
     const tip = await within(document.body).findByRole("tooltip");
     await expect(tip).toHaveTextContent("Diagram default: the line follows the shape chosen for the diagram.");
-    await expect(tip).toHaveTextContent("Curved: one arc bowed to the left");
+    await expect(tip).toHaveTextContent("Curved: leaves each box straight out");
   },
 };
 

@@ -8,13 +8,19 @@ import type { LineShape } from "./graphLinePath";
 /** One shared case: the lines of a drawing and the server's path for each line that hops (see `graphLineHopCases.json`). */
 interface Case {
   name: string;
-  lines: { id: string; start: [number, number]; points: [number, number][]; end: [number, number]; shape: LineShape }[];
+  lines: {
+    id: string; start: [number, number]; points: [number, number][]; end: [number, number]; shape: LineShape;
+    start_direction?: [number, number]; end_direction?: [number, number];
+  }[];
   paths: Record<string, string>;
 }
 
 const CASES = cases as unknown as Case[];
 const pt = ([x, y]: [number, number]) => ({ x, y });
-const toLines = (c: Case): HopLine[] => c.lines.map((l) => ({ id: l.id, start: pt(l.start), points: l.points.map(pt), end: pt(l.end), shape: l.shape }));
+const toLines = (c: Case): HopLine[] => c.lines.map((l) => ({
+  id: l.id, start: pt(l.start), points: l.points.map(pt), end: pt(l.end), shape: l.shape,
+  directions: { start: l.start_direction ? pt(l.start_direction) : null, end: l.end_direction ? pt(l.end_direction) : null },
+}));
 
 function Host() {
   return <p>Runs the browser line hop rule over every case the server's rule produced.</p>;

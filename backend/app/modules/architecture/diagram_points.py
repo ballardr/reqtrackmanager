@@ -18,6 +18,9 @@ Design decisions:
   the last bit.
 - **A marker offers fewer points.** A dot or a diamond (`SIDE_POINTS`) is met only at the middle of a side; the browser's
   box carries the same list as `points`.
+- **A line leaves a box outward.** `outward_direction` gives the direction from the box's centre through an attach point (a
+  side's normal; a corner takes the least-bent of the diagonal and its two side normals toward the line's next point). A Curved
+  line starts its curve along it (`diagram_line_path`); the port is `outwardDirection` in `graphAttachPoints.ts`.
 - **An end left to chance follows the other.** With one end fixed by a person, the other end is the point of its box
   nearest to the fixed one; with neither fixed, the pair of points nearest each other.
 
@@ -26,6 +29,7 @@ Dependencies: `enums` (the point names).
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 
 from app.modules.architecture.enums import AttachPoint
@@ -129,6 +133,83 @@ def line_points(
     if target_point is not None:
         return nearest_point(source, point_xy(target, target_point), source_offered), target_point
     return nearest_pair(source, target, source_offered, target_offered)
+
+
+#: A direction as a unit vector `(dx, dy)`.
+Direction = tuple[float, float]
+
+#: Two dot products are told apart only when they differ by more than this, so a tie keeps the earlier candidate.
+_DIRECTION_TOLERANCE = 1e-9
+
+_SIDE_NORMALS: Mapping[AttachPoint, Direction] = {
+    AttachPoint.TOP: (0, -1), AttachPoint.RIGHT: (1, 0), AttachPoint.BOTTOM: (0, 1), AttachPoint.LEFT: (-1, 0),
+}
+#: For a corner: the signs of its centre-to-corner diagonal, its vertical side normal and its horizontal side normal.
+_CORNERS: Mapping[AttachPoint, tuple[int, int, Direction, Direction]] = {
+    AttachPoint.TOP_RIGHT: (1, -1, (0, -1), (1, 0)),
+    AttachPoint.BOTTOM_RIGHT: (1, 1, (0, 1), (1, 0)),
+    AttachPoint.BOTTOM_LEFT: (-1, 1, (0, 1), (-1, 0)),
+    AttachPoint.TOP_LEFT: (-1, -1, (0, -1), (-1, 0)),
+}
+
+
+def outward_direction(box: Box, point: AttachPoint, toward: Point | None) -> Direction:
+    """The direction a line leaves `box` at `point`: the way from the box's centre through the point.
+
+    A side point has one (its side's normal). A corner has three candidates (the centre-to-corner diagonal and the two side
+    normals it lies on) and takes the one with the smallest angle to the straight line toward `toward`, so a corner bends no
+    more than the boxes' positions need; a tie goes to the diagonal, then to the vertical side.
+
+    Args:
+        box: The box the line meets.
+        point: The attach point on it.
+        toward: Where the line is heading from the point (the other end, or the nearest vertex); `None` chooses the diagonal.
+
+    Returns:
+        A unit vector pointing out of the box.
+    """
+    side = _SIDE_NORMALS.get(point)
+    if side is not None:
+        return side
+    sx, sy, vertical, horizontal = _CORNERS[point]
+    dx, dy = sx * box[2] / 2, sy * box[3] / 2
+    norm = math.sqrt(dx * dx + dy * dy)
+    diagonal: Direction = vertical if norm == 0 else (dx / norm, dy / norm)
+    if toward is None:
+        return diagonal
+    at = point_xy(box, point)
+    lx, ly = toward[0] - at[0], toward[1] - at[1]
+    length = math.sqrt(lx * lx + ly * ly)
+    if length == 0:
+        return diagonal
+    ux, uy = lx / length, ly / length
+    best, best_dot = diagonal, diagonal[0] * ux + diagonal[1] * uy
+    for candidate in (vertical, horizontal):
+        dot = candidate[0] * ux + candidate[1] * uy
+        if dot > best_dot + _DIRECTION_TOLERANCE:
+            best, best_dot = candidate, dot
+    return best
+
+
+def line_directions(
+    source: Box, target: Box, source_point: AttachPoint, target_point: AttachPoint, waypoints: Sequence[Point],
+) -> tuple[Direction, Direction]:
+    """The directions a line leaves its two boxes in: each end's outward direction toward the line's next point (the nearest
+    vertex, else the other end's attach point).
+
+    Args:
+        source: The source box.
+        target: The target box.
+        source_point: The attach point used on the source box.
+        target_point: The attach point used on the target box.
+        waypoints: The vertices in order from the source to the target.
+
+    Returns:
+        `(source direction, target direction)`.
+    """
+    source_toward = waypoints[0] if waypoints else point_xy(target, target_point)
+    target_toward = waypoints[-1] if waypoints else point_xy(source, source_point)
+    return outward_direction(source, source_point, source_toward), outward_direction(target, target_point, target_toward)
 
 
 def route_points(

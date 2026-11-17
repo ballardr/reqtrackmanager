@@ -13,10 +13,13 @@ Design decisions:
 - Coordinates are absolute canvas units, so a box nested in another and the snap grid behave as on the screen.
 - Smooth is a Catmull-Rom curve (tension one half) written as cubic Beziers (`curve_spans`): the control points of the segment
   from `p1` to `p2` are `p1 + (p2 - p0) / 6` and `p2 - (p3 - p1) / 6`, the missing neighbour at either end being the end itself.
-- Three shapes (`LINE_SHAPES`): Straight is segments through the waypoints; Spline is the Catmull-Rom curve through them (straight
-  with none, there being nothing to curve through); Curved is that same curve through the waypoints when there are any, and with
-  none one arc bowed to the left of the line's direction (`bow_span`). The arc is a single cubic span, so the hop rule treats it as
-  any other curve span. A line stores its own shape or none, which follows its diagram's default (`effective_shape`).
+- Three shapes (`LINE_SHAPES`): Straight is segments through the waypoints; Spline is the Catmull-Rom curve through them with free
+  ends (straight with none, there being nothing to curve through); Curved leaves each box along its outward direction
+  (`diagram_points.outward_direction`, passed as `directions`): with no waypoints it is one cubic whose control points lie that
+  direction from each end (`outward_span`), so boxes facing each other give a straight line and a line bends only as much as the
+  boxes need; with waypoints it is the Spline through them with its two end tangents set to those directions. Without directions a
+  Curved line with no waypoints is straight. The curve is a single cubic span, so the hop rule treats it as any other span. A line
+  stores its own shape or none, which follows its diagram's default (`effective_shape`).
 - The browser draws with a TypeScript copy (`frontend/src/components/graphLinePath.ts`); `graphLinePathCases.json` holds the
   cases both are tested against (`tests/test_architecture_line_path.py`), so a change to the rule is made in both.
 """
@@ -32,9 +35,15 @@ Span = tuple[Point, Point, Point, Point]
 
 #: The shapes a line can be drawn in; a diagram's default is one of them and a line's own may also be unset (the default).
 LINE_SHAPES = ("straight", "curved", "spline")
-#: How far a Curved line with no waypoints bows from its chord, as a fraction of the chord's length, and the most it may bow.
-BOW_RATIO = 0.25
-BOW_LIMIT = 60.0
+#: How far a Curved line's control points sit from its ends along the outward directions: this fraction of the chord, kept
+#: between the minimum and the maximum (canvas units), so a short line still has room to turn and a long one does not swing wide.
+HANDLE_RATIO = 0.4
+HANDLE_MIN = 24.0
+HANDLE_MAX = 120.0
+
+#: The directions a line leaves its two ends in (unit vectors out of each box); `None` leaves an end to the line itself.
+Directions = tuple[Point | None, Point | None]
+NO_DIRECTIONS: Directions = (None, None)
 
 #: The most waypoints one line may have (the schemas' list cap).
 MAX_WAYPOINTS = 16
@@ -71,39 +80,68 @@ def effective_shape(own: str | enum.Enum | None, default: str | enum.Enum) -> st
     return plain if plain in LINE_SHAPES else "straight"
 
 
-def bow_span(start: Point, end: Point) -> Span | None:
-    """The one cubic span of a Curved line that has no waypoints: an arc bowed to the left of the direction of travel.
-
-    The control points are a third and two thirds of the way along the chord, each moved sideways by the bow, so the curve
-    leaves the chord by three quarters of it at its middle.
+def outward_span(start: Point, end: Point, directions: Directions = NO_DIRECTIONS) -> Span | None:
+    """The one cubic span of a Curved line that has no waypoints: it leaves `start` along its outward direction and arrives at
+    `end` along its own, the control points `handle` from each end. An end with no direction leaves or arrives along the chord,
+    so a line with one known end still bends only at that end.
 
     Returns:
-        `(start, control 1, control 2, end)`, or `None` when the two points coincide (nothing to bow).
+        `(start, control 1, control 2, end)`, or `None` when the two points coincide or no end has a direction (a straight line).
     """
     dx, dy = end[0] - start[0], end[1] - start[1]
     length = math.sqrt(dx * dx + dy * dy)
-    if length == 0:
+    out_dir, back_dir = directions
+    if length == 0 or (out_dir is None and back_dir is None):
         return None
-    bow = min(length * BOW_RATIO, BOW_LIMIT)
-    nx, ny = dy / length * bow, -dx / length * bow
-    c1 = (start[0] + dx / 3 + nx, start[1] + dy / 3 + ny)
-    c2 = (start[0] + dx * 2 / 3 + nx, start[1] + dy * 2 / 3 + ny)
-    return (start, c1, c2, end)
+    ux, uy = dx / length, dy / length
+    out = out_dir if out_dir is not None else (ux, uy)
+    back = back_dir if back_dir is not None else (-ux, -uy)
+    handle = min(max(length * HANDLE_RATIO, HANDLE_MIN), HANDLE_MAX)
+    return (
+        start, (start[0] + out[0] * handle, start[1] + out[1] * handle),
+        (end[0] + back[0] * handle, end[1] + back[1] * handle), end,
+    )
 
 
-def shape_spans(start: Point, points: Sequence[Point], end: Point, shape: str) -> list[Span]:
+def _with_end_tangents(spans: list[Span], directions: Directions) -> list[Span]:
+    """`spans` with the first leaving its start along `directions[0]` and the last arriving along `directions[1]`, a third of
+    the span's length from the end."""
+    out = list(spans)
+    if not out:
+        return out
+    first, last = directions
+    if first is not None:
+        p1, _, c2, p2 = out[0]
+        third = math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) / 3
+        out[0] = (p1, (p1[0] + first[0] * third, p1[1] + first[1] * third), c2, p2)
+    if last is not None:
+        p1, c1, _, p2 = out[-1]
+        third = math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) / 3
+        out[-1] = (p1, c1, (p2[0] + last[0] * third, p2[1] + last[1] * third), p2)
+    return out
+
+
+def shape_spans(start: Point, points: Sequence[Point], end: Point, shape: str, directions: Directions = NO_DIRECTIONS) -> list[Span]:
     """The cubic spans a line of `shape` is drawn with, or none when it is drawn as straight segments.
 
+    Args:
+        start: The point on the source box.
+        points: The waypoints in order from the source to the target.
+        end: The point on the target box.
+        shape: A value of `LINE_SHAPES`.
+        directions: The directions the line leaves its two boxes in, which a Curved line follows.
+
     Returns:
-        Straight: none. Spline: the Catmull-Rom spans through the waypoints (none without waypoints). Curved: the same spans
-        through the waypoints, or the single bowed arc without any.
+        Straight: none. Spline: the Catmull-Rom spans through the waypoints (none without waypoints). Curved: those spans with
+        the end tangents along `directions`, or the single outward span without waypoints.
     """
     if shape == "straight":
         return []
     if points:
-        return curve_spans(start, points, end)
+        spans = curve_spans(start, points, end)
+        return _with_end_tangents(spans, directions) if shape == "curved" else spans
     if shape == "curved":
-        arc = bow_span(start, end)
+        arc = outward_span(start, end, directions)
         return [arc] if arc is not None else []
     return []
 
@@ -127,7 +165,7 @@ def curve_spans(start: Point, points: Sequence[Point], end: Point) -> list[Span]
     return spans
 
 
-def line_path(start: Point, points: Sequence[Point], end: Point, shape: str = "straight") -> str:
+def line_path(start: Point, points: Sequence[Point], end: Point, shape: str = "straight", directions: Directions = NO_DIRECTIONS) -> str:
     """The SVG path of a line from `start` to `end` through `points`.
 
     Args:
@@ -135,11 +173,12 @@ def line_path(start: Point, points: Sequence[Point], end: Point, shape: str = "s
         points: The waypoints in order from the source to the target (may be empty).
         end: The point on the target box.
         shape: A value of `LINE_SHAPES`.
+        directions: The directions the line leaves its boxes in, which a Curved line follows.
 
     Returns:
         `M … L …` for straight segments (and for a line that has nothing to curve), `M … C …` for a curved one.
     """
-    spans = shape_spans(start, points, end, shape)
+    spans = shape_spans(start, points, end, shape, directions)
     if not spans:
         return "M " + " L ".join(_p(point) for point in [start, *points, end])
     parts = [f"M {_p(start)}"]
@@ -148,15 +187,15 @@ def line_path(start: Point, points: Sequence[Point], end: Point, shape: str = "s
     return " ".join(parts)
 
 
-def line_middle(start: Point, points: Sequence[Point], end: Point, shape: str = "straight") -> Point:
+def line_middle(start: Point, points: Sequence[Point], end: Point, shape: str = "straight", directions: Directions = NO_DIRECTIONS) -> Point:
     """The point half way along the straight segments from `start` through `points` to `end` (the label position).
 
     A curve through waypoints takes its middle on the straight segments too, so the label stays close to it without a curve
-    length to compute. A Curved line with no waypoints has its label on the arc itself, whose middle is a third of the way
-    from each control point (`(start + 3 c1 + 3 c2 + end) / 8`).
+    length to compute. A Curved line with no waypoints has its label on the curve itself, at `t = 1/2`
+    (`(start + 3 c1 + 3 c2 + end) / 8`).
     """
     if shape == "curved" and not points:
-        arc = bow_span(start, end)
+        arc = outward_span(start, end, directions)
         if arc is not None:
             return ((arc[0][0] + 3 * arc[1][0] + 3 * arc[2][0] + arc[3][0]) / 8, (arc[0][1] + 3 * arc[1][1] + 3 * arc[2][1] + arc[3][1]) / 8)
     nodes = [start, *points, end]

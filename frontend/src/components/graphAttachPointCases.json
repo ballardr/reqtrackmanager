@@ -18,6 +18,16 @@
     "expected": [
       "right",
       "left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -1,
+        0
+      ]
     ]
   },
   {
@@ -39,6 +49,16 @@
     "expected": [
       "left",
       "right"
+    ],
+    "directions": [
+      [
+        -1,
+        0
+      ],
+      [
+        1,
+        0
+      ]
     ]
   },
   {
@@ -60,6 +80,16 @@
     "expected": [
       "bottom",
       "top"
+    ],
+    "directions": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        -1
+      ]
     ]
   },
   {
@@ -81,6 +111,16 @@
     "expected": [
       "top_right",
       "bottom_left"
+    ],
+    "directions": [
+      [
+        0.894427191,
+        -0.447213595
+      ],
+      [
+        -0.894427191,
+        0.447213595
+      ]
     ]
   },
   {
@@ -102,6 +142,16 @@
     "expected": [
       "bottom_left",
       "top_right"
+    ],
+    "directions": [
+      [
+        -0.894427191,
+        0.447213595
+      ],
+      [
+        0.894427191,
+        -0.447213595
+      ]
     ]
   },
   {
@@ -123,6 +173,16 @@
     "expected": [
       "right",
       "top_left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -1,
+        0
+      ]
     ]
   },
   {
@@ -144,6 +204,16 @@
     "expected": [
       "bottom_right",
       "top_left"
+    ],
+    "directions": [
+      [
+        0.894427191,
+        0.447213595
+      ],
+      [
+        -0.857492926,
+        -0.514495755
+      ]
     ]
   },
   {
@@ -165,6 +235,16 @@
     "expected": [
       "right",
       "bottom_left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -1,
+        0
+      ]
     ]
   },
   {
@@ -186,6 +266,16 @@
     "expected": [
       "right",
       "top"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        -1
+      ]
     ]
   },
   {
@@ -207,6 +297,16 @@
     "expected": [
       "top",
       "top"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        -1
+      ]
     ]
   },
   {
@@ -228,6 +328,16 @@
     "expected": [
       "right",
       "left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -1,
+        0
+      ]
     ]
   },
   {
@@ -249,6 +359,16 @@
     "expected": [
       "bottom",
       "bottom_left"
+    ],
+    "directions": [
+      [
+        0,
+        1
+      ],
+      [
+        -1,
+        0
+      ]
     ]
   },
   {
@@ -270,6 +390,16 @@
     "expected": [
       "top_right",
       "top"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        -1
+      ]
     ]
   },
   {
@@ -291,6 +421,16 @@
     "expected": [
       "top_left",
       "top_left"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        -0.894427191,
+        -0.447213595
+      ]
     ]
   },
   {
@@ -312,6 +452,16 @@
     "expected": [
       "left",
       "right"
+    ],
+    "directions": [
+      [
+        -1,
+        0
+      ],
+      [
+        1,
+        0
+      ]
     ]
   },
   {
@@ -333,6 +483,16 @@
     "expected": [
       "left",
       "left"
+    ],
+    "directions": [
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        0
+      ]
     ]
   },
   {
@@ -360,6 +520,16 @@
     "expected": [
       "top_right",
       "bottom"
+    ],
+    "directions": [
+      [
+        0.894427191,
+        -0.447213595
+      ],
+      [
+        0,
+        1
+      ]
     ]
   },
   {
@@ -393,6 +563,16 @@
     "expected": [
       "left",
       "right"
+    ],
+    "directions": [
+      [
+        -1,
+        0
+      ],
+      [
+        1,
+        0
+      ]
     ]
   },
   {
@@ -420,6 +600,16 @@
     "expected": [
       "right",
       "top_left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -0.894427191,
+        -0.447213595
+      ]
     ]
   },
   {
@@ -447,6 +637,16 @@
     "expected": [
       "top_right",
       "top_left"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        -1
+      ]
     ]
   },
   {
@@ -474,6 +674,16 @@
     "expected": [
       "top_right",
       "top_left"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        -1
+      ]
     ]
   },
   {
@@ -501,6 +711,16 @@
     "expected": [
       "left",
       "bottom_left"
+    ],
+    "directions": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ]
     ]
   },
   {
@@ -532,6 +752,16 @@
     "expected": [
       "bottom",
       "bottom"
+    ],
+    "directions": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        1
+      ]
     ]
   },
   {
@@ -565,6 +795,394 @@
     "expected": [
       "bottom",
       "bottom_left"
+    ],
+    "directions": [
+      [
+        0,
+        1
+      ],
+      [
+        -0.894427191,
+        0.447213595
+      ]
+    ]
+  },
+  {
+    "name": "a top right corner with the other end straight above leaves upward",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      60,
+      -300,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": "bottom",
+    "expected": [
+      "top_right",
+      "bottom"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        1
+      ]
+    ]
+  },
+  {
+    "name": "a top right corner with the other end level to the right leaves rightward",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      400,
+      -20,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": "left",
+    "expected": [
+      "top_right",
+      "left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -1,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "a top right corner with the other end up and to the right leaves along the diagonal",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      400,
+      -300,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": "bottom_left",
+    "expected": [
+      "top_right",
+      "bottom_left"
+    ],
+    "directions": [
+      [
+        0.894427191,
+        -0.447213595
+      ],
+      [
+        -0.780868809,
+        0.624695048
+      ]
+    ]
+  },
+  {
+    "name": "a top right corner with the other end below leaves rightward",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      400,
+      200,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": "top",
+    "expected": [
+      "top_right",
+      "top"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        -1
+      ]
+    ]
+  },
+  {
+    "name": "a bottom right corner with the other end below leaves downward",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      60,
+      300,
+      100,
+      80
+    ],
+    "source_point": "bottom_right",
+    "target_point": "top",
+    "expected": [
+      "bottom_right",
+      "top"
+    ],
+    "directions": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        -1
+      ]
+    ]
+  },
+  {
+    "name": "a bottom left corner with the other end to the left leaves leftward",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      -400,
+      60,
+      100,
+      80
+    ],
+    "source_point": "bottom_left",
+    "target_point": "right",
+    "expected": [
+      "bottom_left",
+      "right"
+    ],
+    "directions": [
+      [
+        -1,
+        0
+      ],
+      [
+        1,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "a bottom left corner with the other end down and to the left leaves along the diagonal",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      -400,
+      300,
+      100,
+      80
+    ],
+    "source_point": "bottom_left",
+    "target_point": "top_right",
+    "expected": [
+      "bottom_left",
+      "top_right"
+    ],
+    "directions": [
+      [
+        -0.894427191,
+        0.447213595
+      ],
+      [
+        0.780868809,
+        -0.624695048
+      ]
+    ]
+  },
+  {
+    "name": "a top left corner with the other end up and to the left leaves along the diagonal",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      -400,
+      -300,
+      100,
+      80
+    ],
+    "source_point": "top_left",
+    "target_point": "bottom_right",
+    "expected": [
+      "top_left",
+      "bottom_right"
+    ],
+    "directions": [
+      [
+        -0.894427191,
+        -0.447213595
+      ],
+      [
+        0.780868809,
+        0.624695048
+      ]
+    ]
+  },
+  {
+    "name": "a top left corner with the other end above leaves upward",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      -20,
+      -300,
+      100,
+      80
+    ],
+    "source_point": "top_left",
+    "target_point": "bottom",
+    "expected": [
+      "top_left",
+      "bottom"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        1
+      ]
+    ]
+  },
+  {
+    "name": "a corner of a wide box has a flatter diagonal",
+    "source": [
+      0,
+      0,
+      400,
+      40
+    ],
+    "target": [
+      600,
+      -400,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": "bottom_left",
+    "expected": [
+      "top_right",
+      "bottom_left"
+    ],
+    "directions": [
+      [
+        0,
+        -1
+      ],
+      [
+        -0.780868809,
+        0.624695048
+      ]
+    ]
+  },
+  {
+    "name": "a corner with the other end at the corner itself takes the diagonal",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      160,
+      0,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": "top_left",
+    "expected": [
+      "top_right",
+      "top_left"
+    ],
+    "directions": [
+      [
+        0.894427191,
+        -0.447213595
+      ],
+      [
+        -0.780868809,
+        -0.624695048
+      ]
+    ]
+  },
+  {
+    "name": "a corner with a vertex leaves toward the vertex, not the other box",
+    "source": [
+      0,
+      0,
+      160,
+      80
+    ],
+    "target": [
+      400,
+      -300,
+      100,
+      80
+    ],
+    "source_point": "top_right",
+    "target_point": null,
+    "via": [
+      [
+        160,
+        200
+      ]
+    ],
+    "expected": [
+      "top_right",
+      "bottom_left"
+    ],
+    "directions": [
+      [
+        1,
+        0
+      ],
+      [
+        -0.780868809,
+        0.624695048
+      ]
     ]
   }
 ]

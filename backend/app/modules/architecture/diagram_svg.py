@@ -59,7 +59,7 @@ from app.modules.architecture.diagram_box_fit import (
 )
 from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
-from app.modules.architecture.diagram_line_path import Point, effective_shape, line_middle, line_path
+from app.modules.architecture.diagram_line_path import NO_DIRECTIONS, Directions, Point, effective_shape, line_middle, line_path
 from app.modules.architecture.diagram_note_layout import (
     NOTE_FONT_SIZE,
     NOTE_LINE_HEIGHT,
@@ -68,7 +68,7 @@ from app.modules.architecture.diagram_note_layout import (
     drawn_size,
     note_lines,
 )
-from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy
+from app.modules.architecture.diagram_points import line_directions, line_points, nearest_point, outward_direction, point_xy
 from app.modules.architecture.diagram_symbol_label import text_width
 from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, LineShape, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
@@ -385,6 +385,11 @@ class _Run:
     end: Point
     shape: str
     middle: Point
+    directions: Directions = NO_DIRECTIONS
+
+
+#: A drawn leader: where it starts, its vertices, where it ends and the directions it leaves its boxes in.
+LeaderRun = tuple[Point, list[Point], Point, Directions]
 
 
 def _edge_runs(
@@ -412,10 +417,15 @@ def _edge_runs(
             continue
         _, _, vertices, own_shape = routes[edge.id]
         shape = effective_shape(own_shape, default_shape)
-        (x1, y1), (x2, y2) = point_xy((a.x, a.y, a.width, a.height), anchor.source), point_xy((b.x, b.y, b.width, b.height), anchor.target)
+        box_a, box_b = (a.x, a.y, a.width, a.height), (b.x, b.y, b.width, b.height)
+        (x1, y1), (x2, y2) = point_xy(box_a, anchor.source), point_xy(box_b, anchor.target)
         x1, y1, x2, y2 = x1 + anchor.shift[0], y1 + anchor.shift[1], x2 + anchor.shift[0], y2 + anchor.shift[1]
-        middle = line_middle((x1, y1), vertices, (x2, y2), shape) if vertices or shape == "curved" else ((x1 + x2) / 2, (y1 + y2) / 2)
-        runs.append(_Run(edge, (x1, y1), vertices, (x2, y2), shape, middle))
+        # A Curved line leaves each box along its outward direction; no other shape uses the directions.
+        directions: Directions = line_directions(box_a, box_b, anchor.source, anchor.target, vertices) if shape == "curved" else NO_DIRECTIONS
+        middle = (
+            line_middle((x1, y1), vertices, (x2, y2), shape, directions) if vertices or shape == "curved" else ((x1 + x2) / 2, (y1 + y2) / 2)
+        )
+        runs.append(_Run(edge, (x1, y1), vertices, (x2, y2), shape, middle, directions))
     return runs
 
 
@@ -433,7 +443,7 @@ def _edges(runs: list[_Run], hops: dict[str, str]) -> tuple[str, str]:
         )
         arrow = f' marker-end="url(#arrow{marker})"' if not edge.two_way else ""
         if edge.id in hops or vertices or run.shape != "straight":
-            path = hops.get(edge.id) or line_path((x1, y1), vertices, (x2, y2), run.shape)
+            path = hops.get(edge.id) or line_path((x1, y1), vertices, (x2, y2), run.shape, run.directions)
             lines.append(f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2"{dash}{arrow}/>')
         else:
             lines.append(
@@ -478,14 +488,15 @@ def _leader_run(
     note: NoteOut, leader: LeaderOut, boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
     edges: list[ViewEdge], states: Mapping[uuid.UUID, tuple[float, float, float, float]] | None = None,
     transitions: Mapping[uuid.UUID, Point] | None = None,
-) -> tuple[Point, list[Point], Point] | None:
-    """Where a leader runs, as `(start, vertices, end)`, or `None` when its target is not drawn.
+) -> LeaderRun | None:
+    """Where a leader runs, as `(start, vertices, end, directions)`, or `None` when its target is not drawn.
 
     The end is a box's attach point (an element of a block diagram, a state of a state machine diagram), a drawn line's middle
     (a connection, or a transition) or the free point. A box end and the start choose their attach points by one rule, held
     equal to the browser's: a point a person chose wins; otherwise an open end is the point of its box nearest the vertex next
     to it, and with no vertices the nearest pair of attach points (a box target) or the note's point nearest the end (a line or a
-    free point).
+    free point). The directions are those a Curved leader leaves its boxes in (`diagram_points.line_directions`); an end on a
+    line's middle or at a free point has none, so it arrives along the chord.
 
     Args:
         note: The note the leader belongs to.
@@ -512,10 +523,12 @@ def _leader_run(
             return None
     if target_box is not None:
         if vertices:
-            end = point_xy(target_box, nearest_point(target_box, vertices[-1]))
-        else:
-            from_point, to_point = line_points(block, target_box, leader.start_point, None)
-            return point_xy(block, from_point), [], point_xy(target_box, to_point)
+            into = nearest_point(target_box, vertices[-1])
+            end = point_xy(target_box, into)
+            from_point = leader.start_point or nearest_point(block, vertices[0])
+            return point_xy(block, from_point), vertices, end, line_directions(block, target_box, from_point, into, vertices)
+        from_point, to_point = line_points(block, target_box, leader.start_point, None)
+        return point_xy(block, from_point), [], point_xy(target_box, to_point), line_directions(block, target_box, from_point, to_point, [])
     elif kind == LeaderKind.CONNECTION and leader.connection_id is not None:
         drawn = next((e for e in edges if e.id in middles and any(c.id == leader.connection_id for c in e.connections)), None)
         if drawn is None:
@@ -530,8 +543,9 @@ def _leader_run(
         end = (leader.x, leader.y)
     else:
         return None
-    start_point = leader.start_point or nearest_point(block, vertices[0] if vertices else end)
-    return point_xy(block, start_point), vertices, end
+    toward = vertices[0] if vertices else end
+    start_point = leader.start_point or nearest_point(block, toward)
+    return point_xy(block, start_point), vertices, end, (outward_direction(block, start_point, toward), None)
 
 
 def _leader_marker(tone: str, style: LineEnd, stroke: str, defs: dict[str, str]) -> str:
@@ -556,10 +570,10 @@ def _leader_runs(
     notes: list[NoteOut], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], middles: dict[str, tuple[float, float]],
     edges: list[ViewEdge], states: Mapping[uuid.UUID, tuple[float, float, float, float]] | None = None,
     transitions: Mapping[uuid.UUID, Point] | None = None,
-) -> dict[uuid.UUID, tuple[Point, list[Point], Point]]:
+) -> dict[uuid.UUID, LeaderRun]:
     """Where each drawn leader runs, by leader id (a leader whose target is not drawn is left out); the arguments after `edges`
     are a state machine diagram's targets (see `_leader_run`)."""
-    runs: dict[uuid.UUID, tuple[Point, list[Point], Point]] = {}
+    runs: dict[uuid.UUID, LeaderRun] = {}
     for n in _drawn_notes(notes):
         for leader in n.leaders:
             run = _leader_run(n, leader, boxes, middles, edges, states, transitions)
@@ -569,20 +583,20 @@ def _leader_runs(
 
 
 def _hop_paths(
-    runs: list[_Run], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], notes: list[NoteOut], default_shape: str,
+    runs: list[_Run], leader_runs: dict[uuid.UUID, LeaderRun], notes: list[NoteOut], default_shape: str,
 ) -> dict[str, str]:
     """The hop path of every connection and leader that crosses another line (`diagram_line_hops`)."""
-    lines = [HopLine(str(r.edge.id), r.start, r.vertices, r.end, r.shape) for r in runs]
+    lines = [HopLine(str(r.edge.id), r.start, r.vertices, r.end, r.shape, r.directions) for r in runs]
     for n in _drawn_notes(notes):
         for leader in n.leaders:
             if leader.id in leader_runs:
-                start, vertices, end = leader_runs[leader.id]
-                lines.append(HopLine(str(leader.id), start, vertices, end, leader_shape(leader, default_shape)))
+                start, vertices, end, directions = leader_runs[leader.id]
+                lines.append(HopLine(str(leader.id), start, vertices, end, leader_shape(leader, default_shape), directions))
     return line_hops(lines)
 
 
 def _notes(
-    notes: list[NoteOut], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], hops: dict[str, str],
+    notes: list[NoteOut], leader_runs: dict[uuid.UUID, LeaderRun], hops: dict[str, str],
     default_shape: str = "straight",
 ) -> tuple[str, str, str]:
     """The `<defs>` (a start and an end marker per tone and style used), the leaders (drawn under everything) and the note
@@ -597,13 +611,13 @@ def _notes(
             run = leader_runs.get(leader.id)
             if run is None:
                 continue
-            start, vertices, end = run
+            start, vertices, end, directions = run
             start_marker = _leader_marker(tone, leader.start_style, stroke, defs)
             end_marker = _leader_marker(tone, leader.end_style, stroke, defs)
             marks = (f' marker-start="{start_marker}"' if start_marker else "") + (f' marker-end="{end_marker}"' if end_marker else "")
             shape = leader_shape(leader, default_shape)
             if vertices or str(leader.id) in hops or shape != "straight":
-                path = hops.get(str(leader.id)) or line_path(start, vertices, end, shape)
+                path = hops.get(str(leader.id)) or line_path(start, vertices, end, shape, directions)
                 leaders.append(f'<path d="{path}" fill="none" stroke="{stroke}" stroke-width="1.5"{marks}/>')
             else:
                 leaders.append(

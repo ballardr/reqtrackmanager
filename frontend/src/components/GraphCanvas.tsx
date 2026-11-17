@@ -198,7 +198,7 @@ export interface GraphCanvasLeader {
   fromPoint?: AttachPoint;
   /** The vertices in order from the node to the target, in canvas units. */
   points?: LinePoint[];
-  /** How the line runs (default straight): a curve through the vertices, or with none a bowed arc, or straight segments (`graphLinePath`). */
+  /** How the line runs (default straight): a curve that leaves each box outward, a curve through the vertices, or straight segments (`graphLinePath`). */
   lineShape?: LineShape;
   /** The start decoration; defaults to none. */
   startEnd?: GraphLineEnd;
@@ -261,7 +261,7 @@ export interface GraphCanvasEdge {
   points?: LinePoint[];
   /**
    * How the line runs (default straight): Straight is segments through the vertices, Spline a curve through them (straight with
-   * none), Curved the same curve or, with no vertices, one arc bowed to the left of the line's direction. The consumer resolves a
+   * none), Curved leaves each box along its outward direction (`graphAttachPoints`) and bends only as much as the boxes need. The consumer resolves a
    * line's own shape against its diagram's default, so this is always the shape drawn.
    */
   lineShape?: LineShape;

@@ -172,7 +172,7 @@ export const TheLineShapeHelpNamesEveryOption: Story = {
     await userEvent.click(within(dialog).getByRole("button", { name: /^Help: Default line shape/ }));
     const tip = await within(document.body).findByRole("tooltip");
     await expect(tip).toHaveTextContent("Straight: segments through the line's vertices.");
-    await expect(tip).toHaveTextContent("Curved: one arc bowed to the left");
+    await expect(tip).toHaveTextContent("Curved: leaves each box straight out");
     await expect(tip).toHaveTextContent("Spline: a curve through the line's vertices");
   },
 };
