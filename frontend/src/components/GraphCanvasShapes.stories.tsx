@@ -244,6 +244,34 @@ export const MarkerTextCanBeDrawnOutsideItsMarker: Story = {
   },
 };
 
+/** A small drawing with a long label beside a symbol opens at full size with the label inside the view (it once zoomed far out). */
+export const ASmallDrawingWithALongOutsideLabelOpensAtFullSizeWithTheLabelInView: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Order processing" showViewToggle={false} height={360} fitMaxZoom={1}
+      nodes={[
+        { id: "open", label: "Open", x: 0, y: 0 },
+        { id: "check", label: "Payment check", x: 40, y: 140, width: 36, height: 36, marker: true, symbolSvg: DIAMOND, markerText: { lines: ["Enough detail to determine", "state of charge"], onFill: false, block: { x: 40, y: 0, width: 160, height: 36, align: "left" } } },
+      ]}
+      edges={[]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const check = nodeEl(canvas, "Payment check");
+    const view = canvasElement.querySelector(".react-flow")!;
+    // A 36 unit symbol is drawn at about 36 pixels (the drawing is small, so only the zoom limit of 1 applies), not shrunk by padding.
+    await waitFor(() => expect(rect(check).width).toBeGreaterThan(30));
+    await waitFor(() => {
+      const text = rect(check.querySelector(".graph-node-marker-text-block")!);
+      const frame = rect(view);
+      expect(text.left).toBeGreaterThanOrEqual(frame.left);
+      expect(text.right).toBeLessThanOrEqual(frame.right);
+      expect(text.bottom).toBeLessThanOrEqual(frame.bottom);
+    });
+  },
+};
+
 /** A node's `attachPoints` narrow where an open line end may meet it: a diamond that does not offer its left side is met at another. */
 export const AnOpenLineEndAvoidsASideTheNodeDoesNotOffer: Story = {
   render: () => (

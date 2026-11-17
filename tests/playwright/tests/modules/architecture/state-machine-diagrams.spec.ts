@@ -515,6 +515,8 @@ test.describe("System Architecture: state machine diagrams", () => {
       await expect.poll(async () => (await placed()).text!.left).toBeCloseTo(24, 0);
       const right = await placed();
       expect(right.width).toBeCloseTo(20, 0);
+      // The label beside the symbol does not zoom the drawing out: a 20 unit symbol is drawn at about 20 pixels.
+      expect((await choice.boundingBox())!.width).toBeGreaterThan(16);
       expect((right.text!.top + right.text!.bottom) / 2).toBeCloseTo(right.height / 2, 0);
       expect((await choice.boundingBox())!.width).toBeLessThan(inside.width / 2);
     });

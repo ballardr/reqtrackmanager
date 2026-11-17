@@ -64,6 +64,7 @@ import {
   type NodeChange,
   type NodeProps,
   type FinalConnectionState,
+  getViewportForBounds,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -96,8 +97,8 @@ const NO_BADGES: readonly GraphNodeBadge[] = [];
 
 const DEFAULT_WIDTH = DEFAULT_BOX_WIDTH;
 const DEFAULT_HEIGHT = DEFAULT_BOX_HEIGHT;
-/** The room (screen pixels) the opening view leaves beyond a marker label that lies outside its marker, on top of the label itself. */
-const FIT_MARGIN = 24;
+/** The share of the view left empty around the drawing when it is fitted (React Flow's own default). */
+const FIT_PADDING = 0.1;
 /** The smallest size a node can be resized to, by pointer or key, and the step of a key resize. */
 const MIN_WIDTH = 80;
 const MIN_HEIGHT = 40;
@@ -748,27 +749,49 @@ export function GraphCanvasView({
     return map;
   }, [nodes, moved, sized]);
 
-  // The most any marker's label block reaches beyond its marker's frame, so the opening view leaves room for the text.
-  const labelOverhang = useMemo(() => {
-    let most = 0;
+  // The text blocks of markers whose label lies outside the marker, in absolute canvas units. React Flow's own fit measures only the
+  // nodes, so the opening view adds these to the bounds it fits (`fitContent`); padding the view instead took the label's whole
+  // length from every edge of a small drawing and zoomed it far out.
+  const labelRects = useMemo(() => {
+    const rects: { x: number; y: number; width: number; height: number }[] = [];
     for (const n of nodes) {
       const block = n.marker ? n.markerText?.block : undefined;
-      if (!block) continue;
-      const width = n.width ?? DEFAULT_WIDTH;
-      const height = n.height ?? DEFAULT_HEIGHT;
-      most = Math.max(most, -block.x, -block.y, block.x + block.width - width, block.y + block.height - height);
+      const box = boxes.get(n.id);
+      if (block && box) rects.push({ x: box.x + block.x, y: box.y + block.y, width: block.width, height: block.height });
     }
-    return Math.ceil(most);
-  }, [nodes]);
-  const fitOptions = useMemo(
-    () => (labelOverhang > 0 ? { maxZoom: fitMaxZoom, padding: `${labelOverhang + FIT_MARGIN}px` as const } : { maxZoom: fitMaxZoom }),
-    [fitMaxZoom, labelOverhang],
-  );
+    return rects;
+  }, [nodes, boxes]);
+  const labelRectsRef = useLatest(labelRects);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Fits the view to the drawing: every node and every label placed outside its marker, with the usual padding and never past
+   * `fitMaxZoom`. With no such label this is React Flow's own fit.
+   */
+  const fitContent = useCallback((instance: ReactFlowInstance<FlowNode, Edge>, duration: number) => {
+    const rects = labelRectsRef.current;
+    if (rects.length === 0) return instance.fitView({ maxZoom: fitMaxZoom, padding: FIT_PADDING, duration });
+    const all = instance.getNodes();
+    const bounds = all.length > 0 ? instance.getNodesBounds(all) : null;
+    let left = bounds ? bounds.x : Infinity;
+    let top = bounds ? bounds.y : Infinity;
+    let right = bounds ? bounds.x + bounds.width : -Infinity;
+    let bottom = bounds ? bounds.y + bounds.height : -Infinity;
+    for (const r of rects) {
+      left = Math.min(left, r.x);
+      top = Math.min(top, r.y);
+      right = Math.max(right, r.x + r.width);
+      bottom = Math.max(bottom, r.y + r.height);
+    }
+    const size = wrapperRef.current?.getBoundingClientRect();
+    if (!size || size.width === 0 || size.height === 0) return Promise.resolve(false);
+    const view = getViewportForBounds({ x: left, y: top, width: right - left, height: bottom - top }, size.width, size.height, 0.1, fitMaxZoom, FIT_PADDING);
+    return instance.setViewport(view, { duration });
+  }, [fitMaxZoom, labelRectsRef, wrapperRef]);
 
   // Attach points near the pointer: the boxes the pointer is near carry `data-attach-near` on their element (the stylesheet shows
   // their points). It is set from a pointer move through the DOM, never through state, so a move re-renders nothing; the work
   // is one pass over the boxes per animation frame. Read-only and comment mode draw no points, so they track nothing.
-  const wrapper = useRef<HTMLDivElement>(null);
   const nearIds = useRef<Set<string>>(new Set());
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const frame = useRef(0);
@@ -777,7 +800,7 @@ export function GraphCanvasView({
   const latestBoxes = useLatest(boxes);
   const latestContainers = useLatest(containerIds);
   const markNear = useCallback((ids: Set<string>) => {
-    const root = wrapper.current;
+    const root = wrapperRef.current;
     if (!root) return;
     const mark = (id: string, near: boolean) => {
       const el = root.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
@@ -1299,10 +1322,21 @@ export function GraphCanvasView({
     if (fittedForCentre.current) move();
     else {
       fittedForCentre.current = true;
-      void instance.fitView({ ...fitOptions, duration: 0 }).then(move);
+      void fitContent(instance, 0).then(move);
     }
     return undefined;
-  }, [centerKey, latestCenter, initialised, fitOptions]);
+  }, [centerKey, latestCenter, initialised, fitContent]);
+
+  // React Flow's own fit on load does not know about labels outside their markers, so a canvas that has any fits itself once, when
+  // it is first ready (the fit the person sees is the same one a link to a thread starts from).
+  const fittedOnLoad = useRef(false);
+  const hasOutsideLabels = labelRects.length > 0;
+  useEffect(() => {
+    const instance = flow.current;
+    if (!initialised || !hasOutsideLabels || fittedOnLoad.current || !instance) return;
+    fittedOnLoad.current = true;
+    void fitContent(instance, 0);
+  }, [initialised, hasOutsideLabels, fitContent]);
 
   const keyResize = resizable && !readOnly && onNodesResize !== undefined;
   const keyDelete = !readOnly && onDelete !== undefined;
@@ -1383,7 +1417,7 @@ export function GraphCanvasView({
 
   return (
     <div
-      ref={wrapper} role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}
+      ref={wrapperRef} role="group" aria-label={ariaLabel} aria-describedby={helpId} style={{ height }}
       onDragOver={allowDrop} onDrop={dropItem} onKeyDownCapture={handleKey}
       onPointerMoveCapture={tracking ? trackPointer : undefined}
       onPointerLeave={tracking ? clearNear : undefined}
@@ -1444,8 +1478,8 @@ export function GraphCanvasView({
         snapToGrid={snapping}
         snapGrid={snapGrid !== undefined && snapGrid > 0 ? [snapGrid, snapGrid] : undefined}
         connectionMode={ConnectionMode.Loose}
-        fitView
-        fitViewOptions={fitOptions}
+        fitView={!hasOutsideLabels}
+        fitViewOptions={{ maxZoom: fitMaxZoom, padding: FIT_PADDING }}
         minZoom={0.1}
         maxZoom={2}
       >
