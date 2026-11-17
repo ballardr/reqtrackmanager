@@ -36,7 +36,7 @@ import uuid
 
 from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
-from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
+from app.modules.architecture.diagram_line_path import Point, effective_shape, line_middle, line_path
 from app.modules.architecture.diagram_points import ATTACH_POINTS, point_xy
 from app.modules.architecture.diagram_svg import (
     _ROOT,
@@ -47,6 +47,7 @@ from app.modules.architecture.diagram_svg import (
     _notes,
     _text,
     _wrap,
+    leader_shape,
 )
 from app.modules.architecture.diagram_symbol_label import LABEL_FONT_SIZE, LABEL_LINE_HEIGHT, LABEL_PADDING, BesideLayout, beside_label, fit_label
 from app.modules.architecture.enums import LabelPosition, StateKind
@@ -212,11 +213,11 @@ def _label(lines: list[str], x: float, bottom: float, anchor: str) -> str:
 _Entry = tuple[TransitionOut, list[str], str | None, Point, list[Point], Point, Point, str]
 
 
-def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut]) -> list[_Entry]:
+def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID, StateOut], default_shape: str) -> list[_Entry]:
     """Where each transition is drawn: `(transition, label lines, the loop's path or None, start, vertices, end, middle)`. A
     transition whose state is not in the diagram is left out. The points each transition meets its states at come from
     `diagram_line_anchors`: no two share a path, transitions left on the same points are spread sideways, and several loops
-    on one state take different corners."""
+    on one state take different corners. A transition's own shape wins over `default_shape`, the diagram's."""
     placed = assign_line_anchors(
         {
             str(state_id): AnchorBox(
@@ -248,17 +249,21 @@ def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID,
         vertices: list[Point] = [(p.x, p.y) for p in t.points]
         (x1, y1), (x2, y2) = point_xy(_box(source), anchor.source), point_xy(_box(target), anchor.target)
         x1, y1, x2, y2 = x1 + anchor.shift[0], y1 + anchor.shift[1], x2 + anchor.shift[0], y2 + anchor.shift[1]
-        middle = line_middle((x1, y1), vertices, (x2, y2)) if vertices else ((x1 + x2) / 2, (y1 + y2) / 2)
+        shape = effective_shape(t.line_shape, default_shape)
+        middle = line_middle((x1, y1), vertices, (x2, y2), shape) if vertices or shape == "curved" else ((x1 + x2) / 2, (y1 + y2) / 2)
         entries.append((t, lines, None, (x1, y1), vertices, (x2, y2), middle, "start"))
     return entries
 
 
-def _hop_lines(entries: list[_Entry]) -> list[HopLine]:
+def _hop_lines(entries: list[_Entry], default_shape: str) -> list[HopLine]:
     """The transitions that are lines (not loops) as hop candidates."""
-    return [HopLine(str(t.id), start, vertices, end, t.smooth) for t, _, loop, start, vertices, end, _, _ in entries if loop is None]
+    return [
+        HopLine(str(t.id), start, vertices, end, effective_shape(t.line_shape, default_shape))
+        for t, _, loop, start, vertices, end, _, _ in entries if loop is None
+    ]
 
 
-def _transitions(entries: list[_Entry], hops: dict[str, str]) -> tuple[str, str]:
+def _transitions(entries: list[_Entry], hops: dict[str, str], default_shape: str) -> tuple[str, str]:
     """The lines and then the labels of the transitions (labels are drawn last, above every box); a transition in `hops` is
     drawn along its hop path (`diagram_line_hops`)."""
     drawn: list[str] = []
@@ -269,8 +274,9 @@ def _transitions(entries: list[_Entry], hops: dict[str, str]) -> tuple[str, str]
             if lines:
                 labels.append(_label(lines, mx + 4 if align == "start" else mx - 4, my - 4, align))
             continue
-        if vertices or str(t.id) in hops:
-            path = hops.get(str(t.id)) or line_path((x1, y1), vertices, (x2, y2), t.smooth)
+        shape = effective_shape(t.line_shape, default_shape)
+        if vertices or str(t.id) in hops or shape != "straight":
+            path = hops.get(str(t.id)) or line_path((x1, y1), vertices, (x2, y2), shape)
             drawn.append(f'<path d="{path}" fill="none" stroke="{_INK}" stroke-width="2" marker-end="url(#arrow)"/>')
         else:
             drawn.append(
@@ -303,21 +309,22 @@ def render_state_machine(model: StateMachineModel) -> str:
         ordered = sorted(states, key=lambda s: depths[s.id])
         holding = {s.parent_state_id for s in states if s.parent_state_id is not None}
         boxes = {s.id: s for s in states}
-        entries = _transition_entries(model.transitions, boxes)
+        default_shape = model.diagram.line_shape.value
+        entries = _transition_entries(model.transitions, boxes, default_shape)
         leader_runs = _leader_runs(
             notes, {}, {}, [], {s.id: _box(s) for s in states}, {t.id: middle for t, _, _, _, _, _, middle, _ in entries},
         )
         hops: dict[str, str] = {}
         if model.diagram.line_hops:
-            lines = _hop_lines(entries)
+            lines = _hop_lines(entries, default_shape)
             for n in drawn_notes:
                 for leader in n.leaders:
                     if leader.id in leader_runs:
                         start, vertices, end = leader_runs[leader.id]
-                        lines.append(HopLine(str(leader.id), start, vertices, end, leader.smooth))
+                        lines.append(HopLine(str(leader.id), start, vertices, end, leader_shape(leader, default_shape)))
             hops = line_hops(lines)
-        lines_svg, labels = _transitions(entries, hops)
-        note_defs, leaders, note_blocks = _notes(notes, leader_runs, hops)
+        lines_svg, labels = _transitions(entries, hops, default_shape)
+        note_defs, leaders, note_blocks = _notes(notes, leader_runs, hops, default_shape)
         defs += note_defs
         looped = {t.source_state_id for t in model.transitions if t.source_state_id == t.target_state_id}
         reach = {s.id: _reach(s) for s in states}

@@ -33,6 +33,8 @@ export interface LineState {
   scopeId?: string | null;
   /** The boundary boxes drawn on the diagram (a scoped diagram's outer connections); none for the system context. */
   boundaries?: readonly BoundaryState[];
+  /** `{connection id: the two boxes its own route joins}`: connections routed on their own, each drawn as a line apart from its pair's. */
+  routed?: ReadonlyMap<string, readonly [string, string]>;
 }
 
 /** A boundary box as the editor holds it: its id, the outer connection it stands for and where it sits. */
@@ -99,7 +101,7 @@ export function resolveDiagram(model: DiagramModel, state: LineState): ResolvedD
     connections: model.connections
       .filter((c) => known.has(c.source_element_id) && known.has(c.target_element_id))
       .map((c) => ({ id: c.id, sourceId: c.source_element_id, targetId: c.target_element_id, directional: c.directional })),
-    hiddenElements, hiddenConnections, mergeParallel: !state.connectionDetail, boundaries,
+    hiddenElements, hiddenConnections, mergeParallel: !state.connectionDetail, boundaries, routed: state.routed,
   });
 
   const boundaryIds = new Set((state.boundaries ?? []).map((b) => b.id));
@@ -140,5 +142,7 @@ function edgeOf(
     label: detail ? edgeLabelText(members.length, kind?.name, protocols.size === 1 ? [...protocols][0] : "") : null,
     connections: members,
     hops,
+    routable_connection_ids: line.routable,
+    route_connection_id: line.ownRoute,
   };
 }

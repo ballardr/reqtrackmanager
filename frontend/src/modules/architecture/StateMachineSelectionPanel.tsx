@@ -25,7 +25,7 @@ import type { GraphCanvasSelection } from "../../components/GraphCanvas";
 import { returnFocusToCanvas } from "../../utils/canvasFocus";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, SIDE_POINTS, pointXY, type AttachPoint, type BoxGeometry } from "../../components/graphAttachPoints";
 import type { LineEnds } from "../../components/graphLineAnchors";
-import { suggestWaypoint } from "../../components/graphLinePath";
+import { suggestWaypoint, type LineShape } from "../../components/graphLinePath";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { LineVertexFields } from "./LineVertexFields";
 import { RecordTags } from "../../components/RecordTags";
@@ -223,7 +223,7 @@ export function StateMachineSelectionPanel({
         {editable && from && to && !loop && (
           <EndPoints
             from={from} to={to} layout={layout} ends={lineEnds(transition.id)} sourcePoint={points?.source_point ?? null} targetPoint={points?.target_point ?? null}
-            vertices={points?.points ?? []} smooth={points?.smooth ?? false}
+            vertices={points?.points ?? []} lineShape={points?.line_shape ?? null} defaultShape={model.diagram.line_shape}
             onChange={(change) => onPointsChange(transition, change)}
           />
         )}
@@ -256,9 +256,9 @@ function ValidationNote({ issues, subject, onOpen }: { issues: { severity: "erro
   );
 }
 
-/** The two attach-point selects of a transition between different states, and its vertices. */
+/** The two attach-point selects of a transition between different states, its shape and its vertices. */
 function EndPoints({
-  from, to, layout, ends, sourcePoint, targetPoint, vertices, smooth, onChange,
+  from, to, layout, ends, sourcePoint, targetPoint, vertices, lineShape, defaultShape, onChange,
 }: {
   from: ArchitectureState;
   to: ArchitectureState;
@@ -267,7 +267,8 @@ function EndPoints({
   sourcePoint: AttachPoint | null;
   targetPoint: AttachPoint | null;
   vertices: LineWaypoint[];
-  smooth: boolean;
+  lineShape: LineShape | null;
+  defaultShape: LineShape;
   onChange: (change: LineRouteChange) => void;
 }) {
   const a = geometry(layout, from);
@@ -292,7 +293,7 @@ function EndPoints({
         label="Line ends at" help={ARCHITECTURE_HELP.diagramLineTo} placeholder={null} value={targetPoint ?? ""}
         options={options(to, targetAutomatic)} onChange={(value) => onChange({ targetPoint: parse(value) })}
       />
-      <LineVertexFields points={vertices} smooth={smooth} editable newPoint={newPoint} onChange={onChange} />
+      <LineVertexFields points={vertices} lineShape={lineShape} defaultShape={defaultShape} editable newPoint={newPoint} onChange={onChange} />
     </>
   );
 }

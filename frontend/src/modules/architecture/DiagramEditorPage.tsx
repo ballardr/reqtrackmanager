@@ -48,7 +48,7 @@ import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { useFillViewportHeight } from "../../hooks/useFillViewportHeight";
 import { RecordHeader } from "../../components/RecordHeader";
-import { FieldHelp } from "../../components/FieldHelp";
+import { Tooltip } from "../../components/Tooltip";
 import { RecordTags } from "../../components/RecordTags";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
@@ -60,6 +60,7 @@ import { useRecordCode } from "../../hooks/useRecordCode";
 import { useUrlChoice, useUrlFlag, useUrlList } from "../../hooks/useUrlFilter";
 import { architectureTabPath } from "./architectureTabs";
 import { stateMachinePath } from "./stateMachineLinks";
+import { DiagramSwitcher } from "./DiagramSwitcher";
 import { ARCHITECTURE_HELP } from "./help";
 import { capabilitiesApi, projectConnectionApi, projectDiagramApi, projectElementApi, projectSymbolUrl } from "./api";
 import {
@@ -69,7 +70,7 @@ import { defaultConnectionType } from "./connectionGuidance";
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { AddElementsDialog } from "./AddElementsDialog";
 import { ConnectionFormModal } from "./ConnectionFormModal";
-import { addBoundaries, addBoxes, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges, canvasLeaders, canvasNodes, moveItems, nextFreePosition, removeBoundary, removeBox, resizeItems, setLineAnchor, boxFrame, lockedBoxLabel, BOUNDARY_NODE_PREFIX } from "./diagramEditorModel";
+import { addBoundaries, addBoxes, boundaryFromConnection, boxWithElement, boundaryNodeId, boundaryOutsideName, boxFromElement, canvasEdges, canvasLeaders, canvasNodes, clearConnectionRoute, moveItems, nextFreePosition, removeBoundary, removeBox, resizeItems, routedConnectionOf, routedConnections, sharesItsPair, setConnectionRoute, setLineAnchor, boxFrame, lockedBoxLabel, BOUNDARY_NODE_PREFIX } from "./diagramEditorModel";
 import {
   LEADER_REACH, MAX_NOTE_LEADERS, NOTE_HEIGHT, NOTE_NODE_PREFIX, NOTE_WIDTH, addLeader, addNote, newLeader, newLeaderKey, newNote, newNoteKey,
   noteFrame, patchLeader, removeLeader, removeNote, setLeaderTarget, updateNote, type EditorLeader, type NoteLeaderTarget,
@@ -96,7 +97,7 @@ import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
-  type ArchitectureRecordStatus, type ConnectionFieldValues, type ModelStateMachine, type DiagramViewEdge, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
+  type ArchitectureRecordStatus, type ConnectionFieldValues, type ModelStateMachine, type DiagramViewEdge, type LineRouteChange, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
 } from "./types";
 
 /** The smallest canvas height; a shorter window scrolls instead. Above it the canvas fills the window below its tabs. */
@@ -314,14 +315,15 @@ export function DiagramEditorPage() {
   );
   const connectionDetail = diagram?.connection_detail ?? false;
   const scopeId = diagram?.scope_element_id ?? null;
+  const routed = useMemo(() => routedConnections(layout.anchors), [layout.anchors]);
   const resolved = useMemo(
     () => (model
       ? resolveDiagram(model, {
         placed: layout.boxes.map((b) => b.elementId), togglesOff: new Set(toggles.filter((t) => !t.on).map((t) => t.id)), connectionDetail,
-        scopeId, boundaries: layout.boundaries.map((b) => ({ id: boundaryNodeId(b.connectionId), connectionId: b.connectionId })),
+        scopeId, boundaries: layout.boundaries.map((b) => ({ id: boundaryNodeId(b.connectionId), connectionId: b.connectionId })), routed,
       })
       : NO_LINES),
-    [model, layout.boxes, layout.boundaries, toggles, connectionDetail, scopeId],
+    [model, layout.boxes, layout.boundaries, toggles, connectionDetail, scopeId, routed],
   );
   /** The model's connections by id, the outer connections realised, and which connection realises which. */
   const connectionsById = useMemo(() => new Map((model?.connections ?? []).map((c) => [c.id, c])), [model]);
@@ -376,12 +378,12 @@ export function DiagramEditorPage() {
     [layout, effectiveTheme, symbolSvg, resolved.hidden, realisedBy, showNotes, badgesOf],
   );
   const edges = useMemo(
-    () => canvasEdges(resolved.edges, layout, resolved.hidden, effectiveTheme),
-    [resolved, layout, effectiveTheme],
+    () => canvasEdges(resolved.edges, layout, resolved.hidden, effectiveTheme, diagram?.line_shape),
+    [resolved, layout, effectiveTheme, diagram?.line_shape],
   );
   const drawnEdgeIds = useMemo(() => new Set(edges.map((e) => e.id)), [edges]);
   const lineEnds = useMemo(() => lineEndsOf(nodes, edges), [nodes, edges]);
-  const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds), [layout, resolved, drawnEdgeIds]);
+  const leaders = useMemo(() => canvasLeaders(layout, resolved.edges, drawnEdgeIds, diagram?.line_shape), [layout, resolved, drawnEdgeIds, diagram?.line_shape]);
   // A connection just added is the selection once a line for it is drawn (a switch may hide it, which leaves it unselected).
   const newLine = selectConnection === null ? undefined
     : resolved.edges.find((e) => drawnEdgeIds.has(e.id) && e.connections.some((c) => c.id === selectConnection));
@@ -627,6 +629,31 @@ export function DiagramEditorPage() {
     editor.edit((l) => setLeaderTarget(l, leaderKey, target));
   }
 
+  /**
+   * Routes a line. A line drawn for one connection on its own route, a merged line with a connection chosen in its card that
+   * can have one, or the only connection of a line that shares its two boxes with another line, sets that connection's route only
+   * (the connection becomes, or stays, a line of its own, which stays the selection); any other line sets the route of its pair of
+   * boxes, which every connection on it follows.
+   */
+  function routeLine(line: DiagramViewEdge, change: LineRouteChange) {
+    if (line.source_is_boundary || line.target_is_boundary) return;
+    const connectionId = routedConnectionOf(line, chosenConnectionId, sharesItsPair(resolved.edges, line));
+    if (connectionId === null) {
+      editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
+      return;
+    }
+    editor.edit((l) => setConnectionRoute(l, connectionId, line.source_element_id, line.target_element_id, change));
+    setChosenConnection(null);
+    setSelectConnection(connectionId);
+  }
+
+  /** Takes a connection's own route away: it is drawn with the line of its pair of boxes again, and stays the selection. */
+  function joinLine(connectionId: string) {
+    editor.edit((l) => clearConnectionRoute(l, connectionId));
+    setChosenConnection(null);
+    setSelectConnection(connectionId);
+  }
+
   /** Opens the diagram of an element's inside; with unsaved changes it first asks, since leaving discards them. */
   async function openInside(elementId: string) {
     try {
@@ -736,11 +763,10 @@ export function DiagramEditorPage() {
   } : null;
   const placed = new Set(layout.boxes.map((b) => b.elementId));
   const candidates = elements.filter((e) => !placed.has(e.id) && !e.is_archived && !isOutOfUse(e.status));
-  const scopeLabel = diagram.scope_element_id ? (
-    `Inside ${[diagram.scope_element_code, diagram.scope_element_name].filter(Boolean).join(" ") || "an element you cannot read"}`
-  ) : (
-    <>System context <FieldHelp label="System context" help={ARCHITECTURE_HELP.systemContext} /></>
-  );
+  // What the diagram shows is read on hovering its title (a line of its own showed it on every visit, though it rarely changes).
+  const scopeLabel = diagram.scope_element_id
+    ? `Inside ${[diagram.scope_element_code && formatCode.code(diagram.scope_element_code), diagram.scope_element_name].filter(Boolean).join(" ") || "an element you cannot read"}`
+    : `System context\n${ARCHITECTURE_HELP.systemContext}`;
   const openBoxInside = (nodeId: string) => {
     const box = layout.boxes.find((b) => b.elementId === nodeId);
     if (!box || box.locked) return;
@@ -772,6 +798,7 @@ export function DiagramEditorPage() {
         connectionDetail={diagram.connection_detail} disabled={!editable || editor.saving}
         onConnectionDetailChange={(next) => void editor.updateFields({ connection_detail: next })}
         lineHops={diagram.line_hops} onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
+        lineShape={diagram.line_shape} onLineShapeChange={(next) => void editor.updateFields({ line_shape: next })}
         showNotes={showNotes} onShowNotesChange={setShowNotes}
         showComments={commentLayer.showComments} onShowCommentsChange={commentLayer.setShowComments}
         showResolved={commentLayer.showResolved} onShowResolvedChange={commentLayer.setShowResolved}
@@ -784,7 +811,7 @@ export function DiagramEditorPage() {
   const selectionColumn = (
     <div className="stack" style={{ flex: "1 1 18rem", minWidth: 0 }}>
       <DiagramSelectionPanel
-        projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} lineEnds={lineEnds} hidden={resolved.hidden} editable={editable}
+        projectId={projectId} selection={selection} boxes={layout.boxes} notes={layout.notes} edges={resolved.edges} anchors={layout.anchors} lineEnds={lineEnds} defaultShape={diagram.line_shape} hidden={resolved.hidden} editable={editable}
         boundaries={layout.boundaries} connectionsById={connectionsById} realisedBy={realisedBy}
         onRemoveBoundary={(box) => { editor.edit((l) => removeBoundary(l, box.connectionId)); setSelection(null); }}
         onConnectBoundary={(box, elementId) => void startBoundaryConnection(box.connectionId, elementId)}
@@ -815,7 +842,7 @@ export function DiagramEditorPage() {
         onOpenInside={(box) => (dirty ? setLeaveFor(box.elementId) : void openInside(box.elementId))}
         stateMachinesOf={(elementId) => machinesOf.get(elementId) ?? []} onOpenMachine={openMachine}
         onDeleteElement={(box) => void deleteElement(box.elementId)}
-        onAnchorChange={(line, change) => editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change))}
+        onAnchorChange={routeLine} onJoinLine={joinLine}
         drawnEdgeIds={drawnEdgeIds}
         onNoteChange={(key, patch) => editor.edit((l) => updateNote(l, key, patch))}
         onAddLeader={addLeaderFrom}
@@ -836,7 +863,8 @@ export function DiagramEditorPage() {
     >
       <RecordHeader
         recordLabel="Diagram"
-        title={diagram.name}
+        title={<Tooltip label={scopeLabel} wrap>{diagram.name}</Tooltip>}
+        titleAddon={<DiagramSwitcher kind="block" projectId={projectId} currentId={diagram.id} />}
         code={diagram.unique_code}
         tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
@@ -847,7 +875,7 @@ export function DiagramEditorPage() {
           </>
         }
         version={diagram.version}
-        subtitle={<>{scopeLabel}{diagram.purpose ? ` · ${diagram.purpose}` : ""}</>}
+        subtitle={diagram.purpose || undefined}
         onEdit={editable ? () => setEditingDiagram(true) : undefined}
         actions={[archive.item, remove.item]}
         stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}
@@ -901,11 +929,11 @@ export function DiagramEditorPage() {
               onNodesResize={(changes) => editor.edit((l) => resizeItems(l, changes))}
               onEdgeAnchorChange={(edgeId, change) => {
                 const line = resolved.edges.find((e) => e.id === edgeId);
-                if (line && !line.source_is_boundary && !line.target_is_boundary) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, change));
+                if (line) routeLine(line, change);
               }}
               onEdgePointsChange={(edgeId, points) => {
                 const line = resolved.edges.find((e) => e.id === edgeId);
-                if (line && !line.source_is_boundary && !line.target_is_boundary) editor.edit((l) => setLineAnchor(l, line.source_element_id, line.target_element_id, { points }));
+                if (line) routeLine(line, { points });
               }}
               onConnect={(source, target, via) => {
                 // A line from a note to a box is a leader, not a connection.

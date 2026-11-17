@@ -60,7 +60,7 @@ from app.modules.architecture._shared import (
 )
 from app.modules.architecture.connection_tree import closure_of
 from app.modules.architecture.diagram_routes import filter_diagrams
-from app.modules.architecture.enums import PortDirection, RecordStatus, StateKind
+from app.modules.architecture.enums import LineShape, PortDirection, RecordStatus, StateKind
 from app.modules.architecture.labels import LABEL_POSITION_LABEL, PORT_DIRECTION_LABEL, RECORD_STATUS_LABEL, STATE_KIND_LABEL
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -687,6 +687,7 @@ def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
         ),
         RecordColumn("line_hops", "Line hops", lambda t, r: "Yes" if r.line_hops else "No", text_parser),
+        RecordColumn("line_shape", "Line shape", lambda t, r: LineShape(r.line_shape).value.capitalize(), text_parser),
         RecordColumn("placements", "Elements", lambda t, r: str(t.counts[r.id].placement_count), text_parser),
         _folder_column("diagram"),
         # A diagram has no import or update through its table, so its status is not edited in the bulk grid either.

@@ -77,7 +77,7 @@ export function buildConnection(overrides: Partial<ArchitectureConnection> = {})
 export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): ArchitectureDiagram {
   return {
     id: "dgm-1", project_id: PROJECT_ID, unique_code: "DGM-001", name: "Platform overview", purpose: "How traffic reaches the services.",
-    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, line_hops: false,
+    scope_element_id: null, scope_element_code: null, scope_element_name: null, connection_detail: false, line_hops: false, line_shape: "straight",
     folder_id: null, folder_path: null, status: "active", allowed_status_moves: movesFrom(overrides.status), version: 3, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", placement_count: 3, note_count: 0, toggle_count: 1, ...overrides,
   };
@@ -87,7 +87,7 @@ export function buildDiagram(overrides: Partial<ArchitectureDiagram> = {}): Arch
 export function buildStateMachine(overrides: Partial<StateMachineDiagram> = {}): StateMachineDiagram {
   return {
     id: "smd-1", project_id: PROJECT_ID, unique_code: "SMD-001", name: "Gateway modes", description: "The operating modes of the gateway.",
-    element_id: "el-1", element_code: "ELM-001", element_name: "Gateway", line_hops: false, status: "draft", allowed_status_moves: movesFrom(overrides.status ?? "draft"),
+    element_id: "el-1", element_code: "ELM-001", element_name: "Gateway", line_hops: false, line_shape: "straight", status: "draft", allowed_status_moves: movesFrom(overrides.status ?? "draft"),
     version: 5, creator_id: "user-1", is_archived: false, archived_at: null, created_at: "2026-11-01T00:00:00Z",
     updated_at: "2026-11-01T00:00:00Z", state_count: 4, transition_count: 4, error_count: 0, warning_count: 0, ...overrides,
   };
@@ -117,7 +117,7 @@ export function buildTransition(overrides: Partial<StateTransition> = {}): State
   return {
     id: "trn-1", state_machine_diagram_id: "smd-1", state_machine_diagram_version: 5, source_state_id: "ste-1", source_state_code: "STE-001",
     target_state_id: "ste-2", target_state_code: "STE-002", event: "start", guard: "", action: "", description: "", sort_order: 0,
-    source_point: null, target_point: null, points: [], smooth: false, ...overrides,
+    source_point: null, target_point: null, points: [], line_shape: null, ...overrides,
   };
 }
 
@@ -154,7 +154,7 @@ export function buildViewEdge(overrides: Partial<DiagramViewEdge> = {}): Diagram
   return {
     id: "edge-1", source_element_id: "el-1", target_element_id: "el-2", source_is_boundary: false, target_is_boundary: false, two_way: false, indirect: false, rolled_up: false,
     bridged: false, count: 1, type_name: null, line_style: null, color_light: null, color_dark: null, label: null,
-    connections: [buildConnection()], hops: [], ...overrides,
+    connections: [buildConnection()], hops: [], routable_connection_ids: [], route_connection_id: null, ...overrides,
   };
 }
 
@@ -169,7 +169,7 @@ export function buildNote(overrides: Partial<DiagramNote> = {}): DiagramNote {
 /** A leader line as the view lists it: straight, from the nearest point of its note to a spot, with an arrowhead at the end. */
 export function buildLeader(overrides: Partial<DiagramLeader> = {}): DiagramLeader {
   return {
-    id: "ld-1", kind: "point", element_id: null, connection_id: null, state_id: null, transition_id: null, x: 300, y: -100, start_point: null, points: [], smooth: false,
+    id: "ld-1", kind: "point", element_id: null, connection_id: null, state_id: null, transition_id: null, x: 300, y: -100, start_point: null, points: [], line_shape: null,
     start_style: "none", end_style: "arrow", ...overrides,
   };
 }

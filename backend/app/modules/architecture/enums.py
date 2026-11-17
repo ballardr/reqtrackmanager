@@ -54,6 +54,15 @@ class LineStyle(str, enum.Enum):
     DOTTED = "dotted"
 
 
+class LineShape(str, enum.Enum):
+    """How a drawn line runs between its ends (a connection, a transition or a note's leader). Named apart from `LineStyle`,
+    which is how a connection type is stroked (solid, dashed, dotted)."""
+
+    STRAIGHT = "straight"
+    CURVED = "curved"
+    SPLINE = "spline"
+
+
 class RecordStatus(str, enum.Enum):
     """The lifecycle of an element, a connection or a diagram. There is no approval gate: a person who may manage the
     record may make any move `transitions.STATUS_MOVES` lists (a retired record can be reactivated, a rejected one reopened as a draft)."""

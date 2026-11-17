@@ -30,6 +30,7 @@
  *   was dropped.
  */
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
+import { effectiveShape } from "../../components/graphLinePath";
 import {
   commitStep, isDirtyBy, redoStep, refreshPresentOf, startHistoryOf, undoStep, type History as HistoryOf,
 } from "../../utils/editHistory";
@@ -98,7 +99,7 @@ export function layoutFromModel(model: StateMachineModel): StateMachineLayout {
   return {
     boxes: model.states.map(boxOfState),
     points: model.transitions.map((t) => ({
-      id: t.id, source_point: t.source_point, target_point: t.target_point, points: t.points, smooth: t.smooth,
+      id: t.id, source_point: t.source_point, target_point: t.target_point, points: t.points, line_shape: t.line_shape,
     })),
     notes: model.notes.map(noteFromView),
   };
@@ -272,14 +273,14 @@ export function setParent(layout: StateMachineLayout, id: string, parentId: stri
 
 /**
  * Sets how a transition is routed: the attach point of one or both ends (`null` makes an end automatic), its vertices
- * (an empty list makes it straight) and whether a curve runs through them. What the change does not name is kept.
+ * (an empty list leaves it to its shape) and its own shape (`null` follows the diagram's default). What the change does not name is kept.
  */
 export function setTransitionPoints(
   layout: StateMachineLayout, id: string,
   change: LineRouteChange,
 ): StateMachineLayout {
   const known = layout.points.some((p) => p.id === id);
-  const points = known ? layout.points : [...layout.points, { id, source_point: null, target_point: null, points: [], smooth: false }];
+  const points = known ? layout.points : [...layout.points, { id, source_point: null, target_point: null, points: [], line_shape: null }];
   return {
     ...layout,
     points: points.map((p) => (p.id === id ? {
@@ -287,7 +288,7 @@ export function setTransitionPoints(
       source_point: change.sourcePoint === undefined ? p.source_point : change.sourcePoint,
       target_point: change.targetPoint === undefined ? p.target_point : change.targetPoint,
       points: change.points === undefined ? p.points : change.points,
-      smooth: change.smooth === undefined ? p.smooth : change.smooth,
+      line_shape: change.lineShape === undefined ? p.line_shape : change.lineShape,
     } : p)),
   };
 }
@@ -449,7 +450,7 @@ export function canvasLeaders(layout: StateMachineLayout, model: StateMachineMod
     if (target.kind === "state") return states.has(target.stateId) ? { kind: "node", id: target.stateId } : null;
     if (target.kind === "transition") return transitions.has(target.transitionId) ? { kind: "edge", id: target.transitionId } : null;
     return target.kind === "point" ? { kind: "point", x: target.x, y: target.y } : null; // a block diagram's targets are not drawn here
-  });
+  }, model.diagram.line_shape);
 }
 
 /**
@@ -512,7 +513,7 @@ export function canvasEdges(model: StateMachineModel, layout: StateMachineLayout
   return model.transitions.map<GraphCanvasEdge>((t) => ({
     id: t.id, source: t.source_state_id, target: t.target_state_id, label: transitionLabel(t) || undefined, direction: "forward",
     sourcePoint: points.get(t.id)?.source_point ?? null, targetPoint: points.get(t.id)?.target_point ?? null,
-    points: points.get(t.id)?.points ?? [], smooth: points.get(t.id)?.smooth ?? false,
+    points: points.get(t.id)?.points ?? [], lineShape: effectiveShape(points.get(t.id)?.line_shape, model.diagram.line_shape),
   }));
 }
 

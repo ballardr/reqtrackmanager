@@ -330,7 +330,7 @@ def test_the_leader_lines_migration_moves_each_leader_into_a_row_and_back(client
     diagram = place_all(client, token, p, make_diagram(client, token, p, "Flow"), a["id"], b["id"])
     notes = [
         {"text": "Box", "leaders": [{"kind": "element", "element_id": a["id"], "end_style": "none"}, {"kind": "point", "x": 9, "y": 9}]},
-        {"text": "Line", "leaders": [{"kind": "connection", "connection_id": link["id"], "points": [{"x": 1, "y": 1}], "smooth": True}]},
+        {"text": "Line", "leaders": [{"kind": "connection", "connection_id": link["id"], "points": [{"x": 1, "y": 1}], "line_shape": "spline"}]},
         {"text": "Spot", "leaders": [{"kind": "point", "x": 5.5, "y": -6, "start_point": "top", "start_style": "dot"}]},
         {"text": "Plain"},
     ]
@@ -358,7 +358,7 @@ def test_the_leader_lines_migration_moves_each_leader_into_a_row_and_back(client
         command.upgrade(build_alembic_config(), "head")
     with engine.connect() as conn:
         moved = {r[0]: tuple(r[1:]) for r in conn.execute(text(
-            "SELECT n.text, l.kind, l.element_id::text, l.connection_id::text, l.x, l.y, l.start_point, l.points::text, l.smooth, "
+            "SELECT n.text, l.kind, l.element_id::text, l.connection_id::text, l.x, l.y, l.start_point, l.points::text, l.line_shape, "
             "l.start_style, l.end_style FROM architecture_note_leaders l JOIN architecture_diagram_notes n ON n.id = l.note_id "
             "WHERE n.text IN ('Box', 'Line', 'Spot', 'Plain')"
         ))}
@@ -366,7 +366,7 @@ def test_the_leader_lines_migration_moves_each_leader_into_a_row_and_back(client
             "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_diagram_notes'"
         ))}
     assert set(moved) == {"Box", "Line", "Spot"}  # a note with no leader has no row
-    assert moved["Box"] == ("element", a["id"], None, None, None, None, "[]", False, "none", "none")
-    assert moved["Line"] == ("connection", None, link["id"], None, None, None, "[]", False, "none", "arrow")
-    assert moved["Spot"] == ("point", None, None, 5.5, -6.0, None, "[]", False, "none", "none")
+    assert moved["Box"] == ("element", a["id"], None, None, None, None, "[]", None, "none", "none")
+    assert moved["Line"] == ("connection", None, link["id"], None, None, None, "[]", None, "none", "arrow")
+    assert moved["Spot"] == ("point", None, None, 5.5, -6.0, None, "[]", None, "none", "none")
     assert columns.isdisjoint({"leader_kind", "leader_element_id", "leader_connection_id", "leader_x", "leader_y", "leader_arrow"})

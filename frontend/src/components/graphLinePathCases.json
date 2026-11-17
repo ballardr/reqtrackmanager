@@ -10,7 +10,7 @@
       100,
       0
     ],
-    "smooth": false,
+    "shape": "straight",
     "path": "M 0 0 L 100 0",
     "middle": [
       50.0,
@@ -18,7 +18,7 @@
     ]
   },
   {
-    "name": "no waypoints stays straight when smooth is asked",
+    "name": "no waypoints stays straight when spline is asked",
     "start": [
       0,
       0
@@ -28,7 +28,7 @@
       100,
       40
     ],
-    "smooth": true,
+    "shape": "spline",
     "path": "M 0 0 L 100 40",
     "middle": [
       50.0,
@@ -51,7 +51,7 @@
       100,
       0
     ],
-    "smooth": false,
+    "shape": "straight",
     "path": "M 0 0 L 50 60 L 100 0",
     "middle": [
       50.0,
@@ -59,7 +59,7 @@
     ]
   },
   {
-    "name": "one vertex, smooth",
+    "name": "one vertex, spline",
     "start": [
       0,
       0
@@ -74,7 +74,30 @@
       100,
       0
     ],
-    "smooth": true,
+    "shape": "spline",
+    "path": "M 0 0 C 8.33 10 33.33 60 50 60 C 66.67 60 91.67 10 100 0",
+    "middle": [
+      50.0,
+      60.0
+    ]
+  },
+  {
+    "name": "one vertex, curved is the spline",
+    "start": [
+      0,
+      0
+    ],
+    "points": [
+      [
+        50,
+        60
+      ]
+    ],
+    "end": [
+      100,
+      0
+    ],
+    "shape": "curved",
     "path": "M 0 0 C 8.33 10 33.33 60 50 60 C 66.67 60 91.67 10 100 0",
     "middle": [
       50.0,
@@ -105,7 +128,7 @@
       140,
       20
     ],
-    "smooth": false,
+    "shape": "straight",
     "path": "M 10 10 L 60 10 L 60 90 L 140 90 L 140 20",
     "middle": [
       70.0,
@@ -113,7 +136,7 @@
     ]
   },
   {
-    "name": "three vertices, smooth",
+    "name": "three vertices, spline",
     "start": [
       10,
       10
@@ -136,7 +159,7 @@
       140,
       20
     ],
-    "smooth": true,
+    "shape": "spline",
     "path": "M 10 10 C 18.33 10 51.67 -3.33 60 10 C 68.33 23.33 46.67 76.67 60 90 C 73.33 103.33 126.67 101.67 140 90 C 153.33 78.33 140 31.67 140 20",
     "middle": [
       70.0,
@@ -159,7 +182,7 @@
       99.999,
       20.005
     ],
-    "smooth": true,
+    "shape": "spline",
     "path": "M -12.34 0.5 C -9.76 -0.88 -15.58 -11.03 3.14 -7.78 C 21.87 -4.53 83.86 15.37 100 20.01",
     "middle": [
       43.130758,
@@ -186,7 +209,7 @@
       80,
       0
     ],
-    "smooth": false,
+    "shape": "straight",
     "path": "M 0 0 L 40 40 L 40 40 L 80 0",
     "middle": [
       40.0,
@@ -209,11 +232,119 @@
       0,
       0
     ],
-    "smooth": false,
+    "shape": "straight",
     "path": "M 0 0 L 30 30 L 0 0",
     "middle": [
       30.0,
       30.0
+    ]
+  },
+  {
+    "name": "curved with no vertices bows left of a line running right",
+    "start": [
+      0,
+      0
+    ],
+    "points": [],
+    "end": [
+      100,
+      0
+    ],
+    "shape": "curved",
+    "path": "M 0 0 C 33.33 -25 66.67 -25 100 0",
+    "middle": [
+      50.0,
+      -18.75
+    ]
+  },
+  {
+    "name": "curved with no vertices bows left of a line running down",
+    "start": [
+      0,
+      0
+    ],
+    "points": [],
+    "end": [
+      0,
+      100
+    ],
+    "shape": "curved",
+    "path": "M 0 0 C 25 33.33 25 66.67 0 100",
+    "middle": [
+      18.75,
+      50.0
+    ]
+  },
+  {
+    "name": "curved with no vertices on a short line",
+    "start": [
+      10,
+      10
+    ],
+    "points": [],
+    "end": [
+      30,
+      10
+    ],
+    "shape": "curved",
+    "path": "M 10 10 C 16.67 5 23.33 5 30 10",
+    "middle": [
+      20.0,
+      6.25
+    ]
+  },
+  {
+    "name": "curved with no vertices on a long line bows by the limit",
+    "start": [
+      0,
+      0
+    ],
+    "points": [],
+    "end": [
+      1000,
+      400
+    ],
+    "shape": "curved",
+    "path": "M 0 0 C 355.62 77.62 688.95 210.96 1000 400",
+    "middle": [
+      516.71258,
+      158.218549
+    ]
+  },
+  {
+    "name": "curved with no length is a point",
+    "start": [
+      5,
+      5
+    ],
+    "points": [],
+    "end": [
+      5,
+      5
+    ],
+    "shape": "curved",
+    "path": "M 5 5 L 5 5",
+    "middle": [
+      5,
+      5
+    ]
+  },
+  {
+    "name": "fractional curved line",
+    "start": [
+      -12.345,
+      0.5
+    ],
+    "points": [],
+    "end": [
+      99.999,
+      20.005
+    ],
+    "shape": "curved",
+    "path": "M -12.34 0.5 C 29.98 -21.08 67.43 -14.58 100 20.01",
+    "middle": [
+      47.484188,
+      -10.812
     ]
   }
 ]

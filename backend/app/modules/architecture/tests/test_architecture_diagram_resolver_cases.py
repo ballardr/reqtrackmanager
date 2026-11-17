@@ -31,11 +31,13 @@ def _scenario(
     name: str, *, parents: dict[str, str | None], placed: list[str], connections: list[tuple], hidden: tuple[str, ...] = (),
     hidden_connections: tuple[str, ...] = (), merge_parallel: bool = False,
     boundaries: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (), scope: str | None = None,
+    routed: tuple[tuple[str, str, str], ...] = (),
 ) -> dict:
     """One case: inputs by name (turned into ids) and the resolver's answer.
 
     `connections` are `(name, source, target)` or `(name, source, target, "two-way")`. `boundaries` are
-    `(box name, scope-side element, element outside, realising connection names)`. A `scope` also records which connections are outer
+    `(box name, scope-side element, element outside, realising connection names)`. `routed` are `(connection, box, box)`:
+    the connections with a route of their own and the two boxes it joins. A `scope` also records which connections are outer
     for it (`outer_side`)."""
     elements = {n: _id("element", n) for n in parents}
     model = [
@@ -51,9 +53,11 @@ def _scenario(
         placed=[elements[n] for n in placed], parents=parent_ids,
         connections=model, hidden_elements=[elements[n] for n in hidden],
         hidden_connections=[_id("connection", n) for n in hidden_connections], merge_parallel=merge_parallel,
-        boundaries=boxes,
+        boundaries=boxes, routed={_id("connection", c): (elements[a], elements[b]) for c, a, b in routed},
     )
     extra: dict = {}
+    if routed:
+        extra["routed"] = {str(_id("connection", c)): [str(elements[a]), str(elements[b])] for c, a, b in routed}
     if boxes:
         extra["boundaries"] = [
             {
@@ -89,6 +93,8 @@ def _scenario(
                     "source_id": str(ln.source_id), "target_id": str(ln.target_id), "two_way": ln.two_way,
                     "connection_ids": [str(i) for i in ln.connection_ids], "rolled_up": ln.rolled_up,
                     "bridged": ln.bridged, "indirect": ln.indirect, "hops": [str(i) for i in ln.hops],
+                    "routable": [str(i) for i in ln.routable],
+                    "own_route": str(ln.own_route) if ln.own_route is not None else None,
                 }
                 for ln in result.lines
             ],
@@ -229,6 +235,30 @@ def cases() -> list[dict]:
             connections=[("outer", "scope", "out"), ("real", "a", "far")], boundaries=(("box", "scope", "out", ("real",)),),
         ),
         _scenario(
+            "a routed connection leaves the merged line and is drawn on its own", parents=_flat("a", "b"), placed=["a", "b"],
+            connections=[("one", "a", "b"), ("two", "b", "a"), ("three", "a", "b")], merge_parallel=True,
+            routed=(("two", "b", "a"),),
+        ),
+        _scenario(
+            "a route for other boxes than the connection joins is ignored", parents=_flat("a", "b", "c"), placed=["a", "b", "c"],
+            connections=[("one", "a", "b"), ("two", "a", "b")], merge_parallel=True, routed=(("two", "a", "c"),),
+        ),
+        _scenario(
+            "a rolled-up connection can be routed and the rest of its line stays merged",
+            parents={"p": None, "x": "p", "y": "p", "z": None}, placed=["p", "z"],
+            connections=[("xz", "x", "z"), ("yz", "y", "z")], merge_parallel=True, routed=(("yz", "p", "z"),),
+        ),
+        _scenario(
+            "a bridged chain is never routed on its own", parents=_flat("a", "mid", "b"), placed=["a", "b"], hidden=("mid",),
+            connections=[("in", "a", "mid"), ("out", "mid", "b")], merge_parallel=True, routed=(("in", "a", "b"),),
+        ),
+        _scenario(
+            "a connection to a boundary box is never routed on its own",
+            parents={"scope": None, "a": "scope", "b": "scope", "out": None}, placed=["a", "b"], scope="scope",
+            connections=[("outer", "scope", "out"), ("real", "a", "scope")],
+            boundaries=(("box", "scope", "out", ("real",)),), routed=(("real", "a", "a"),),
+        ),
+        _scenario(
             "a connection to an unplaced element under a hidden placed one is hidden with it",
             parents={"top": None, "sub": "top", "z": None}, placed=["top", "z"], hidden=("top",),
             connections=[("sz", "sub", "z")],
@@ -260,3 +290,4 @@ def test_the_cases_reach_every_resolver_behaviour():
         if any(b["id"] in (ln["source_id"], ln["target_id"]) for b in case.get("boundaries", ()))
     ]
     assert len(boxed) >= 3 and any(case.get("outer_sides") for case in cases())
+    assert any(ln["own_route"] for ln in lines) and any(ln["routable"] and not ln["own_route"] for ln in lines)

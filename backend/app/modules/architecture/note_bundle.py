@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from app.modules.architecture.diagram_line_path import clean_waypoints
+from app.modules.architecture.diagram_line_path import bundle_line_shape, clean_waypoints
 from app.modules.architecture.enums import (
     NOTE_TITLE_MAX,
     AttachPoint,
@@ -60,7 +60,7 @@ def leader_json(leader: ArchitectureNoteLeader) -> dict[str, Any]:
         The bundle row.
     """
     return {
-        "kind": leader.kind, "start_point": leader.start_point, "points": clean_waypoints(leader.points), "smooth": leader.smooth,
+        "kind": leader.kind, "start_point": leader.start_point, "points": clean_waypoints(leader.points), "line_shape": leader.line_shape,
         "start_style": leader.start_style, "end_style": leader.end_style,
     }
 
@@ -109,7 +109,7 @@ def leader_row(note_id: UUID, order: int, raw: dict[str, Any]) -> ArchitectureNo
     valid_ends = {e.value for e in LineEnd}
     return ArchitectureNoteLeader(
         note_id=note_id, sort_order=order, kind=str(raw.get("kind")), points=clean_waypoints(raw.get("points")),
-        smooth=raw.get("smooth") is True,
+        line_shape=bundle_line_shape(raw),
         start_point=raw.get("start_point") if raw.get("start_point") in valid_points else None,
         start_style=raw.get("start_style") if raw.get("start_style") in valid_ends else LineEnd.NONE.value,
         end_style=raw.get("end_style") if raw.get("end_style") in valid_ends else LineEnd.ARROW.value,

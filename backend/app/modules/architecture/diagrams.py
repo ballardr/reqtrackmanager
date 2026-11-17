@@ -30,6 +30,10 @@ Design decisions:
 - **Line anchors follow the boxes.** An anchor joins two placed elements, so unplacing either removes it (the layout save and
   `remove_placement` both do), and a save may not name an element that is not placed. An anchor whose line is not drawn
   at the moment (a view switch hides an end, or roll-up draws another pair) is kept and simply unused.
+- **A route belongs to a pair of boxes or to one connection.** A pair's route moves every connection on the line; a
+  connection's own route (`connection_id`, one per connection, the connection must be the project's) draws that connection
+  as a line apart. Deleting the connection removes its route (a database cascade); a route whose boxes the connection no
+  longer joins is kept and not used.
 - **Boundary boxes follow the scope.** A box stands for an outer connection of the diagram's scope (`boundaries`), is
   saved with the layout, and is removed when the scope changes; a stored box whose connection later stops being outer is
   kept and not drawn.
@@ -54,7 +58,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
-from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteAlign, NoteSizeMode, NoteTone, RecordStatus
+from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, LineShape, NoteAlign, NoteSizeMode, NoteTone, RecordStatus
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -193,7 +197,8 @@ def create_diagram(db: Session, project: Any, actor: User, payload: DiagramCreat
         project_id=project.id,
         unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
         name=payload.name.strip(), purpose=payload.purpose, scope_element_id=payload.scope_element_id,
-        connection_detail=payload.connection_detail, line_hops=payload.line_hops, folder_id=payload.folder_id,
+        connection_detail=payload.connection_detail, line_hops=payload.line_hops, line_shape=payload.line_shape.value,
+        folder_id=payload.folder_id,
         status=(RecordStatus.ACTIVE if payload.activate else RecordStatus.DRAFT).value, version=1, creator_id=actor.id,
         is_archived=False,
     )
@@ -243,6 +248,8 @@ def update_diagram(
         changes["connection_detail"] = payload.connection_detail
     if payload.line_hops is not None and payload.line_hops != diagram.line_hops:
         changes["line_hops"] = payload.line_hops
+    if payload.line_shape is not None and payload.line_shape.value != diagram.line_shape:
+        changes["line_shape"] = payload.line_shape.value
     if "scope_element_id" in given and payload.scope_element_id != diagram.scope_element_id:
         if payload.scope_element_id is not None:
             _check_new_element(db, Viewer.of_user(actor, project), [payload.scope_element_id])
@@ -352,69 +359,95 @@ def anchors_of(db: Session, diagram_id: uuid.UUID) -> list[ArchitectureDiagramAn
     ))
 
 
-def _check_anchors(anchors: Sequence[AnchorIn], placed: set[uuid.UUID]) -> None:
-    """Checks the anchors of a save: both ends placed and different, one line once (either direction), a point given.
+def _check_anchors(db: Session, project_id: uuid.UUID, anchors: Sequence[AnchorIn], placed: set[uuid.UUID]) -> None:
+    """Checks the anchors of a save: both ends placed and different, one pair route per pair (either direction) and one
+    route per connection, a point, vertex or shape given for a pair's route, and a connection that is this project's.
 
     Raises:
         RuleError: 400 otherwise.
     """
     seen: set[frozenset[uuid.UUID]] = set()
+    seen_connections: set[uuid.UUID] = set()
     for anchor in anchors:
         if anchor.source_element_id == anchor.target_element_id:
             raise RuleError("A line joins two different elements.", 400)
-        if anchor.source_point is None and anchor.target_point is None and not anchor.points:
-            raise RuleError("A line anchor must fix an end or a vertex.", 400)
+        if (
+            anchor.connection_id is None and anchor.source_point is None and anchor.target_point is None and not anchor.points
+            and anchor.line_shape is None
+        ):
+            raise RuleError("A line anchor must fix an end, a vertex or a shape.", 400)
         if anchor.source_element_id not in placed or anchor.target_element_id not in placed:
             raise RuleError("A line anchor must join two elements placed on the diagram.", 400)
+        if anchor.connection_id is not None:
+            if anchor.connection_id in seen_connections:
+                raise RuleError("A connection can have one route.", 400)
+            seen_connections.add(anchor.connection_id)
+            continue
         key = frozenset((anchor.source_element_id, anchor.target_element_id))
         if key in seen:
             raise RuleError("A line can have one anchor.", 400)
         seen.add(key)
+    if seen_connections:
+        own = set(db.scalars(select(ArchitectureConnection.id).where(
+            ArchitectureConnection.id.in_(seen_connections), ArchitectureConnection.project_id == project_id,
+        )))
+        if own != seen_connections:
+            raise RuleError("A route can be set for a connection of this project.", 400)
 
 
 def _route_values(anchor: AnchorIn | ArchitectureDiagramAnchor) -> tuple[Any, ...]:
-    """What makes an anchor what it is, for comparing a stored one with a submitted one: both ends, the vertices and the curve."""
+    """What makes an anchor what it is, for comparing a stored one with a submitted one: both ends, the vertices and the shape."""
     points = [{"x": float(p["x"]), "y": float(p["y"])} if isinstance(p, dict) else {"x": p.x, "y": p.y} for p in anchor.points]
     return (
         anchor.source_point.value if isinstance(anchor.source_point, AttachPoint) else anchor.source_point,
         anchor.target_point.value if isinstance(anchor.target_point, AttachPoint) else anchor.target_point,
-        points, anchor.smooth,
+        points, _value(anchor.line_shape),
     )
+
+
+def _anchor_key(anchor: AnchorIn | ArchitectureDiagramAnchor) -> tuple[Any, ...]:
+    """What an anchor is for: its connection (one route each) or, for a pair's route, the two boxes."""
+    if anchor.connection_id is not None:
+        return ("connection", anchor.connection_id)
+    return ("pair", anchor.source_element_id, anchor.target_element_id)
 
 
 def _sync_anchors(db: Session, diagram_id: uuid.UUID, wanted: Sequence[AnchorIn] | None, placed: set[uuid.UUID]) -> int:
     """Makes the stored anchors match `wanted` (`None` keeps them), after dropping any whose box is no longer placed.
+    A connection's route is matched by its connection, a pair's by its two boxes in the order stored.
     Returns how many rows were added, removed or changed."""
     changed = 0
     stored = anchors_of(db, diagram_id)
-    keep: dict[tuple[uuid.UUID, uuid.UUID], ArchitectureDiagramAnchor] = {}
+    keep: dict[tuple[Any, ...], ArchitectureDiagramAnchor] = {}
     for row in stored:
         if row.source_element_id not in placed or row.target_element_id not in placed:
             db.delete(row)
             changed += 1
         else:
-            keep[(row.source_element_id, row.target_element_id)] = row
+            keep[_anchor_key(row)] = row
     if wanted is None:
         return changed
-    given = {(a.source_element_id, a.target_element_id): a for a in wanted}
+    given = {_anchor_key(a): a for a in wanted}
     for key, row in keep.items():
         a = given.get(key)
         if a is None:
             db.delete(row)
             changed += 1
-        elif _route_values(row) != _route_values(a):
+        elif _route_values(row) != _route_values(a) or (row.source_element_id, row.target_element_id) != (a.source_element_id, a.target_element_id):
+            row.source_element_id, row.target_element_id = a.source_element_id, a.target_element_id
             row.source_point = a.source_point.value if a.source_point else None
             row.target_point = a.target_point.value if a.target_point else None
             row.points = [{"x": p.x, "y": p.y} for p in a.points]
-            row.smooth = a.smooth
+            row.line_shape = _value(a.line_shape)
             changed += 1
     for key, a in given.items():
         if key not in keep:
             db.add(ArchitectureDiagramAnchor(
                 diagram_id=diagram_id, source_element_id=a.source_element_id, target_element_id=a.target_element_id,
+                connection_id=a.connection_id,
                 source_point=a.source_point.value if a.source_point else None,
                 target_point=a.target_point.value if a.target_point else None,
-                points=[{"x": p.x, "y": p.y} for p in a.points], smooth=a.smooth,
+                points=[{"x": p.x, "y": p.y} for p in a.points], line_shape=_value(a.line_shape),
             ))
             changed += 1
     return changed
@@ -460,7 +493,7 @@ def _leader_values(leader: ArchitectureNoteLeader | LeaderIn, order: int) -> tup
     return (
         _value(leader.kind), leader.element_id, leader.connection_id, leader.state_id, leader.transition_id, leader.x, leader.y,
         _value(leader.start_point),
-        _points_of(leader.points), leader.smooth, _value(leader.start_style), _value(leader.end_style), order,
+        _points_of(leader.points), _value(leader.line_shape), _value(leader.start_style), _value(leader.end_style), order,
     )
 
 
@@ -470,7 +503,8 @@ def leader_out(leader: ArchitectureNoteLeader) -> LeaderOut:
         id=leader.id, kind=LeaderKind(leader.kind), element_id=leader.element_id, connection_id=leader.connection_id,
         state_id=leader.state_id, transition_id=leader.transition_id, x=leader.x, y=leader.y,
         start_point=AttachPoint(leader.start_point) if leader.start_point else None,
-        points=[WaypointIn(x=p["x"], y=p["y"]) for p in leader.points], smooth=leader.smooth,
+        points=[WaypointIn(x=p["x"], y=p["y"]) for p in leader.points],
+        line_shape=LineShape(leader.line_shape) if leader.line_shape else None,
         start_style=LineEnd(leader.start_style), end_style=LineEnd(leader.end_style),
     )
 
@@ -503,7 +537,7 @@ def _write_leader(row: ArchitectureNoteLeader, leader: LeaderIn, order: int) -> 
     row.y = leader.y if kind == LeaderKind.POINT else None
     row.start_point = leader.start_point.value if leader.start_point else None
     row.points = _points_of(leader.points)
-    row.smooth = leader.smooth
+    row.line_shape = _value(leader.line_shape)
     row.start_style, row.end_style = leader.start_style.value, leader.end_style.value
 
 
@@ -644,7 +678,7 @@ def save_layout(
     for box in boxes:
         _check_box(box)
     if payload.anchors is not None:
-        _check_anchors(payload.anchors, set(wanted_ids))
+        _check_anchors(db, project.id, payload.anchors, set(wanted_ids))
     existing = {p.element_id: p for p in placements_of(db, diagram.id)}
     _check_new_element(db, Viewer.of_user(actor, project), [e for e in wanted_ids if e not in existing])
     if payload.boundaries is not None:
@@ -907,7 +941,7 @@ def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: V
             scope_element_name=scopes[d.scope_element_id].name if d.scope_element_id in readable else (
                 "" if d.scope_element_id in scopes else None
             ),
-            connection_detail=d.connection_detail, line_hops=d.line_hops, folder_id=d.folder_id,
+            connection_detail=d.connection_detail, line_hops=d.line_hops, line_shape=LineShape(d.line_shape), folder_id=d.folder_id,
             folder_path=paths.get(d.folder_id) if d.folder_id else None, status=d.status, allowed_status_moves=allowed_moves(d.status),
             version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,

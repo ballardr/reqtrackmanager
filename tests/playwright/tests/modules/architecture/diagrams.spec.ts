@@ -461,7 +461,7 @@ test.describe("System Architecture: diagram editor", () => {
       await expect(ends).toHaveValue("top");
       const view = await (await page.request.get(`${base}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
       expect(view.anchors).toEqual([
-        { source_element_id: gatewayId, target_element_id: ordersId, source_point: "bottom", target_point: "top", points: [], smooth: false },
+        { source_element_id: gatewayId, target_element_id: ordersId, source_point: "bottom", target_point: "top", points: [], line_shape: null, connection_id: null },
       ]);
       const svg = await (await page.request.get(`${base}/diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
       // Gateway is 160 x 80 at the origin and Orders the same at x = 400: bottom middle (80, 80) to top middle (480, 0).
@@ -688,14 +688,17 @@ test.describe("System Architecture: diagram editor", () => {
     const diagram = await created.json();
     await page.goto(`/projects/${project.id}/modules/architecture/diagrams/${diagram.id}`);
 
-    await test.step("the system context explains itself", async () => {
-      await expect(page.getByRole("button", { name: "Help: System context" })).toBeVisible();
+    await test.step("the title's tooltip says the diagram shows the system context", async () => {
+      await page.getByRole("heading", { level: 1 }).hover();
+      await expect(page.getByRole("tooltip")).toContainText("System context");
     });
 
     await test.step("a double-click opens the inside of the box as a diagram of its own", async () => {
       await page.getByLabel(`${head}, node`, { exact: true }).dblclick();
-      await expect(page.getByText(`Inside ELM-`)).toBeVisible();
       await expect(page.getByText(/Nothing is inside this element yet/)).toBeVisible();
+      await page.mouse.move(0, 0);
+      await page.getByRole("heading", { level: 1 }).hover();
+      await expect(page.getByRole("tooltip")).toContainText(/Inside .*ELM-/);
     });
 
     await test.step("a new element created there is a child of the box", async () => {

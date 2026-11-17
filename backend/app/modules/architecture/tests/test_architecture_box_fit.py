@@ -176,10 +176,11 @@ def test_a_locked_node_is_framed_on_its_code_and_a_symbol_the_export_cannot_read
 
 
 def test_render_diagram_is_deterministic_and_keeps_the_stored_size_in_the_view():
+    from app.modules.architecture.enums import LineShape
     from app.modules.architecture.schemas import DiagramView
     node = _node_view()
     view = DiagramView.model_construct(
-        diagram=type("D", (), {"unique_code": "DGM-001", "name": "d", "line_hops": False})(),
+        diagram=type("D", (), {"unique_code": "DGM-001", "name": "d", "line_hops": False, "line_shape": LineShape.STRAIGHT})(),
         toggles=[], nodes=[node], edges=[], notes=[], anchors=[], boundaries=[],
     )
     db = Session()

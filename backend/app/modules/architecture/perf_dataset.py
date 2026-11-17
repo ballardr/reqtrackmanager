@@ -45,6 +45,7 @@ from app.modules.architecture.diagram_resolver import outer_side
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
     AttachPoint,
+    LineShape,
     NoteAlign,
     NoteSizeMode,
     NoteTone,
@@ -118,6 +119,12 @@ _MAX_BOUNDARIES = 20
 _NOTE_TONES = [tone.value for tone in NoteTone]
 _NOTE_ALIGNS = [align.value for align in NoteAlign]
 _NOTE_SIZE_MODES = [mode.value for mode in NoteSizeMode]
+_SHAPES = [shape.value for shape in LineShape]
+
+
+def _line_shape(rng: random.Random) -> str | None:
+    """A drawn line's own shape: half of the lines follow their diagram's default (none), the rest name one."""
+    return None if rng.random() < 0.5 else rng.choice(_SHAPES)
 
 
 def _route(rng: random.Random, seed: int) -> list[dict[str, float]]:
@@ -157,7 +164,7 @@ def _note_leaders(
         rows.append({
             **blank, **target, "sort_order": slot, "kind": kind,
             "start_point": rng.choice(_ATTACH_POINTS) if (forced and order == 0) or rng.random() < 0.3 else None,
-            "points": _route(rng, order) if routed else [], "smooth": rng.random() < 0.3,
+            "points": _route(rng, order) if routed else [], "line_shape": _line_shape(rng),
             "start_style": rng.choice(("none", "none", "dot")), "end_style": rng.choice(("arrow", "arrow", "dot", "none")),
         })
     return rows
@@ -435,7 +442,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
             {
                 "name": name, "purpose": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
                 "scope_element_id": scoped[0] if scoped else (rng.choice(elements) if rng.random() < 0.3 else None),
-                "connection_detail": rng.random() < 0.5, "line_hops": rng.random() < 0.5,
+                "connection_detail": rng.random() < 0.5, "line_hops": rng.random() < 0.5, "line_shape": rng.choice(_SHAPES),
                 "folder_id": _pick_folder(rng, folder_ids), "status": status.value,
                 "version": 1, "is_archived": archived,
                 "archived_at": created if archived else None, "archived_by": creator if archived else None,
@@ -457,7 +464,7 @@ def generate_diagrams(ctx: PerfProjectContext) -> dict[str, int]:
                 batch.satellite(ArchitectureDiagramAnchor, {
                     "id": batch.new_id(), "diagram_id": record_id, "source_element_id": first, "target_element_id": second,
                     "source_point": points[0], "target_point": points[1] if rng.random() < 0.7 else None,
-                    "points": _route(rng, slot) if rng.random() < _ROUTED_LINES else [], "smooth": rng.random() < 0.3,
+                    "points": _route(rng, slot) if rng.random() < _ROUTED_LINES else [], "line_shape": _line_shape(rng),
                     "created_at": created, "updated_at": created,
                 })
         for slot, (connection_id, _side, realising) in enumerate(scoped[1] if scoped else ()):
@@ -527,7 +534,8 @@ def generate_state_machines(ctx: PerfProjectContext) -> dict[str, int]:
         batch.add(
             {
                 "name": name, "description": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
-                "element_id": rng.choice(elements), "line_hops": rng.random() < 0.5, "status": status.value, "version": 1,
+                "element_id": rng.choice(elements), "line_hops": rng.random() < 0.5, "line_shape": rng.choice(_SHAPES),
+                "status": status.value, "version": 1,
                 "is_archived": archived,
                 "archived_at": created if archived else None, "archived_by": creator if archived else None,
             },
@@ -568,7 +576,7 @@ def _state_note_leaders(
         rows.append({
             **blank, **target, "sort_order": slot, "kind": kind,
             "start_point": rng.choice(_ATTACH_POINTS) if (forced and order == 0) or rng.random() < 0.3 else None,
-            "points": _route(rng, order) if routed else [], "smooth": rng.random() < 0.3,
+            "points": _route(rng, order) if routed else [], "line_shape": _line_shape(rng),
             "start_style": rng.choice(("none", "none", "dot")), "end_style": rng.choice(("arrow", "arrow", "dot", "none")),
         })
     return rows
@@ -639,7 +647,7 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                 "target_state_id": target, "event": rng.choice(_EVENTS), "guard": "ready" if rng.random() < 0.2 else "",
                 "action": f"do_{order}()" if rng.random() < 0.3 else "", "description": "", "sort_order": order,
                 "source_point": rng.choice(_ATTACH_POINTS) if rng.random() < 0.1 else None,
-                "target_point": None, "points": _route(rng, order) if rng.random() < _ROUTED_LINES else [], "smooth": rng.random() < 0.3,
+                "target_point": None, "points": _route(rng, order) if rng.random() < _ROUTED_LINES else [], "line_shape": _line_shape(rng),
                 "created_at": stamp, "updated_at": stamp,
             })
         ordinary_ids = [state_id for state_id, state_kind in made if state_kind == "state"]
@@ -660,7 +668,7 @@ def generate_states(ctx: PerfProjectContext) -> dict[str, int]:
                 "id": batch.new_id(), "state_machine_diagram_id": machine_id, "source_state_id": ordinary_ids[extra],
                 "target_state_id": ordinary_ids[extra] if extra == 0 else rng.choice(ordinary_ids), "event": rng.choice(_EVENTS),
                 "guard": "", "action": "", "description": "", "sort_order": size + extra, "source_point": None,
-                "target_point": None, "points": [], "smooth": False, "created_at": stamp, "updated_at": stamp,
+                "target_point": None, "points": [], "line_shape": None, "created_at": stamp, "updated_at": stamp,
             })
     batch.write()
     add_tags(ctx, batch)

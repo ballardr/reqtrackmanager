@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
+import type { LineShape } from "../../components/graphLinePath";
 import { useAttachPointVisibility } from "../../hooks/useAttachPointVisibility";
 import { useSnapToGrid } from "../../hooks/useSnapToGrid";
 import { buildUser, withStatefulAuth } from "../../testing/storybook-helpers";
@@ -14,16 +15,19 @@ function Host() {
   const points = useAttachPointVisibility();
   const [blockHops, setBlockHops] = useState(false);
   const [machineHops, setMachineHops] = useState(false);
+  const [blockShape, setBlockShape] = useState<LineShape>("straight");
+  const [machineShape, setMachineShape] = useState<LineShape>("straight");
   return (
     <div className="row" style={{ gap: "var(--space-4)" }}>
       <DiagramSettingsButton
-        connectionDetail={false} disabled={false} onConnectionDetailChange={() => undefined} lineHops={blockHops} onLineHopsChange={setBlockHops} showNotes onShowNotesChange={() => undefined}
+        connectionDetail={false} disabled={false} onConnectionDetailChange={() => undefined} lineHops={blockHops} onLineHopsChange={setBlockHops} lineShape={blockShape} onLineShapeChange={setBlockShape} showNotes onShowNotesChange={() => undefined}
         showComments onShowCommentsChange={() => undefined} showResolved onShowResolvedChange={() => undefined}
         snapToGrid={snap.on} onSnapToGridChange={snap.setOn}
         attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways}
       />
-      <StateMachineSettingsButton lineHops={machineHops} disabled={false} onLineHopsChange={setMachineHops} snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways} />
+      <StateMachineSettingsButton lineHops={machineHops} disabled={false} onLineHopsChange={setMachineHops} lineShape={machineShape} onLineShapeChange={setMachineShape} snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={points.always} onAttachPointsAlwaysChange={points.setAlways} />
       <span data-testid="hops">{`${blockHops}/${machineHops}`}</span>
+      <span data-testid="shapes">{`${blockShape}/${machineShape}`}</span>
       <span data-testid="stored">{String(snap.on)}</span>
       <span data-testid="points">{points.canvasProps.attachPointVisibility}</span>
     </div>
@@ -135,5 +139,40 @@ export const TheLineHopsHelpNamesBothStates: Story = {
     await expect(tip).toHaveTextContent("On: where one line crosses another");
     await expect(tip).toHaveTextContent("Off: lines cross with no arc.");
     await expect(tip).toHaveTextContent("SVG and PNG downloads");
+  },
+};
+
+/** The default line shape is a select in each gear (each stores it on its own diagram); the gear says so, and is marked, once it is not Straight. */
+export const TheDefaultLineShapeIsASelectInEachGear: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId("shapes")).toHaveTextContent("straight/straight");
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: connection detail off, line hops off/ }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    const shape = within(dialog).getByRole("combobox", { name: "Default line shape" });
+    await expect(shape).toHaveValue("straight");
+    await expect(within(shape).getAllByRole("option").map((o) => o.textContent)).toEqual(["Straight", "Curved", "Spline"]);
+    await userEvent.selectOptions(shape, "curved");
+    await expect(canvas.getByTestId("shapes")).toHaveTextContent("curved/straight");
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByRole("button", { name: /^Diagram settings: connection detail off.*, line shape curved$/ })).toHaveClass("btn-marked");
+    // The state machine gear keeps its own choice.
+    await userEvent.click(canvas.getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off, attach points near the pointer$/ }));
+    const other = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    await userEvent.selectOptions(within(other).getByRole("combobox", { name: "Default line shape" }), "spline");
+    await expect(canvas.getByTestId("shapes")).toHaveTextContent("curved/spline");
+  },
+};
+
+/** The select's help describes every option, one line each. */
+export const TheLineShapeHelpNamesEveryOption: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Diagram settings: line hops off, snap to grid off/ }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Diagram settings" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^Help: Default line shape/ }));
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("Straight: segments through the line's vertices.");
+    await expect(tip).toHaveTextContent("Curved: one arc bowed to the left");
+    await expect(tip).toHaveTextContent("Spline: a curve through the line's vertices");
   },
 };

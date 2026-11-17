@@ -94,7 +94,7 @@ test.describe("System Architecture: vertices on lines", () => {
       await x.fill(String(before + 40));
       await x.press("Tab");
       await expect(x).toHaveValue(String(before + 40));
-      await page.getByRole("switch", { name: "Smooth curve" }).click();
+      await page.getByRole("combobox", { name: "Line shape" }).selectOption("spline");
       await expect(page.locator(`.react-flow__edge[data-id="${edgeId}"] path.react-flow__edge-path`)).toHaveAttribute("d", / C /);
     });
 
@@ -105,7 +105,7 @@ test.describe("System Architecture: vertices on lines", () => {
       const view = await (await page.request.get(`${arch}/diagrams/${diagram.id}/view`, { headers: adminHeaders })).json();
       expect(view.anchors).toHaveLength(1);
       expect(view.anchors[0].points).toHaveLength(1);
-      expect(view.anchors[0].smooth).toBe(true);
+      expect(view.anchors[0].line_shape).toBe("spline");
       await page.reload();
       await expect(page.getByLabel(`Alpha ${suffix}, node`, { exact: true })).toBeVisible();
       await expect(page.locator(`.react-flow__edge[data-id="${edgeId}"] path.react-flow__edge-path`)).toHaveAttribute("d", / C /);

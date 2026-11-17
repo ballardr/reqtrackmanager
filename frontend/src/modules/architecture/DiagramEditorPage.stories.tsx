@@ -103,6 +103,53 @@ export const DrawsBoxesAndLinesFromTheModelData: Story = {
   },
 };
 
+/** The chevron beside the title lists the project's other diagrams as links to their editors, not the current one or a state machine. */
+export const TheTitleChevronSwitchesToAnotherDiagram: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagrams: [buildDiagram(), buildDiagram({ id: "dgm-2", unique_code: "DGM-002", name: "Gateway internals" })],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: /Platform overview/ });
+    await userEvent.click(await canvas.findByRole("button", { name: "Switch diagram" }));
+    const link = await within(document.body).findByRole("link", { name: /DGM-002 Gateway internals/ });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/diagrams/dgm-2`);
+    await expect(within(document.body).queryByRole("link", { name: /DGM-001/ })).toBeNull();
+  },
+};
+
+/** What the diagram shows is read on hovering its title, and is not a line of its own in the header. */
+export const TheScopeIsInTheTitleTooltipNotOnALineOfItsOwn: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const heading = await canvas.findByRole("heading", { name: /Platform overview/ });
+    await expect(canvas.queryByText(/^System context/)).toBeNull();
+    await userEvent.hover(within(heading).getByText("Platform overview"));
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent(/System context/);
+  },
+};
+
+/** An inside diagram names the element it shows in the title's tooltip. */
+export const AnInsideDiagramNamesItsElementInTheTitleTooltip: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({
+        diagram: buildDiagram({ name: "Gateway internals", scope_element_id: "el-1", scope_element_code: "ELM-001", scope_element_name: "Gateway" }),
+      }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const heading = await canvas.findByRole("heading", { name: /Gateway internals/ });
+    await userEvent.hover(within(heading).getByText("Gateway internals"));
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Inside ELM-001 Gateway");
+  },
+};
+
 /** The editor's save reads "Save" and is named "Save diagram"; the element and connection cards read "Save" and keep their own names. */
 export const TheSaveButtonsReadSaveAndAreNamedForWhatTheyStore: Story = {
   play: async ({ canvasElement }) => {
@@ -362,7 +409,7 @@ export const ChoosingALineEndInTheSelectionCardIsStoredWithTheLayout: Story = {
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
-        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "bottom", target_point: null, points: [], smooth: false }],
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: "bottom", target_point: null, points: [], line_shape: null }],
       }),
     ));
   },
@@ -374,8 +421,7 @@ export const VerticesAreAddedPositionedAndRemovedInTheSelectionCard: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const panel = await selectLine(canvas);
-    await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
-    await expect(panel.getByRole("switch", { name: "Smooth curve" })).toBeDisabled();
+    await expect(panel.getByText("No vertices.")).toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Add vertex" }));
     // Gateway and Orders are level, so the first vertex goes below the middle of the line.
     const x = await panel.findByRole("spinbutton", { name: "Vertex 1 X" });
@@ -385,27 +431,26 @@ export const VerticesAreAddedPositionedAndRemovedInTheSelectionCard: Story = {
     await userEvent.type(x, "210");
     await userEvent.tab();
     await expect(panel.getByRole("spinbutton", { name: "Vertex 1 X" })).toHaveValue(210);
-    await expect(panel.getByRole("switch", { name: "Smooth curve" })).toBeEnabled();
-    await userEvent.click(panel.getByRole("switch", { name: "Smooth curve" }));
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line shape" }), "spline");
     await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${BASE}/diagrams/dgm-1/layout`,
       expect.objectContaining({
         anchors: [expect.objectContaining({
-          source_element_id: "el-1", target_element_id: "el-2", source_point: null, target_point: null,
-          points: [expect.objectContaining({ x: 210 })], smooth: true,
+          source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: null, target_point: null,
+          points: [expect.objectContaining({ x: 210 })], line_shape: "spline",
         })],
       }),
     ));
   },
 };
 
-export const ResettingVerticesStraightensTheLineAndDropsTheAnchor: Story = {
+export const ResettingVerticesKeepsTheLinesOwnShapeAndDropsTheAnchorOnlyWhenNothingElseIsSet: Story = {
   beforeEach: () => {
     mockArchitectureReads({
       elements: ELEMENTS,
       diagramView: buildDiagramView({
-        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: null, target_point: null, points: [{ x: 150, y: 120 }, { x: 250, y: 120 }], smooth: true }],
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: null, target_point: null, points: [{ x: 150, y: 120 }, { x: 250, y: 120 }], line_shape: "spline" }],
       }),
     });
     spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
@@ -417,9 +462,12 @@ export const ResettingVerticesStraightensTheLineAndDropsTheAnchor: Story = {
     await userEvent.click(panel.getByRole("button", { name: "Remove vertex 1" }));
     await expect(panel.queryByRole("spinbutton", { name: "Vertex 2 X" })).not.toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Reset vertices" }));
-    await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
+    await expect(panel.getByText("No vertices.")).toBeInTheDocument();
+    // The line still has its own shape, so its route is kept: only its vertices are gone.
     await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({ anchors: [] })));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({
+      anchors: [expect.objectContaining({ points: [], line_shape: "spline" })],
+    })));
   },
 };
 
@@ -429,7 +477,7 @@ export const VerticesOfAReversedAnchorAreListedFromTheLinesSource: Story = {
     mockArchitectureReads({
       elements: ELEMENTS,
       diagramView: buildDiagramView({
-        anchors: [{ source_element_id: "el-2", target_element_id: "el-1", source_point: null, target_point: "top", points: [{ x: 250, y: 90 }, { x: 150, y: 110 }], smooth: false }],
+        anchors: [{ source_element_id: "el-2", target_element_id: "el-1", connection_id: null, source_point: null, target_point: "top", points: [{ x: 250, y: 90 }, { x: 150, y: 110 }], line_shape: null }],
       }),
     });
   },
@@ -447,7 +495,7 @@ export const ChoosingAutomaticAgainRemovesTheAnchor: Story = {
   beforeEach: () => {
     mockArchitectureReads({
       elements: ELEMENTS,
-      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: null, points: [], smooth: false }] }),
+      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: "top", target_point: null, points: [], line_shape: null }] }),
     });
   },
   play: async ({ canvasElement }) => {
@@ -466,7 +514,7 @@ export const RemovingABoxDropsTheAnchorsOfItsLines: Story = {
   beforeEach: () => {
     mockArchitectureReads({
       elements: ELEMENTS,
-      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", source_point: "top", target_point: "bottom", points: [], smooth: false }] }),
+      diagramView: buildDiagramView({ anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: "top", target_point: "bottom", points: [], line_shape: null }] }),
     });
     spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
   },
@@ -712,7 +760,7 @@ export const ANoteIsGivenAToneAndALeaderToABoxAndBothAreSaved: Story = {
           id: null, tone: "danger",
           leaders: [{
             id: null, kind: "element", element_id: "el-1", connection_id: null, state_id: null, transition_id: null, x: null, y: null,
-            start_point: "right", points: [], smooth: false, start_style: "none", end_style: "dot",
+            start_point: "right", points: [], line_shape: null, start_style: "none", end_style: "dot",
           }],
         })],
       }),
@@ -1231,6 +1279,84 @@ export const LineHopsIsStoredFromTheGear: Story = {
   },
 };
 
+/** The diagram's default line shape is a select in the gear, stored with the version as Line hops is. */
+export const TheDefaultLineShapeIsStoredFromTheGear: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4, line_shape: "curved" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const shape = await within(document.body).findByRole("combobox", { name: "Default line shape" });
+    await expect(shape).toHaveValue("straight");
+    await userEvent.selectOptions(shape, "curved");
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1`, expect.objectContaining({ version: 3, line_shape: "curved" }),
+    ));
+  },
+};
+
+/** A diagram whose default is Curved draws an unrouted line as one arc, and the line's card says it follows the default. */
+export const ACurvedDefaultDrawsLinesAsArcsAndTheCardNamesIt: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({ diagram: buildDiagram({ line_shape: "curved" }) }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await waitFor(() => {
+      const d = canvasElement.querySelector(".react-flow__edge path.react-flow__edge-path")?.getAttribute("d") ?? "";
+      expect(d.match(/ C /g)).toHaveLength(1);
+    });
+    const shape = panel.getByRole("combobox", { name: "Line shape" });
+    await expect(shape).toHaveDisplayValue("Diagram default (Curved)");
+    await expect(canvasElement.querySelectorAll(".graph-waypoint")).toHaveLength(0);
+  },
+};
+
+/** A line's own shape is stored with its route, even with no vertex and no chosen end, and choosing the default again drops it. */
+export const ALinesOwnShapeIsStoredWithTheLayoutAndTheDefaultDropsIt: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line shape" }), "curved");
+    await waitFor(() => {
+      const d = canvasElement.querySelector(".react-flow__edge path.react-flow__edge-path")?.getAttribute("d") ?? "";
+      expect(d.match(/ C /g)).toHaveLength(1);
+    });
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: null, target_point: null, points: [], line_shape: "curved" }],
+      }),
+    ));
+  },
+};
+
+/** Choosing the diagram default again gives up a line's own shape, and a route that set nothing else is not stored. */
+export const ChoosingTheDefaultAgainDropsTheLinesOwnShape: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: ELEMENTS,
+      diagramView: buildDiagramView({
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: null, source_point: null, target_point: null, points: [], line_shape: "curved" }],
+      }),
+    });
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas);
+    await expect(panel.getByRole("combobox", { name: "Line shape" })).toHaveValue("curved");
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line shape" }), "");
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/diagrams/dgm-1/layout`, expect.objectContaining({ anchors: [] })));
+  },
+};
+
 export const ADisplayNoteIsDrawnInsideItsBoxAndTheGearHidesItWithoutSaving: Story = {
   beforeEach: () => {
     mockArchitectureReads({
@@ -1412,12 +1538,119 @@ export const ChoosingAConnectionOfAMergedLineShowsItsFieldsAndBackReturnsToTheLi
     // The heading takes the focus, so the change is announced; the line's own fields stay under the connection's.
     await waitFor(() => expect(chosen.getByText("CON-002").closest("p")).toHaveFocus());
     await expect(panel.getByRole("combobox", { name: "Line starts at" })).toBeInTheDocument();
-    await expect(panel.getByText(/apply to all 2 connections/)).toBeInTheDocument();
+    // The route fields say whose route they set: the chosen connection's, which is then a line of its own.
+    await expect(panel.getByText("Route of CON-002")).toBeInTheDocument();
     await expect(panel.getByRole("heading", { name: "Selection" })).toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Back to the 2 connections" }));
     await expect(await panel.findByRole("list", { name: "Connections of this line" })).toBeInTheDocument();
     await expect(panel.queryByRole("group", { name: "Chosen connection" })).not.toBeInTheDocument();
     await waitFor(() => expect(panel.getByRole("button", { name: /^CON-002 / })).toHaveFocus());
+  },
+};
+
+/** Routing the chosen connection of a merged line draws it as a line of its own, keeps it selected and saves its own route. */
+export const RoutingTheChosenConnectionDrawsItAsALineOfItsOwn: Story = {
+  beforeEach: () => {
+    mockArchitectureReads(TWO_CONNECTIONS);
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(1);
+    await userEvent.click(panel.getByRole("button", { name: /^CON-002 / }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: "Line starts at" }), "Top");
+    await waitFor(() => expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(2));
+    // The connection's own line is the selection: one connection, its fields shown directly, its own route named.
+    await expect(await panel.findByText("Route of CON-002")).toBeInTheDocument();
+    await expect(panel.queryByRole("group", { name: "Chosen connection" })).not.toBeInTheDocument();
+    await expect(panel.getByRole("combobox", { name: "Line starts at" })).toHaveDisplayValue("Top");
+    await expect(panel.getByRole("button", { name: "Use the shared route" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({
+        anchors: [expect.objectContaining({ connection_id: "con-2", source_element_id: "el-1", target_element_id: "el-2", source_point: "top" })],
+      }),
+    ));
+  },
+};
+
+/** A line that stands for several connections with none chosen routes its pair of boxes, so every connection follows. */
+export const RoutingAMergedLineWithNoConnectionChosenRoutesThePair: Story = {
+  beforeEach: () => {
+    mockArchitectureReads(TWO_CONNECTIONS);
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await expect(panel.getByText("Route of the line")).toBeInTheDocument();
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line starts at" }), "Top");
+    await expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(1);
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({ anchors: [expect.objectContaining({ connection_id: null, source_point: "top" })] }),
+    ));
+  },
+};
+
+/** With Connection detail on, two connections between one pair are two lines: routing one routes that connection only. */
+export const RoutingOneOfTwoParallelLinesRoutesItsConnectionOnly: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ ...TWO_CONNECTIONS, diagramView: buildDiagramView({ diagram: buildDiagram({ connection_detail: true }) }) });
+    spyOn(api, "put").mockResolvedValue(buildDiagram({ version: 4 }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Gateway, node");
+    const lines = await canvas.findAllByLabelText(/connection from Gateway to Orders/i);
+    await expect(lines).toHaveLength(2);
+    lines[1].focus();
+    await userEvent.keyboard("{Enter}");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: "Line starts at" }), "Top");
+    await expect(await panel.findByText(/^Route of CON-00\d$/)).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `${BASE}/diagrams/dgm-1/layout`,
+      expect.objectContaining({ anchors: [expect.objectContaining({ connection_id: expect.stringMatching(/^con-/), source_point: "top" })] }),
+    ));
+  },
+};
+
+/** Using the shared route takes the connection's own route away: it merges back into the line and nothing is left to save. */
+export const UsingTheSharedRouteMergesTheConnectionBackIntoItsLine: Story = {
+  beforeEach: () => { mockArchitectureReads(TWO_CONNECTIONS); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
+    await userEvent.click(panel.getByRole("button", { name: /^CON-002 / }));
+    await userEvent.selectOptions(await panel.findByRole("combobox", { name: "Line starts at" }), "Top");
+    await waitFor(() => expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(2));
+    await userEvent.click(await panel.findByRole("button", { name: "Use the shared route" }));
+    await waitFor(() => expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(1));
+    await expect(canvas.getByRole("button", { name: "Save diagram" })).toBeDisabled();
+    // The merged line is selected again, with its two connections listed.
+    await expect(await panel.findByRole("list", { name: "Connections of this line" })).toBeInTheDocument();
+  },
+};
+
+/** A saved connection route is drawn as a line of its own when the diagram loads. */
+export const ASavedConnectionRouteIsDrawnAsALineOfItsOwn: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      ...TWO_CONNECTIONS,
+      diagramView: buildDiagramView({
+        anchors: [{ source_element_id: "el-1", target_element_id: "el-2", connection_id: "con-2", source_point: "top", target_point: null, points: [], line_shape: null }],
+      }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Gateway, node");
+    await waitFor(() => expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(2));
   },
 };
 

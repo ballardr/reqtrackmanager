@@ -15,13 +15,14 @@ interface Case {
   merge_parallel: boolean;
   boundaries?: { id: string; element_id: string; outside_id: string; connection_ids: string[] }[];
   scope?: string;
+  routed?: Record<string, [string, string]>;
   outer_sides?: Record<string, string>;
   expected: {
     hidden_placed: string[];
     internal: Record<string, string[]>;
     lines: {
       source_id: string; target_id: string; two_way: boolean; connection_ids: string[]; rolled_up: boolean;
-      bridged: boolean; indirect: boolean; hops: string[];
+      bridged: boolean; indirect: boolean; hops: string[]; routable: string[]; own_route: string | null;
     }[];
   };
 }
@@ -33,6 +34,7 @@ const CASES = cases as unknown as Case[];
 const wire = (line: ResolvedLine) => ({
   source_id: line.sourceId, target_id: line.targetId, two_way: line.twoWay, connection_ids: line.connectionIds,
   rolled_up: line.rolledUp, bridged: line.bridged, indirect: line.indirect, hops: line.hops,
+  routable: line.routable, own_route: line.ownRoute,
 });
 
 function Host() {
@@ -56,6 +58,7 @@ export const MatchesTheServersResolverOnEverySharedCase: Story = {
         hiddenConnections: c.hidden_connections,
         mergeParallel: c.merge_parallel,
         boundaries: (c.boundaries ?? []).map((b) => ({ id: b.id, elementId: b.element_id, outsideId: b.outside_id, connectionIds: b.connection_ids })),
+        routed: new Map(Object.entries(c.routed ?? {}).map(([id, ends]) => [id, ends])),
       });
       const got = {
         hidden_placed: [...result.hiddenPlaced].sort(),
@@ -79,6 +82,7 @@ export const MatchesTheServersResolverOnEverySharedCase: Story = {
     expect(failures).toEqual([]);
     expect(CASES.length).toBeGreaterThan(20);
     expect(CASES.some((c) => (c.boundaries ?? []).length > 0)).toBe(true);
+    expect(CASES.some((c) => c.expected.lines.some((l) => l.own_route !== null))).toBe(true);
   },
 };
 

@@ -56,6 +56,7 @@ import { projectElementApi, projectStateApi, projectStateMachineApi } from "./ap
 import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { architectureTabPath } from "./architectureTabs";
 import { DiagramCommentsPanel } from "./DiagramCommentsPanel";
+import { DiagramSwitcher } from "./DiagramSwitcher";
 import { ReturnToDiagram } from "./ReturnToDiagram";
 import { StateFormModal } from "./StateFormModal";
 import { blankStateValues, defaultStateName, diffStateFields, valuesFromState } from "./stateFields";
@@ -495,6 +496,7 @@ export function StateMachineEditorPage() {
       <StateMachineSettingsButton
         lineHops={diagram?.line_hops ?? false} disabled={!editable || editor.saving}
         onLineHopsChange={(next) => void editor.updateFields({ line_hops: next })}
+        lineShape={diagram?.line_shape ?? "straight"} onLineShapeChange={(next) => void editor.updateFields({ line_shape: next })}
         snapToGrid={snap.on} onSnapToGridChange={snap.setOn} attachPointsAlways={attachPoints.always} onAttachPointsAlwaysChange={attachPoints.setAlways} />
       {dirty && <span className="text-muted" role="status">Unsaved changes.</span>}
     </div>
@@ -538,6 +540,7 @@ export function StateMachineEditorPage() {
       <RecordHeader
         recordLabel="State machine diagram"
         title={diagram.name}
+        titleAddon={<DiagramSwitcher kind="stateMachine" projectId={projectId} currentId={diagram.id} />}
         code={diagram.unique_code}
         tagsInline tags={<RecordTags inline projectId={projectId} artefactType="architecture_state_machine_diagram" artefactId={diagram.id} />}
         back={{ to: architectureTabPath(projectId, "diagrams"), label: "Diagrams" }}
@@ -591,7 +594,7 @@ export function StateMachineEditorPage() {
                 onNodesMove={(moves) => editor.edit((l) => moveStates(l, moves, markerOffsets(model.states, l)))}
                 onNodesResize={(changes) => editor.edit((l) => resizeStates(l, changes))}
                 onEdgeAnchorChange={(edgeId, change) => editor.edit((l) => setTransitionPoints(l, edgeId, change))}
-                onEdgePointsChange={(edgeId, points) => editor.edit((l) => setTransitionPoints(l, edgeId, { points, smooth: points.length > 0 ? undefined : false }))}
+                onEdgePointsChange={(edgeId, points) => editor.edit((l) => setTransitionPoints(l, edgeId, { points }))}
                 onCanvasClick={(at) => {
                   if (placingNote) addNoteAt({ x: Math.round(at.x - NOTE_WIDTH / 2), y: Math.round(at.y - NOTE_HEIGHT / 2) });
                 }}

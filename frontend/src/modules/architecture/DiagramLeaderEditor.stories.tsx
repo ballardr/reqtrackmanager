@@ -24,7 +24,7 @@ function Host({ initial, editable = true, drawn = true, onRemove = fn(), onOpenN
   return (
     <div style={{ maxWidth: "22rem" }}>
       <DiagramLeaderEditor
-        leader={leader} index={1} editable={editable} targets={TARGETS} drawn={drawn} newPoint={{ x: 120, y: 80 }}
+        leader={leader} index={1} editable={editable} targets={TARGETS} drawn={drawn} newPoint={{ x: 120, y: 80 }} defaultShape="straight"
         onTarget={target} onChange={(change) => setLeader((l) => ({ ...l, ...change }))} onOpenNote={onOpenNote} onRemove={onRemove}
       />
     </div>
@@ -84,15 +84,15 @@ export const ABoxOrAConnectionCanBeChosenAndTheSpotFieldsGoAway: Story = {
   },
 };
 
-export const VerticesAreAddedWithTheSharedSectionAndSmoothingNeedsOne: Story = {
+export const VerticesAndShapeAreSetWithTheSharedSection: Story = {
   args: { initial: SPOT },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("switch", { name: "Smooth curve" })).toBeDisabled();
+    await expect(canvas.getByRole("combobox", { name: "Line shape" })).toHaveValue("");
     await userEvent.click(canvas.getByRole("button", { name: "Add vertex" }));
     await expect(canvas.getByRole("spinbutton", { name: "Vertex 1 X" })).toHaveValue(120);
-    await userEvent.click(canvas.getByRole("switch", { name: "Smooth curve" }));
-    await expect(canvas.getByRole("switch", { name: "Smooth curve" })).toBeChecked();
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Line shape" }), "curved");
+    await expect(canvas.getByRole("combobox", { name: "Line shape" })).toHaveValue("curved");
   },
 };
 

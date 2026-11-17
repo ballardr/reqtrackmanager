@@ -33,6 +33,7 @@ from app.modules.architecture.enums import (
     LabelPosition,
     LeaderKind,
     LineEnd,
+    LineShape,
     LineStyle,
     NoteAlign,
     NoteSizeMode,
@@ -493,6 +494,7 @@ class DiagramCreate(BaseModel):
         scope_element_id: The element whose inside the diagram shows, or `None` for the system context.
         connection_detail: Draw typed, labelled connections (otherwise plain lines).
         line_hops: Draw a small arc where a line crosses another.
+        line_shape: How a line with no shape of its own is drawn.
         activate: Create the diagram `active` instead of `draft` (Save and activate).
         populate: Place the scope element's children (the root elements for the system context) in a grid.
     """
@@ -502,6 +504,7 @@ class DiagramCreate(BaseModel):
     scope_element_id: UUID | None = None
     connection_detail: bool = False
     line_hops: bool = False
+    line_shape: LineShape = LineShape.STRAIGHT
     folder_id: UUID | None = None
     activate: bool = False
     populate: bool = False
@@ -517,6 +520,7 @@ class DiagramUpdate(BaseModel):
     scope_element_id: UUID | None = None
     connection_detail: bool | None = None
     line_hops: bool | None = None
+    line_shape: LineShape | None = None
     folder_id: UUID | None = None
 
 
@@ -534,6 +538,7 @@ class DiagramOut(ProjectScopedRow):
     scope_element_name: str | None = None
     connection_detail: bool
     line_hops: bool
+    line_shape: LineShape
     folder_id: UUID | None = None
     folder_path: str | None = None
     status: str
@@ -581,7 +586,7 @@ class LeaderIn(BaseModel):
     `connection_id` for `connection`, `state_id` for `state`, `transition_id` for `transition`, `x` and `y` together for
     `point`. A block diagram's notes use the first two, a state machine diagram's the next two; the owner's rules refuse the
     other pair. `start_point` is the attach point of the note's block
-    it leaves from (none: the nearest); `points` are its vertices in order from the note, `smooth` curves through them,
+    it leaves from (none: the nearest); `points` are its vertices in order from the note, `line_shape` its shape (none: the diagram's default),
     and the two styles draw an arrowhead or a dot at an end.
     """
 
@@ -595,7 +600,7 @@ class LeaderIn(BaseModel):
     y: Coordinate | None = None
     start_point: AttachPoint | None = None
     points: Waypoints = Field(default_factory=list)
-    smooth: bool = False
+    line_shape: LineShape | None = None
     start_style: LineEnd = LineEnd.NONE
     end_style: LineEnd = LineEnd.ARROW
 
@@ -640,7 +645,7 @@ class LeaderOut(BaseModel):
     y: float | None
     start_point: AttachPoint | None
     points: list[WaypointIn]
-    smooth: bool
+    line_shape: LineShape | None = None
     start_style: LineEnd
     end_style: LineEnd
 
@@ -665,16 +670,19 @@ class NoteIn(BaseModel):
 
 
 class AnchorIn(BaseModel):
-    """How a drawn line is routed, chosen by a person. The line is the one joining the two placed elements (a merged or
-    rolled-up line has one anchor for all it stands for); an end left `None` is automatic. At least one end, or a vertex
-    point, is given. `points` run from `source_element_id` to `target_element_id`; `smooth` draws a curve through them."""
+    """How a drawn line is routed, chosen by a person. Without `connection_id` the route is the pair's: the line joining the
+    two placed elements (a merged or rolled-up line has one anchor for all it stands for); an end left `None` is automatic and
+    at least one end, or a vertex point, is given. With `connection_id` it is that connection's own route, which draws the
+    connection as a line apart from the pair's and may set nothing (a line of its own, placed automatically). `points` run
+    from `source_element_id` to `target_element_id`; `line_shape` is the line's shape, or none to follow the diagram's default."""
 
     source_element_id: UUID
     target_element_id: UUID
+    connection_id: UUID | None = None
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
     points: Waypoints = Field(default_factory=list)
-    smooth: bool = False
+    line_shape: LineShape | None = None
 
 
 class AnchorOut(AnchorIn):
@@ -847,7 +855,9 @@ class ViewEdge(BaseModel):
 
     With connection detail off, `type_name`, `line_style`, `color_light`, `color_dark` and `label` are `None` (a plain
     line); with it on they describe the connections' shared type and protocol (`type_name` is `None` for mixed types).
-    `connections` lists the underlying connections, which a selection shows either way."""
+    `connections` lists the underlying connections, which a selection shows either way. `routable_connection_ids` are the ones
+    that can have a route of their own (each stands alone between two boxes); `route_connection_id` is the connection the line
+    is drawn for with its own route, when it is."""
 
     id: str
     source_element_id: UUID
@@ -866,6 +876,8 @@ class ViewEdge(BaseModel):
     label: str | None
     connections: list[ConnectionOut]
     hops: list[ViewHop]
+    routable_connection_ids: list[UUID] = Field(default_factory=list)
+    route_connection_id: UUID | None = None
 
 
 class DiagramView(BaseModel):
@@ -977,6 +989,7 @@ class StateMachineDiagramUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=20000)
     element_id: UUID | None = None
     line_hops: bool | None = None
+    line_shape: LineShape | None = None
 
 
 class ValidationIssueOut(BaseModel):
@@ -1002,6 +1015,7 @@ class StateMachineDiagramOut(ProjectScopedRow):
     element_code: str | None = None
     element_name: str | None = None
     line_hops: bool
+    line_shape: LineShape
     status: str
     allowed_status_moves: list[str]
     version: int
@@ -1106,7 +1120,7 @@ class TransitionIn(BaseModel):
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
     points: Waypoints | None = None
-    smooth: bool | None = None
+    line_shape: LineShape | None = None
 
 
 class TransitionOut(BaseModel):
@@ -1127,7 +1141,7 @@ class TransitionOut(BaseModel):
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
     points: list[WaypointIn] = Field(default_factory=list)
-    smooth: bool = False
+    line_shape: LineShape | None = None
 
 
 class StateLayoutIn(BaseModel):
@@ -1143,14 +1157,14 @@ class StateLayoutIn(BaseModel):
 
 
 class TransitionPointsIn(BaseModel):
-    """One transition's attach points (`null` is automatic) and route in a layout save; `points` and `smooth` left out keep
-    the stored route."""
+    """One transition's attach points (`null` is automatic) and route in a layout save; `points` and `line_shape` left out keep
+    the stored route (`line_shape` given as `null` follows the diagram's default)."""
 
     id: UUID
     source_point: AttachPoint | None = None
     target_point: AttachPoint | None = None
     points: Waypoints | None = None
-    smooth: bool | None = None
+    line_shape: LineShape | None = None
 
 
 class StateMachineLayoutSave(BaseModel):

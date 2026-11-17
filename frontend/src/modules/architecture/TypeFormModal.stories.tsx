@@ -24,7 +24,8 @@ export const ElementTypeNeedsANameAndSavesShapeAndSymbol: Story = {
     await expect(d.getByRole("button", { name: "Save" })).toBeDisabled();
     await userEvent.type(d.getByLabelText("Name"), "Sensor");
     await userEvent.selectOptions(d.getByLabelText("Shape"), "hexagon");
-    await userEvent.selectOptions(d.getByLabelText("Symbol"), "sym-1");
+    await userEvent.click(d.getByRole("button", { name: /^Symbol:/ }));
+    await userEvent.click(await within(document.body).findByRole("option", { name: "Server" }));
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith({
       name: "Sensor", domain: "any", shape: "hexagon", color_light: null, color_dark: null, symbol_id: "sym-1",

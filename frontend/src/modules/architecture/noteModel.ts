@@ -21,7 +21,7 @@
  */
 import type { GraphCanvasLeader, GraphCanvasNode } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
-import { suggestWaypoint } from "../../components/graphLinePath";
+import { effectiveShape, suggestWaypoint, type LineShape } from "../../components/graphLinePath";
 import { NOTE_PADDING, drawnSize } from "./noteLayout";
 import type {
   DiagramLeader, DiagramNote, LeaderKind, LeaderValues, LineWaypoint, NoteSizeMode, NoteTextAlign, NoteTone, NoteValues,
@@ -50,7 +50,8 @@ export interface EditorLeader {
   y: number | null;
   start_point: AttachPoint | null;
   points: LineWaypoint[];
-  smooth: boolean;
+  /** The leader's own shape, or null to follow the diagram's default. */
+  line_shape: LineShape | null;
   start_style: LeaderValues["start_style"];
   end_style: LeaderValues["end_style"];
 }
@@ -142,7 +143,7 @@ export function leaderTargetFields(
 
 /** @param key A fresh leader key. @param target Where it ends. @param start The attach point of the note it leaves from, or null for the nearest. @returns A new straight leader with an arrowhead at its end. */
 export function newLeader(key: string, target: NoteLeaderTarget, start: AttachPoint | null = null): EditorLeader {
-  return { key, id: null, ...leaderTargetFields(target), start_point: start, points: [], smooth: false, start_style: "none", end_style: "arrow" };
+  return { key, id: null, ...leaderTargetFields(target), start_point: start, points: [], line_shape: null, start_style: "none", end_style: "arrow" };
 }
 
 /** @param leader A leader of a resolved view or model. @returns Its editor form (its key is its id). */
@@ -150,7 +151,7 @@ export function leaderFromView(leader: DiagramLeader): EditorLeader {
   return {
     key: leader.id, id: leader.id, kind: leader.kind, element_id: leader.element_id, connection_id: leader.connection_id,
     state_id: leader.state_id, transition_id: leader.transition_id, x: leader.x, y: leader.y,
-    start_point: leader.start_point, points: leader.points, smooth: leader.smooth, start_style: leader.start_style, end_style: leader.end_style,
+    start_point: leader.start_point, points: leader.points, line_shape: leader.line_shape, start_style: leader.start_style, end_style: leader.end_style,
   };
 }
 
@@ -159,7 +160,7 @@ export function leaderToValues(leader: EditorLeader): LeaderValues {
   return {
     id: leader.id, kind: leader.kind, element_id: leader.element_id, connection_id: leader.connection_id, state_id: leader.state_id,
     transition_id: leader.transition_id, x: leader.x, y: leader.y,
-    start_point: leader.start_point, points: leader.points, smooth: leader.smooth, start_style: leader.start_style, end_style: leader.end_style,
+    start_point: leader.start_point, points: leader.points, line_shape: leader.line_shape, start_style: leader.start_style, end_style: leader.end_style,
   };
 }
 
@@ -185,7 +186,7 @@ export function notesSignature(notes: readonly EditorNote[]): unknown[] {
   return notes.map(noteToValues).map((n) => [
     n.title, n.text, n.x, n.y, n.width, n.height, n.tone, n.text_align, n.size_mode,
     n.leaders.map((l) => [
-      l.kind, l.element_id, l.connection_id, l.state_id, l.transition_id, l.x, l.y, l.start_point, l.points.map((p) => [p.x, p.y]), l.smooth,
+      l.kind, l.element_id, l.connection_id, l.state_id, l.transition_id, l.x, l.y, l.start_point, l.points.map((p) => [p.x, p.y]), l.line_shape,
       l.start_style, l.end_style,
     ]),
   ]);
@@ -375,16 +376,17 @@ export function canvasNoteNodes(notes: readonly EditorNote[], emptyNote: string,
  *
  * @param notes The notes of the layout.
  * @param resolve What a target is on the canvas (a node, a line or a free point), or null when it is not drawn (the leader is then left out).
+ * @param defaultShape The diagram's default line shape, for a leader with none of its own.
  */
 export function noteLeaderLines(
-  notes: readonly EditorNote[], resolve: (target: NoteLeaderTarget) => GraphCanvasLeader["to"] | null,
+  notes: readonly EditorNote[], resolve: (target: NoteLeaderTarget) => GraphCanvasLeader["to"] | null, defaultShape: LineShape = "straight",
 ): GraphCanvasLeader[] {
   return notes.flatMap((n) => n.leaders.flatMap((l): GraphCanvasLeader[] => {
     const target = leaderOf(l);
     const to = target ? resolve(target) : null;
     if (!to) return [];
     return [{
-      id: l.key, from: NOTE_NODE_PREFIX + n.key, fromPoint: l.start_point ?? undefined, points: l.points, smooth: l.smooth,
+      id: l.key, from: NOTE_NODE_PREFIX + n.key, fromPoint: l.start_point ?? undefined, points: l.points, lineShape: effectiveShape(l.line_shape, defaultShape),
       startEnd: l.start_style, endEnd: l.end_style, to,
     }];
   }));

@@ -2584,6 +2584,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
                      ports=(("Telemetry API", "in", "REST API"),),
                      folder=software, note="Receives telemetry, sends missions")
     connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", "SPI mode 3, 8 MHz", folder=buses)
+    imu_interrupt = connect("IMU data-ready interrupt", "Serial bus", imu, "", fc, "", "GPIO, active low", folder=buses)
     connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud", folder=buses)
     # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.
     connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2", folder=buses)
@@ -2633,9 +2634,14 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         f"{base}/diagrams/{placed['id']}/layout", headers=headers, timeout=30,
         json={
             "version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 600, "y": 280}],
-            # The IMU bus is routed round the corner with two vertices instead of a straight line.
+            # The IMU bus is routed round the corner with two vertices instead of a straight line; the interrupt line between
+            # the same two boxes has a route of its own (its connection), so it is drawn apart from the bus.
+            # The GPS link to the flight controller is drawn as one bowed arc (Curved needs no vertices).
             "anchors": [{"source_element_id": imu["id"], "target_element_id": fc["id"],
-                         "points": [{"x": 410, "y": 30}, {"x": 410, "y": 180}]}],
+                         "points": [{"x": 410, "y": 30}, {"x": 410, "y": 180}]},
+                        {"source_element_id": gps["id"], "target_element_id": fc["id"], "line_shape": "curved"},
+                        {"source_element_id": imu["id"], "target_element_id": fc["id"], "connection_id": imu_interrupt["id"],
+                         "points": [{"x": 330, "y": -40}, {"x": 450, "y": -40}]}],
             "notes": [
                 {"title": "Redundancy", "text_align": "center",
                  "text": "Single flight controller.\n\nRedundancy is decided separately.", "x": 380, "y": -150, "width": 200, "height": 90,
@@ -2645,7 +2651,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
                 {"text": "All telemetry leaves the airframe over this link.", "x": 700, "y": 40, "width": 200, "height": 60,
                  "tone": "info",
                  "leaders": [{"kind": "connection", "connection_id": upload["id"], "end_style": "dot", "start_style": "none"},
-                             {"kind": "point", "x": 880, "y": 160, "points": [{"x": 800, "y": 140}], "smooth": True}]},
+                             {"kind": "point", "x": 880, "y": 160, "points": [{"x": 800, "y": 140}], "line_shape": "spline"}]},
             ],
         },
     )
@@ -2723,7 +2729,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         ("Flight start", "Armed", {}),
         ("Armed", "Hovering", {"event": "takeoff", "action": "climb(2 m)"}),
         ("Hovering", "Hovering", {"event": "position drift", "action": "correct()"}),
-        ("Hovering", "Battery check", {"event": "every 10 s", "points": [{"x": 860, "y": 205}], "smooth": True}),
+        ("Hovering", "Battery check", {"event": "every 10 s", "points": [{"x": 860, "y": 205}], "line_shape": "spline"}),
         ("Battery check", "Returning home", {"guard": "battery low"}),
         ("Battery check", "Hovering", {"guard": "battery ok"}),
         ("Flying", "Failsafe", {"event": "sensor fault", "action": "alert()"}),

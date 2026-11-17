@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.modules.architecture import state_machine_checks as checks
 from app.modules.architecture.diagrams import _check_new_element, leaders_of, machine_notes_of, note_out, sync_notes
-from app.modules.architecture.enums import AttachPoint, LabelPosition, LeaderKind, RecordStatus, StateKind, ValidationSeverity
+from app.modules.architecture.enums import AttachPoint, LabelPosition, LeaderKind, LineShape, RecordStatus, StateKind, ValidationSeverity
 from app.modules.architecture.models import (
     ArchitectureDiagramNote,
     ArchitectureElement,
@@ -261,6 +261,8 @@ def update_state_machine(
         changes["element_id"] = payload.element_id
     if payload.line_hops is not None and payload.line_hops != diagram.line_hops:
         changes["line_hops"] = payload.line_hops
+    if payload.line_shape is not None and payload.line_shape.value != diagram.line_shape:
+        changes["line_shape"] = payload.line_shape.value
     if not changes:
         return diagram
     _touch(diagram, **changes)
@@ -580,7 +582,8 @@ def add_transition(
         action=(payload.action or "").strip(), description=payload.description or "", sort_order=count,
         source_point=payload.source_point.value if payload.source_point else None,
         target_point=payload.target_point.value if payload.target_point else None,
-        points=[{"x": p.x, "y": p.y} for p in payload.points or []], smooth=bool(payload.smooth),
+        points=[{"x": p.x, "y": p.y} for p in payload.points or []],
+        line_shape=payload.line_shape.value if payload.line_shape else None,
     )
     db.add(transition)
     diagram.version += 1
@@ -627,8 +630,10 @@ def update_transition(
         points = [{"x": p.x, "y": p.y} for p in payload.points]
         if points != transition.points:
             changes["points"] = points
-    if "smooth" in given and payload.smooth is not None and payload.smooth != transition.smooth:
-        changes["smooth"] = payload.smooth
+    if "line_shape" in given:
+        shape = payload.line_shape.value if payload.line_shape else None
+        if shape != transition.line_shape:
+            changes["line_shape"] = shape
     if not changes:
         return transition
     _own_states(
@@ -736,9 +741,11 @@ def save_layout(
             if route != t.points:
                 t.points = route
                 changed += 1
-        if given_t.smooth is not None and given_t.smooth != t.smooth:
-            t.smooth = given_t.smooth
-            changed += 1
+        if "line_shape" in given_t.model_fields_set:
+            shape = given_t.line_shape.value if given_t.line_shape else None
+            if shape != t.line_shape:
+                t.line_shape = shape
+                changed += 1
     if changed:
         diagram.version += 1
         db.flush()
@@ -790,7 +797,7 @@ def state_machine_outs(
         issues = found.get(d.id, [])
         out.append(StateMachineDiagramOut(
             id=d.id, project_id=d.project_id, unique_code=d.unique_code, name=d.name, description=d.description,
-            element_id=d.element_id, element_code=code, element_name=name, line_hops=d.line_hops, status=d.status,
+            element_id=d.element_id, element_code=code, element_name=name, line_hops=d.line_hops, line_shape=LineShape(d.line_shape), status=d.status,
             allowed_status_moves=allowed_moves(d.status), version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             state_count=state_counts.get(d.id, 0), transition_count=transition_counts.get(d.id, 0),
@@ -847,7 +854,8 @@ def transition_outs(
             description=t.description, sort_order=t.sort_order,
             source_point=AttachPoint(t.source_point) if t.source_point else None,
             target_point=AttachPoint(t.target_point) if t.target_point else None,
-            points=[WaypointIn(x=p["x"], y=p["y"]) for p in t.points], smooth=t.smooth,
+            points=[WaypointIn(x=p["x"], y=p["y"]) for p in t.points],
+            line_shape=LineShape(t.line_shape) if t.line_shape else None,
         )
         for t in transitions
     ]

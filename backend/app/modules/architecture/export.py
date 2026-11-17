@@ -31,7 +31,8 @@ Design decisions:
 - The four vocabulary keys are template configuration; the records, the collections and their links
   are template records, reset to fresh drafts without creator or archived records.
 - Diagrams: a diagram travels with its element boxes (keyed by element code, or a foreign reference for an element
-  another owner shares), notes, line anchors (the two elements and their attach points) and toggles. A toggle's rule
+  another owner shares), notes, line anchors (the two elements and their attach points, and
+  the connection code for a connection's own route) and toggles. A toggle's rule
   names vocabulary rows by name (never an id) and its manual members by code, so a bundle holds no ids; an import
   numbers the diagram afresh and drops, with a warning, a box, member, anchor or scope it cannot resolve. A diagram is a
   template record, reset to a fresh draft that places only the template's own elements.
@@ -72,7 +73,7 @@ from app.models.user import User
 from app.modules.architecture import allocation_export, note_bundle, state_machine_export
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import folders as folder_rules
-from app.modules.architecture.diagram_line_path import clean_waypoints
+from app.modules.architecture.diagram_line_path import bundle_default_shape, bundle_line_shape, clean_waypoints
 from app.modules.architecture.diagrams import leaders_of
 from app.modules.architecture.enums import (
     DISPLAY_NOTE_MAX,
@@ -899,7 +900,7 @@ def _diagrams_json(
         {
             "unique_code": d.unique_code, "name": d.name, "purpose": d.purpose,
             "scope": _element_ref(codes, foreign, d.scope_element_id) if d.scope_element_id else None,
-            "connection_detail": d.connection_detail, "line_hops": d.line_hops, "status": d.status,
+            "connection_detail": d.connection_detail, "line_hops": d.line_hops, "line_shape": d.line_shape, "status": d.status,
             "folder": folder_paths.get(d.folder_id) if d.folder_id else None,
             "boxes": [
                 {**_element_ref(codes, foreign, b.element_id), "x": b.x, "y": b.y, "width": b.width, "height": b.height,
@@ -912,8 +913,9 @@ def _diagrams_json(
             "anchors": [
                 {"source": _element_ref(codes, foreign, a.source_element_id), "target": _element_ref(codes, foreign, a.target_element_id),
                  "source_point": a.source_point, "target_point": a.target_point,
-                 "points": clean_waypoints(a.points), "smooth": a.smooth}
-                for a in by_diagram_anchors.get(d.id, ())
+                 "points": clean_waypoints(a.points), "line_shape": a.line_shape,
+                 **({"connection_code": connection_codes[a.connection_id]} if a.connection_id is not None else {})}
+                for a in by_diagram_anchors.get(d.id, ()) if a.connection_id is None or a.connection_id in connection_codes
             ],
             "boundaries": [
                 {"connection_code": connection_codes[b.connection_id], "x": b.x, "y": b.y, "width": b.width, "height": b.height}
@@ -1057,29 +1059,39 @@ def _import_leaders(
 
 
 def _import_anchors(
-    db: Session, project: Project, current_user: User, elements: dict[str, UUID], diagram_id: UUID,
-    entries: list[dict[str, Any]], placed: set[UUID], code: str, warnings: BundleImportWarnings,
+    db: Session, project: Project, current_user: User, elements: dict[str, UUID], connections: dict[str, UUID],
+    diagram_id: UUID, entries: list[dict[str, Any]], placed: set[UUID], code: str, warnings: BundleImportWarnings,
 ) -> None:
     """Recreates a diagram's line anchors. One whose ends are not both boxes of the imported diagram, whose point is not
-    one of the eight, or that repeats a line already anchored, is dropped with a warning."""
+    one of the eight, or that repeats a line already anchored, is dropped with a warning. An entry with a `connection_code`
+    is that connection's own route: the connection must be one of this import, it may set no point and no vertex, and it
+    may appear once; any other is dropped."""
     valid = {p.value for p in AttachPoint}
     seen: set[frozenset[UUID]] = set()
+    seen_connections: set[UUID] = set()
     for entry in entries:
         source = _resolve_ref(db, project, current_user, elements, entry.get("source") or {})
         target = _resolve_ref(db, project, current_user, elements, entry.get("target") or {})
         points = (entry.get("source_point"), entry.get("target_point"))
         vertices = clean_waypoints(entry.get("points"))
+        connection_code = entry.get("connection_code")
+        connection = connections.get(connection_code) if isinstance(connection_code, str) else None
+        own = connection_code is not None
         if (
             source is None or target is None or source == target or source not in placed or target not in placed
-            or any(p is not None and p not in valid for p in points) or (points == (None, None) and not vertices)
-            or frozenset((source, target)) in seen
+            or any(p is not None and p not in valid for p in points)
+            or (own and (connection is None or connection in seen_connections))
+            or (not own and ((points == (None, None) and not vertices) or frozenset((source, target)) in seen))
         ):
             warnings.add(f"Diagram {code}: a line anchor could not be restored — left out.")
             continue
-        seen.add(frozenset((source, target)))
+        if connection is not None:
+            seen_connections.add(connection)
+        else:
+            seen.add(frozenset((source, target)))
         db.add(ArchitectureDiagramAnchor(
-            diagram_id=diagram_id, source_element_id=source, target_element_id=target,
-            source_point=points[0], target_point=points[1], points=vertices, smooth=entry.get("smooth") is True,
+            diagram_id=diagram_id, source_element_id=source, target_element_id=target, connection_id=connection,
+            source_point=points[0], target_point=points[1], points=vertices, line_shape=bundle_line_shape(entry),
         ))
 
 
@@ -1153,6 +1165,7 @@ def _import_diagrams(
             project_id=project.id, unique_code=generate_unique_code(db, project, DIAGRAM_ARTEFACT_TYPE, DIAGRAM_CODE_PREFIX),
             name=entry["name"], purpose=entry.get("purpose", ""), scope_element_id=scope_id,
             connection_detail=bool(entry.get("connection_detail")), line_hops=bool(entry.get("line_hops")),
+            line_shape=bundle_default_shape(entry),
             folder_id=folder_importer.ensure("diagram", entry.get("folder")),
             status=entry.get("status", "draft"), version=1,
             creator_id=creator, is_archived=archived, archived_at=_instant(entry.get("archived_at")),
@@ -1176,7 +1189,7 @@ def _import_diagrams(
                 diagram_id=diagram.id, element_id=element_id, x=box.get("x", 0.0), y=box.get("y", 0.0),
                 width=box.get("width", 160.0), height=box.get("height", 80.0), collapsed=bool(box.get("collapsed")),
             ))
-        _import_anchors(db, project, current_user, elements, diagram.id, entry.get("anchors", []), seen, code, warnings)
+        _import_anchors(db, project, current_user, elements, connections, diagram.id, entry.get("anchors", []), seen, code, warnings)
         _import_boundaries(db, diagram, connections, entry.get("boundaries", []), code, warnings)
         note_rows: list[tuple[ArchitectureDiagramNote, dict[str, Any]]] = []
         for order, note in enumerate(entry.get("notes", [])):

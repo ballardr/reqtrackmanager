@@ -59,7 +59,7 @@ from app.modules.architecture.diagram_box_fit import (
 )
 from app.modules.architecture.diagram_line_anchors import AnchorBox, AnchorLine, assign_line_anchors
 from app.modules.architecture.diagram_line_hops import HopLine, line_hops
-from app.modules.architecture.diagram_line_path import Point, line_middle, line_path
+from app.modules.architecture.diagram_line_path import Point, effective_shape, line_middle, line_path
 from app.modules.architecture.diagram_note_layout import (
     NOTE_FONT_SIZE,
     NOTE_LINE_HEIGHT,
@@ -70,7 +70,7 @@ from app.modules.architecture.diagram_note_layout import (
 )
 from app.modules.architecture.diagram_points import line_points, nearest_point, point_xy
 from app.modules.architecture.diagram_symbol_label import text_width
-from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, NoteTone
+from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, LineShape, NoteTone
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureSymbol
 from app.modules.architecture.schemas import AnchorOut, DiagramView, LeaderOut, NoteOut, ViewBoundary, ViewEdge, ViewNode
@@ -348,18 +348,31 @@ def _boundary(box: ViewBoundary) -> str:
     return "".join(parts)
 
 
+def _shape_value(shape: LineShape | None) -> str | None:
+    """A line's own shape as its plain value, or `None` when it follows the diagram."""
+    return shape.value if shape is not None else None
+
+
+def leader_shape(leader: LeaderOut, default_shape: str) -> str:
+    """The shape a note's leader is drawn in: its own, else the diagram's default (shared with the state machine drawing)."""
+    return effective_shape(_shape_value(leader.line_shape), default_shape)
+
+
 def _anchor_route(
     anchors: list[AnchorOut], edge: ViewEdge,
-) -> tuple[AttachPoint | None, AttachPoint | None, list[Point], bool]:
-    """How a person routed the line: (source end, target end, vertices from the source to the target, smooth). An anchor
-    stored for the opposite direction of the same pair applies with its ends swapped and its vertices reversed."""
+) -> tuple[AttachPoint | None, AttachPoint | None, list[Point], str | None]:
+    """How a person routed the line: (source end, target end, vertices from the source to the target, own shape or `None`). A line drawn for
+    one connection with a route of its own uses that route; any other line uses its pair's. An anchor stored for the opposite
+    direction of the same pair applies with its ends swapped and its vertices reversed."""
     for anchor in anchors:
+        if anchor.connection_id != edge.route_connection_id:
+            continue
         points: list[Point] = [(p.x, p.y) for p in anchor.points]
         if (anchor.source_element_id, anchor.target_element_id) == (edge.source_element_id, edge.target_element_id):
-            return anchor.source_point, anchor.target_point, points, anchor.smooth
+            return anchor.source_point, anchor.target_point, points, _shape_value(anchor.line_shape)
         if (anchor.source_element_id, anchor.target_element_id) == (edge.target_element_id, edge.source_element_id):
-            return anchor.target_point, anchor.source_point, points[::-1], anchor.smooth
-    return None, None, [], False
+            return anchor.target_point, anchor.source_point, points[::-1], _shape_value(anchor.line_shape)
+    return None, None, [], None
 
 
 @dataclass(frozen=True)
@@ -370,14 +383,16 @@ class _Run:
     start: Point
     vertices: list[Point]
     end: Point
-    smooth: bool
+    shape: str
     middle: Point
 
 
-def _edge_runs(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut]) -> list[_Run]:
+def _edge_runs(
+    edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoundary], anchors: list[AnchorOut], default_shape: str,
+) -> list[_Run]:
     """The geometry of every drawn line, in the model's order: the points each line meets its boxes at come from
     `diagram_line_anchors` (no two lines share a path; lines left on the same points are spread sideways unless a person
-    routed them)."""
+    routed them). A line's own shape wins over `default_shape`, the diagram's."""
     routes = {edge.id: _anchor_route(anchors, edge) for edge in edges}
     placed = assign_line_anchors(
         {str(box_id): AnchorBox(b.x, b.y, b.width, b.height) for box_id, b in boxes.items()},
@@ -395,11 +410,12 @@ def _edge_runs(edges: list[ViewEdge], boxes: dict[uuid.UUID, ViewNode | ViewBoun
         anchor = placed.get(edge.id)
         if a is None or b is None or anchor is None or anchor.loop_slot is not None:
             continue
-        _, _, vertices, smooth = routes[edge.id]
+        _, _, vertices, own_shape = routes[edge.id]
+        shape = effective_shape(own_shape, default_shape)
         (x1, y1), (x2, y2) = point_xy((a.x, a.y, a.width, a.height), anchor.source), point_xy((b.x, b.y, b.width, b.height), anchor.target)
         x1, y1, x2, y2 = x1 + anchor.shift[0], y1 + anchor.shift[1], x2 + anchor.shift[0], y2 + anchor.shift[1]
-        middle = line_middle((x1, y1), vertices, (x2, y2)) if vertices else ((x1 + x2) / 2, (y1 + y2) / 2)
-        runs.append(_Run(edge, (x1, y1), vertices, (x2, y2), smooth, middle))
+        middle = line_middle((x1, y1), vertices, (x2, y2), shape) if vertices or shape == "curved" else ((x1 + x2) / 2, (y1 + y2) / 2)
+        runs.append(_Run(edge, (x1, y1), vertices, (x2, y2), shape, middle))
     return runs
 
 
@@ -416,8 +432,8 @@ def _edges(runs: list[_Run], hops: dict[str, str]) -> tuple[str, str]:
             ' stroke-dasharray="2 4"' if edge.line_style == "dotted" else (' stroke-dasharray="7 5"' if edge.line_style == "dashed" else "")
         )
         arrow = f' marker-end="url(#arrow{marker})"' if not edge.two_way else ""
-        if edge.id in hops or vertices:
-            path = hops.get(edge.id) or line_path((x1, y1), vertices, (x2, y2), run.smooth)
+        if edge.id in hops or vertices or run.shape != "straight":
+            path = hops.get(edge.id) or line_path((x1, y1), vertices, (x2, y2), run.shape)
             lines.append(f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2"{dash}{arrow}/>')
         else:
             lines.append(
@@ -552,19 +568,22 @@ def _leader_runs(
     return runs
 
 
-def _hop_paths(runs: list[_Run], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], notes: list[NoteOut]) -> dict[str, str]:
+def _hop_paths(
+    runs: list[_Run], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], notes: list[NoteOut], default_shape: str,
+) -> dict[str, str]:
     """The hop path of every connection and leader that crosses another line (`diagram_line_hops`)."""
-    lines = [HopLine(str(r.edge.id), r.start, r.vertices, r.end, r.smooth) for r in runs]
+    lines = [HopLine(str(r.edge.id), r.start, r.vertices, r.end, r.shape) for r in runs]
     for n in _drawn_notes(notes):
         for leader in n.leaders:
             if leader.id in leader_runs:
                 start, vertices, end = leader_runs[leader.id]
-                lines.append(HopLine(str(leader.id), start, vertices, end, leader.smooth))
+                lines.append(HopLine(str(leader.id), start, vertices, end, leader_shape(leader, default_shape)))
     return line_hops(lines)
 
 
 def _notes(
     notes: list[NoteOut], leader_runs: dict[uuid.UUID, tuple[Point, list[Point], Point]], hops: dict[str, str],
+    default_shape: str = "straight",
 ) -> tuple[str, str, str]:
     """The `<defs>` (a start and an end marker per tone and style used), the leaders (drawn under everything) and the note
     blocks (over it). A leader in `hops` is drawn along its hop path."""
@@ -582,8 +601,9 @@ def _notes(
             start_marker = _leader_marker(tone, leader.start_style, stroke, defs)
             end_marker = _leader_marker(tone, leader.end_style, stroke, defs)
             marks = (f' marker-start="{start_marker}"' if start_marker else "") + (f' marker-end="{end_marker}"' if end_marker else "")
-            if vertices or str(leader.id) in hops:
-                path = hops.get(str(leader.id)) or line_path(start, vertices, end, leader.smooth)
+            shape = leader_shape(leader, default_shape)
+            if vertices or str(leader.id) in hops or shape != "straight":
+                path = hops.get(str(leader.id)) or line_path(start, vertices, end, shape)
                 leaders.append(f'<path d="{path}" fill="none" stroke="{stroke}" stroke-width="1.5"{marks}/>')
             else:
                 leaders.append(
@@ -642,11 +662,12 @@ def render_diagram(db: Session, view: DiagramView) -> str:
     else:
         min_x, min_y = min(xs) - _MARGIN, min(ys) - _MARGIN
         width, height = max(xs) - min_x + _MARGIN, max(ys) - min_y + _MARGIN
-        runs = _edge_runs(drawn_edges, boxes, view.anchors)
+        default_shape = view.diagram.line_shape.value
+        runs = _edge_runs(drawn_edges, boxes, view.anchors, default_shape)
         leader_runs = _leader_runs(view.notes, boxes, {str(r.edge.id): r.middle for r in runs}, drawn_edges)
-        hops = _hop_paths(runs, leader_runs, view.notes) if view.diagram.line_hops else {}
+        hops = _hop_paths(runs, leader_runs, view.notes, default_shape) if view.diagram.line_hops else {}
         defs, edge_svg = _edges(runs, hops)
-        note_defs, leaders, notes = _notes(view.notes, leader_runs, hops)
+        note_defs, leaders, notes = _notes(view.notes, leader_runs, hops, default_shape)
         defs += note_defs
         body = (
             f"{edge_svg}{leaders}{''.join(_node(n, symbols) for n in visible)}{''.join(_boundary(b) for b in view.boundaries)}{notes}"

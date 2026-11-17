@@ -4700,6 +4700,14 @@ const en = {
     attachPointsLabel: "Always show attach points",
     attachPointsHelp:
       "On: every box draws its attach points all the time.\nOff: a box draws them only while the pointer is near it, while it is selected or focused, and while a line is being drawn.\nThe choice is kept in your account; it is not part of the diagram and changes nothing for other people.",
+    lineShapeLabel: "Line shape",
+    lineShapeDefaultLabel: "Default line shape",
+    lineShapeDefaultHelp:
+      "How a line with no shape of its own is drawn.\nStraight: segments through the line's vertices.\nCurved: one arc bowed to the left of the line's direction; through its vertices when it has any.\nSpline: a curve through the line's vertices (straight when it has none).\nThis is a setting of the diagram, so everyone who opens it sees the same drawing; a line can give its own shape in its Selection card.",
+    lineShapeOwnHelp:
+      "Diagram default: the line follows the shape chosen for the diagram.\nStraight: segments through the line's vertices.\nCurved: one arc bowed to the left of the line's direction; through its vertices when it has any.\nSpline: a curve through the line's vertices (straight when it has none).",
+    lineShapeNames: { straight: "Straight", curved: "Curved", spline: "Spline" },
+    lineShapeFollowing: (shape: string) => `Diagram default (${shape})`,
     lineHopsLabel: "Line hops",
     lineHopsHelp:
       "On: where one line crosses another, the line that sorts later is drawn with a small arc over the other, so a crossing is not read as a junction. The arcs are also in the SVG and PNG downloads (not in Mermaid).\nOff: lines cross with no arc.\nThis is a setting of the diagram, so everyone who opens it sees the same drawing.",

@@ -59,11 +59,11 @@ export const ALeaderIsSavedWithOnlyTheColumnsOfItsKind: Story = {
 export const RetargetingALeaderKeepsItsRouteAndItsEnds: Story = {
   play: async () => {
     let layout = layoutWith(buildNote({
-      leaders: [buildLeader({ points: [{ x: 1, y: 2 }], smooth: true, start_style: "dot", end_style: "none", start_point: "left" })],
+      leaders: [buildLeader({ points: [{ x: 1, y: 2 }], line_shape: "spline", start_style: "dot", end_style: "none", start_point: "left" })],
     }));
     layout = setLeaderTarget(layout, "ld-1", { kind: "element", elementId: "el-1" });
     expect(layout.notes[0].leaders[0]).toMatchObject({
-      points: [{ x: 1, y: 2 }], smooth: true, start_style: "dot", end_style: "none", start_point: "left", kind: "element",
+      points: [{ x: 1, y: 2 }], line_shape: "spline", start_style: "dot", end_style: "none", start_point: "left", kind: "element",
     });
   },
 };
@@ -95,10 +95,10 @@ export const ANoteKeepsAtMostTenLeaders: Story = {
 export const ALeaderIsDrawnWithItsRouteStartAndEndsOnTheCanvas: Story = {
   play: async () => {
     const layout = layoutWith(buildNote({
-      leaders: [buildLeader({ points: [{ x: 5, y: 6 }], smooth: true, start_point: "bottom", start_style: "dot", end_style: "arrow" })],
+      leaders: [buildLeader({ points: [{ x: 5, y: 6 }], line_shape: "spline", start_point: "bottom", start_style: "dot", end_style: "arrow" })],
     }));
     expect(canvasLeaders(layout, [LINE], new Set())).toEqual([{
-      id: "ld-1", from: "note:nt-1", fromPoint: "bottom", points: [{ x: 5, y: 6 }], smooth: true, startEnd: "dot", endEnd: "arrow",
+      id: "ld-1", from: "note:nt-1", fromPoint: "bottom", points: [{ x: 5, y: 6 }], lineShape: "spline", startEnd: "dot", endEnd: "arrow",
       to: { kind: "point", x: 300, y: -100 },
     }]);
   },
@@ -144,7 +144,7 @@ export const EditingATonePointingOrAnyPartOfALeaderMakesTheLayoutDirty: Story = 
     expect(isDirty(commit(history, updateNote(layout, "nt-1", { tone: "info" })))).toBe(true);
     expect(isDirty(commit(history, setLeaderTarget(layout, "ld-1", { kind: "point", x: 1, y: 1 })))).toBe(true);
     for (const change of [
-      { points: [{ x: 1, y: 1 }] }, { smooth: true }, { start_style: "dot" as const }, { end_style: "none" as const }, { start_point: "top" as const },
+      { points: [{ x: 1, y: 1 }] }, { line_shape: "spline" as const }, { start_style: "dot" as const }, { end_style: "none" as const }, { start_point: "top" as const },
     ]) {
       expect(isDirty(commit(history, patchLeader(layout, "ld-1", change)))).toBe(true);
     }
@@ -203,7 +203,7 @@ export const ANewNoteIsNeutralWithNoLeader: Story = {
     const note = newNote("new-1", { x: 10, y: 20 });
     expect(note).toMatchObject({ id: null, tone: "neutral", leaders: [], x: 10, y: 20 });
     expect(newLeader("new-leader-1", { kind: "point", x: 1, y: 2 })).toMatchObject({
-      id: null, kind: "point", x: 1, y: 2, start_point: null, points: [], smooth: false, start_style: "none", end_style: "arrow",
+      id: null, kind: "point", x: 1, y: 2, start_point: null, points: [], line_shape: null, start_style: "none", end_style: "arrow",
     });
     expect(leaderTargetFields({ kind: "element", elementId: "el-1" })).toEqual({
       kind: "element", element_id: "el-1", connection_id: null, state_id: null, transition_id: null, x: null, y: null,

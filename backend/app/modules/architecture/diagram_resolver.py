@@ -8,7 +8,8 @@ document cannot differ.
 Responsibilities:
 - Apply, in this order: (1) hide the elements and connections of switched-off toggles; (2) join across hidden
   elements (a hidden transit element is bridged); (3) roll every end up to its nearest placed ancestor; (4) merge
-  parallel lines when connection detail is off.
+  parallel lines when connection detail is off. A connection a person routed on its own is never merged: it is drawn as a
+  line of its own.
 - Report which underlying connections each line stands for, which hidden elements a bridged line passes through,
   and which connections are wholly inside a placed element (and so drawn on no line).
 - Join a scoped diagram's boundary boxes: an inner connection that realises an outer connection and ends at the outer
@@ -31,6 +32,11 @@ Design decisions:
   candidate per box, so a connection realising two outer connections is drawn to both) and drops the original, which
   would otherwise be drawn to nothing. A scope-side element that is itself placed keeps its own lines there: the box is
   then a coverage marker, or a line to the element outside.
+- **A routed connection is its own line.** A connection with a route of its own (`routed`: the connection and the two boxes
+  its route joins) that resolves to one direct or rolled-up line between exactly those boxes is taken out of the merge, so
+  the route moves it alone. A route whose boxes no longer match is ignored and the connection merges as before; a bridged
+  line (several connections behind it) and a line to a boundary box are never routed, so they are not offered
+  (`Line.routable`).
 - **Order is deterministic** (lines sorted by their ends and first connection), so equal inputs draw equal diagrams.
 
 Dependencies: none beyond the standard library.
@@ -95,6 +101,9 @@ class Line:
         bridged: Some connection reaches its end through hidden elements.
         indirect: Every connection behind it is rolled up or bridged (drawn dashed).
         hops: The hidden elements bridged through, in the order met, without repeats.
+        routable: The connections behind it that can have a route of their own: each stands alone behind one candidate
+            line between two boxes (not bridged, not to a boundary box).
+        own_route: The connection this line is drawn for with its own route (the only connection behind it), or `None`.
     """
 
     source_id: uuid.UUID
@@ -105,6 +114,8 @@ class Line:
     bridged: bool
     indirect: bool
     hops: tuple[uuid.UUID, ...]
+    routable: tuple[uuid.UUID, ...] = ()
+    own_route: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -207,6 +218,7 @@ def resolve(
     *, placed: Collection[uuid.UUID], parents: Mapping[uuid.UUID, uuid.UUID | None],
     connections: Sequence[ModelConnection], hidden_elements: Collection[uuid.UUID] = (),
     hidden_connections: Collection[uuid.UUID] = (), merge_parallel: bool, boundaries: Sequence[Boundary] = (),
+    routed: Mapping[uuid.UUID, tuple[uuid.UUID, uuid.UUID]] | None = None,
 ) -> Resolution:
     """Resolves the lines of a diagram.
 
@@ -219,6 +231,8 @@ def resolve(
         hidden_connections: The connections switched off.
         merge_parallel: True when connection detail is off: every line between the same two placed elements becomes one.
         boundaries: The boundary boxes of a scoped diagram; a realising connection is drawn to its box (see `Boundary`).
+        routed: `{connection id: the two boxes its own route joins}` for the connections a person routed on their own; such
+            a connection is drawn as its own line while it still resolves to a line between those two boxes.
 
     Returns:
         The decision; see `Resolution`.
@@ -267,7 +281,7 @@ def resolve(
             continue
         rolled.append((pa, pb, candidate, pa != candidate.a or pb != candidate.b))
 
-    lines = _merge(rolled, merge_parallel)
+    lines = _merge(rolled, merge_parallel, routed or {}, {b.id for b in boundaries})
     return Resolution(
         hidden_placed=frozenset(p for p in placed_set if is_hidden(p)),
         lines=tuple(sorted(lines, key=lambda ln: (str(ln.source_id), str(ln.target_id), str(ln.connection_ids[0])))),
@@ -323,21 +337,28 @@ def _bridge(
     return merged
 
 
-def _merge(rolled: Sequence[tuple[uuid.UUID, uuid.UUID, _Candidate, bool]], merge_parallel: bool) -> list[Line]:
+def _merge(
+    rolled: Sequence[tuple[uuid.UUID, uuid.UUID, _Candidate, bool]], merge_parallel: bool,
+    routed: Mapping[uuid.UUID, tuple[uuid.UUID, uuid.UUID]], boundary_ids: Collection[uuid.UUID],
+) -> list[Line]:
     """Groups rolled candidates into lines: all between one unordered pair when `merge_parallel`, otherwise only the
-    indirect ones (rolled up or bridged) while a direct connection keeps its own line."""
+    indirect ones (rolled up or bridged) while a direct connection keeps its own line. A connection with a route of its
+    own (`routed`) that stands alone between exactly its route's two boxes is a line by itself either way."""
     groups: dict[object, list[tuple[uuid.UUID, uuid.UUID, _Candidate, bool]]] = {}
     for pa, pb, candidate, rolled_up in rolled:
         indirect = rolled_up or candidate.bridged
-        if merge_parallel:
-            key: object = frozenset((pa, pb))
+        own = _routable_id(candidate, pa, pb, boundary_ids)
+        if own is not None and own in routed and frozenset(routed[own]) == frozenset((pa, pb)):
+            key: object = ("own", own, pa, pb)
+        elif merge_parallel:
+            key = frozenset((pa, pb))
         elif indirect:
             key = ("indirect", frozenset((pa, pb)))
         else:
             key = ("direct", candidate.connection_ids[0], pa, pb)
         groups.setdefault(key, []).append((pa, pb, candidate, rolled_up))
     lines: list[Line] = []
-    for members in groups.values():
+    for key, members in groups.items():
         first_a, first_b = members[0][0], members[0][1]
         # The line is drawn from the first member's orientation; members drawn the other way make it two-way.
         agree = all((m[0], m[1]) == (first_a, first_b) for m in members)
@@ -348,9 +369,22 @@ def _merge(rolled: Sequence[tuple[uuid.UUID, uuid.UUID, _Candidate, bool]], merg
             ids.extend(candidate.connection_ids)
             hops.extend(candidate.hops)
         flags = [(rolled_up, candidate.bridged) for _pa, _pb, candidate, rolled_up in members]
+        routable = [i for pa, pb, candidate, _r in members if (i := _routable_id(candidate, pa, pb, boundary_ids)) is not None]
         lines.append(Line(
             source_id=first_a, target_id=first_b, two_way=two_way, connection_ids=tuple(dict.fromkeys(ids)),
             rolled_up=any(r for r, _b in flags), bridged=any(b for _r, b in flags),
             indirect=all(r or b for r, b in flags), hops=tuple(dict.fromkeys(hops)),
+            routable=tuple(dict.fromkeys(routable)),
+            own_route=key[1] if isinstance(key, tuple) and key[0] == "own" else None,
         ))
     return lines
+
+
+def _routable_id(
+    candidate: _Candidate, pa: uuid.UUID, pb: uuid.UUID, boundary_ids: Collection[uuid.UUID],
+) -> uuid.UUID | None:
+    """The one connection behind a candidate line when it can have a route of its own: a candidate with several
+    connections is a bridged chain, and a line to a boundary box has no element pair to keep a route on."""
+    if len(candidate.connection_ids) != 1 or pa in boundary_ids or pb in boundary_ids:
+        return None
+    return candidate.connection_ids[0]

@@ -21,7 +21,7 @@
  */
 import type { GraphCanvasEdge, GraphCanvasLeader, GraphCanvasNode, GraphNodeBadge } from "../../components/GraphCanvas";
 import type { AttachPoint } from "../../components/graphAttachPoints";
-import { reverseRoute } from "../../components/graphLinePath";
+import { effectiveShape, reverseRoute, type LineShape } from "../../components/graphLinePath";
 import { SYMBOL_HEIGHT, drawnBoxSize, fitBox } from "./elementBoxFit";
 import type { GraphNodeOutline } from "../../components/GraphCanvas";
 import {
@@ -238,7 +238,7 @@ function signature(layout: EditorLayout): string {
   return JSON.stringify([
     [...placements].sort((a, b) => a.element_id.localeCompare(b.element_id)),
     notesSignature(layout.notes),
-    anchors.map((a) => [a.source_element_id, a.target_element_id, a.source_point, a.target_point, a.points.map((p) => [p.x, p.y]), a.smooth]).sort(),
+    anchors.map((a) => [a.source_element_id, a.target_element_id, a.connection_id, a.source_point, a.target_point, a.points.map((p) => [p.x, p.y]), a.line_shape]).sort(),
     [...boundaries].sort((a, b) => a.connection_id.localeCompare(b.connection_id)),
   ]);
 }
@@ -297,26 +297,89 @@ export interface LineRoute {
   sourcePoint: AttachPoint | null;
   targetPoint: AttachPoint | null;
   points: LineWaypoint[];
-  smooth: boolean;
+  /** The line's own shape, or null to follow the diagram's default. */
+  lineShape: LineShape | null;
 }
 
-/** The route a person chose for the line from `sourceId` to `targetId`, oriented to that direction (an anchor stored the other way round is read reversed). */
+/** A route read from `anchor` oriented from `sourceId` to `targetId`, or `null` when the anchor joins other boxes. */
+function orientedRoute(anchor: DiagramAnchor, sourceId: string, targetId: string): LineRoute | null {
+  if (anchor.source_element_id === sourceId && anchor.target_element_id === targetId) {
+    return { sourcePoint: anchor.source_point, targetPoint: anchor.target_point, points: anchor.points, lineShape: anchor.line_shape };
+  }
+  if (anchor.source_element_id === targetId && anchor.target_element_id === sourceId) {
+    return { sourcePoint: anchor.target_point, targetPoint: anchor.source_point, points: reverseRoute(anchor.points), lineShape: anchor.line_shape };
+  }
+  return null;
+}
+
+const NO_ROUTE: LineRoute = { sourcePoint: null, targetPoint: null, points: [], lineShape: null };
+
+/** The route a person chose for the pair of boxes `sourceId` and `targetId`, oriented to that direction (an anchor stored the other way round is read reversed). A connection's own route is not the pair's. */
 export function anchorOf(anchors: readonly DiagramAnchor[], sourceId: string, targetId: string): LineRoute {
   for (const a of anchors) {
-    if (a.source_element_id === sourceId && a.target_element_id === targetId) {
-      return { sourcePoint: a.source_point, targetPoint: a.target_point, points: a.points, smooth: a.smooth };
-    }
-    if (a.source_element_id === targetId && a.target_element_id === sourceId) {
-      return { sourcePoint: a.target_point, targetPoint: a.source_point, points: reverseRoute(a.points), smooth: a.smooth };
-    }
+    if (a.connection_id) continue;
+    const route = orientedRoute(a, sourceId, targetId);
+    if (route) return route;
   }
-  return { sourcePoint: null, targetPoint: null, points: [], smooth: false };
+  return NO_ROUTE;
+}
+
+/** The own route of a connection between `sourceId` and `targetId`, oriented to that direction, or `null` when it has none there. */
+export function connectionRouteOf(anchors: readonly DiagramAnchor[], connectionId: string, sourceId: string, targetId: string): LineRoute | null {
+  const anchor = anchors.find((a) => a.connection_id === connectionId);
+  return anchor ? orientedRoute(anchor, sourceId, targetId) : null;
+}
+
+/**
+ * How a drawn line is routed: the own route of the connection it is drawn for, else its pair's route.
+ *
+ * @param anchors The layout's anchors.
+ * @param line The line (its ends and, for a connection drawn on its own route, that connection).
+ */
+export function routeOf(
+  anchors: readonly DiagramAnchor[], line: Pick<DiagramViewEdge, "source_element_id" | "target_element_id" | "route_connection_id">,
+): LineRoute {
+  if (line.route_connection_id) {
+    return connectionRouteOf(anchors, line.route_connection_id, line.source_element_id, line.target_element_id) ?? NO_ROUTE;
+  }
+  return anchorOf(anchors, line.source_element_id, line.target_element_id);
+}
+
+/** The connections routed on their own and the two boxes each route joins, for `resolveDiagram` (which draws each as a line apart). */
+export function routedConnections(anchors: readonly DiagramAnchor[]): Map<string, readonly [string, string]> {
+  return new Map(anchors.flatMap((a) => (a.connection_id ? [[a.connection_id, [a.source_element_id, a.target_element_id] as const] as const] : [])));
+}
+
+/** Whether another drawn line joins the same two boxes as `line` (in either direction), so the pair's route would move both. */
+export function sharesItsPair(edges: readonly DiagramViewEdge[], line: Pick<DiagramViewEdge, "id" | "source_element_id" | "target_element_id">): boolean {
+  return edges.some((e) => e.id !== line.id && (
+    (e.source_element_id === line.source_element_id && e.target_element_id === line.target_element_id) ||
+    (e.source_element_id === line.target_element_id && e.target_element_id === line.source_element_id)
+  ));
+}
+
+/**
+ * The connection an edit to a line's route belongs to: the connection the line is drawn for on its own route; else the one
+ * chosen in a merged line's card when it can have a route of its own; else the only connection of a line that shares its two
+ * boxes with another line (a pair's route would move both); else none (the edit is the pair's and moves every connection on
+ * the line).
+ *
+ * @param line The line being edited.
+ * @param chosenConnectionId The connection chosen in the line's card, or null.
+ * @param sharesPair Whether another line joins the same two boxes (`sharesItsPair`).
+ */
+export function routedConnectionOf(
+  line: Pick<DiagramViewEdge, "route_connection_id" | "routable_connection_ids" | "connections">, chosenConnectionId: string | null, sharesPair: boolean,
+): string | null {
+  if (line.route_connection_id) return line.route_connection_id;
+  if (chosenConnectionId !== null && line.routable_connection_ids.includes(chosenConnectionId)) return chosenConnectionId;
+  return sharesPair && line.connections.length === 1 && line.routable_connection_ids.length === 1 ? line.routable_connection_ids[0] : null;
 }
 
 /**
  * Routes the line from `sourceId` to `targetId`. A part the change does not name keeps what it had: an attach point (a `null`
- * end is made automatic), the vertices (an empty list makes the line straight) and the curve. A line left with both ends
- * automatic and no vertices has no anchor at all.
+ * end is made automatic), the vertices (an empty list leaves the line to its shape) and the line's own shape (null follows
+ * the diagram's default). A line left with both ends automatic, no vertices and no shape has no anchor at all.
  *
  * @param layout The layout being edited.
  * @param sourceId The line's source element.
@@ -331,18 +394,50 @@ export function setLineAnchor(
   const sourcePoint = change.sourcePoint === undefined ? before.sourcePoint : change.sourcePoint;
   const targetPoint = change.targetPoint === undefined ? before.targetPoint : change.targetPoint;
   const points = change.points === undefined ? before.points : change.points;
-  const smooth = change.smooth === undefined ? before.smooth : change.smooth;
-  const others = layout.anchors.filter((a) => !(
+  const lineShape = change.lineShape === undefined ? before.lineShape : change.lineShape;
+  const others = layout.anchors.filter((a) => a.connection_id || !(
     (a.source_element_id === sourceId && a.target_element_id === targetId) ||
     (a.source_element_id === targetId && a.target_element_id === sourceId)
   ));
-  const next = sourcePoint === null && targetPoint === null && points.length === 0
+  const next = sourcePoint === null && targetPoint === null && points.length === 0 && lineShape === null
     ? others
     : [...others, {
-      source_element_id: sourceId, target_element_id: targetId, source_point: sourcePoint, target_point: targetPoint,
-      points, smooth: points.length > 0 && smooth,
+      source_element_id: sourceId, target_element_id: targetId, connection_id: null, source_point: sourcePoint, target_point: targetPoint,
+      points, line_shape: lineShape,
     }];
   return { ...layout, anchors: next };
+}
+
+/**
+ * Routes one connection on its own, which draws it as a line apart from the line its pair of boxes shares. A connection with
+ * no route of its own starts from the route its line has now (so it does not jump), then takes the change; a part the change
+ * does not name keeps what it had. Unlike a pair's route, one with both ends automatic and no vertices is kept (the
+ * connection stays a line of its own); `clearConnectionRoute` joins it to its pair's line again.
+ *
+ * @param layout The layout being edited.
+ * @param connectionId The connection.
+ * @param sourceId The source element of the line being edited.
+ * @param targetId The target element of the line being edited.
+ * @param change The parts to set (`undefined` leaves a part as it is); `points` run from the source to the target.
+ */
+export function setConnectionRoute(
+  layout: EditorLayout, connectionId: string, sourceId: string, targetId: string, change: LineRouteChange,
+): EditorLayout {
+  const before = connectionRouteOf(layout.anchors, connectionId, sourceId, targetId) ?? anchorOf(layout.anchors, sourceId, targetId);
+  const points = change.points === undefined ? before.points : change.points;
+  const lineShape = change.lineShape === undefined ? before.lineShape : change.lineShape;
+  const row: DiagramAnchor = {
+    source_element_id: sourceId, target_element_id: targetId, connection_id: connectionId,
+    source_point: change.sourcePoint === undefined ? before.sourcePoint : change.sourcePoint,
+    target_point: change.targetPoint === undefined ? before.targetPoint : change.targetPoint,
+    points, line_shape: lineShape,
+  };
+  return { ...layout, anchors: [...layout.anchors.filter((a) => a.connection_id !== connectionId), row] };
+}
+
+/** Takes a connection's own route away, so it is drawn with its pair's line and route again. */
+export function clearConnectionRoute(layout: EditorLayout, connectionId: string): EditorLayout {
+  return { ...layout, anchors: layout.anchors.filter((a) => a.connection_id !== connectionId) };
 }
 
 /** Adds boundary boxes, skipping any outer connection already drawn. */
@@ -526,23 +621,29 @@ function edgeLabel(edge: DiagramViewEdge): string | undefined {
  * @param layout The layout being edited (its anchors give each line's chosen points); a line whose end is not a visible box (removed or switched off here) is left out.
  * @param hidden The elements a view switch hides.
  * @param theme Which of a line's two colours to use.
+ * @param defaultShape The diagram's default line shape, for a line with none of its own.
  */
-export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidden: ReadonlySet<string>, theme: EditorTheme): GraphCanvasEdge[] {
+export function canvasEdges(
+  edges: DiagramViewEdge[], layout: EditorLayout, hidden: ReadonlySet<string>, theme: EditorTheme, defaultShape: LineShape = "straight",
+): GraphCanvasEdge[] {
   const visible = new Set([
     ...layout.boxes.filter((b) => !hidden.has(b.elementId)).map((b) => b.elementId),
     ...layout.boundaries.map((b) => boundaryNodeId(b.connectionId)),
   ]);
   return edges
     .filter((e) => visible.has(e.source_element_id) && visible.has(e.target_element_id))
-    .map((e) => ({
+    .map((e) => {
+      const { lineShape, ...route } = routeOf(layout.anchors, e);
+      return {
       id: e.id, source: e.source_element_id, target: e.target_element_id, label: edgeLabel(e),
       dashed: e.indirect || (e.line_style !== null && e.line_style !== "solid"),
       color: pick(e.color_light, e.color_dark, theme),
       direction: e.two_way ? "none" : "forward",
       // A line to a boundary box has no element pair of its own to keep a route on, so it stays automatic.
       routable: !e.source_is_boundary && !e.target_is_boundary,
-      ...anchorOf(layout.anchors, e.source_element_id, e.target_element_id),
-    }));
+      ...route, lineShape: effectiveShape(lineShape, defaultShape),
+      };
+    });
 }
 
 /**
@@ -553,15 +654,18 @@ export function canvasEdges(edges: DiagramViewEdge[], layout: EditorLayout, hidd
  * @param layout The layout being edited.
  * @param edges The resolved lines.
  * @param drawn The ids of the lines the canvas draws (`canvasEdges`).
+ * @param defaultShape The diagram's default line shape, for a leader with none of its own.
  */
-export function canvasLeaders(layout: EditorLayout, edges: DiagramViewEdge[], drawn: ReadonlySet<string>): GraphCanvasLeader[] {
+export function canvasLeaders(
+  layout: EditorLayout, edges: DiagramViewEdge[], drawn: ReadonlySet<string>, defaultShape: LineShape = "straight",
+): GraphCanvasLeader[] {
   return noteLeaderLines(layout.notes, (target) => {
     if (target.kind === "element") return { kind: "node", id: target.elementId };
     if (target.kind === "point") return { kind: "point", x: target.x, y: target.y };
     if (target.kind !== "connection") return null; // a state machine diagram's targets are not a block diagram's
     const edge = edges.find((e) => drawn.has(e.id) && e.connections.some((c) => c.id === target.connectionId));
     return edge ? { kind: "edge", id: edge.id } : null;
-  });
+  }, defaultShape);
 }
 
 /**

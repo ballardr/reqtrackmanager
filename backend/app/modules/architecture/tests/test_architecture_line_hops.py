@@ -21,8 +21,8 @@ CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "compone
 Point = tuple[float, float]
 
 
-def _line(id_: str, start: Point, end: Point, points: list[Point] | None = None, smooth: bool = False) -> HopLine:
-    return HopLine(id_, start, points or [], end, smooth)
+def _line(id_: str, start: Point, end: Point, points: list[Point] | None = None, shape: str = "straight") -> HopLine:
+    return HopLine(id_, start, points or [], end, shape)
 
 
 # A horizontal line with a vertical one across it, both long enough to have room at every end.
@@ -52,10 +52,16 @@ CASES: list[tuple[str, list[HopLine]]] = [
     ("a vertical hopping line that runs upward also bulges right", [_line("a", (0, 100), (200, 100)), _line("b", (100, 200), (100, 0))]),
     ("a diagonal hopping line", [_line("a", (0, 200), (200, 0)), _line("b", (0, 0), (200, 200))]),
     ("a curve hops over a straight line", [
-        _line("a", (0, 100), (240, 100)), _line("b", (20, 20), (220, 20), [(120, 180)], True),
+        _line("a", (0, 100), (240, 100)), _line("b", (20, 20), (220, 20), [(120, 180)], "spline"),
     ]),
     ("a straight line hops over a curve", [
-        _line("a", (20, 20), (220, 20), [(120, 180)], True), _line("b", (0, 100), (240, 100)),
+        _line("a", (20, 20), (220, 20), [(120, 180)], "spline"), _line("b", (0, 100), (240, 100)),
+    ]),
+    ("a bowed line with no vertices hops over a straight line", [
+        _line("a", (0, 100), (240, 100)), _line("b", (20, 40), (220, 40), None, "curved"),
+    ]),
+    ("a bowed line is crossed by a line through the middle of its chord", [
+        _line("a", (120, 0), (120, 200)), _line("b", (0, 100), (240, 100), None, "curved"),
     ]),
     ("a line crossing itself has no hop", [_line("a", (0, 0), (100, 100), [(100, 0), (0, 100)])]),
     ("a very long diagonal crosses a short line", [
@@ -75,7 +81,7 @@ def hop_cases() -> list[dict]:
         out.append({
             "name": name,
             "lines": [
-                {"id": line.id, "start": list(line.start), "points": [list(p) for p in line.points], "end": list(line.end), "smooth": line.smooth}
+                {"id": line.id, "start": list(line.start), "points": [list(p) for p in line.points], "end": list(line.end), "shape": line.shape}
                 for line in lines
             ],
             "paths": line_hops(lines),
@@ -130,9 +136,16 @@ def test_a_line_running_leftwards_bulges_the_same_way_as_one_running_rightwards(
     assert " A 6 6 0 0 0 " in leftwards
 
 
-def test_a_smooth_line_with_a_hop_is_drawn_as_segments_and_ends_on_its_points():
+def test_a_spline_with_a_hop_is_drawn_as_segments_and_ends_on_its_points():
     path = line_hops(dict(CASES)["a curve hops over a straight line"])["b"]
     assert path.startswith("M 20 20 L ") and path.endswith("L 220 20") and " A " in path and "C" not in path
+
+
+def test_a_bowed_line_is_flattened_along_its_arc_so_it_hops_where_the_arc_crosses():
+    paths = line_hops(dict(CASES)["a bowed line is crossed by a line through the middle of its chord"])
+    # The arc leaves the chord by 3/4 of the bow (a quarter of 240 is 60, so 45) to the left of a line running right: up the screen.
+    # The vertical line crosses it where it has risen, so only the later id ("b") hops, along segments and an arc.
+    assert "b" in paths and paths["b"].startswith("M 0 100 L ") and " A " in paths["b"] and "C" not in paths["b"]
 
 
 def test_a_hundred_lines_are_compared_within_a_second():

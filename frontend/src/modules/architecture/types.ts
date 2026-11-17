@@ -9,6 +9,7 @@
 import type { BadgeTone, Principal, PrincipalRef } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
 import type { AttachPoint } from "../../components/graphAttachPoints";
+import type { LineShape } from "../../components/graphLinePath";
 
 export type ArchitectureRecordStatus = "draft" | "proposed" | "active" | "retired" | "rejected";
 
@@ -64,7 +65,8 @@ export interface DiagramLeader {
   y: number | null;
   start_point: AttachPoint | null;
   points: LineWaypoint[];
-  smooth: boolean;
+  /** The line's own shape, or null to follow the diagram's default. */
+  line_shape: LineShape | null;
   start_style: LineEnd;
   end_style: LineEnd;
 }
@@ -377,6 +379,8 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
   connection_detail: boolean;
   /** Whether a line that crosses another is drawn with a small arc over it. */
   line_hops: boolean;
+  /** How a line with no shape of its own is drawn. */
+  line_shape: LineShape;
   folder_id: string | null;
   folder_path: string | null;
   status: ArchitectureRecordStatus;
@@ -396,6 +400,7 @@ export interface ArchitectureDiagram extends ProjectScopedRow {
 /** A drawing option stored on a block diagram or a state machine diagram and set from the editor's settings (not in the forms). */
 export interface DiagramSettingValues {
   line_hops: boolean;
+  line_shape: LineShape;
 }
 
 /** The fields the diagram create and edit forms share. */
@@ -504,6 +509,10 @@ export interface DiagramViewEdge {
   label: string | null;
   connections: ArchitectureConnection[];
   hops: DiagramViewHop[];
+  /** The connections behind the line that can have a route of their own (each stands alone between two boxes). */
+  routable_connection_ids: string[];
+  /** The connection the line is drawn for with its own route, or null for a line that uses its pair's route. */
+  route_connection_id: string | null;
 }
 
 /** How a boundary box is drawn, from the direction of the outer connection it stands for, seen from inside the scope. */
@@ -570,20 +579,24 @@ export interface LineRouteChange {
   sourcePoint?: AttachPoint | null;
   targetPoint?: AttachPoint | null;
   points?: LineWaypoint[];
-  smooth?: boolean;
+  /** The line's own shape; null follows the diagram's default. */
+  lineShape?: LineShape | null;
 }
 
 /**
  * How a drawn line is routed, when a person chose it: where it meets its two boxes (an end that is null is automatic) and
- * its vertices in order from `source_element_id` to `target_element_id`, drawn straight or as a curve (`smooth`).
+ * its vertices in order from `source_element_id` to `target_element_id`, drawn in its own shape
+ * (`line_shape`, none follows the diagram's default). With a `connection_id` it is that connection's own route, which draws the connection as a line apart from the one its pair of
+ * boxes shares; without one it is the pair's route.
  */
 export interface DiagramAnchor {
   source_element_id: string;
   target_element_id: string;
+  connection_id: string | null;
   source_point: AttachPoint | null;
   target_point: AttachPoint | null;
   points: LineWaypoint[];
-  smooth: boolean;
+  line_shape: LineShape | null;
 }
 
 /** A state machine diagram that describes an element, as a block on a block diagram links to it. */
@@ -765,6 +778,8 @@ export interface StateMachineDiagram extends ProjectScopedRow {
   element_name: string | null;
   /** Whether a transition that crosses another is drawn with a small arc over it. */
   line_hops: boolean;
+  /** How a transition or leader with no shape of its own is drawn. */
+  line_shape: LineShape;
   status: ArchitectureRecordStatus;
   allowed_status_moves: ArchitectureRecordStatus[];
   version: number;
@@ -860,7 +875,8 @@ export interface StateTransition {
   target_point: AttachPoint | null;
   /** Vertices in order from the source state to the target state; empty draws a straight line. */
   points: LineWaypoint[];
-  smooth: boolean;
+  /** The transition's own shape, or null to follow the diagram's default. */
+  line_shape: LineShape | null;
 }
 
 /** The fields the transition form edits. */
@@ -908,7 +924,7 @@ export interface TransitionPointsValues {
   source_point: AttachPoint | null;
   target_point: AttachPoint | null;
   points: LineWaypoint[];
-  smooth: boolean;
+  line_shape: LineShape | null;
 }
 
 /** A requirement as the allocation panels name it. */

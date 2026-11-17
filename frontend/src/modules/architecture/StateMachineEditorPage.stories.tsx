@@ -70,6 +70,23 @@ export const ToolbarAndSelectionButtonsShareAHeight: Story = {
   },
 };
 
+/** The chevron beside the title lists the project's other state machine diagrams as links to their editors. */
+export const TheTitleChevronSwitchesToAnotherStateMachineDiagram: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: [buildElement()],
+      stateMachines: [buildStateMachine(), buildStateMachine({ id: "smd-2", unique_code: "SMD-002", name: "Gateway start-up" })],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: /Gateway modes/ });
+    await userEvent.click(await canvas.findByRole("button", { name: "Switch state machine diagram" }));
+    const link = await within(document.body).findByRole("link", { name: /SMD-002 Gateway start-up/ });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/architecture/state-machine-diagrams/smd-2`);
+  },
+};
+
 /** The same check at a narrow width, where the toolbar wraps and each line is compared on its own. */
 export const ToolbarButtonsShareAHeightWhenNarrow: Story = {
   decorators: [(Story) => <div style={{ width: 480 }}><Story /></div>],
@@ -170,6 +187,43 @@ export const LineHopsIsStoredFromTheGear: Story = {
     await expect(hops).not.toBeChecked();
     await userEvent.click(hops);
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(MACHINE, expect.objectContaining({ version: 5, line_hops: true })));
+  },
+};
+
+/** The default line shape is a select in the gear, stored with the version as Line hops is. */
+export const TheDefaultLineShapeIsStoredFromTheGear: Story = {
+  beforeEach: () => { spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6, line_shape: "curved" }) as never); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /^Diagram settings/ }));
+    const shape = await within(document.body).findByRole("combobox", { name: "Default line shape" });
+    await userEvent.selectOptions(shape, "curved");
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(MACHINE, expect.objectContaining({ version: 5, line_shape: "curved" })));
+  },
+};
+
+/** A Curved default draws a transition as an arc and a transition's own shape wins over it; its card names what it follows. */
+export const ACurvedDefaultDrawsTransitionsAsArcsAndATransitionKeepsItsOwn: Story = {
+  beforeEach: () => {
+    const base = buildStateMachineModel();
+    mockArchitectureReads({
+      elements: [buildElement()],
+      stateMachineModel: buildStateMachineModel({
+        diagram: buildStateMachine({ line_shape: "curved" }),
+        transitions: base.transitions.map((t) => (t.id === "trn-3" ? { ...t, line_shape: "straight" as const } : t)),
+      }),
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("Idle, node");
+    const pathOf = (id: string) => canvasElement.querySelector(`.react-flow__edge[data-id="${id}"] path.react-flow__edge-path`)?.getAttribute("d") ?? "";
+    await waitFor(() => expect(pathOf("trn-1")).toMatch(/ C /));
+    await expect(pathOf("trn-3")).not.toMatch(/ C /);
+    (await canvas.findByLabelText("start [ready], connection from Idle to Running")).focus();
+    await userEvent.keyboard("{Enter}");
+    const panel = within(await canvas.findByRole("region", { name: "Selection" }));
+    await expect(panel.getByRole("combobox", { name: "Line shape" })).toHaveDisplayValue("Diagram default (Curved)");
   },
 };
 
@@ -696,9 +750,9 @@ export const VerticesOfATransitionAreSetInTheCardListedInTheOutlineAndSaved: Sto
     await openTab(canvas, "Outline");
     await userEvent.click(await canvas.findByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }));
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
-    await expect(panel.getByText("No vertices. The line is straight.")).toBeInTheDocument();
+    await expect(panel.getByText("No vertices.")).toBeInTheDocument();
     await userEvent.click(panel.getByRole("button", { name: "Add vertex" }));
-    await userEvent.click(panel.getByRole("switch", { name: "Smooth curve" }));
+    await userEvent.selectOptions(panel.getByRole("combobox", { name: "Line shape" }), "spline");
     // The Outline follows the unsaved drawing: the transition now has one vertex.
     const row = canvas.getByRole("button", { name: /^Transition from STE-001 Idle to STE-002 Running/ }).closest("tr") as HTMLElement;
     await waitFor(() => expect(within(row).getAllByRole("cell").slice(-1)[0]).toHaveTextContent("1"));
@@ -706,7 +760,7 @@ export const VerticesOfATransitionAreSetInTheCardListedInTheOutlineAndSaved: Sto
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `${MACHINE}/layout`,
       expect.objectContaining({
-        transitions: expect.arrayContaining([expect.objectContaining({ id: "trn-1", points: [{ x: 320, y: 106 }], smooth: true })]),
+        transitions: expect.arrayContaining([expect.objectContaining({ id: "trn-1", points: [{ x: 320, y: 106 }], line_shape: "spline" })]),
       }),
     ));
   },

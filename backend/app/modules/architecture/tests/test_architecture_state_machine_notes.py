@@ -75,7 +75,7 @@ def test_a_note_keeps_its_fields_and_each_kind_of_leader_and_the_model_returns_t
         {"text": "At a transition", "tone": "warning", "leaders": [{"kind": "transition", "transition_id": transitions["halt"]["id"]}]},
         {"text": "At a spot", "tone": "none", "leaders": [{
             "kind": "point", "x": 12.5, "y": -40, "start_point": "top", "points": [{"x": 5, "y": -20}, {"x": 9, "y": -30}],
-            "smooth": True, "start_style": "dot", "end_style": "arrow",
+            "line_shape": "spline", "start_style": "dot", "end_style": "arrow",
         }]},
         {"text": "Plain"},
     ])
@@ -92,7 +92,7 @@ def test_a_note_keeps_its_fields_and_each_kind_of_leader_and_the_model_returns_t
     assert (on_transition["transition_id"], on_transition["end_style"], on_transition["state_id"]) == (
         transitions["halt"]["id"], "arrow", None,
     )
-    assert (on_spot["x"], on_spot["y"], on_spot["start_point"], on_spot["smooth"]) == (12.5, -40, "top", True)
+    assert (on_spot["x"], on_spot["y"], on_spot["start_point"], on_spot["line_shape"]) == (12.5, -40, "top", "spline")
     assert on_spot["points"] == [{"x": 5, "y": -20}, {"x": 9, "y": -30}]
 
 
@@ -370,7 +370,7 @@ def test_the_notes_and_their_leaders_round_trip_through_the_project_bundle(clien
         {"title": "Why", "text": "Closes the valve", "tone": "danger", "text_align": "right", "size_mode": "automatic", "x": 10, "y": 20,
          "leaders": [
              {"kind": "state", "state_id": states["Running"]["id"], "start_point": "top", "start_style": "dot", "points": [{"x": 1, "y": 2}]},
-             {"kind": "transition", "transition_id": halt["id"], "smooth": True},
+             {"kind": "transition", "transition_id": halt["id"], "line_shape": "spline"},
              {"kind": "point", "x": 5, "y": 6, "end_style": "none"},
          ]},
         {"text": "Plain", "tone": "none"},
@@ -396,7 +396,7 @@ def test_the_notes_and_their_leaders_round_trip_through_the_project_bundle(clien
     assert (on_state["kind"], on_state["state_id"], on_state["start_point"], on_state["start_style"], on_state["points"]) == (
         "state", by_name["Running"], "top", "dot", [{"x": 1, "y": 2}],
     )
-    assert (on_transition["kind"], on_transition["transition_id"], on_transition["smooth"]) == ("transition", by_event["halt"], True)
+    assert (on_transition["kind"], on_transition["transition_id"], on_transition["line_shape"]) == ("transition", by_event["halt"], "spline")
     assert (on_spot["kind"], on_spot["x"], on_spot["y"], on_spot["end_style"]) == ("point", 5, 6, "none")
     # Nothing in the copy points back at the original's rows.
     assert not {leader["state_id"] for leader in (on_state,)} & {s["id"] for s in states.values()}

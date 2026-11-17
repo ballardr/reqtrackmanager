@@ -13,7 +13,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -26,7 +26,7 @@
           100,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -47,7 +47,7 @@
           100,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "a",
@@ -60,7 +60,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -81,7 +81,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "m",
@@ -94,7 +94,7 @@
           100,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -115,7 +115,7 @@
           200,
           0
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -128,7 +128,7 @@
           200,
           50
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -147,7 +147,7 @@
           200,
           0
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -160,7 +160,7 @@
           150,
           0
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -179,7 +179,7 @@
           200,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -201,7 +201,7 @@
           200,
           0
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -220,7 +220,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -233,7 +233,7 @@
           100,
           108
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -252,7 +252,7 @@
           100,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -265,7 +265,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -284,7 +284,7 @@
           97,
           50
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -302,7 +302,7 @@
           100,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -321,7 +321,7 @@
           100,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -334,7 +334,7 @@
           108,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "c",
@@ -347,7 +347,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -368,7 +368,7 @@
           300,
           50
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -381,7 +381,7 @@
           300,
           150
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "c",
@@ -394,7 +394,7 @@
           200,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -415,7 +415,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -428,7 +428,7 @@
           0,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -449,7 +449,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -462,7 +462,7 @@
           100,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -483,7 +483,7 @@
           200,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -496,7 +496,7 @@
           100,
           0
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -517,7 +517,7 @@
           200,
           0
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -530,7 +530,7 @@
           200,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -551,7 +551,7 @@
           240,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -569,7 +569,7 @@
           220,
           20
         ],
-        "smooth": true
+        "shape": "spline"
       }
     ],
     "paths": {
@@ -595,7 +595,7 @@
           220,
           20
         ],
-        "smooth": true
+        "shape": "spline"
       },
       {
         "id": "b",
@@ -608,11 +608,77 @@
           240,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
       "b": "M 0 100 L 52.75 100 A 6 6 0 0 1 64.75 100 L 175.25 100 A 6 6 0 0 1 187.25 100 L 240 100"
+    }
+  },
+  {
+    "name": "a bowed line with no vertices hops over a straight line",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          240,
+          100
+        ],
+        "shape": "straight"
+      },
+      {
+        "id": "b",
+        "start": [
+          20,
+          40
+        ],
+        "points": [],
+        "end": [
+          220,
+          40
+        ],
+        "shape": "curved"
+      }
+    ],
+    "paths": {}
+  },
+  {
+    "name": "a bowed line is crossed by a line through the middle of its chord",
+    "lines": [
+      {
+        "id": "a",
+        "start": [
+          120,
+          0
+        ],
+        "points": [],
+        "end": [
+          120,
+          200
+        ],
+        "shape": "straight"
+      },
+      {
+        "id": "b",
+        "start": [
+          0,
+          100
+        ],
+        "points": [],
+        "end": [
+          240,
+          100
+        ],
+        "shape": "curved"
+      }
+    ],
+    "paths": {
+      "b": "M 0 100 L 15 89.45 L 30 80.31 L 45 72.58 L 60 66.25 L 75 61.33 L 90 57.81 L 105 55.7 L 114.01 55.28 A 6 6 0 0 1 125.99 55.28 L 135 55.7 L 150 57.81 L 165 61.33 L 180 66.25 L 195 72.58 L 210 80.31 L 225 89.45 L 240 100"
     }
   },
   {
@@ -638,7 +704,7 @@
           100,
           100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {}
@@ -657,7 +723,7 @@
           30000,
           30000
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -670,7 +736,7 @@
           15000,
           15100
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {
@@ -691,7 +757,7 @@
           60,
           150
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "b",
@@ -704,7 +770,7 @@
           200,
           150
         ],
-        "smooth": false
+        "shape": "straight"
       },
       {
         "id": "z",
@@ -726,7 +792,7 @@
           300,
           200
         ],
-        "smooth": false
+        "shape": "straight"
       }
     ],
     "paths": {

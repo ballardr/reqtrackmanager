@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.modules.architecture import note_bundle
-from app.modules.architecture.diagram_line_path import clean_waypoints
+from app.modules.architecture.diagram_line_path import bundle_default_shape, bundle_line_shape, clean_waypoints
 from app.modules.architecture.diagrams import leaders_of
 from app.modules.architecture.enums import SYMBOL_LABEL_LENGTH, AttachPoint, LabelPosition, LeaderKind, RecordStatus, StateKind
 from app.modules.architecture.models import (
@@ -201,7 +201,7 @@ def export_state_machines(
     rows = [
         {
             "unique_code": m.unique_code, "name": m.name, "description": m.description, "status": m.status,
-            "line_hops": m.line_hops, "element": element_ref(m.element_id),
+            "line_hops": m.line_hops, "line_shape": m.line_shape, "element": element_ref(m.element_id),
             "states": [
                 {
                     "unique_code": s.unique_code, "name": s.name, "description": s.description, "kind": s.kind,
@@ -218,7 +218,7 @@ def export_state_machines(
                     "source": state_names.get(t.source_state_id), "target": state_names.get(t.target_state_id),
                     "event": t.event, "guard": t.guard, "action": t.action, "description": t.description,
                     "source_point": t.source_point, "target_point": t.target_point,
-                    "points": clean_waypoints(t.points), "smooth": t.smooth,
+                    "points": clean_waypoints(t.points), "line_shape": t.line_shape,
                 }
                 for t in by_machine_transitions.get(m.id, [])
             ],
@@ -344,7 +344,8 @@ def import_state_machines(
             project_id=project.id,
             unique_code=generate_unique_code(db, project, STATE_MACHINE_ARTEFACT_TYPE, STATE_MACHINE_CODE_PREFIX),
             name=entry["name"], description=entry.get("description", ""), element_id=element_id,
-            line_hops=bool(entry.get("line_hops")), status=entry.get("status", "draft"), version=1, creator_id=creator, is_archived=archived,
+            line_hops=bool(entry.get("line_hops")), line_shape=bundle_default_shape(entry), status=entry.get("status", "draft"),
+            version=1, creator_id=creator, is_archived=archived,
             archived_at=_instant(entry.get("archived_at")),
             archived_by=(users.resolve(entry.get("archived_by_email"), required=False, context=f"State machine diagram {code} archiver") or creator)
             if archived else None,
@@ -402,7 +403,7 @@ def import_state_machines(
                 description=raw.get("description", ""), sort_order=len(transition_ids),
                 source_point=raw.get("source_point") if raw.get("source_point") in _POINTS else None,
                 target_point=raw.get("target_point") if raw.get("target_point") in _POINTS else None,
-                points=clean_waypoints(raw.get("points")), smooth=raw.get("smooth") is True,
+                points=clean_waypoints(raw.get("points")), line_shape=bundle_line_shape(raw),
             )
             db.add(transition)
             db.flush()

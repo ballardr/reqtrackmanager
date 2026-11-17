@@ -3,17 +3,20 @@ import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
 import { LineVertexFields } from "./LineVertexFields";
+import type { LineShape } from "../../components/graphLinePath";
 import type { LineWaypoint } from "./types";
 
 /** Hosts the section with real state, as an editor would, and prints the last change reported. */
-function Host({ initial = [], smooth = false, editable = true }: { initial?: LineWaypoint[]; smooth?: boolean; editable?: boolean }) {
+function Host({ initial = [], shape = null, defaultShape = "straight", editable = true }: {
+  initial?: LineWaypoint[]; shape?: LineShape | null; defaultShape?: LineShape; editable?: boolean;
+}) {
   const [points, setPoints] = useState(initial);
-  const [curve, setCurve] = useState(smooth);
+  const [own, setOwn] = useState<LineShape | null>(shape);
   return (
     <div style={{ maxWidth: "22rem" }}>
       <LineVertexFields
-        points={points} smooth={curve} editable={editable} newPoint={{ x: 100, y: 140 }}
-        onChange={(change) => { if (change.points) setPoints(change.points); if (change.smooth !== undefined) setCurve(change.smooth); }}
+        points={points} lineShape={own} defaultShape={defaultShape} editable={editable} newPoint={{ x: 100, y: 140 }}
+        onChange={(change) => { if (change.points) setPoints(change.points); if (change.lineShape !== undefined) setOwn(change.lineShape); }}
       />
     </div>
   );
@@ -25,11 +28,10 @@ export default meta;
 
 type Story = StoryObj<typeof Host>;
 
-export const NoVerticesSaysTheLineIsStraight: Story = {
+export const NoVerticesIsSaidAndNothingCanBeReset: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("No vertices. The line is straight.")).toBeInTheDocument();
-    await expect(canvas.getByRole("switch", { name: "Smooth curve" })).toBeDisabled();
+    await expect(canvas.getByText("No vertices.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Reset vertices" })).toBeDisabled();
   },
 };
@@ -50,20 +52,42 @@ export const AddingEditingAndRemovingAVertex: Story = {
     await userEvent.tab();
     await expect(canvas.getByRole("spinbutton", { name: "Vertex 1 Y" })).toHaveValue(140);
     await userEvent.click(canvas.getByRole("button", { name: "Remove vertex 1" }));
-    await expect(canvas.getByText("No vertices. The line is straight.")).toBeInTheDocument();
+    await expect(canvas.getByText("No vertices.")).toBeInTheDocument();
   },
 };
 
-export const TheCurveSwitchNeedsAVertexAndResetClearsThem: Story = {
+export const ResetClearsTheVertices: Story = {
   args: { initial: [{ x: 10, y: 20 }, { x: 30, y: 40 }] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const smooth = canvas.getByRole("switch", { name: "Smooth curve" });
-    await expect(smooth).toBeEnabled();
-    await userEvent.click(smooth);
-    await expect(smooth).toBeChecked();
     await userEvent.click(canvas.getByRole("button", { name: "Reset vertices" }));
     await expect(canvas.queryByRole("spinbutton", { name: "Vertex 1 X" })).not.toBeInTheDocument();
+  },
+};
+
+/** A line's shape does not depend on vertices: a line with none can be Curved, and "Diagram default" names what it follows. */
+export const TheShapeIsChosenWithOrWithoutVertices: Story = {
+  args: { defaultShape: "spline" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const shape = canvas.getByRole("combobox", { name: "Line shape" });
+    await expect(shape).toBeEnabled();
+    await expect(shape).toHaveValue("");
+    await expect(within(shape).getAllByRole("option").map((o) => o.textContent)).toEqual(["Diagram default (Spline)", "Straight", "Curved", "Spline"]);
+    await userEvent.selectOptions(shape, "curved");
+    await expect(shape).toHaveValue("curved");
+    await userEvent.selectOptions(shape, "");
+    await expect(shape).toHaveValue("");
+  },
+};
+
+/** The help of the select describes every option, one line each. */
+export const TheShapeHelpNamesEveryOption: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Help: Line shape/ }));
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("Diagram default: the line follows the shape chosen for the diagram.");
+    await expect(tip).toHaveTextContent("Curved: one arc bowed to the left");
   },
 };
 
@@ -75,17 +99,17 @@ export const AtTheCapNoMoreCanBeAdded: Story = {
 };
 
 export const ReadOnlyListsThePointsAndOffersNoAction: Story = {
-  args: { initial: [{ x: 10, y: 20 }], editable: false, smooth: true },
+  args: { initial: [{ x: 10, y: 20 }], editable: false, shape: "spline" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("spinbutton", { name: "Vertex 1 X" })).toBeDisabled();
     await expect(canvas.queryByRole("button", { name: "Add vertex" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Remove vertex 1" })).not.toBeInTheDocument();
-    await expect(canvas.getByRole("switch", { name: "Smooth curve" })).toBeDisabled();
+    await expect(canvas.getByRole("combobox", { name: "Line shape" })).toBeDisabled();
   },
 };
 
-export const AReadOnlyStraightLineShowsNothing: Story = {
+export const AReadOnlyLineThatFollowsTheDiagramWithNoVerticesShowsNothing: Story = {
   args: { editable: false },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).queryByText("Vertices")).not.toBeInTheDocument();

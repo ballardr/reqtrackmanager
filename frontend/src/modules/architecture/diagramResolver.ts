@@ -9,7 +9,8 @@
  * Responsibilities:
  * - Apply, in this order: (1) hide the elements and connections of switched-off view switches; (2) join across hidden
  *   elements (a hidden transit element is bridged); (3) roll every end up to its nearest placed ancestor; (4) merge
- *   parallel lines when connection detail is off.
+ *   parallel lines when connection detail is off. A connection a person routed on its own is never merged: it is a line of
+ *   its own (`routed`).
  * - Report which connections each line stands for, which hidden elements a bridged line passes through, and which
  *   connections are wholly inside a placed element.
  * - Join a scoped diagram's boundary boxes: a connection that realises an outer connection is drawn to that connection's
@@ -66,6 +67,10 @@ export interface ResolvedLine {
   /** Every connection behind the line is rolled up or bridged (drawn dashed). */
   indirect: boolean;
   hops: string[];
+  /** The connections behind the line that can have a route of their own (each stands alone between two boxes, not to a boundary box). */
+  routable: string[];
+  /** The connection the line is drawn for with its own route (the only one behind it), or null. */
+  ownRoute: string | null;
 }
 
 /** What `resolveLines` decides. */
@@ -165,6 +170,8 @@ function attachBoundaries(
  * @param input.hiddenConnections The connections switched off.
  * @param input.mergeParallel True when connection detail is off: every line between the same two placed elements becomes one.
  * @param input.boundaries The boundary boxes of a scoped diagram; a realising connection is drawn to its box.
+ * @param input.routed `{connection id: the two boxes its own route joins}`; such a connection is drawn as its own line while it
+ *   still resolves to a line between those two boxes.
  * @returns The lines, the hidden placed elements and the internal connections.
  */
 export function resolveLines(input: {
@@ -175,6 +182,7 @@ export function resolveLines(input: {
   hiddenConnections?: Iterable<string>;
   mergeParallel: boolean;
   boundaries?: readonly ResolverBoundary[];
+  routed?: ReadonlyMap<string, readonly [string, string]>;
 }): Resolution {
   const { parents, connections, mergeParallel } = input;
   const switchedOff = new Set(input.hiddenElements ?? []);
@@ -233,7 +241,7 @@ export function resolveLines(input: {
     rolled.push([pa, pb, candidate, pa !== candidate.a || pb !== candidate.b]);
   }
 
-  const lines = merge(rolled, mergeParallel).sort(
+  const lines = merge(rolled, mergeParallel, input.routed ?? new Map(), new Set(boundaries.map((b) => b.id))).sort(
     (x, y) =>
       compareText(x.sourceId, y.sourceId) || compareText(x.targetId, y.targetId) || compareText(x.connectionIds[0], y.connectionIds[0]),
   );
@@ -303,24 +311,32 @@ function bridge(arcs: ReadonlyMap<string, Arc[]>, isHidden: (id: string) => bool
 
 /**
  * Groups rolled candidates into lines: all between one unordered pair when `mergeParallel`, otherwise only the indirect
- * ones (rolled up or bridged) while a direct connection keeps its own line.
+ * ones (rolled up or bridged) while a direct connection keeps its own line. A connection with a route of its own (`routed`)
+ * that stands alone between exactly its route's two boxes is a line by itself either way.
  */
-function merge(rolled: readonly Rolled[], mergeParallel: boolean): ResolvedLine[] {
-  const groups = new Map<string, Rolled[]>();
+function merge(
+  rolled: readonly Rolled[], mergeParallel: boolean, routed: ReadonlyMap<string, readonly [string, string]>, boundaryIds: ReadonlySet<string>,
+): ResolvedLine[] {
+  const groups = new Map<string, { own: string | null; members: Rolled[] }>();
   for (const member of rolled) {
     const [pa, pb, candidate, rolledUp] = member;
     const pair = [pa, pb].sort(compareText).join("|");
-    const key = mergeParallel
-      ? `pair:${pair}`
-      : rolledUp || candidate.bridged
-        ? `indirect:${pair}`
-        : `direct:${candidate.connectionIds[0]}|${pa}|${pb}`;
-    const list = groups.get(key);
-    if (list) list.push(member);
-    else groups.set(key, [member]);
+    const id = routableId(candidate, pa, pb, boundaryIds);
+    const route = id === null ? undefined : routed.get(id);
+    const own = id !== null && route !== undefined && [route[0], route[1]].sort(compareText).join("|") === pair ? id : null;
+    const key = own !== null
+      ? `own:${own}|${pa}|${pb}`
+      : mergeParallel
+        ? `pair:${pair}`
+        : rolledUp || candidate.bridged
+          ? `indirect:${pair}`
+          : `direct:${candidate.connectionIds[0]}|${pa}|${pb}`;
+    const group = groups.get(key);
+    if (group) group.members.push(member);
+    else groups.set(key, { own, members: [member] });
   }
   const lines: ResolvedLine[] = [];
-  for (const members of groups.values()) {
+  for (const { own, members } of groups.values()) {
     const [firstA, firstB] = members[0];
     // The line is drawn from the first member's orientation; members drawn the other way make it two-way.
     const agree = members.every((m) => m[0] === firstA && m[1] === firstB);
@@ -333,7 +349,17 @@ function merge(rolled: readonly Rolled[], mergeParallel: boolean): ResolvedLine[
       bridged: members.some((m) => m[2].bridged),
       indirect: members.every((m) => m[3] || m[2].bridged),
       hops: unique(members.flatMap((m) => m[2].hops)),
+      routable: unique(members.flatMap((m) => routableId(m[2], m[0], m[1], boundaryIds) ?? [])),
+      ownRoute: own,
     });
   }
   return lines;
+}
+
+/**
+ * The one connection behind a candidate line when it can have a route of its own: a candidate with several connections is a
+ * bridged chain, and a line to a boundary box has no element pair to keep a route on.
+ */
+function routableId(candidate: Candidate, pa: string, pb: string, boundaryIds: ReadonlySet<string>): string | null {
+  return candidate.connectionIds.length !== 1 || boundaryIds.has(pa) || boundaryIds.has(pb) ? null : candidate.connectionIds[0];
 }

@@ -81,10 +81,11 @@ export const ARCHITECTURE_HELP = {
   diagramPopulate: "Places the scope element's child elements (or the top-level elements for the system context) on the diagram in a grid. You can move, add and remove boxes afterwards.",
   diagramActivate: "Creates the diagram as Active instead of Draft. A diagram has no approval step, so this needs no more than permission to create.",
   diagramConnectTo: "Starts a new connection from the selected element to the one you choose, the same as drawing a line between the two boxes. Use it when you cannot drag with a pointer.",
-  lineVertices: "The points a line passes through between its two ends, so it can go round another box or cross another line cleanly. Drag the small dot in the middle of a segment of the selected line to add one, drag a vertex to move it, and double-click a vertex or press Delete on it to remove it. X and Y are positions on the drawing: use them when you cannot drag with a pointer. A line with no vertices is straight.",
-  lineSmooth: "Smooth: draws one curve through the line's ends and every vertex.\nOff: draws straight segments between them.",
+  lineVertices: "The points a line passes through between its two ends, so it can go round another box or cross another line cleanly. Drag the small dot in the middle of a segment of the selected line to add one, drag a vertex to move it, and double-click a vertex or press Delete on it to remove it. X and Y are positions on the drawing: use them when you cannot drag with a pointer. With no vertices the line follows its shape.",
   diagramLineFrom: "The attach point: where the line meets the box it starts from. Automatic uses the point nearest the other end. You can also drag the end of a selected line to another point on the same box.",
   diagramLineTo: "The attach point: where the line meets the box it ends at. Automatic uses the point nearest the other end. You can also drag the end of a selected line to another point on the same box.",
+  routeOfLine: "The attach points and vertices below belong to the line, so they apply to every connection it stands for. To route one connection on its own, choose it in the list of connections: it is then drawn as a line of its own.",
+  routeOfConnection: "The attach points and vertices below apply to this connection only, which is drawn as a line of its own. The other connections between the same two boxes keep the route of their line. Use the shared route removes this connection's own route, so it is drawn with them again.",
   diagramBoundaryConnectTo: "Starts a new connection between the chosen inner element and the element outside, and marks it as realising this outer connection. The same as drawing a line from the inner element to the box.",
   diagramRealises: "Marks the selected connection as realising a connection of the layer above: it lies inside the interface that connection declares. The boundary box of that connection then shows as Covered. Only the connections drawn as boundary boxes on this diagram are offered here.",
   connectionRealises: "The connections of the layer above that this connection is part of: it lies inside the interface each one declares. Set from a diagram of that layer's element, by drawing a line to its boundary box or choosing it in the Selection card.",
@@ -116,7 +117,8 @@ export const ARCHITECTURE_HELP = {
   baselineKind: "Stage: written automatically when a stage entered a locked phase.\nManual: taken on request, with no stage.",
   symbolUpload: "An SVG drawing (or an EPS or PDF when conversion is available). It is sanitised on upload. Upload only artwork the organisation is licensed to use.",
   symbolPickerUpload: "Adds a drawing to the symbol library and chooses it here. The library is shared: everyone in this project (or organisation) can then choose it, not only this record. In a project that uses its parent's library, the first upload copies the parent's symbols into this project. The choice is saved with the form. Rename or remove the symbol later in the Symbols settings.",
-  symbolPickerView: "How the symbols are listed.\nList: a drop-down of symbol names.\nGallery: a scrolling grid that shows each drawing, with a filter by name.",
+  symbolPickerList: "Shows the symbol names as a list.",
+  symbolPickerGallery: "Shows each symbol's drawing as a scrolling grid.",
 } as const;
 
 /** A domain term that appears as a heading, column header or Selection card label, with its plain-language help. */

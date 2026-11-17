@@ -32,7 +32,7 @@ import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import type { AttachPoint } from "./graphAttachPoints";
-import type { LinePoint } from "./graphLinePath";
+import type { LinePoint, LineShape } from "./graphLinePath";
 import { Spinner } from "./Spinner";
 
 /**
@@ -198,8 +198,8 @@ export interface GraphCanvasLeader {
   fromPoint?: AttachPoint;
   /** The vertices in order from the node to the target, in canvas units. */
   points?: LinePoint[];
-  /** True to curve through the vertices, false (default) for straight segments. */
-  smooth?: boolean;
+  /** How the line runs (default straight): a curve through the vertices, or with none a bowed arc, or straight segments (`graphLinePath`). */
+  lineShape?: LineShape;
   /** The start decoration; defaults to none. */
   startEnd?: GraphLineEnd;
   /** The end decoration; defaults to an arrowhead. */
@@ -259,8 +259,12 @@ export interface GraphCanvasEdge {
    * its box nearest the vertex beside it. Ignored for a loop.
    */
   points?: LinePoint[];
-  /** Draws a curve through the vertices instead of straight segments (no effect without vertices). */
-  smooth?: boolean;
+  /**
+   * How the line runs (default straight): Straight is segments through the vertices, Spline a curve through them (straight with
+   * none), Curved the same curve or, with no vertices, one arc bowed to the left of the line's direction. The consumer resolves a
+   * line's own shape against its diagram's default, so this is always the shape drawn.
+   */
+  lineShape?: LineShape;
   /** False when the consumer cannot keep a route for this line: no vertex handles are offered on it. True when omitted. */
   routable?: boolean;
 }

@@ -17,6 +17,9 @@ Design decisions:
   that project's connections, even where an end is an element another owner shares.
 - **Boundary boxes are drawn from the stored boxes that are still outer.** Each is a placed element with no parent for the
   resolver, so a realising connection reaches it; a box whose outside element the viewer cannot read is locked.
+- **A connection with a route of its own is a line of its own** (`ArchitectureDiagramAnchor.connection_id`): the stored
+  routes are handed to the resolver, which takes such a connection out of its merged line, and the line says which
+  connections can be routed this way (`routable_connection_ids`) and which one it is drawn for (`route_connection_id`).
 - **Retired and archived connections are left out** (retired only unless `include_retired`), as the lists' "Open only".
   A retired or archived *element* stays drawn, flagged by its status, since a diagram is a view of what was placed.
 - **Rules are evaluated over every element the diagram involves** (placed elements and connection ends), so a transit
@@ -41,7 +44,7 @@ from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture import diagrams, records
 from app.modules.architecture.connection_tree import descendant_map
 from app.modules.architecture.diagram_resolver import Boundary, ModelConnection, Resolution, outer_side, resolve
-from app.modules.architecture.enums import AttachPoint, ElementShape
+from app.modules.architecture.enums import AttachPoint, ElementShape, LineShape
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import (
     ArchitectureConnection,
@@ -205,6 +208,7 @@ def build_view(
                 hidden_connections.add(member.connection_id)
 
     boundary_boxes = _boundary_boxes(db, viewer, diagram, connections, readable, parents)
+    anchors = diagrams.anchors_of(db, diagram.id)
     resolution = resolve(
         placed=placed_ids, parents=parents,
         connections=[
@@ -215,6 +219,7 @@ def build_view(
         ],
         hidden_elements=hidden_elements, hidden_connections=hidden_connections,
         merge_parallel=not diagram.connection_detail, boundaries=[b[0] for b in boundary_boxes],
+        routed={a.connection_id: (a.source_element_id, a.target_element_id) for a in anchors if a.connection_id is not None},
     )
 
     return DiagramView(
@@ -228,12 +233,13 @@ def build_view(
         notes=[diagrams.note_out(n, leaders.get(n.id, [])) for n in notes],
         anchors=[
             AnchorOut(
-                source_element_id=a.source_element_id, target_element_id=a.target_element_id,
+                source_element_id=a.source_element_id, target_element_id=a.target_element_id, connection_id=a.connection_id,
                 source_point=AttachPoint(a.source_point) if a.source_point else None,
                 target_point=AttachPoint(a.target_point) if a.target_point else None,
-                points=[WaypointIn(x=p["x"], y=p["y"]) for p in a.points], smooth=a.smooth,
+                points=[WaypointIn(x=p["x"], y=p["y"]) for p in a.points],
+                line_shape=LineShape(a.line_shape) if a.line_shape else None,
             )
-            for a in diagrams.anchors_of(db, diagram.id)
+            for a in anchors
         ],
         boundaries=[b[1] for b in boundary_boxes],
     )
@@ -392,7 +398,7 @@ def _edges(
             color_dark=kind.color_dark if detail and kind is not None else None,
             label=_edge_label(len(members), kind.name if kind is not None else None, next(iter(protocols)) if len(protocols) == 1 else "")
             if detail else None,
-            connections=members,
+            connections=members, routable_connection_ids=list(line.routable), route_connection_id=line.own_route,
             hops=[
                 ViewHop(element_id=h, unique_code=elements[h].unique_code, name=elements[h].name)
                 for h in line.hops if h in hop_ids and h in elements and h in readable

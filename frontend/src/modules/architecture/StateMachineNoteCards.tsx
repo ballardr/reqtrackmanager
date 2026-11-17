@@ -68,6 +68,7 @@ export function StateMachineNoteCards({
         key={leader.leader.key} leader={leader.leader} index={leader.index} editable={editable}
         targets={leaderTargetOptions(model, codeOf)} help={ARCHITECTURE_HELP.leaderPointsAtStates}
         drawn={leaderIsDrawn(leader.leader, model)} newPoint={leaderVertexSuggestion(leader.note, leader.leader, centreOf)}
+        defaultShape={model.diagram.line_shape}
         onTarget={(target) => handlers.onLeaderTarget(leader.leader.key, target)}
         onChange={(change) => handlers.onLeaderChange(leader.leader.key, change)}
         onOpenNote={() => handlers.onSelectNote(leader.note.key)} onRemove={() => handlers.onRemoveLeader(leader.leader.key)}

@@ -85,7 +85,7 @@ import {
 } from "./graphAttachPoints";
 import { nearBoxIds } from "./graphAttachProximity";
 import { lineHops, type HopLine } from "./graphLineHops";
-import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint } from "./graphLinePath";
+import { insertWaypoint, lineMiddle, linePath, moveWaypoint, removeWaypoint, segmentMiddles, type LinePoint, type LineShape } from "./graphLinePath";
 import { GraphNodeBadges } from "./GraphNodeBadges";
 import { DEFAULT_BOX_HEIGHT, DEFAULT_BOX_WIDTH, assignLineAnchors, canvasLines, type LineAnchor } from "./graphLineAnchors";
 import { selfLoop, selfLoopPath, type LoopPoint } from "./graphSelfLoop";
@@ -314,7 +314,7 @@ function GraphLineEdge({ id, sourceX, sourceY, targetX, targetY, markerStart, ma
 interface RoutedEdgeData extends Record<string, unknown> {
   label?: string;
   points: LinePoint[];
-  smooth: boolean;
+  shape: LineShape;
   /** True when a selected line shows handles and the vertices can be changed. */
   editable: boolean;
   /** Called once with the whole new list of vertices when a gesture ends. */
@@ -347,7 +347,8 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
   const shift = data?.shift ?? NO_SHIFT;
   const start = { x: sourceX + shift.x, y: sourceY + shift.y };
   const end = { x: targetX + shift.x, y: targetY + shift.y };
-  const middle = lineMiddle(start, points, end);
+  const shape = data?.shape ?? "straight";
+  const middle = lineMiddle(start, points, end, shape);
   const handles = Boolean(selected && data?.editable);
 
   /** Starts moving vertex `index`, or (`insertAt`) adding one at the segment's middle once the pointer has travelled. */
@@ -396,7 +397,7 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
   }, [screenToFlowPosition, latest]);
 
   const remove = (index: number) => latest.current?.onChange(removeWaypoint(stored, index));
-  const path = data?.hopPath && !drag ? data.hopPath : linePath(start, points, end, data?.smooth ?? false);
+  const path = data?.hopPath && !drag ? data.hopPath : linePath(start, points, end, shape);
   return (
     <>
       <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
@@ -405,7 +406,7 @@ function GraphRoutedEdge({ sourceX, sourceY, targetX, targetY, markerStart, mark
         // The handles sit in the label layer, above the line's own end grips (React Flow draws those inside the line, so on a short line
         // they would cover the middle of the segment) and above the boxes.
         <EdgeLabelRenderer>
-          {segmentMiddles(start, points, end).map((at, i) => (
+          {segmentMiddles(start, points, end, shape).map((at, i) => (
             <div
               key={`segment-${i}`} className="graph-segment-handle nopan nodrag" aria-hidden="true"
               style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)` }}
@@ -470,7 +471,7 @@ function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"], 
       continue;
     }
     const run = lineRun(from, to, anchor);
-    middles.set(e.id, lineMiddle(run.start, e.points ?? [], run.end));
+    middles.set(e.id, lineMiddle(run.start, e.points ?? [], run.end, e.lineShape ?? "straight"));
   }
   return middles;
 }
@@ -551,19 +552,33 @@ function PinLayer({
 }
 
 /**
- * The marker for one end of a leader: React Flow's own closed arrow, the canvas's dot (defined once in `LeaderMarkerDefs`) or none.
- * The dot's id is passed as a string, which React Flow uses as it is.
+ * The marker for one end of a leader: the canvas's closed arrow or dot (both defined once in `LeaderMarkerDefs`) or none. The
+ * ids are passed as strings, which React Flow uses as they are; React Flow's own arrow has a colour of its own, so it would not
+ * follow the line's colour when the line is selected.
  */
-function leaderMarker(end: GraphLineEnd, dotId: string): Edge["markerEnd"] {
-  if (end === "arrow") return { type: MarkerType.ArrowClosed };
-  return end === "dot" ? dotId : undefined;
+function leaderMarker(end: GraphLineEnd, ids: LeaderMarkerIds): Edge["markerEnd"] {
+  if (end === "arrow") return ids.arrow;
+  return end === "dot" ? ids.dot : undefined;
 }
 
-/** The dot marker leaders may end in: a small filled circle in the colour of the line it ends. */
-function LeaderMarkerDefs({ id }: { id: string }) {
+/** The ids of the arrow and dot markers leaders end in. */
+interface LeaderMarkerIds {
+  arrow: string;
+  dot: string;
+}
+
+/** The arrow and dot markers leaders may end in: a closed arrow and a small filled circle, both in the colour of the line they end. */
+function LeaderMarkerDefs({ ids }: { ids: LeaderMarkerIds }) {
+  const id = ids.dot;
   return (
     <svg className="graph-marker-defs" width="0" height="0" aria-hidden="true" focusable="false">
       <defs>
+        <marker id={ids.arrow} viewBox="-10 -10 20 20" refX="0" refY="0" markerWidth="12.5" markerHeight="12.5" markerUnits="strokeWidth" orient="auto-start-reverse">
+          <polyline
+            points="-5,-4 0,0 -5,4 -5,-4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1"
+            fill="var(--color-text-muted)" stroke="var(--color-text-muted)" style={{ fill: "context-stroke", stroke: "context-stroke" }}
+          />
+        </marker>
         <marker id={id} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <circle cx="5" cy="5" r="4.5" fill="var(--color-text-muted)" style={{ fill: "context-stroke" }} />
         </marker>
@@ -620,7 +635,8 @@ export function GraphCanvasView({
 }: GraphCanvasProps) {
   const text = useStrings().graphCanvas;
   const helpId = useId();
-  const dotMarkerId = `graph-dot-${useId().replace(/:/g, "")}`;
+  const markerKey = useId().replace(/:/g, "");
+  const markerIds = useMemo<LeaderMarkerIds>(() => ({ arrow: `graph-arrow-${markerKey}`, dot: `graph-dot-${markerKey}` }), [markerKey]);
   const commenting = mode === "comment" && onCanvasPoint !== undefined;
   const [moved, setMoved] = useState<Moved>({});
   const [sized, setSized] = useState<Sized>({});
@@ -872,7 +888,7 @@ export function GraphCanvasView({
       const multiline = e.label !== undefined && e.label.includes("\n");
       // Every line of an editable canvas is drawn by the routed edge, so its label looks the same selected or not and a drag can add a vertex.
       const editable = !readOnly && !commenting && pointsEditable && e.routable !== false;
-      const routed = !loop && (via.length > 0 || laned || (!readOnly && pointsEditable && e.routable !== false));
+      const routed = !loop && (via.length > 0 || laned || (e.lineShape ?? "straight") !== "straight" || (!readOnly && pointsEditable && e.routable !== false));
       const loopShape = loop ? selfLoop(from, anchor.loopSlot) : null;
       const shape = loopShape
         ? { type: "loop", data: { path: selfLoopPath(loopShape), label: e.label, at: loopShape.label, align: loopShape.align } }
@@ -880,7 +896,7 @@ export function GraphCanvasView({
           ? {
             type: "routed",
             data: {
-              label: e.label, points: via, smooth: e.smooth === true, editable, shift: anchor.shift,
+              label: e.label, points: via, shape: e.lineShape ?? "straight", editable, shift: anchor.shift,
               onChange: (next: LinePoint[]) => onEdgePointsChange.current?.(e.id, next),
               grid: () => (snapRef.current.on ? snapRef.current.size : 0),
               open: () => onEdgeOpenRef.current?.(e.id),
@@ -921,11 +937,11 @@ export function GraphCanvasView({
         className: selection?.kind === "node" && selection.id === l.from ? "graph-leader graph-leader-of-selected" : "graph-leader",
         selected: selection?.kind === "leader" && selection.id === l.id,
         ariaLabel: text.leaderAria(labels.get(l.from) ?? l.from, ""),
-        markerStart: leaderMarker(l.startEnd ?? "none", dotMarkerId),
-        markerEnd: leaderMarker(l.endEnd ?? "arrow", dotMarkerId),
+        markerStart: leaderMarker(l.startEnd ?? "none", markerIds),
+        markerEnd: leaderMarker(l.endEnd ?? "arrow", markerIds),
         reconnectable: !readOnly && onLeaderTargetChange !== undefined ? ("target" as const) : false,
         data: {
-          points: via, smooth: l.smooth === true, editable,
+          points: via, shape: l.lineShape ?? "straight", editable,
           onChange: (next: LinePoint[]) => leaderPointsChanged(l.id, next),
           grid: gridNow,
           open: () => undefined,
@@ -935,7 +951,7 @@ export function GraphCanvasView({
         const target = boxes.get(l.to.id);
         if (!target || l.to.id === l.from) return [];
         const [sourceHandle, targetHandle] = routeAttachPoints(start, target, l.fromPoint, undefined, via);
-        const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: pointXY(target, targetHandle), smooth: l.smooth === true };
+        const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: pointXY(target, targetHandle), shape: l.lineShape ?? "straight" };
         return [{ line: { ...common, target: l.to.id, sourceHandle, targetHandle }, run }];
       }
       let at: { x: number; y: number } | undefined;
@@ -952,11 +968,11 @@ export function GraphCanvasView({
         draggable: free && !readOnly && onLeaderTargetChange !== undefined,
       };
       const sourceHandle = l.fromPoint ?? nearestPoint(start, via[0] ?? at);
-      const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: at, smooth: l.smooth === true };
+      const run = { id: l.id, start: pointXY(start, sourceHandle), points: via, end: at, shape: l.lineShape ?? "straight" };
       return [{ end, line: { ...common, target: LEADER_END_PREFIX + l.id, sourceHandle, targetHandle: LEADER_END_HANDLE }, run }];
     });
     return { ends: built.flatMap((b) => (b.end ? [b.end] : [])), lines: built.map((b) => b.line), runs: built.map((b) => b.run) };
-  }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, dotMarkerId, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow, anchors]);
+  }, [leaders, boxes, edges, endMoved, selection, readOnly, commenting, labels, text, markerIds, onLeaderTargetChange, onLeaderPointsChangeProp, leaderPointsChanged, gridNow, anchors]);
 
   /** Where each pin is drawn: on its node's top-right corner or its line's middle, else at its own place. */
   const pinPlaces = useMemo<PinPlace[]>(() => {
@@ -1225,7 +1241,7 @@ export function GraphCanvasView({
       const anchor = anchors.get(e.id);
       if (!from || !to || !anchor || anchor.loopSlot !== undefined) continue;
       const run = lineRun(from, to, anchor);
-      runs.push({ id: e.id, start: run.start, points: e.points ?? [], end: run.end, smooth: e.smooth === true });
+      runs.push({ id: e.id, start: run.start, points: e.points ?? [], end: run.end, shape: e.lineShape ?? "straight" });
     }
     return lineHops([...runs, ...flowLeaders.runs]);
   }, [hopsOn, edges, boxes, anchors, flowLeaders]);
@@ -1239,7 +1255,7 @@ export function GraphCanvasView({
       // A plain line becomes a routed one so it can draw its hop path; a routed line keeps its handles and vertices.
       const data = edge.type === "routed" ? (edge.data as RoutedEdgeData) : {
         label: edge.type === "multiline" ? (edge.data as { label?: string } | undefined)?.label : typeof edge.label === "string" ? edge.label : undefined,
-        points: [], smooth: false, editable: false, onChange: () => undefined, grid: () => 0, open: () => undefined,
+        points: [], shape: "straight", editable: false, onChange: () => undefined, grid: () => 0, open: () => undefined,
       } satisfies RoutedEdgeData;
       return { ...edge, type: "routed", label: undefined, data: { ...data, hopPath: hop } };
     });
@@ -1414,7 +1430,7 @@ export function GraphCanvasView({
       >
         {snapGrid === undefined ? <Background /> : snapping && <Background gap={snapGrid} />}
         <Controls showInteractive={false} />
-        <LeaderMarkerDefs id={dotMarkerId} />
+        <LeaderMarkerDefs ids={markerIds} />
         {renderPin && pinPlaces.length > 0 && (
           <PinLayer
             places={pinPlaces} renderPin={renderPin}

@@ -115,7 +115,7 @@ test.describe("System Architecture: leaders drawn from a note", () => {
       await saveLayout(page);
       const [saved] = await stored();
       expect(saved.leaders).toHaveLength(1);
-      expect(saved.leaders[0]).toMatchObject({ kind: "point", start_point: "bottom", start_style: "arrow", end_style: "dot", smooth: false });
+      expect(saved.leaders[0]).toMatchObject({ kind: "point", start_point: "bottom", start_style: "arrow", end_style: "dot", line_shape: null });
       expect(saved.leaders[0].points).toHaveLength(1);
       await page.reload();
       await expect(leaders).toHaveCount(1);

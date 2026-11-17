@@ -13,6 +13,8 @@
 import { AttachPointsSetting } from "../../components/AttachPointsSetting";
 import { FieldCaption } from "../../components/FieldHelp";
 import { LineHopsSetting } from "../../components/LineHopsSetting";
+import { LineShapeSelect } from "../../components/LineShapeSelect";
+import type { LineShape } from "../../components/graphLinePath";
 import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
 import { SnapToGridSetting } from "../../components/SnapToGridSetting";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
@@ -25,6 +27,8 @@ import { ARCHITECTURE_HELP } from "./help";
  * @param onConnectionDetailChange Called with the new connection-detail setting.
  * @param lineHops Whether the diagram draws a small arc where a line crosses another.
  * @param onLineHopsChange Called with the new Line hops setting.
+ * @param lineShape How a line or leader with no shape of its own is drawn.
+ * @param onLineShapeChange Called with the new default shape.
  * @param showNotes Whether boxes draw their display notes on this screen.
  * @param onShowNotesChange Called with the new Show notes choice (never disabled: it changes only this viewer's screen).
  * @param showComments Whether comment markers are drawn on this screen.
@@ -37,7 +41,7 @@ import { ARCHITECTURE_HELP } from "./help";
  * @param onAttachPointsAlwaysChange Called with the new setting.
  */
 export function DiagramSettingsButton({
-  connectionDetail, disabled, onConnectionDetailChange, lineHops, onLineHopsChange, showNotes, onShowNotesChange, showComments, onShowCommentsChange,
+  connectionDetail, disabled, onConnectionDetailChange, lineHops, onLineHopsChange, lineShape, onLineShapeChange, showNotes, onShowNotesChange, showComments, onShowCommentsChange,
   showResolved, onShowResolvedChange, snapToGrid, onSnapToGridChange, attachPointsAlways, onAttachPointsAlwaysChange,
 }: {
   connectionDetail: boolean;
@@ -45,6 +49,8 @@ export function DiagramSettingsButton({
   onConnectionDetailChange: (next: boolean) => void;
   lineHops: boolean;
   onLineHopsChange: (next: boolean) => void;
+  lineShape: LineShape;
+  onLineShapeChange: (next: LineShape) => void;
   showNotes: boolean;
   onShowNotesChange: (next: boolean) => void;
   showComments: boolean;
@@ -59,8 +65,8 @@ export function DiagramSettingsButton({
   const text = useStrings().canvasComments;
   return (
     <SettingsPopoverButton
-      label={`Diagram settings: connection detail ${connectionDetail ? "on" : "off"}, line hops ${lineHops ? "on" : "off"}, notes ${showNotes ? "shown" : "hidden"}, comments ${showComments ? "shown" : "hidden"}, snap to grid ${snapToGrid ? "on" : "off"}, attach points ${attachPointsAlways ? "always shown" : "near the pointer"}`}
-      title="Diagram settings" marked={connectionDetail || lineHops || !showNotes || !showComments || snapToGrid || attachPointsAlways}
+      label={`Diagram settings: connection detail ${connectionDetail ? "on" : "off"}, line hops ${lineHops ? "on" : "off"}, notes ${showNotes ? "shown" : "hidden"}, comments ${showComments ? "shown" : "hidden"}, snap to grid ${snapToGrid ? "on" : "off"}, attach points ${attachPointsAlways ? "always shown" : "near the pointer"}${lineShape === "straight" ? "" : `, line shape ${lineShape}`}`}
+      title="Diagram settings" marked={connectionDetail || lineHops || lineShape !== "straight" || !showNotes || !showComments || snapToGrid || attachPointsAlways}
     >
       <div className="stack" style={{ gap: "var(--space-2)" }}>
         <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
@@ -68,6 +74,7 @@ export function DiagramSettingsButton({
           <FieldCaption label="Connection detail" help={ARCHITECTURE_HELP.diagramConnectionDetail} />
         </span>
         <LineHopsSetting checked={lineHops} disabled={disabled} onChange={onLineHopsChange} />
+        <LineShapeSelect value={lineShape} disabled={disabled} onChange={(next) => { if (next) onLineShapeChange(next); }} />
         <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
           <ToggleSwitch checked={showNotes} label="Show notes" onChange={onShowNotesChange} />
           <FieldCaption label="Show notes" help={ARCHITECTURE_HELP.diagramShowNotes} />

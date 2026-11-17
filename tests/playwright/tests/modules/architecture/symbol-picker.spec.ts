@@ -14,7 +14,7 @@ const svgFile = (name: string) => ({ name: `${name}.svg`, mimeType: "image/svg+x
 
 /**
  * Job to be done: an architect chooses a symbol for an element without leaving the form: upload a drawing from the
- * picker (it is chosen and joins the shared library), then browse the library as a Gallery of drawings and choose a tile or
+ * picker's Upload view (it is chosen and joins the shared library), then browse the library as a Gallery of drawings and choose a tile or
  * the None tile. Someone without the Architecture Admin role is not offered the upload, and the server still refuses it.
  *
  * Disposable org, admin and project via `setUpOrg` with System Architecture on; the element and the member are API setup,
@@ -39,9 +39,11 @@ test.describe("System Architecture: the symbol picker uploads and shows a Galler
 
     await test.step("an upload from the picker is chosen at once and stored only when the form is saved", async () => {
       const dialog = await openEdit();
-      await dialog.locator("input[type=file]").setInputFiles(svgFile(symbolName));
+      await dialog.getByRole("button", { name: /^Symbol:/ }).click();
+      await page.getByRole("group", { name: "Symbol view" }).getByRole("button", { name: "Upload", exact: true }).click();
+      await page.locator("input[type=file]").setInputFiles(svgFile(symbolName));
       await expect(page.getByText("Symbol uploaded and chosen. Save to keep the choice.")).toBeVisible();
-      await expect(dialog.getByLabel("Symbol", { exact: true }).locator("option:checked")).toHaveText(symbolName);
+      await expect(dialog.getByRole("button", { name: `Symbol: ${symbolName}` })).toBeVisible();
       expect((await readElement()).symbol_id).toBeNull();
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toBeHidden();
@@ -62,8 +64,8 @@ test.describe("System Architecture: the symbol picker uploads and shows a Galler
 
     await test.step("the Gallery shows the drawings, filters by name and chooses a tile", async () => {
       const dialog = await openEdit();
-      await dialog.getByRole("button", { name: "Gallery", exact: true }).click();
       await dialog.getByRole("button", { name: /^Symbol:/ }).click();
+      await page.getByRole("group", { name: "Symbol view" }).getByRole("button", { name: "Gallery", exact: true }).click();
       const grid = page.getByRole("radiogroup", { name: "Symbols" });
       await expect(grid.getByRole("radio", { name: symbolName })).toHaveAttribute("aria-checked", "true");
       await expect(grid.locator("img").first()).toBeVisible();
@@ -83,7 +85,8 @@ test.describe("System Architecture: the symbol picker uploads and shows a Galler
       await expect(dialog).toBeHidden();
       await expect.poll(async () => (await readElement()).symbol_id).toBeNull();
       const again = await openEdit();
-      await expect(again.getByRole("button", { name: "Gallery", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await again.getByRole("button", { name: /^Symbol:/ }).click();
+      await expect(page.getByRole("group", { name: "Symbol view" }).getByRole("button", { name: "Gallery", exact: true })).toHaveAttribute("aria-pressed", "true");
     });
   });
 
@@ -114,11 +117,14 @@ test.describe("System Architecture: the symbol picker uploads and shows a Galler
     await page.goto(`/projects/${project.id}/modules/architecture/elements/${element.id}`);
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: `Edit ${name}` });
-    await expect(dialog.getByLabel("Symbol", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Symbol:/ })).toBeVisible();
     // The capabilities read has answered before the absence means anything.
     await page.waitForResponse((r) => r.url().endsWith("/modules/architecture/capabilities")).catch(() => undefined);
-    await expect(dialog.locator("input[type=file]")).toHaveCount(0);
-    await expect(dialog.getByText("Upload a symbol")).toHaveCount(0);
+    await dialog.getByRole("button", { name: /^Symbol:/ }).click();
+    const views = page.getByRole("group", { name: "Symbol view" });
+    await expect(views.getByRole("button", { name: "List", exact: true })).toBeVisible();
+    await expect(views.getByRole("button", { name: "Upload", exact: true })).toHaveCount(0);
+    await expect(page.locator("input[type=file]")).toHaveCount(0);
 
     const token = (await apiLogin(page.request, email)).access_token;
     const refused = await page.request.post(`${arch}/symbols`, { headers: { Authorization: `Bearer ${token}` }, multipart: { file: svgFile("nope") } });

@@ -156,7 +156,7 @@ def _create_diagrams(api: Any, project_id: str, start: int, count: int) -> list[
                 {
                     "text": "Probe spot note", "x": 400, "y": -120,
                     "leaders": [{
-                        "kind": "point", "x": 440, "y": -220, "points": [{"x": 420, "y": -180}], "smooth": True,
+                        "kind": "point", "x": 440, "y": -220, "points": [{"x": 420, "y": -180}], "line_shape": "spline",
                         "start_style": "dot", "end_style": "arrow",
                     }],
                 },
@@ -221,7 +221,7 @@ def _create_state_machines(api: Any, project_id: str, start: int, count: int) ->
                         {
                             "text": "Probe spot note", "x": 400, "y": -120,
                             "leaders": [{
-                                "kind": "point", "x": 440, "y": -220, "points": [{"x": 420, "y": -180}], "smooth": True,
+                                "kind": "point", "x": 440, "y": -220, "points": [{"x": 420, "y": -180}], "line_shape": "spline",
                                 "start_style": "dot", "end_style": "arrow",
                             }],
                         },

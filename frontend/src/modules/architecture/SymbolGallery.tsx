@@ -1,7 +1,7 @@
 /**
  * Module: modules/architecture/SymbolGallery
  *
- * The body of the symbol picker's Gallery view: a name filter and a scrolling grid of tiles that show each drawing, with a
+ * The body of the symbol picker's Gallery view: a scrolling grid of tiles that show each drawing, with a
  * "None" tile first (the default the empty choice stands for) and the current choice marked. The grid is one radio
  * group: arrow keys move between tiles, Enter or Space chooses, and the roving tab stop keeps one tile in the Tab order. A
  * tile reads its drawing only when it scrolls into view, so a library of hundreds opens without hundreds of requests
@@ -9,7 +9,6 @@
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { InlineTextInput } from "../../components/FormFields";
 import { SymbolImage } from "./SymbolImage";
 import type { ArchitectureSymbol } from "./types";
 
@@ -72,30 +71,27 @@ function Tile({
 }
 
 /**
- * @param symbols The symbols that may be chosen.
+ * @param symbols The symbols shown (already narrowed by the picker's filter).
+ * @param total How many symbols the library holds, to tell an empty library from a filter with no match.
  * @param value The chosen symbol's id, or `null` for none.
  * @param onChoose Called with the chosen id, or `null` for the None tile.
  * @param urlFor The API path of a symbol's content.
  * @param emptyLabel The None tile's text (what the default is).
- * @param upload The upload control, shown above the grid when the person may upload.
  */
 export function SymbolGallery({
-  symbols, value, onChoose, urlFor, emptyLabel, upload,
+  symbols, total, value, onChoose, urlFor, emptyLabel,
 }: {
   symbols: ArchitectureSymbol[];
+  total: number;
   value: string | null;
   onChoose: (next: string | null) => void;
   urlFor: (symbolId: string) => string;
   emptyLabel: string;
-  upload?: ReactNode;
 }) {
-  const [filter, setFilter] = useState("");
   const tiles = useRef<(HTMLButtonElement | null)[]>([]);
-  const needle = filter.trim().toLowerCase();
-  const shown = symbols.filter((s) => s.name.toLowerCase().includes(needle));
   // The tile in the Tab order: the chosen one when shown, else the first (the None tile).
-  const tabIndex = value === null ? 0 : shown.findIndex((s) => s.id === value) + 1;
-  const count = shown.length + 1;
+  const tabIndex = value === null ? 0 : symbols.findIndex((s) => s.id === value) + 1;
+  const count = symbols.length + 1;
 
   function move(from: number, event: KeyboardEvent<HTMLButtonElement>) {
     const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
@@ -107,8 +103,6 @@ export function SymbolGallery({
 
   return (
     <div className="stack" style={{ gap: "var(--space-2)", minWidth: "min(26rem, 80vw)" }}>
-      {upload}
-      <InlineTextInput ariaLabel="Filter symbols" placeholder="Filter by name" value={filter} onChange={setFilter} />
       <div
         role="radiogroup" aria-label="Symbols"
         style={{
@@ -122,7 +116,7 @@ export function SymbolGallery({
         >
           <span aria-hidden="true" className="text-muted" style={{ display: "inline-flex", width: TILE_SIZE, height: TILE_SIZE, alignItems: "center", justifyContent: "center" }}>—</span>
         </Tile>
-        {shown.map((symbol, index) => (
+        {symbols.map((symbol, index) => (
           <Tile
             key={symbol.id} name={symbol.name} chosen={symbol.id === value} tabbable={tabIndex === index + 1}
             onChoose={() => onChoose(symbol.id)} tileRef={(el) => { tiles.current[index + 1] = el; }} onKeyDown={(e) => move(index + 1, e)}
@@ -131,8 +125,8 @@ export function SymbolGallery({
           </Tile>
         ))}
       </div>
-      {symbols.length === 0 && <div className="text-muted">The symbol library is empty.</div>}
-      {symbols.length > 0 && shown.length === 0 && <div className="text-muted">No symbols match.</div>}
+      {total === 0 && <div className="text-muted">The symbol library is empty.</div>}
+      {total > 0 && symbols.length === 0 && <div className="text-muted">No symbols match.</div>}
     </div>
   );
 }

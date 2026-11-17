@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Profiler, useRef, useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import type { LineShape } from "./graphLinePath";
 import { GRAPH_DROP_MIME, GraphCanvas, type GraphCanvasEdge, type GraphCanvasNode, type GraphCanvasProps, type GraphCanvasSelection } from "./GraphCanvas";
 
 const SYMBOL =
@@ -766,6 +767,48 @@ export const LeadersPointAtANodeALineAndAPosition: Story = {
   },
 };
 
+/**
+ * The distance between where a leader's path ends and the centre of its end node (the line's middle or the free position it
+ * stands for), in canvas units at the canvas's zoom.
+ */
+function leaderEndGap(root: HTMLElement, id: string): number {
+  const path = root.querySelector(`[data-id="leader:${id}"] .react-flow__edge-path`) as SVGPathElement | null;
+  const node = root.querySelector(`.react-flow__node-leaderEnd[data-id="leader-end:${id}"]`) as HTMLElement | null;
+  if (!path || !node) return Number.POSITIVE_INFINITY;
+  const end = path.getPointAtLength(path.getTotalLength());
+  const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(node.style.transform);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const centre = { x: Number(match[1]) + node.offsetWidth / 2, y: Number(match[2]) + node.offsetHeight / 2 };
+  return Math.hypot(end.x - centre.x, end.y - centre.y);
+}
+
+/** A leader to a line's middle or a free position ends exactly there, whichever side it arrives from, not beside it. */
+export const LeaderEndsExactlyOnItsTarget: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={[
+        { id: "a", label: "Gateway", x: 0, y: 0 },
+        { id: "b", label: "Orders", x: 0, y: 300 },
+        { id: "right", label: "Right note", caption: "Note", x: 300, y: 140, width: 120, height: 60, dashed: true },
+        { id: "left", label: "Left note", caption: "Note", x: -300, y: 140, width: 120, height: 60, dashed: true },
+      ]}
+      edges={[{ id: "e1", source: "a", target: "b" }]} ariaLabel="Leader ends" showViewToggle={false}
+      leaders={[
+        { id: "fromRight", from: "right", to: { kind: "edge", id: "e1" } },
+        { id: "fromLeft", from: "left", to: { kind: "edge", id: "e1" } },
+        { id: "free", from: "right", to: { kind: "point", x: 200, y: 250 } },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Right note, node");
+    await waitFor(() => expect(leaderIds(canvasElement)).toEqual(["leader:fromRight", "leader:fromLeft", "leader:free"]));
+    for (const id of ["fromRight", "fromLeft", "free"]) {
+      await waitFor(() => expect(leaderEndGap(canvasElement, id)).toBeLessThan(1.5));
+    }
+  },
+};
+
 /** A leader whose node, target node or target line is not on the canvas (switched off or removed) is not drawn. */
 export const ALeaderToSomethingNotDrawnIsLeftOut: Story = {
   render: () => (
@@ -1435,13 +1478,13 @@ const ROUTE_NODES: GraphCanvasNode[] = [{ id: "a", label: "A", x: 0, y: 0 }, { i
 const SELECTED_LINE: GraphCanvasSelection = { kind: "edge", id: "e1" };
 
 /** Hosts one line `e1` between two boxes with real state for its vertices, as a consumer would. */
-function RouteHost({ initial = [], smooth = false, readOnly = false, routable, onChange }: {
-  initial?: { x: number; y: number }[]; smooth?: boolean; readOnly?: boolean; routable?: boolean; onChange?: (points: { x: number; y: number }[]) => void;
+function RouteHost({ initial = [], lineShape = "straight", readOnly = false, routable, onChange }: {
+  initial?: { x: number; y: number }[]; lineShape?: LineShape; readOnly?: boolean; routable?: boolean; onChange?: (points: { x: number; y: number }[]) => void;
 }) {
   const [points, setPoints] = useState(initial);
   return (
     <GraphCanvas
-      nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b", points, smooth, routable }]} ariaLabel="Routes" showViewToggle={false}
+      nodes={ROUTE_NODES} edges={[{ id: "e1", source: "a", target: "b", points, lineShape, routable }]} ariaLabel="Routes" showViewToggle={false}
       readOnly={readOnly} selected={SELECTED_LINE}
       onEdgePointsChange={(_id, next) => { setPoints(next); onChange?.(next); }}
     />
@@ -1466,15 +1509,55 @@ export const ALineIsDrawnThroughItsVertices: Story = {
   },
 };
 
-/** A smooth line is drawn as a curve through the same points. */
+/** A spline is drawn as a curve through the same points. */
 export const ASmoothLineIsDrawnAsACurve: Story = {
-  render: () => <RouteHost initial={[{ x: 150, y: 200 }]} smooth />,
+  render: () => <RouteHost initial={[{ x: 150, y: 200 }]} lineShape="spline" />,
   play: async ({ canvasElement }) => {
     await within(canvasElement).findByLabelText("B, node");
     await waitFor(() => {
       const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
       expect(d.startsWith("M ")).toBe(true);
       expect(d.match(/ C /g)).toHaveLength(2); // one curve into the vertex and one out of it
+    });
+  },
+};
+
+/** A Curved line with no vertices is one bowed arc, on a read-only canvas too, and its segment handle sits on the drawn arc. */
+export const ACurvedLineWithNoVerticesIsDrawnAsOneArc: Story = {
+  render: () => <RouteHost lineShape="curved" />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
+      expect(d.match(/ C /g)).toHaveLength(1);
+      expect(canvasElement.querySelectorAll(".graph-segment-handle")).toHaveLength(1);
+    });
+  },
+};
+
+export const ACurvedLineIsDrawnAsAnArcOnAReadOnlyCanvas: Story = {
+  render: () => <RouteHost lineShape="curved" readOnly />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
+      expect(d.match(/ C /g)).toHaveLength(1);
+    });
+  },
+};
+
+/** The bow is to the left of the direction of travel: the arc of a line running right rises above the line joining its ends. */
+export const ACurvedLineBowsToTheLeftOfItsDirection: Story = {
+  render: () => <RouteHost lineShape="curved" readOnly />,
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("B, node");
+    await waitFor(() => {
+      const d = canvasElement.querySelector('.react-flow__edge[data-id="e1"] path.react-flow__edge-path')?.getAttribute("d") ?? "";
+      const n = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+      // M x0 y0 C c1x c1y c2x c2y x1 y1: both control points are above (smaller y than) the ends, which are level.
+      expect(n).toHaveLength(8);
+      expect(n[3]).toBeLessThan(n[1]);
+      expect(n[5]).toBeLessThan(n[7]);
     });
   },
 };
@@ -1689,6 +1772,28 @@ export const ALeaderIsSelectableAndReportsItselfAsALeader: Story = {
     expect(line.getAttribute("aria-label")).toBe("Leader line from Check with ops");
     await userEvent.click(line.querySelector(".react-flow__edge-interaction") as Element);
     await waitFor(() => expect(args.onSelect).toHaveBeenCalledWith({ kind: "leader", id: "p" }));
+  },
+};
+
+/** The arrowhead of a leader takes the colour of its line (plain, selected or of a selected note), not a colour of its own. */
+export const ALeaderArrowheadTakesTheColourOfItsLine: Story = {
+  render: () => (
+    <GraphCanvas
+      nodes={DRAW_NODES} edges={[]} ariaLabel="Arrowhead colour" showViewToggle={false}
+      leaders={[{ id: "p", from: "note", to: { kind: "point", x: 80, y: 100 } }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByLabelText("Check with ops, node");
+    const id = await waitFor(() => {
+      const ref = canvasElement.querySelector('[data-id="leader:p"] .react-flow__edge-path')?.getAttribute("marker-end");
+      expect(ref).toBeTruthy();
+      return /url\(['"]?#([^'")]+)/.exec(ref ?? "")?.[1] ?? "";
+    });
+    const head = canvasElement.ownerDocument.getElementById(id);
+    expect(head).not.toBeNull();
+    // A marker takes the line's stroke through `context-stroke`; a fixed colour would not follow a selection or the theme.
+    expect(head?.innerHTML).toContain("context-stroke");
   },
 };
 

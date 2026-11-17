@@ -18,6 +18,7 @@
 import { InlineTextInput } from "../../components/FormFields";
 import { FieldCaption } from "../../components/FieldHelp";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, type AttachPoint } from "../../components/graphAttachPoints";
+import type { LineShape } from "../../components/graphLinePath";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { labelOptions } from "../../utils/labelOptions";
 import { LEADER_SPOT_OPTION, leaderOf, leaderOptionValue, leaderTargetOf, type EditorLeader, type NoteLeaderTarget } from "./noteModel";
@@ -53,7 +54,7 @@ export interface LeaderTargetOption {
  * @param onRemove Called to remove the leader.
  */
 export function DiagramLeaderEditor({
-  leader, index, editable, targets, help = ARCHITECTURE_HELP.leaderPointsAt, drawn, newPoint, onTarget, onChange, onOpenNote, onRemove,
+  leader, index, editable, targets, help = ARCHITECTURE_HELP.leaderPointsAt, drawn, newPoint, defaultShape, onTarget, onChange, onOpenNote, onRemove,
 }: {
   leader: EditorLeader;
   index: number;
@@ -62,8 +63,10 @@ export function DiagramLeaderEditor({
   help?: string;
   drawn: boolean;
   newPoint: LineWaypoint;
+  /** The diagram's default line shape (what a leader with no shape of its own is drawn as). */
+  defaultShape: LineShape;
   onTarget: (target: NoteLeaderTarget) => void;
-  onChange: (change: Partial<Pick<EditorLeader, "start_point" | "points" | "smooth" | "start_style" | "end_style">>) => void;
+  onChange: (change: Partial<Pick<EditorLeader, "start_point" | "points" | "line_shape" | "start_style" | "end_style">>) => void;
   onOpenNote: () => void;
   onRemove: () => void;
 }) {
@@ -122,7 +125,10 @@ export function DiagramLeaderEditor({
         label="End style" help={ARCHITECTURE_HELP.leaderEndStyle} placeholder={null} disabled={!editable} value={leader.end_style}
         options={endOptions} onChange={(value) => onChange({ end_style: value as LineEnd })}
       />
-      <LineVertexFields points={leader.points} smooth={leader.smooth} editable={editable} newPoint={newPoint} onChange={onChange} />
+      <LineVertexFields
+        points={leader.points} lineShape={leader.line_shape} defaultShape={defaultShape} editable={editable} newPoint={newPoint}
+        onChange={({ points, lineShape }) => onChange({ ...(points !== undefined && { points }), ...(lineShape !== undefined && { line_shape: lineShape }) })}
+      />
       {!drawn && (
         <p className="text-muted" role="status">The line points at something that is not drawn on this diagram, so it is hidden. It returns with that item.</p>
       )}

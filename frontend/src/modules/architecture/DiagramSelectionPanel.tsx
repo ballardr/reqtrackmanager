@@ -32,7 +32,7 @@
  * Actions are icon buttons from the shared `SelectionActions` (the state machine card uses the same set); a connection row's
  * Edit and a realised connection's Remove are the same `IconAction`.
  */
-import { ArrowLeft, ExternalLink, Pencil, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, Merge, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -53,8 +53,8 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { useRecordCode } from "../../hooks/useRecordCode";
 import { ATTACH_POINTS, ATTACH_POINT_LABEL, pointXY, type AttachPoint } from "../../components/graphAttachPoints";
 import type { LineEnds } from "../../components/graphLineAnchors";
-import { suggestWaypoint } from "../../components/graphLinePath";
-import { BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, anchorOf, boundaryOutsideName, boxFrame, leaderIsDrawn, leaderSummary, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
+import { suggestWaypoint, type LineShape } from "../../components/graphLinePath";
+import { BOUNDARY_NODE_PREFIX, BOUNDARY_SHAPE_LABEL, boundaryOutsideName, boxFrame, leaderIsDrawn, leaderSummary, routedConnectionOf, routeOf, sharesItsPair, type EditorBoundary, type EditorBox } from "./diagramEditorModel";
 import { NOTE_NODE_PREFIX, leaderVertexSuggestion, type EditorLeader, type EditorNote, type NoteLeaderTarget, type NotePatch } from "./noteModel";
 import { boxName } from "./diagramOutlineModel";
 import { DiagramLeaderEditor } from "./DiagramLeaderEditor";
@@ -110,6 +110,7 @@ function stateMachineActions(
  * @param realisedBy `{outer connection id: the connections that realise it}`.
  * @param edges The resolved lines.
  * @param anchors The attach points chosen for lines.
+ * @param defaultShape The diagram's default line shape (a line with no shape of its own follows it).
  * @param lineEnds The attach points a line's ends use and would use if left automatic (`lineEndsOf`).
  * @param hidden The boxes a view switch hides (not offered as the other end of a connection).
  * @param editable False hides every action that changes the diagram or the model.
@@ -134,7 +135,8 @@ function stateMachineActions(
  * @param onOpenMachine Opens a state machine diagram from this diagram (the page asks before leaving unsaved changes). One diagram is an icon
  *   action, several are entries of the overflow menu: the keyboard route to the badge on the box.
  * @param onDeleteElement Deletes the element from the model.
- * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic).
+ * @param onAnchorChange Sets the attach point of one or both ends of a line (`null` makes an end automatic), or its vertices; the page decides whether that routes the line's pair of boxes or one connection.
+ * @param onJoinLine Takes the own route of a connection away, so it is drawn with the line of its pair of boxes again.
  * @param drawnEdgeIds The ids of the lines the canvas draws (a note's leader to a connection needs one of them).
  * @param onNoteChange Changes a note's title, text, tone or alignment.
  * @param onAddLeader Adds a leader to a note (a line to a free spot beside it, which becomes the selection).
@@ -150,8 +152,8 @@ function stateMachineActions(
  * @param onComment Starts a comment on the selected box or line (the keyboard route to what a click in comment mode does); when absent no button is shown.
  */
 export function DiagramSelectionPanel({
-  projectId, selection, boxes, notes, edges, anchors, lineEnds, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
-  onAnchorChange, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort,
+  projectId, selection, boxes, notes, edges, anchors, lineEnds, defaultShape, hidden, editable, onRemoveBox, onConnect, onOpenInside, onDeleteElement,
+  onAnchorChange, onJoinLine, drawnEdgeIds, onNoteChange, onAddLeader, onSelectLeader, onSelectNote, onLeaderTarget, onLeaderChange, onRemoveLeader, onRemoveNote, elements, connectionTypes, elementEditor, elementTypes, onSaveElement, onSaveConnection, focusNew, onFocused, chosenConnectionId, onChooseConnection, onEditConnection, onAddPort, onChangePort, onRemovePort,
   boundaries, connectionsById, realisedBy, onRemoveBoundary, onConnectBoundary, onSetRealises, onComment, stateMachinesOf, onOpenMachine,
 }: {
   projectId: string;
@@ -170,6 +172,8 @@ export function DiagramSelectionPanel({
   edges: DiagramViewEdge[];
   anchors: DiagramAnchor[];
   lineEnds: (edgeId: string) => LineEnds | null;
+  /** The diagram's default line shape, for a line or leader with none of its own. */
+  defaultShape: LineShape;
   hidden: ReadonlySet<string>;
   editable: boolean;
   onRemoveBox: (box: EditorBox) => void;
@@ -177,6 +181,7 @@ export function DiagramSelectionPanel({
   onOpenInside: (box: EditorBox) => void;
   onDeleteElement: (box: EditorBox) => void;
   onAnchorChange: (edge: DiagramViewEdge, change: LineRouteChange) => void;
+  onJoinLine: (connectionId: string) => void;
   drawnEdgeIds: ReadonlySet<string>;
   onNoteChange: (key: string, patch: NotePatch) => void;
   onAddLeader: (noteKey: string) => void;
@@ -227,6 +232,10 @@ export function DiagramSelectionPanel({
   // fields instead of the list. The choice belongs to the page; it is ignored when the selected line has no such connection.
   const chosen = edge && edge.connections.length > 1 ? edge.connections.find((c) => c.id === chosenConnectionId) ?? null : null;
   const chooseBack = () => { if (chosen) setReturnedTo(chosen.id); onChooseConnection(null); };
+  // The connection a change to the line's route belongs to (the line's own, or the chosen one that can have a route of its own),
+  // named by its code; none means the route is the line's and moves every connection on it.
+  const routedConnection = edge ? edge.connections.find((c) => c.id === routedConnectionOf(edge, chosenConnectionId, sharesItsPair(edges, edge))) ?? null : null;
+  const routeCode = routedConnection ? formatCode.code(routedConnection.unique_code, routedConnection.from_project_code) : null;
 
   let body;
   if (box) {
@@ -345,7 +354,7 @@ export function DiagramSelectionPanel({
             ...drawnBoxes.map((b) => ({ value: `element:${b.elementId}`, label: `Box: ${boxName(b)}` })),
             ...[...drawnConnections.values()].map((c) => ({ value: `connection:${c.id}`, label: `Connection: ${c.unique_code}${c.name ? ` ${c.name}` : ""}` })),
           ]}
-          drawn={leaderIsDrawn(found.leader, drawnBoxIds, edges, drawnEdgeIds)}
+          drawn={leaderIsDrawn(found.leader, drawnBoxIds, edges, drawnEdgeIds)} defaultShape={defaultShape}
           newPoint={leaderVertexSuggestion(found.note, found.leader, (target) => {
             const target_box = target.kind === "element" ? boxes.find((b) => b.elementId === target.elementId) : undefined;
             if (target.kind === "point") return { x: target.x, y: target.y };
@@ -435,11 +444,12 @@ export function DiagramSelectionPanel({
             components={false}
           />
         )}
-        {chosen && editable && (
-          <p className="text-muted">The attach points and vertices below belong to the line, so they apply to all {edge.count} connections.</p>
-        )}
         {editable && !edge.source_is_boundary && !edge.target_is_boundary && (
-          <LineEnds edge={edge} boxes={boxes} anchors={anchors} ends={lineEnds(edge.id)} onChange={(change) => onAnchorChange(edge, change)} />
+          <LineEnds
+            edge={edge} boxes={boxes} anchors={anchors} ends={lineEnds(edge.id)} defaultShape={defaultShape} onChange={(change) => onAnchorChange(edge, change)}
+            routeCode={routeCode} lineCount={edge.count}
+            onJoin={edge.route_connection_id ? () => onJoinLine(edge.route_connection_id as string) : undefined}
+          />
         )}
         {editable && (edge.source_is_boundary || edge.target_is_boundary) && (
           <p className="text-muted">A line to a boundary box is placed automatically, so it has no attach points or vertices to set.</p>
@@ -580,21 +590,27 @@ function RealisesControl({
 
 /**
  * The attach points of a line's two ends, as two lists: Automatic (with the point it would use) or one of the box's eight
- * points. A line whose end is not a box of the layout offers nothing.
+ * points, then its vertices. A line whose end is not a box of the layout offers nothing. A line that stands for several
+ * connections, or is drawn for one on its own route, says whose route the fields set (`routeCode` names one connection, else
+ * the route is the line's and every connection on it follows); a connection's own route can be given up with `onJoin`.
  */
 function LineEnds({
-  edge, boxes, anchors, ends, onChange,
+  edge, boxes, anchors, ends, defaultShape, onChange, routeCode, lineCount, onJoin,
 }: {
   edge: DiagramViewEdge;
   boxes: EditorBox[];
   anchors: DiagramAnchor[];
   ends: LineEnds | null;
+  defaultShape: LineShape;
   onChange: (change: LineRouteChange) => void;
+  routeCode: string | null;
+  lineCount: number;
+  onJoin?: () => void;
 }) {
   const from = boxes.find((b) => b.elementId === edge.source_element_id);
   const to = boxes.find((b) => b.elementId === edge.target_element_id);
   if (!from || !to || !ends) return null;
-  const chosen = anchorOf(anchors, edge.source_element_id, edge.target_element_id);
+  const chosen = routeOf(anchors, edge);
   // What Automatic would give each end with the other end as it is now, looking at every other line of the diagram.
   const [sourceAutomatic, targetAutomatic] = ends.automatic;
   const [a, b] = ends.current;
@@ -606,6 +622,13 @@ function LineEnds({
   const parse = (value: string): AttachPoint | null => (ATTACH_POINTS.find((p) => p === value) ?? null);
   return (
     <>
+      {(routeCode !== null || lineCount > 1) && (
+        <FieldCaption
+          label={routeCode !== null ? `Route of ${routeCode}` : "Route of the line"}
+          help={routeCode !== null ? ARCHITECTURE_HELP.routeOfConnection : ARCHITECTURE_HELP.routeOfLine}
+          extra={onJoin && <IconAction label="Use the shared route" onClick={onJoin}><Merge /></IconAction>}
+        />
+      )}
       <LabeledSelect
         label="Line starts at" help={ARCHITECTURE_HELP.diagramLineFrom} placeholder={null} value={chosen.sourcePoint ?? ""}
         options={options(sourceAutomatic)} onChange={(value) => onChange({ sourcePoint: parse(value) })}
@@ -614,7 +637,7 @@ function LineEnds({
         label="Line ends at" help={ARCHITECTURE_HELP.diagramLineTo} placeholder={null} value={chosen.targetPoint ?? ""}
         options={options(targetAutomatic)} onChange={(value) => onChange({ targetPoint: parse(value) })}
       />
-      <LineVertexFields points={chosen.points} smooth={chosen.smooth} editable newPoint={newPoint} onChange={onChange} />
+      <LineVertexFields points={chosen.points} lineShape={chosen.lineShape} defaultShape={defaultShape} editable newPoint={newPoint} onChange={onChange} />
     </>
   );
 }

@@ -50,6 +50,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
@@ -556,6 +557,7 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
         connection_detail: When false the diagram draws plain lines (no type, protocol or port labels) and
             parallel lines collapse into one; when true connections are typed and labelled.
         line_hops: When true a line that crosses another is drawn with a small arc over it (the later line by id hops).
+        line_shape: A `LineShape` value: how a line with no shape of its own is drawn (new diagrams are straight).
         folder_id: The project's diagram folder the diagram is listed in, or `None` for the top level.
         status: A `RecordStatus` value.
         version: Optimistic counter.
@@ -563,7 +565,10 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "architecture_diagrams"
-    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_architecture_diagrams_project_unique_code"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_diagrams_project_unique_code"),
+        CheckConstraint("line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_diagrams_line_shape"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
@@ -576,6 +581,7 @@ class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
     )
     connection_detail: Mapped[bool] = mapped_column(Boolean, default=False)
     line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str] = mapped_column(String(16), default="straight", server_default="straight")
     folder_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -674,7 +680,7 @@ class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
             `point`.
         start_point: An `AttachPoint` value of the note's block the line leaves from, or `None` for the nearest point.
         points: The line's vertices as `{x, y}` in canvas units, in order from the note to its end.
-        smooth: True to draw a curve through the vertices, false for straight segments.
+        line_shape: A `LineShape` value, or `None` to follow the diagram's default.
         start_style / end_style: A `LineEnd` value for each end of the line.
     """
 
@@ -693,6 +699,7 @@ class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
             "start_style IN ('none', 'arrow', 'dot') AND end_style IN ('none', 'arrow', 'dot')",
             name="ck_architecture_note_leaders_style",
         ),
+        CheckConstraint("line_shape IS NULL OR line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_note_leaders_line_shape"),
     )
 
     note_id: Mapped[uuid.UUID] = mapped_column(
@@ -716,7 +723,7 @@ class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
     y: Mapped[float | None] = mapped_column(Float, nullable=True)
     start_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
-    smooth: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str | None] = mapped_column(String(16), nullable=True)
     start_style: Mapped[str] = mapped_column(String(8), default="none", server_default="none")
     end_style: Mapped[str] = mapped_column(String(8), default="arrow", server_default="arrow")
 
@@ -724,28 +731,43 @@ class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
 class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
     """Where a drawn line meets its boxes, when a person has chosen it (otherwise the nearest points are used).
 
-    The anchor belongs to the *drawn line*, keyed by the pair of placed elements it joins, so a line that stands for
-    several connections (merged or rolled up) has one anchor for all of them. An end left empty is chosen
-    automatically: the point of its box nearest the other end.
+    A row without `connection_id` belongs to the *drawn line*, keyed by the pair of placed elements it joins, so a line
+    that stands for several connections (merged or rolled up) has one such row for all of them. A row with `connection_id`
+    is one connection's own route: that connection is drawn as a line of its own apart from the pair's line, using this
+    route. An end left empty is chosen automatically: the point of its box nearest the other end.
 
     Attributes:
         diagram_id: The diagram; deleting it removes its anchors.
         source_element_id / target_element_id: The two placed elements; deleting either removes the anchor. Both must
-            be placed on the diagram, which the layout save enforces and an unplace repeats.
+            be placed on the diagram, which the layout save enforces and an unplace repeats. For a connection's route
+            they are the boxes of the line it was drawn as; the route applies only while the connection is still drawn
+            between them (either way round).
+        connection_id: The connection this route is for, or `None` for the pair's route; deleting the connection
+            removes the row.
         source_point / target_point: An `AttachPoint` value, or `None` for automatic.
         points: The line's vertices as `{x, y}` in canvas units, in order from `source_element_id` to `target_element_id`
-            (a line drawn the other way round reads them reversed). At least one of the two points or a vertex is set.
-        smooth: True to draw a curve through the vertices, false for straight segments.
+            (a line drawn the other way round reads them reversed). A pair's row sets at least one of the two points, a
+            vertex or a shape; a connection's route may set none (a line of its own, placed automatically).
+        line_shape: A `LineShape` value, or `None` to follow the diagram's default.
     """
 
     __tablename__ = "architecture_diagram_anchors"
     __table_args__ = (
-        UniqueConstraint("diagram_id", "source_element_id", "target_element_id", name="uq_architecture_diagram_anchors"),
+        Index(
+            "uq_architecture_diagram_anchors", "diagram_id", "source_element_id", "target_element_id", unique=True,
+            postgresql_where=text("connection_id IS NULL"),
+        ),
+        Index(
+            "uq_architecture_diagram_anchors_connection", "diagram_id", "connection_id", unique=True,
+            postgresql_where=text("connection_id IS NOT NULL"),
+        ),
         CheckConstraint("source_element_id <> target_element_id", name="ck_architecture_diagram_anchors_distinct"),
         CheckConstraint(
-            "source_point IS NOT NULL OR target_point IS NOT NULL OR jsonb_array_length(points) > 0",
+            "connection_id IS NOT NULL OR source_point IS NOT NULL OR target_point IS NOT NULL OR jsonb_array_length(points) > 0"
+            " OR line_shape IS NOT NULL",
             name="ck_architecture_diagram_anchors_something_set",
         ),
+        CheckConstraint("line_shape IS NULL OR line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_diagram_anchors_line_shape"),
     )
 
     diagram_id: Mapped[uuid.UUID] = mapped_column(
@@ -757,10 +779,13 @@ class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
     target_element_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
     )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
-    smooth: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class ArchitectureDiagramBoundary(UUIDPKMixin, TimestampMixin, Base):
@@ -884,6 +909,7 @@ class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
             lifecycle). The element may belong to another owner the project can read; the database refuses to delete it
             while a state machine diagram describes it.
         line_hops: When true a transition that crosses another is drawn with a small arc over it (the later by id hops).
+        line_shape: A `LineShape` value: how a transition or leader with no shape of its own is drawn.
         status: A `RecordStatus` value.
         version: Optimistic counter.
         creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
@@ -892,6 +918,7 @@ class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "architecture_state_machine_diagrams"
     __table_args__ = (
         UniqueConstraint("project_id", "unique_code", name="uq_architecture_state_machine_diagrams_project_unique_code"),
+        CheckConstraint("line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_state_machine_diagrams_line_shape"),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -904,6 +931,7 @@ class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("architecture_elements.id"), index=True
     )
     line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str] = mapped_column(String(16), default="straight", server_default="straight")
     status: Mapped[str] = mapped_column(String(20), default="draft")
     version: Mapped[int] = mapped_column(Integer, default=1)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -985,11 +1013,14 @@ class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
         event / guard / action / description: Plain text a person reads; never evaluated.
         sort_order: Order among the diagram's transitions.
         source_point / target_point: An `AttachPoint` value fixing where the line meets a box, or `None` for automatic.
-        points / smooth: The line's vertices as `{x, y}` in canvas units from the source state to the target state, and
-            whether a curve runs through them (see `ArchitectureDiagramAnchor`).
+        points / line_shape: The line's vertices as `{x, y}` in canvas units from the source state to the target state, and
+            its own shape or `None` to follow the diagram's default (see `ArchitectureDiagramAnchor`).
     """
 
     __tablename__ = "architecture_transitions"
+    __table_args__ = (
+        CheckConstraint("line_shape IS NULL OR line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_transitions_line_shape"),
+    )
 
     state_machine_diagram_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), index=True
@@ -1008,7 +1039,7 @@ class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
     source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
     points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
-    smooth: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class ArchitectureAllocationDismissal(UUIDPKMixin, TimestampMixin, Base):

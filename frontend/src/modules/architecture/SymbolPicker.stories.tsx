@@ -37,20 +37,88 @@ type Story = StoryObj<typeof SymbolPicker>;
 
 const body = () => within(document.body);
 
-/** The list view is the default; a person who may not upload sees no upload control at all (not a disabled one). */
-export const ListViewWithoutUpload: Story = {
-  play: async ({ canvasElement, args }) => {
+/** Opens the picker's panel from its field button (named for the choice it shows). */
+async function openPanel(canvasElement: HTMLElement, choice: RegExp | string = /Use the type's symbol/) {
+  await userEvent.click(within(canvasElement).getByRole("button", { name: choice }));
+}
+
+/** Chooses a view from the buttons below the symbols. */
+async function chooseView(name: "List" | "Gallery" | "Upload") {
+  const group = await body().findByRole("group", { name: "Symbol view" });
+  await userEvent.click(await within(group).findByRole("button", { name }));
+}
+
+/** Waits for the upload file input of the panel's Upload view. */
+const uploadInput = () => waitFor(() => {
+  const found = document.body.querySelector("input[type=file]");
+  if (!found) throw new Error("no upload control yet");
+  return found as HTMLInputElement;
+});
+
+/** The field is one button; the list, the filter and the view buttons are all inside its panel, and a person who may not upload has no Upload button. */
+export const TheViewsAreButtonsInsideThePanel: Story = {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.selectOptions(canvas.getByLabelText("Symbol"), "sym-2");
-    await expect(args.onChange).toHaveBeenCalledWith("sym-2");
-    await expect(await canvas.findByAltText("Preview of Vendor router")).toBeInTheDocument();
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/modules/architecture/capabilities`));
+    // Nothing but the field's button sits beside the caption.
+    await expect(canvas.queryByRole("button", { name: "List" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Gallery" })).not.toBeInTheDocument();
     await expect(canvas.queryByText("Upload a symbol")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    await openPanel(canvasElement);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/modules/architecture/capabilities`));
+    const group = await body().findByRole("group", { name: "Symbol view" });
+    await expect(within(group).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["List", "Gallery"]);
+    await expect(within(group).getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    // The filter has the focus, so typing searches at once.
+    await expect(body().getByLabelText("Filter symbols")).toHaveFocus();
   },
 };
 
-/** A person who may change the library uploads from the picker: the symbol is chosen and the caller is told to reload. */
+/** The List view lists the names with None first, filters by name, and choosing a row closes the panel and shows the choice. */
+export const ListViewChoosesARow: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await openPanel(canvasElement);
+    const list = await body().findByRole("listbox", { name: "Symbols" });
+    await expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["Use the type's symbol", "Server", "Vendor router"]);
+    await expect(within(list).getByRole("option", { name: "Use the type's symbol" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.type(body().getByLabelText("Filter symbols"), "vend");
+    await expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["Use the type's symbol", "Vendor router"]);
+    await userEvent.click(within(list).getByRole("option", { name: "Vendor router" }));
+    await expect(args.onChange).toHaveBeenCalledWith("sym-2");
+    await waitFor(() => expect(body().queryByRole("listbox")).not.toBeInTheDocument());
+    await expect(await canvas.findByAltText("Preview of Vendor router")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Symbol: Vendor router" })).toBeInTheDocument();
+  },
+};
+
+/** Arrow keys move between rows, Enter chooses, and Escape closes the panel with focus back on the field. */
+export const ListKeyboardModel: Story = {
+  play: async ({ canvasElement, args }) => {
+    await openPanel(canvasElement);
+    const list = await body().findByRole("listbox", { name: "Symbols" });
+    const [none, server, router] = within(list).getAllByRole("option");
+    await expect([none, server, router].map((o) => o.tabIndex)).toEqual([0, -1, -1]);
+    none.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(server).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}{ArrowUp}");
+    await expect(router).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    await expect(none).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await expect(args.onChange).toHaveBeenCalledWith("sym-1");
+    await waitFor(() => expect(body().queryByRole("listbox")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(canvasElement).getByRole("button", { name: /Server/ })).toHaveFocus());
+
+    await openPanel(canvasElement, /Server/);
+    await body().findByRole("listbox", { name: "Symbols" });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(body().queryByRole("listbox")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(canvasElement).getByRole("button", { name: /Server/ })).toHaveFocus());
+  },
+};
+
+/** A person who may change the library uploads from the panel's Upload view: the symbol is chosen and the caller is told to reload. */
 export const UploadChoosesTheNewSymbol: Story = {
   args: { onSymbolsChanged: fn() },
   beforeEach: () => {
@@ -60,21 +128,20 @@ export const UploadChoosesTheNewSymbol: Story = {
     return () => { reads.mockRestore(); post.mockRestore(); };
   },
   play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    const input = await waitFor(() => {
-      const found = canvasElement.querySelector("input[type=file]");
-      if (!found) throw new Error("no upload control yet");
-      return found as HTMLInputElement;
-    });
-    await userEvent.upload(input, new File(["<svg/>"], "gateway.svg", { type: "image/svg+xml" }));
+    await openPanel(canvasElement);
+    await chooseView("Upload");
+    // The filter has nothing to filter in the Upload view.
+    await expect(body().queryByLabelText("Filter symbols")).not.toBeInTheDocument();
+    await userEvent.upload(await uploadInput(), new File(["<svg/>"], "gateway.svg", { type: "image/svg+xml" }));
     await expect(api.postFile).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/modules/architecture/symbols`, expect.any(File), undefined);
     await waitFor(() => expect(args.onChange).toHaveBeenCalledWith("sym-new"));
     await expect(args.onSymbolsChanged).toHaveBeenCalled();
-    await expect(canvas.getByLabelText("Symbol")).toHaveValue("sym-new");
+    await expect(await within(canvasElement).findByRole("button", { name: "Symbol: Gateway" })).toBeInTheDocument();
+    await waitFor(() => expect(body().queryByRole("group", { name: "Symbol view" })).not.toBeInTheDocument());
   },
 };
 
-/** A refused file shows the server's reason under the field and leaves the choice as it was. */
+/** A refused file shows the server's reason in the Upload view and leaves the choice as it was. */
 export const UploadRefusalLeavesTheChoice: Story = {
   args: { value: "sym-1" },
   beforeEach: () => {
@@ -83,16 +150,30 @@ export const UploadRefusalLeavesTheChoice: Story = {
     return () => { reads.mockRestore(); post.mockRestore(); };
   },
   play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    const input = await waitFor(() => {
-      const found = canvasElement.querySelector("input[type=file]");
-      if (!found) throw new Error("no upload control yet");
-      return found as HTMLInputElement;
-    });
-    await userEvent.upload(input, new File(["<svg/>"], "bad.svg", { type: "image/svg+xml" }));
-    await expect(await canvas.findByRole("alert")).toHaveTextContent("The file contains a script and cannot be used.");
+    await openPanel(canvasElement, /Server/);
+    await chooseView("Upload");
+    await userEvent.upload(await uploadInput(), new File(["<svg/>"], "bad.svg", { type: "image/svg+xml" }));
+    await expect(await body().findByRole("alert")).toHaveTextContent("The file contains a script and cannot be used.");
     await expect(args.onChange).not.toHaveBeenCalled();
-    await expect(canvas.getByLabelText("Symbol")).toHaveValue("sym-1");
+    await expect(within(canvasElement).getByRole("button", { name: "Symbol: Server" })).toBeInTheDocument();
+  },
+};
+
+/** Upload is not remembered as the view: the panel opens at the remembered List or Gallery again. */
+export const UploadIsNotTheRememberedView: Story = {
+  beforeEach: () => {
+    window.localStorage.setItem(VIEW_KEY, "gallery");
+    const reads = mockArchitectureReads({ canManageTypes: true });
+    return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
+  },
+  play: async ({ canvasElement }) => {
+    await openPanel(canvasElement);
+    await chooseView("Upload");
+    await expect(window.localStorage.getItem(VIEW_KEY)).toBe("gallery");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(body().queryByRole("group", { name: "Symbol view" })).not.toBeInTheDocument());
+    await openPanel(canvasElement);
+    await expect(await body().findByRole("radiogroup", { name: "Symbols" })).toBeInTheDocument();
   },
 };
 
@@ -105,24 +186,21 @@ export const OrganisationPickerUploadsToTheOrganisation: Story = {
     return () => { reads.mockRestore(); post.mockRestore(); };
   },
   play: async ({ canvasElement }) => {
-    const input = await waitFor(() => {
-      const found = canvasElement.querySelector("input[type=file]");
-      if (!found) throw new Error("no upload control yet");
-      return found as HTMLInputElement;
-    });
-    await userEvent.upload(input, new File(["<svg/>"], "switch.svg", { type: "image/svg+xml" }));
-    await expect(api.postFile).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/architecture/symbols`, expect.any(File), undefined);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/architecture/capabilities`));
+    await openPanel(canvasElement);
+    await chooseView("Upload");
+    await userEvent.upload(await uploadInput(), new File(["<svg/>"], "switch.svg", { type: "image/svg+xml" }));
+    await expect(api.postFile).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/architecture/symbols`, expect.any(File), undefined);
   },
 };
 
-/** The Gallery shows each symbol's drawing and a None tile; choosing a tile closes it and the choice is remembered as the view. */
+/** The Gallery button shows each symbol's drawing and a None tile; choosing a tile closes the panel, and Gallery is remembered as the view. */
 export const GalleryChoosesATile: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Gallery" }));
+    await openPanel(canvasElement);
+    await chooseView("Gallery");
     await expect(window.localStorage.getItem(VIEW_KEY)).toBe("gallery");
-    await userEvent.click(canvas.getByRole("button", { name: /Use the type's symbol/ }));
     const group = await body().findByRole("radiogroup", { name: "Symbols" });
     const tiles = within(group).getAllByRole("radio");
     await expect(tiles.map((t) => t.getAttribute("aria-label"))).toEqual(["Use the type's symbol", "Server", "Vendor router"]);
@@ -143,7 +221,7 @@ export const GalleryNoneTileClearsTheChoice: Story = {
     return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
   },
   play: async ({ canvasElement, args }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Server/ }));
+    await openPanel(canvasElement, /Server/);
     const group = await body().findByRole("radiogroup", { name: "Symbols" });
     await expect(within(group).getByRole("radio", { name: "Server" })).toHaveAttribute("aria-checked", "true");
     await userEvent.click(within(group).getByRole("radio", { name: "Use the type's symbol" }));
@@ -159,8 +237,7 @@ export const GalleryKeyboardModel: Story = {
     return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
   },
   play: async ({ canvasElement, args }) => {
-    const trigger = within(canvasElement).getByRole("button", { name: /Use the type's symbol/ });
-    await userEvent.click(trigger);
+    await openPanel(canvasElement);
     const group = await body().findByRole("radiogroup", { name: "Symbols" });
     const [none, server, router] = within(group).getAllByRole("radio");
     // One tile is in the Tab order (the chosen one: None).
@@ -179,7 +256,7 @@ export const GalleryKeyboardModel: Story = {
     await waitFor(() => expect(body().queryByRole("radiogroup")).not.toBeInTheDocument());
     await waitFor(() => expect(within(canvasElement).getByRole("button", { name: /Server/ })).toHaveFocus());
 
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Server/ }));
+    await openPanel(canvasElement, /Server/);
     await body().findByRole("radiogroup", { name: "Symbols" });
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(body().queryByRole("radiogroup")).not.toBeInTheDocument());
@@ -195,7 +272,7 @@ export const GalleryFilterWithNoMatch: Story = {
     return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
   },
   play: async ({ canvasElement }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Use the type's symbol/ }));
+    await openPanel(canvasElement);
     const filter = await body().findByLabelText("Filter symbols");
     await userEvent.type(filter, "vend");
     await expect(body().getAllByRole("radio").map((t) => t.getAttribute("aria-label"))).toEqual(["Use the type's symbol", "Vendor router"]);
@@ -206,7 +283,7 @@ export const GalleryFilterWithNoMatch: Story = {
   },
 };
 
-/** An empty library shows the empty state (and, for a person who may upload, the upload control). */
+/** An empty library shows the empty state (and, for a person who may upload, the Upload button). */
 export const GalleryWithAnEmptyLibrary: Story = {
   args: { symbols: [] },
   beforeEach: () => {
@@ -215,9 +292,9 @@ export const GalleryWithAnEmptyLibrary: Story = {
     return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
   },
   play: async ({ canvasElement }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Use the type's symbol/ }));
+    await openPanel(canvasElement);
     await expect(await body().findByText("The symbol library is empty.")).toBeInTheDocument();
-    await expect(await body().findByText("Upload a symbol")).toBeInTheDocument();
+    await expect(await within(await body().findByRole("group", { name: "Symbol view" })).findByRole("button", { name: "Upload" })).toBeInTheDocument();
   },
 };
 
@@ -236,7 +313,7 @@ export const GalleryOf200ReadsOnlyTheVisibleDrawings: Story = {
     return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
   },
   play: async ({ canvasElement }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: /Use the type's symbol/ }));
+    await openPanel(canvasElement);
     await body().findByRole("radiogroup", { name: "Symbols" });
     await expect(body().getAllByRole("radio")).toHaveLength(201);
     await waitFor(() => expect((api.getForBlob as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBeGreaterThan(0));

@@ -36,7 +36,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.modules.architecture.diagram_line_path import Point, curve_spans, format_point
+from app.modules.architecture.diagram_line_path import Point, format_point, shape_spans
 
 #: Radius of a hop in canvas units (the arc is a semicircle, so it is twice this wide).
 HOP_RADIUS = 6.0
@@ -60,14 +60,14 @@ class HopLine:
         id: The line's id; of two crossing lines the one whose id sorts later hops.
         start / end: The points on the source and target.
         points: The waypoints in order from the start to the end.
-        smooth: True for a curve through the points.
+        shape: The line's drawn shape (`diagram_line_path.LINE_SHAPES`, already resolved against the diagram's default).
     """
 
     id: str
     start: Point
     points: Sequence[Point]
     end: Point
-    smooth: bool
+    shape: str = "straight"
 
 
 @dataclass
@@ -85,12 +85,13 @@ def _flatten(line: HopLine) -> _Flat:
     nodes = [line.start, *line.points, line.end]
     poly: list[Point] = [nodes[0]]
     pieces: list[tuple[int, int]] = []
-    if not line.smooth or not line.points:
+    spans = shape_spans(line.start, line.points, line.end, line.shape)
+    if not spans:
         for i in range(1, len(nodes)):
             pieces.append((i - 1, i))
             poly.append(nodes[i])
     else:
-        for p1, c1, c2, p2 in curve_spans(line.start, line.points, line.end):
+        for p1, c1, c2, p2 in spans:
             first = len(poly) - 1
             for step in range(1, CURVE_STEPS + 1):
                 t = step / CURVE_STEPS

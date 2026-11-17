@@ -166,6 +166,10 @@ The fixed sequence a requirement moves through: Draft → Reviewed → Approved 
 
 A small arc drawn where one line crosses another on a block diagram or a state machine diagram, so the crossing is not read as a junction. It is the **Line hops** setting of the diagram, off by default. Of two crossing lines, the one that sorts later by its identifier is drawn over the other; connections, transitions and leaders are all lines. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
 
+#### Line shape
+
+How a line runs between its two ends on a block diagram or a state machine diagram. **Straight** draws segments through the line's vertices. **Curved** draws one arc bowed to the left of the line's direction, so it needs no vertices (with vertices it passes through them). **Spline** draws a curve through the vertices, and is straight when the line has none. The diagram has a **Default line shape**, and a connection, transition or note leader can give its own shape or follow the default. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md) and [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
+
 #### Link
 
 A typed relationship between two records of the same project (or a parent and child project), shown in the **Links** panel on both records. Its [link type](#link-type) names it from each end. See [Links and traceability](../core-features/links-and-traceability.md).
@@ -348,7 +352,7 @@ The checks of a state machine diagram, listed from the **Validation** button in 
 
 #### Vertex
 
-A point a line passes through between its two ends (a vertex of the line), so it can go round another box. Drag the dot on the middle of a segment of the selected line to add one, drag a vertex to move it, and double-click it or press Delete on it to remove it; the Selection card lists the vertices with their X and Y positions for use without a pointer. A smooth curve can be drawn through them. Available on block diagram connections and on state machine transitions. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
+A point a line passes through between its two ends (a vertex of the line), so it can go round another box. Drag the dot on the middle of a segment of the selected line to add one, drag a vertex to move it, and double-click it or press Delete on it to remove it; the Selection card lists the vertices with their X and Y positions for use without a pointer. The line's shape (see [Line shape](#line-shape)) decides whether it is drawn as segments or as a curve through them. Available on block diagram connections and on state machine transitions. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
 #### View switch
 

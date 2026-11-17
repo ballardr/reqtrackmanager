@@ -1,5 +1,5 @@
 """Tests for annotation notes on a diagram: a block with a tone and none or several leader lines, each to a box, a
-connection's line or a free point, with a start point, vertices, a smooth curve and a start and an end style.
+connection's line or a free point, with a start point, vertices, a line shape and a start and an end style.
 
 Covers the layout save (stored, returned by the view, rules a leader must follow, several per note), a deleted target
 removing its leader and keeping the note, the server SVG drawing the leader between the right points (and not drawing
@@ -59,7 +59,7 @@ def test_a_note_keeps_its_tone_and_each_kind_of_leader_and_the_view_returns_them
         {"text": "At a line", "tone": "warning", "leaders": [{"kind": "connection", "connection_id": link["id"]}]},
         {"text": "At a spot", "tone": "danger", "leaders": [{
             "kind": "point", "x": 12.5, "y": -40, "start_point": "top", "points": [{"x": 5, "y": -20}, {"x": 9, "y": -30}],
-            "smooth": True, "start_style": "dot", "end_style": "arrow",
+            "line_shape": "spline", "start_style": "dot", "end_style": "arrow",
         }]},
         {"text": "Plain"},
     ]
@@ -71,8 +71,8 @@ def test_a_note_keeps_its_tone_and_each_kind_of_leader_and_the_view_returns_them
     ]
     box, line, spot = (n["leaders"][0] for n in shown[:3])
     assert (box["element_id"], box["start_style"], box["end_style"], box["start_point"]) == (a["id"], "none", "none", None)
-    assert (line["connection_id"], line["end_style"], line["points"], line["smooth"]) == (link["id"], "arrow", [], False)
-    assert (spot["x"], spot["y"], spot["start_point"], spot["smooth"]) == (12.5, -40, "top", True)
+    assert (line["connection_id"], line["end_style"], line["points"], line["line_shape"]) == (link["id"], "arrow", [], None)
+    assert (spot["x"], spot["y"], spot["start_point"], spot["line_shape"]) == (12.5, -40, "top", "spline")
     assert spot["points"] == [{"x": 5, "y": -20}, {"x": 9, "y": -30}] and (spot["start_style"], spot["end_style"]) == ("dot", "arrow")
     assert spot["element_id"] is None and spot["connection_id"] is None and box["x"] is None
 
@@ -111,7 +111,7 @@ def test_saving_the_same_notes_again_changes_nothing_and_a_changed_leader_is_upd
     (after,) = view(client, token, p, diagram["id"])["notes"]
     assert after["id"] == stored["id"] and after["leaders"][0]["id"] == leader["id"]
     assert (after["leaders"][0]["element_id"], after["leaders"][0]["end_style"]) == (b["id"], "dot")
-    bent = _save(client, token, p, moved, boxes, [note(element_id=b["id"], end_style="dot", points=[{"x": 3, "y": 4}], smooth=True)])
+    bent = _save(client, token, p, moved, boxes, [note(element_id=b["id"], end_style="dot", points=[{"x": 3, "y": 4}], line_shape="spline")])
     assert bent["version"] == moved["version"] + 1
     cleared = _save(client, token, p, bent, boxes, [{"text": "Look", "id": stored["id"]}])
     (none,) = view(client, token, p, diagram["id"])["notes"]
@@ -297,7 +297,7 @@ def test_the_svg_draws_a_chosen_start_point_vertices_a_curve_and_the_two_end_sty
     assert '<path d="M 160 230 L 300 230 L 500 300 L 700 300" fill="none" stroke="#2563EB" stroke-width="1.5"' in svg
     assert 'marker-start="url(#leader-dot-info)"' in svg and 'marker-end="url(#leader-arrow-info)"' in svg
     assert 'id="leader-dot-info"' in svg and 'id="leader-arrow-info"' in svg
-    _save(client, token, p, saved, boxes, [{"text": "Routed", "tone": "info", "leaders": [{**straight, "smooth": True}], **block}])
+    _save(client, token, p, saved, boxes, [{"text": "Routed", "tone": "info", "leaders": [{**straight, "line_shape": "spline"}], **block}])
     assert re.search(r'<path d="M 160 230 C [^"]+" fill="none" stroke="#2563EB"', _svg(client, token, p, diagram["id"]))
 
 
@@ -405,7 +405,7 @@ def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(clien
             {"kind": "element", "element_id": a["id"], "end_style": "none", "start_point": "left"},
             {"kind": "point", "x": 1, "y": 2},
         ]},
-        {"text": "Line", "tone": "warning", "leaders": [{"kind": "connection", "connection_id": link["id"], "smooth": True,
+        {"text": "Line", "tone": "warning", "leaders": [{"kind": "connection", "connection_id": link["id"], "line_shape": "spline",
                                                          "points": [{"x": 3, "y": 4}]}]},
         {"text": "Spot", "leaders": [{"kind": "point", "x": 5, "y": 6, "start_style": "dot", "end_style": "dot"}]},
         {"text": "Plain"},
@@ -416,7 +416,7 @@ def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(clien
     entry_notes = exported["architecture_diagrams"][0]["notes"]
     box_leader, spot_leader = entry_notes[0]["leaders"]
     assert box_leader == {
-        "kind": "element", "start_point": "left", "points": [], "smooth": False, "start_style": "none", "end_style": "none",
+        "kind": "element", "start_point": "left", "points": [], "line_shape": None, "start_style": "none", "end_style": "none",
         "element": {"code": a["unique_code"]},
     }
     assert spot_leader["kind"] == "point" and (spot_leader["x"], spot_leader["y"]) == (1.0, 2.0)
@@ -442,7 +442,7 @@ def test_notes_with_tone_and_leaders_round_trip_through_the_project_bundle(clien
     first = notes[0]["leaders"][0]
     assert first["element_id"] == names[a["unique_code"]] and first["end_style"] == "none" and first["start_point"] == "left"
     routed = notes[1]["leaders"][0]
-    assert routed["connection_id"] is not None and routed["smooth"] is True and routed["points"] == [{"x": 3, "y": 4}]
+    assert routed["connection_id"] is not None and routed["line_shape"] == "spline" and routed["points"] == [{"x": 3, "y": 4}]
     spot = notes[2]["leaders"][0]
     assert (spot["x"], spot["y"], spot["start_style"], spot["end_style"]) == (5, 6, "dot", "dot")
 
