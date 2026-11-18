@@ -230,6 +230,9 @@ export const BoldAndItalicWrapTheSelection: Story = {
     cell.setSelectionRange(0, 5);
     await userEvent.click(view.getByRole("button", { name: "Footer, centre cell: Bold" }));
     await expect(band(canvasElement).centre).toBe("**Draft** copy");
+    // The editor puts the selection back on the bolded word on the next animation frame; choosing the next words
+    // before that would be overwritten by it, which a person cannot do within one frame.
+    await waitFor(() => expect([cell.selectionStart, cell.selectionEnd]).toEqual([2, 7]));
     cell.focus();
     cell.setSelectionRange(10, 14);
     await userEvent.click(view.getByRole("button", { name: "Footer, centre cell: Italic" }));
