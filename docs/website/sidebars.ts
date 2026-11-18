@@ -201,6 +201,7 @@ const sidebars: SidebarsConfig = {
             'modules/system-architecture-module/state-machine-diagrams',
             'modules/system-architecture-module/baselines',
             'modules/system-architecture-module/reports-and-interchange',
+            'modules/system-architecture-module/ai-assistants',
           ],
         },
         {

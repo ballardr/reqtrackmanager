@@ -1967,6 +1967,8 @@ Record the structure of the product: the elements it is made of (systems, servic
 
 Understand the structure of the product: elements, the typed connections between them, and where an interface is realised in the layer below.
 
+Two things to do with these tools: read the structure (reports and the list and get tools) and, when the person asks, change the model (create, edit and move elements, ports, connections and state machines). Writes need `MCP_WRITES_ENABLED` and the Architect role; the server refuses what the person could not do on the screen.
+
 Model: an **element** is a part of the product (a system, service, board) in a tree, with ports. A **connection** joins two elements and has a type (REST API, SPI, Power). A connection is **outer** for an element when exactly one of its ends is inside that element (the element itself or something below it): it crosses the element's boundary. An inner connection **realises** an outer one when it lies inside the interface the outer one declares; an outer connection is **Covered** when at least one connection realises it.
 
 The tools are read-only project reports (the generated reference lists each tool's name and parameters):
@@ -1978,12 +1980,288 @@ The tools are read-only project reports (the generated reference lists each tool
 - **Unconnected elements** (AR6): elements with no connection (counting what is inside them), and elements no diagram shows.
 - **State machines** (AR7): each element's state machine diagrams with their states and transitions; `element` narrows it, `state_machine` names the one to draw.
 
+Read and write tools (names start `architecture_`; the generated reference lists every parameter):
+- **Look up types first.** `list_element_types` and `list_connection_types` give the ids `create_element`, `update_element`, `create_connection` and `create_port` need. Connection types are a tree; a type's `default_protocol` fills a new connection's protocol when you leave `protocol` out.
+- **Elements:** `list_elements` (filter by `parent_id`, `roots_only`, `element_type_id`, `search`), `get_element` (with ports), `create_element` (`ports` creates them in the same call), `update_element`, `change_element_status`, `archive_element`, `delete_element`, and `create_port`, `update_port`, `delete_port`. `list_shared_elements` lists elements other owners share (read only).
+- **Connections:** `list_connections` (`element_id` for either end), `get_connection`, `create_connection` (source and target elements, optional ports), `update_connection`, `change_connection_status`, `archive_connection`, `delete_connection`, and `set_connection_realisations` (which outer connections an inner one realises; the list replaces the old one).
+- **Block diagrams are read only:** `list_diagrams`, `get_diagram`, and `get_diagram_view` (the elements and lines shown). Edit the model, not the drawing.
+- **State machines:** `list_state_machine_diagrams`, `get_state_machine_model` (states, transitions and validation issues in one call), `get_state_machine_mermaid`, then `create_state_machine_diagram`, `add_state`, `add_transition`, `update_state`, `update_transition`, `delete_state`, `delete_transition`, and the diagram's `change_state_machine_status`, `archive_state_machine_diagram`, `delete_state_machine_diagram`. Build in this order: the diagram, its initial state, the other states, the transitions; a diagram cannot become `active` while validation reports an error (for example no initial state).
+- **Links are core tools.** Allocate a requirement to an element, constrain a connection, or link a risk or decision with `create_artefact_link` (read the types with `list_artefact_link_types`); this module has no link tools of its own.
+- **Versions.** An update, a status change and every state or transition change quotes the `version` you last read (a state machine's change quotes the diagram's `version`, and the answer carries the new one). A 409 means someone else changed it first: read it again and retry.
+- **Status moves are server-defined** (`draft`, `proposed`, `active`, `retired`, `rejected`); there is no approval gate. A move the server does not allow is refused with the reason.
+- **Prefer archive to delete.** `archive_*` is reversible; `delete_*` is permanent and removes the record's links, tags and places. An element with children or connections cannot be deleted.
+- **Shared elements** (owned by another project or the organisation) read only, through a grant. An end you may not read is a locked placeholder; do not try to infer its name.
+
 Rules and gotchas:
 - Do not read "Not covered" or an unallocated requirement as an error: some interfaces are deliberately not refined further. Report the figures; let the person decide.
 - A shared element (owned by another project or the organisation) is shown as "Shared element", with no code or name.
 - Codes (`ELM-001`, `CON-001`) name records in conversation; do not invent them, read them from the report.
 
 ### Tool list
+
+#### `architecture_list_element_types` (read)
+
+Lists the element types the project can use (the organisation's defaults it has not hidden, then its own).
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `architecture_list_connection_types` (read)
+
+Lists the connection types, a tree: a type names its `parent_ids` and `default_protocol`.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `architecture_list_elements` (read)
+
+Lists the project's elements (code, name, type, parent, status, ports, connection count). `parent_id` lists one element's children, `roots_only` the top level.
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `open_only` (boolean, in query), `search` (string, in query), `status` (string, in query), `element_type_id` (uuid, in query), `parent_id` (uuid, in query), `roots_only` (boolean, in query)
+
+#### `architecture_list_shared_elements` (read)
+
+Lists the elements other owners share with this project (read only here).
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `open_only` (boolean, in query), `search` (string, in query)
+
+#### `architecture_get_element` (read)
+
+Fetches one element with its ports: the project's own, or one shared with it.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path)
+
+#### `architecture_list_connections` (read)
+
+Lists the project's connections with both ends, type, protocol and status. `element_id` lists those at either end of an element.
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `open_only` (boolean, in query), `search` (string, in query), `status` (string, in query), `connection_type_id` (uuid, in query), `element_id` (uuid, in query)
+
+#### `architecture_get_connection` (read)
+
+Fetches one connection.
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path)
+
+#### `architecture_list_diagrams` (read)
+
+Lists the project's block diagrams (code, name, scope element, status).
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `open_only` (boolean, in query), `search` (string, in query), `status` (string, in query)
+
+#### `architecture_get_diagram` (read)
+
+Fetches one block diagram's record.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_get_diagram_view` (read)
+
+The elements and lines one block diagram shows, resolved for the diagram's scope and view switches (no layout or drawing).
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_list_state_machine_diagrams` (read)
+
+Lists the project's state machine diagrams (code, name, the element described, status, counts and validation counts).
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `open_only` (boolean, in query), `search` (string, in query), `status` (string, in query), `element_id` (uuid, in query)
+
+#### `architecture_get_state_machine_diagram` (read)
+
+Fetches one state machine diagram's record.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_get_state_machine_model` (read)
+
+A state machine diagram with all its states and transitions and its validation issues (the whole behaviour in one call).
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_get_state_machine_mermaid` (read)
+
+A state machine diagram as Mermaid `stateDiagram-v2` text.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_list_states` (read)
+
+Lists the states of the project's state machine diagrams.
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `search` (string, in query), `state_machine_diagram_id` (uuid, in query), `kind` (string, in query)
+
+#### `architecture_get_state` (read)
+
+Fetches one state.
+
+Parameters: `project_id*` (uuid, in path), `state_id*` (uuid, in path)
+
+#### `architecture_create_element` (write)
+
+Creates an element (a draft, or active with `activate`). `ports` creates its ports in the same call. Needs the Architect role.
+
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `description` (string, in body), `display_note` (string, in body), `element_type_id*` (uuid, in body), `parent_id` (uuid, in body), `owner` (object, in body), `folder_id` (uuid, in body), `activate` (boolean, in body), `ports` (array, in body)
+
+#### `architecture_update_element` (write)
+
+Edits an element; a field left out is kept. Needs the Architect role.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path), `version*` (integer, in body), `name` (string, in body), `description` (string, in body), `display_note` (string, in body), `element_type_id` (uuid, in body), `parent_id` (uuid, in body), `owner` (object, in body), `folder_id` (uuid, in body)
+
+#### `architecture_change_element_status` (write)
+
+Moves an element to another status. Retiring needs every child retired or archived. One of draft, proposed, active, retired, rejected; the server refuses a move it does not allow.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path), `version*` (integer, in body), `status*` (string, in body)
+
+#### `architecture_archive_element` (write)
+
+Archives an element (every child must be retired or archived); it can be restored.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path)
+
+#### `architecture_unarchive_element` (write)
+
+Restores an archived element.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path)
+
+#### `architecture_delete_element` (write)
+
+Permanently deletes an element with no children and no connection (409 otherwise), with its links, tags and places. Archive it instead when it may be needed again.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path)
+
+#### `architecture_create_port` (write)
+
+Adds a port to an element. Needs the Architect role.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path), `name*` (string, in body), `direction` (string, in body), `connection_type_id` (uuid, in body)
+
+#### `architecture_update_port` (write)
+
+Edits a port; `connection_type_id` null clears its type.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path), `port_id*` (uuid, in path), `name` (string, in body), `direction` (string, in body), `connection_type_id` (uuid, in body)
+
+#### `architecture_delete_port` (write)
+
+Deletes a port.
+
+Parameters: `project_id*` (uuid, in path), `element_id*` (uuid, in path), `port_id*` (uuid, in path)
+
+#### `architecture_create_connection` (write)
+
+Creates a connection between two elements (a draft, or active with `activate`); a port on each end is optional. Needs the Architect role.
+
+Parameters: `project_id*` (uuid, in path), `name` (string, in body), `connection_type_id*` (uuid, in body), `source_element_id*` (uuid, in body), `source_port_id` (uuid, in body), `target_element_id*` (uuid, in body), `target_port_id` (uuid, in body), `protocol` (string, in body), `description` (string, in body), `folder_id` (uuid, in body), `activate` (boolean, in body)
+
+#### `architecture_update_connection` (write)
+
+Edits a connection; a field left out is kept, a port set to null is cleared.
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path), `version*` (integer, in body), `name` (string, in body), `connection_type_id` (uuid, in body), `source_element_id` (uuid, in body), `source_port_id` (uuid, in body), `target_element_id` (uuid, in body), `target_port_id` (uuid, in body), `protocol` (string, in body), `description` (string, in body), `folder_id` (uuid, in body)
+
+#### `architecture_set_connection_realisations` (write)
+
+Sets which outer connections an inner connection realises (the given list replaces the old one; an empty list clears it).
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path), `version*` (integer, in body), `outer_connection_ids*` (array, in body)
+
+#### `architecture_change_connection_status` (write)
+
+Moves a connection to another status. One of draft, proposed, active, retired, rejected; the server refuses a move it does not allow.
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path), `version*` (integer, in body), `status*` (string, in body)
+
+#### `architecture_archive_connection` (write)
+
+Archives a connection; it can be restored.
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path)
+
+#### `architecture_unarchive_connection` (write)
+
+Restores an archived connection.
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path)
+
+#### `architecture_delete_connection` (write)
+
+Permanently deletes a connection with its links. Archive it instead when it may be needed again.
+
+Parameters: `project_id*` (uuid, in path), `connection_id*` (uuid, in path)
+
+#### `architecture_create_state_machine_diagram` (write)
+
+Creates a state machine diagram for an element (a draft). `activate` is refused while the validation finds an error, and a new diagram has no initial state. Needs the Architect role.
+
+Parameters: `project_id*` (uuid, in path), `name*` (string, in body), `element_id*` (uuid, in body), `description` (string, in body), `activate` (boolean, in body)
+
+#### `architecture_update_state_machine_diagram` (write)
+
+Edits a state machine diagram's own fields; a field left out is kept.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path), `version*` (integer, in body), `name` (string, in body), `description` (string, in body), `element_id` (uuid, in body)
+
+#### `architecture_change_state_machine_status` (write)
+
+Moves a state machine diagram to another status; `active` is refused (409) while the validation finds an error. One of draft, proposed, active, retired, rejected; the server refuses a move it does not allow.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path), `version*` (integer, in body), `status*` (string, in body)
+
+#### `architecture_archive_state_machine_diagram` (write)
+
+Archives a state machine diagram; it can be restored.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_unarchive_state_machine_diagram` (write)
+
+Restores an archived state machine diagram.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_delete_state_machine_diagram` (write)
+
+Permanently deletes a state machine diagram with its states and transitions (the element is untouched). Archive it instead when it may be needed again.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path)
+
+#### `architecture_add_state` (write)
+
+Adds a state, or an initial, final or choice marker, to a diagram and answers the state. Needs the Architect role.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path), `version*` (integer, in body), `name*` (string, in body), `description` (string, in body), `kind` (string, in body), `parent_state_id` (uuid, in body), `entry_action` (string, in body), `exit_action` (string, in body), `activity` (string, in body), `label` (string, in body)
+
+#### `architecture_update_state` (write)
+
+Edits a state; a field left out is kept, `parent_state_id` null moves it to the top level.
+
+Parameters: `project_id*` (uuid, in path), `state_id*` (uuid, in path), `version*` (integer, in body), `name` (string, in body), `description` (string, in body), `kind` (string, in body), `parent_state_id` (uuid, in body), `entry_action` (string, in body), `exit_action` (string, in body), `activity` (string, in body), `label` (string, in body)
+
+#### `architecture_delete_state` (write)
+
+Deletes a state with its transitions and links (409 while it contains other states); answers what went with it and the diagram's new `version`.
+
+Parameters: `project_id*` (uuid, in path), `state_id*` (uuid, in path), `version*` (integer, in query)
+
+#### `architecture_add_transition` (write)
+
+Adds a transition between two states of a diagram; the answer carries the diagram's new `version`.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path), `version*` (integer, in body), `source_state_id*` (uuid, in body), `target_state_id*` (uuid, in body), `event` (string, in body), `guard` (string, in body), `action` (string, in body), `description` (string, in body)
+
+#### `architecture_update_transition` (write)
+
+Edits a transition; a field left out is kept.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path), `transition_id*` (uuid, in path), `version*` (integer, in body), `source_state_id` (uuid, in body), `target_state_id` (uuid, in body), `event` (string, in body), `guard` (string, in body), `action` (string, in body), `description` (string, in body)
+
+#### `architecture_delete_transition` (write)
+
+Deletes a transition; answers the diagram's new `version`.
+
+Parameters: `project_id*` (uuid, in path), `diagram_id*` (uuid, in path), `transition_id*` (uuid, in path), `version*` (integer, in query)
 
 #### `architecture_get_boundary_coverage_report` (read)
 
