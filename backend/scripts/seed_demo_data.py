@@ -2719,14 +2719,20 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     # composite state is a frame around its children, and every line runs straight between facing sides.
     for name, kind, parent, extra in (
         ("Start", "initial", None, {"x": 0, "y": 190, "width": 20, "height": 20, "label": "Power on", "label_position": "above"}),
-        ("Self-test", "state", None, {"x": 110, "y": 160, "width": 170, "height": 80, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"}),
+        (
+            "Self-test", "state", None,
+            {"x": 110, "y": 160, "width": 170, "height": 80, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"},
+        ),
         ("Flying", "state", None, {"x": 480, "y": 0, "width": 860, "height": 400}),
         ("Flight start", "initial", "Flying", {"x": 520, "y": 150, "width": 20, "height": 20}),
         ("Armed", "state", "Flying", {"x": 600, "y": 120, "width": 170, "height": 80, "entry_action": "spin_up_motors()"}),
         ("Hovering", "state", "Flying", {"x": 960, "y": 120, "width": 170, "height": 80, "activity": "hold_position()"}),
         ("Returning home", "state", "Flying", {"x": 640, "y": 270, "width": 170, "height": 80, "activity": "navigate_to_home()"}),
         ("Battery check", "choice", "Flying", {"x": 1027, "y": 290, "width": 36, "height": 36, "label": "Battery low?", "label_position": "below"}),
-        ("Failsafe", "state", None, {"x": 1010, "y": 500, "width": 170, "height": 70, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."}),
+        (
+            "Failsafe", "state", None,
+            {"x": 1010, "y": 500, "width": 170, "height": 70, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."},
+        ),
         ("Landed", "final", None, {"x": 711, "y": 520, "width": 28, "height": 28, "label": "Landed", "label_position": "below"}),
     ):
         response = httpx.post(

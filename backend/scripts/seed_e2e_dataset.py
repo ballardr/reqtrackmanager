@@ -819,7 +819,10 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> None:
 
     domains = {row["name"].lower(): row["id"] for row in get(f"{org_base}/domains")}
     symbols = {row["name"]: row["id"] for row in get(f"{org_base}/symbols")}
-    for name, shape, domain, symbol in (("E2E Software system", "hexagon", "software", "Server"), ("E2E Hardware module", "chip", "hardware", "Board")):
+    for name, shape, domain, symbol in (
+        ("E2E Software system", "hexagon", "software", "Server"),
+        ("E2E Hardware module", "chip", "hardware", "Board"),
+    ):
         r = httpx.post(
             f"{org_base}/element-types", headers=headers, timeout=30,
             json={"name": name, "shape": shape, "domain_ids": [domains[domain]], "symbol_id": symbols.get(symbol)},

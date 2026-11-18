@@ -54,7 +54,10 @@ async function selectLine(canvas: ReturnType<typeof within>): Promise<HTMLElemen
   const edge = await canvas.findByLabelText("Connection from Gateway to Orders");
   edge.focus();
   await userEvent.keyboard("{Enter}");
-  return canvas.findByRole("region", { name: "Selection" });
+  const card = await canvas.findByRole("region", { name: "Selection" });
+  // The previous selection's card is already a "Selection" region, so wait until it shows the line.
+  await waitFor(() => expect(within(card).getByRole("heading", { level: 2 })).not.toHaveTextContent("ELM-001"));
+  return card;
 }
 
 /** Adds a note from the Add menu; the new note is the selection. */

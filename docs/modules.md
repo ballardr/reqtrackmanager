@@ -95,7 +95,9 @@ order — an earlier source's `key` always wins if two collide:
    same plugin-discovery idiom pytest and Flask extensions use. Any package
    `pip install`-ed into the deployment's image that declares this entry
    point is picked up automatically at startup. This is how a third-party
-   module, published as its own installable package, is registered.
+   module, published as its own installable package, is registered. The
+   published backend image ships without pip, so a derived image runs
+   `python -m ensurepip` before `pip install`.
 3. **`EXTRA_MODULES_PATH`** — an optional local directory. Each immediate
    subdirectory containing a `module.py` that exposes a module-level
    `MODULE_DEFINITION` attribute is loaded. This is for a self-hosted

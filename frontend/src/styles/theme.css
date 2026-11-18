@@ -154,6 +154,9 @@ textarea {
   color: var(--color-text);
   border-radius: var(--radius-md);
   padding: var(--space-3) 0.9rem;
+  /* Medium is 36px whatever the font's line height is (a Linux fallback font gave 35px), so a text button
+     and a `.btn-icon` of the same size are one height. */
+  min-height: 2.25rem;
   cursor: pointer;
 }
 
@@ -196,6 +199,7 @@ textarea {
    next to each other share a size. */
 .btn-sm {
   height: 1.75rem;
+  min-height: 0;
   padding: 0 0.6rem;
   gap: 0.3rem;
   font-size: 0.85rem;

@@ -9,6 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ghostscript pop
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --uid 10001 converter
 
+# pip is removed: nothing here installs packages, and the base image's pip vendors msgpack, urllib3 and setuptools
+# copies that Trivy flags (HIGH).
+RUN pip uninstall -y pip
+
 WORKDIR /srv
 COPY converter.py .
 COPY tests ./tests
