@@ -80,7 +80,9 @@ _DEFAULT_COLOR = "#475569"
 _TEXT_COLOR = "#1E293B"
 _MARGIN = 32.0
 _COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
-_CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
+# Characters XML 1.0 cannot carry (control characters other than tab, line feed and carriage return, and U+FFFE, U+FFFF),
+# listed as code points so the removal is a table lookup rather than a character range.
+_XML_FORBIDDEN = dict.fromkeys([*range(0x00, 0x09), 0x0B, 0x0C, *range(0x0E, 0x20), 0xFFFE, 0xFFFF])
 _ROOT = re.compile(r"<svg\b[^>]*>", re.IGNORECASE)
 _VIEWBOX = re.compile(r'viewBox\s*=\s*"([^"]*)"', re.IGNORECASE)
 _SIZE = re.compile(r'\b(width|height)\s*=\s*"\s*([0-9.]+)\s*(?:px)?\s*"', re.IGNORECASE)
@@ -89,7 +91,7 @@ _BOX_ATTR = re.compile(r'\s(?:x|y|width|height)\s*=\s*"[^"]*"', re.IGNORECASE)
 
 def _text(value: str) -> str:
     """User text made safe to put in an XML text node or attribute."""
-    return escape(_CONTROL.sub("", value), {'"': "&quot;"})
+    return escape(value.translate(_XML_FORBIDDEN), {'"': "&quot;"})
 
 
 def _color(value: str | None) -> str:
