@@ -391,6 +391,29 @@ export const LinesJoinNodesInsideAContainerAtTheirAbsoluteBoxes: Story = {
   },
 };
 
+/** A container's tint is drawn behind the lines and labels inside it, so they are not washed out: its layer is below the line layer and its children's. */
+export const AContainerIsDrawnBehindTheLinesInsideIt: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Order processing" showViewToggle={false} nodes={GROUP}
+      edges={[{ id: "next", source: "pick", target: "pack", label: "next" }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByLabelText("next, connection from Pick to Pack");
+    await waitFor(() => {
+      const layer = (el: Element) => Number(getComputedStyle(el).zIndex);
+      const frame = layer(nodeEl(canvas, "Fulfilment"));
+      expect(frame).toBeLessThan(0);
+      expect(layer(nodeEl(canvas, "Pick"))).toBeGreaterThan(frame);
+      const line = canvasElement.querySelector(".react-flow__edges svg:not(.react-flow__marker)");
+      expect(line).not.toBeNull();
+      expect(layer(line as Element)).toBeGreaterThan(frame);
+    });
+  },
+};
+
 /** An unknown parent, a node as its own parent and a loop of parents are ignored: every node is drawn, none nested. */
 export const AnInvalidParentLeavesTheNodeUnnested: Story = {
   render: () => (

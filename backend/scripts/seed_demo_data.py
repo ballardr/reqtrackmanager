@@ -2628,8 +2628,9 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     httpx.post(f"{collection_url}/grants", headers=headers, timeout=30, json={"project_id": project_id}).raise_for_status()
     connect("Operator sign-in", "REST API", ground, "", identity.json(), "", "OpenID Connect")
 
-    # A diagram of the airframe: the sensors, flight controller and radio placed on a row, with a view toggle that
-    # hides the sensors (so the toggle's saved default can be flipped on the page and in a report).
+    # A diagram of the airframe: the sensors on the left, the flight controller and the radio in one row, with a view toggle that
+    # hides the sensors (so the toggle's saved default can be flipped on the page and in a report). Boxes are 160 to 170 units
+    # wide and each line's label needs about 140, so neighbours sit 250 or more apart and no line crosses another.
     diagram = httpx.post(
         f"{base}/diagrams", headers=headers, timeout=30,
         json={"name": "Airframe data flow", "purpose": "How readings reach the ground station.", "activate": True,
@@ -2639,33 +2640,30 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     diagram.raise_for_status()
     placed = diagram.json()
     boxes = [
-        {"element_id": item["id"], "x": index * 220, "y": 0 if index < 2 else 140}
-        for index, item in enumerate((gps, imu, fc, radio, ground))
+        {"element_id": item["id"], "x": x, "y": y}
+        for item, x, y in ((gps, 0, 0), (imu, 0, 250), (fc, 420, 120), (radio, 840, 120))
     ]
-    # The airframe's outer connection is drawn as a boundary box; the radio's upload is drawn to it. Two annotations
-    # point at a box and at a line (a caution and an information note); the second has a second leader to a free point.
+    # The airframe's outer connection (to the ground station, outside this diagram's scope) is drawn as a boundary box at the
+    # end of the radio's upload. Two annotations point at a box and at a line (a caution and an information note).
     placed = httpx.put(
         f"{base}/diagrams/{placed['id']}/layout", headers=headers, timeout=30,
         json={
-            "version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 600, "y": 280}],
-            # The IMU bus is routed round the corner with two vertices instead of a straight line; the interrupt line between
-            # the same two boxes has a route of its own (its connection), so it is drawn apart from the bus.
-            # The GPS link to the flight controller is drawn as one bowed arc (Curved needs no vertices).
-            "anchors": [{"source_element_id": imu["id"], "target_element_id": fc["id"],
-                         "points": [{"x": 410, "y": 30}, {"x": 410, "y": 180}]},
-                        {"source_element_id": gps["id"], "target_element_id": fc["id"], "line_shape": "curved"},
+            "version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 1240, "y": 140}],
+            # The interrupt line between the IMU and the flight controller has a route of its own (its connection, two vertices
+            # below both boxes), so it is drawn apart from the SPI bus. The GPS link is drawn as one bowed arc (Curved needs no vertices).
+            "anchors": [{"source_element_id": gps["id"], "target_element_id": fc["id"], "line_shape": "curved"},
                         {"source_element_id": imu["id"], "target_element_id": fc["id"], "connection_id": imu_interrupt["id"],
-                         "points": [{"x": 330, "y": -40}, {"x": 450, "y": -40}]}],
+                         "points": [{"x": 200, "y": 380}, {"x": 500, "y": 380}]}],
             "notes": [
                 {"title": "Redundancy", "text_align": "center",
-                 "text": "Single flight controller.\n\nRedundancy is decided separately.", "x": 380, "y": -150, "width": 200, "height": 90,
+                 "text": "Single flight controller.\n\nRedundancy is decided separately.", "x": 380, "y": -140, "width": 250, "height": 90,
                  "size_mode": "automatic",
                  "tone": "warning",
                  "leaders": [{"kind": "element", "element_id": fc["id"], "end_style": "arrow"}]},
-                {"text": "All telemetry leaves the airframe over this link.", "x": 700, "y": 40, "width": 200, "height": 60,
+                {"text": "All telemetry leaves the airframe over this link.", "x": 960, "y": 260, "width": 200, "height": 60,
                  "tone": "info",
                  "leaders": [{"kind": "connection", "connection_id": upload["id"], "end_style": "dot", "start_style": "none"},
-                             {"kind": "point", "x": 880, "y": 160, "points": [{"x": 800, "y": 140}], "line_shape": "spline"}]},
+                             {"kind": "point", "x": 1310, "y": 210, "points": [{"x": 1240, "y": 280}], "line_shape": "spline"}]},
             ],
         },
     )
@@ -2684,7 +2682,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     pinned = httpx.post(
         f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
         json={"body": "Should the flight controller have a second IMU bus for redundancy?",
-              "pin": {"anchor_kind": "node", "anchor_key": fc["id"], "x": 420, "y": 40}},
+              "pin": {"anchor_kind": "node", "anchor_key": fc["id"], "x": 580, "y": 110}},
     )
     pinned.raise_for_status()
     thread_pin = pinned.json()["pins"][0]["id"]
@@ -2694,7 +2692,7 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     ).raise_for_status()
     free = httpx.post(
         f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
-        json={"body": "No connection to the battery monitor yet.", "pin": {"anchor_kind": "none", "x": 120, "y": 260}},
+        json={"body": "No connection to the battery monitor yet.", "pin": {"anchor_kind": "none", "x": 300, "y": 20}},
     )
     free.raise_for_status()
     httpx.patch(
@@ -2717,17 +2715,19 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     machine.raise_for_status()
     machine_id, version = machine.json()["id"], machine.json()["version"]
     states: dict[str, str] = {}
+    # Boxes are 160 to 170 units wide and a line label needs about 140, so states in a row sit 220 or more apart; the
+    # composite state is a frame around its children, and every line runs straight between facing sides.
     for name, kind, parent, extra in (
-        ("Start", "initial", None, {"x": 0, "y": 120, "width": 20, "height": 20, "label": "Power on", "label_position": "above"}),
-        ("Self-test", "state", None, {"x": 200, "y": 100, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"}),
-        ("Flying", "state", None, {"x": 460, "y": 40, "width": 520, "height": 300}),
-        ("Flight start", "initial", "Flying", {"x": 490, "y": 140, "width": 20, "height": 20}),
-        ("Armed", "state", "Flying", {"x": 560, "y": 120, "entry_action": "spin_up_motors()"}),
-        ("Hovering", "state", "Flying", {"x": 780, "y": 120, "activity": "hold_position()"}),
-        ("Returning home", "state", "Flying", {"x": 670, "y": 240, "activity": "navigate_to_home()"}),
-        ("Battery check", "choice", "Flying", {"x": 890, "y": 245, "width": 36, "height": 36, "label": "Battery low?", "label_position": "right"}),
-        ("Failsafe", "state", None, {"x": 460, "y": 400, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."}),
-        ("Landed", "final", None, {"x": 1060, "y": 160, "width": 28, "height": 28, "label": "Landed"}),
+        ("Start", "initial", None, {"x": 0, "y": 190, "width": 20, "height": 20, "label": "Power on", "label_position": "above"}),
+        ("Self-test", "state", None, {"x": 110, "y": 160, "width": 170, "height": 80, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"}),
+        ("Flying", "state", None, {"x": 480, "y": 0, "width": 860, "height": 400}),
+        ("Flight start", "initial", "Flying", {"x": 520, "y": 150, "width": 20, "height": 20}),
+        ("Armed", "state", "Flying", {"x": 600, "y": 120, "width": 170, "height": 80, "entry_action": "spin_up_motors()"}),
+        ("Hovering", "state", "Flying", {"x": 960, "y": 120, "width": 170, "height": 80, "activity": "hold_position()"}),
+        ("Returning home", "state", "Flying", {"x": 640, "y": 270, "width": 170, "height": 80, "activity": "navigate_to_home()"}),
+        ("Battery check", "choice", "Flying", {"x": 1027, "y": 290, "width": 36, "height": 36, "label": "Battery low?", "label_position": "below"}),
+        ("Failsafe", "state", None, {"x": 1010, "y": 500, "width": 170, "height": 70, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."}),
+        ("Landed", "final", None, {"x": 711, "y": 520, "width": 28, "height": 28, "label": "Landed", "label_position": "below"}),
     ):
         response = httpx.post(
             f"{base}/state-machine-diagrams/{machine_id}/states", headers=headers, timeout=30,
@@ -2743,9 +2743,13 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         ("Flight start", "Armed", {}),
         ("Armed", "Hovering", {"event": "takeoff", "action": "climb(2 m)"}),
         ("Hovering", "Hovering", {"event": "position drift", "action": "correct()"}),
-        ("Hovering", "Battery check", {"event": "every 10 s", "points": [{"x": 860, "y": 205}], "line_shape": "spline"}),
-        ("Battery check", "Returning home", {"guard": "battery low"}),
-        ("Battery check", "Hovering", {"guard": "battery ok"}),
+        ("Hovering", "Battery check", {"event": "every 10 s", "source_point": "bottom", "target_point": "top"}),
+        ("Battery check", "Returning home", {"guard": "battery low", "source_point": "left", "target_point": "right"}),
+        # The way back to Hovering runs round the right of the choice through two vertices, so it crosses no other line.
+        ("Battery check", "Hovering", {
+            "guard": "battery ok", "source_point": "right", "target_point": "right",
+            "points": [{"x": 1230, "y": 308}, {"x": 1230, "y": 160}],
+        }),
         ("Flying", "Failsafe", {"event": "sensor fault", "action": "alert()"}),
         ("Returning home", "Landed", {"event": "touchdown"}),
         ("Failsafe", "Landed", {"event": "motors stopped"}),
@@ -2757,16 +2761,18 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
         response.raise_for_status()
         lines[(source, target)] = response.json()["id"]
         version = response.json()["state_machine_diagram_version"]
-    # Notes explain the drawing: one at the Failsafe state and one at the battery check's line, with a free note beside the start.
+    # Notes explain the drawing: one below the Failsafe state, one in the free space beside the battery check's line, and a
+    # plain caption (no tone) at the top left.
     noted = httpx.put(
         f"{base}/state-machine-diagrams/{machine_id}/layout", headers=headers, timeout=30,
         json={"version": version, "states": [], "transitions": [], "notes": [
-            {"title": "Fail safe", "text": "Cuts the motors and holds the airframe level.", "tone": "danger", "x": 200, "y": 420,
+            {"title": "Fail safe", "text": "Cuts the motors and holds the airframe level.", "tone": "danger", "x": 1010, "y": 630,
              "size_mode": "automatic",
-             "leaders": [{"kind": "state", "state_id": states["Failsafe"], "start_point": "right"}]},
-            {"text": "Checked every 10 s while hovering.", "tone": "info", "x": 760, "y": 360, "size_mode": "automatic",
+             "leaders": [{"kind": "state", "state_id": states["Failsafe"], "start_point": "top"}]},
+            {"text": "Checked every 10 s while hovering.", "tone": "info", "x": 820, "y": 205, "width": 170, "height": 68,
+             "size_mode": "manual",
              "leaders": [{"kind": "transition", "transition_id": lines[("Hovering", "Battery check")]}]},
-            {"text": "Power-on self-test", "tone": "none", "x": -20, "y": 40, "size_mode": "automatic"},
+            {"text": "Operating modes of the flight controller", "tone": "none", "x": 0, "y": 20, "size_mode": "automatic"},
         ]},
     )
     noted.raise_for_status()

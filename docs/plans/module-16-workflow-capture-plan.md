@@ -19,7 +19,7 @@
 | 2 | Workflow, diagram and step records: project and organisation API, codes, links, search, tags, audit | [ ] |
 | 3 | Lifecycle, approval setting (organisation default, project override) and version history | [ ] |
 | 4 | Written form: narrative plus ordered step outline (accessible baseline) | [ ] |
-| 5 | BPMN editor core: React Flow canvas, BPMN shapes, palette, step sync | [ ] |
+| 5 | BPMN editor core: shared `GraphCanvas` (React Flow), BPMN shapes, palette, step sync | [ ] |
 | 6 | BPMN XML import/export, lanes and pools, edge routing, auto-layout | [ ] |
 | 7 | Flow validation: failure paths, default failure mode, Check workflow, activation gate | [ ] |
 | 8 | Service blueprint designer and viewer | [ ] |
@@ -107,7 +107,7 @@ Time shape: all timestamps are past instants in UTC. No scheduled or calendar-da
 ```mermaid
 flowchart LR
     OUT["Written outline editor<br/>(accessible, always available)"] <--> MODEL["Steps, lanes, flows<br/>(database)"]
-    BPMN["BPMN editor (React Flow + bpmn-moddle)"] -- "save: diagram XML, sync" --> MODEL
+    BPMN["BPMN editor (shared GraphCanvas + bpmn-moddle)"] -- "save: diagram XML, sync" --> MODEL
     MODEL -- "render" --> BPMN
     GRID["Blueprint grid editor"] <--> MODEL
 ```
@@ -247,7 +247,7 @@ flowchart LR
 
 ## 4. Module boundary and shared obligations (checklist)
 
-- **Boundary:** module code lives only in `backend/app/modules/workflow_capture/` and `frontend/src/modules/workflow_capture/`. React Flow and bpmn-moddle are imported only there. No core file edits; a needed generic extension point (nav entry, org-admin section, settings entry) uses the existing declarative fields or becomes a new generic field.
+- **Boundary:** module code lives only in `backend/app/modules/workflow_capture/` and `frontend/src/modules/workflow_capture/`. `bpmn-moddle` is imported only there. React Flow is not imported by this module: it draws through the shared `GraphCanvas` in `frontend/src/components` (Module 18 Phase 6; only `GraphCanvasView.tsx` may import `@xyflow/react`, enforced by `scripts/check_graph_canvas_imports.py`), which already provides selectable nodes and edges, attach points, bend points, nesting (`container`/`parentId`, as a pool holds lanes), multi-line edge labels, snap to grid, Undo/Redo history, comment pins and keyboard operation; BPMN-specific shapes and routing are passed to it as node and edge content, and a missing generic capability is added to `GraphCanvas` for every consumer. No core file edits; a needed generic extension point (nav entry, org-admin section, settings entry) uses the existing declarative fields or becomes a new generic field.
 - **Data boundary check:** no value added to a core enum/column. `artefact_types=("workflow", "workflow_step")`; link types via `link_type_seeds`; accent colour via `TierAModuleDefinition.entityAccentColor`.
 - **Every artefact type:** `unique_code` via `generate_unique_code` (`WFL`/`STP`; org-owned passes the `Organization`), shown with `RecordCode`/`ScopedRecordCode`; search providers (`name`, `purpose`, `description`), `organization_subcomponent` and `orgArtefactPaths` for the org surface, `artefactPaths` for projects; tags (`TagField`, `useCommitTags`, `TagFilter`); `QuickLinkField`; `ProjectScope` nested-project filter; field `help`; required markers; label maps for `status`, `perspective`, `kind`, `step_type` (Principle 12).
 - **Nested projects:** the module adds no project-scoped vocabulary table (lane and stage names are per diagram), so no ancestor fallback applies (**Decided by: Agent**). Reuse across the chain is the separate mechanism in 3.6.
@@ -288,7 +288,7 @@ Each phase states **Why**, **Risk addressed**, **Outcome** and its **tests**.
 | # | Decision | By |
 |---|----------|----|
 | D1 | Name: Workflow Capture; Module 15 becomes Automations | User |
-| D2 | Editor: build our own on React Flow with bpmn-moddle; no bpmn-js, no watermark | User |
+| D2 | Editor: build our own on React Flow (through the shared `GraphCanvas`) with bpmn-moddle; no bpmn-js, no watermark | User |
 | D3 | A workflow holds multiple diagrams; diagrams are reusable via call activities | User |
 | D4 | Reuse spans the organisation, the same project, and the nested-project chain where the viewer can see the target | User |
 | D5 | Approval is per project with an organisation-admin default; covers the whole workflow | User |

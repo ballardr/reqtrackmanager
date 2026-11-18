@@ -61,6 +61,9 @@ export const PROJECT_NAMES = {
    * unmergeable (see PROPOSED_LINKS_PROJECT_NAME in backend/scripts/seed_e2e_dataset.py). Read-only: no spec may
    * approve or reject that request; change-request-proposed-links.spec.ts builds its own organisation for that. */
   zeta1: "Zeta-1 Proposed Links Demo",
+  /** Fixed System Architecture fixture (see ARCHITECTURE_PROJECT_NAME in backend/scripts/seed_e2e_dataset.py): a service, a
+   * board, a connection, a diagram and a state machine. Read-only: seeded-architecture.spec.ts only browses it. */
+  eta1: "Eta-1 Flight System Architecture",
 } as const;
 
 /** Mirrors TERMINOLOGY_OVERRIDE in backend/scripts/seed_e2e_dataset.py — the

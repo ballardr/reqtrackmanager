@@ -101,6 +101,8 @@ const DEFAULT_HEIGHT = DEFAULT_BOX_HEIGHT;
 const FIT_PADDING = 0.1;
 /** The smallest size a node can be resized to, by pointer or key, and the step of a key resize. */
 const MIN_WIDTH = 80;
+/** How many levels of container have their own layer below the lines (deeper ones share the top one). */
+const CONTAINER_DEPTH_CAP = 7;
 const MIN_HEIGHT = 40;
 const KEY_RESIZE_STEP = 10;
 const RESIZE_KEYS: Record<string, { width: number; height: number }> = {
@@ -889,6 +891,8 @@ export function GraphCanvasView({
         // React Flow positions a child relative to its parent; the consumer's coordinates stay absolute.
         position: parentBox ? { x: box.x - parentBox.x, y: box.y - parentBox.y } : { x: box.x, y: box.y },
         ...(parentBox ? { parentId: parent, extent: "parent" as const } : {}),
+        // A container's tint is drawn behind the lines and labels inside it (a deeper container above a shallower one), never over them.
+        ...(n.container ? { zIndex: Math.min(depthOf(n.id), CONTAINER_DEPTH_CAP) - (CONTAINER_DEPTH_CAP + 1) } : {}),
         width: box.width,
         height: box.height,
         selected: selection?.kind === "node" && selection.id === n.id,

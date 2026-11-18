@@ -214,6 +214,16 @@ LINK_TYPES_HIDDEN_ORG_TYPE = "Mitigates"
 NESTING_DIRECTIONAL_TYPE = "E2E Derives (nested)"
 GAMMA4_NAME = "Gamma-4 Hierarchy Child"
 
+# Fixed System Architecture fixture (a software system and a hardware module with a connection, a diagram and a state
+# machine) for seeded-architecture.spec.ts. Read-only: every other architecture spec builds its own disposable
+# organisation, so nothing may edit these records.
+ARCHITECTURE_PROJECT_NAME = "Eta-1 Flight System Architecture"
+ARCHITECTURE_SOFTWARE_NAME = "E2E Mission service"
+ARCHITECTURE_HARDWARE_NAME = "E2E Flight controller board"
+ARCHITECTURE_CONNECTION_NAME = "E2E Telemetry link"
+ARCHITECTURE_DIAGRAM_NAME = "E2E Flight system overview"
+ARCHITECTURE_STATE_MACHINE_NAME = "E2E Flight controller modes"
+
 
 def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
     r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
@@ -794,6 +804,90 @@ def seed_project_content(headers: dict, project: dict, req_count: int) -> list[d
     return reqs
 
 
+
+def seed_architecture(headers: dict, org_id: str, project_id: str) -> None:
+    """Seeds the fixed System Architecture fixture: a software service and a hardware board (types added to the
+    organisation, each in its own domain) joined by one connection, a diagram placing both, and a three-state machine
+    for the board. Everything is activated so a read-only spec sees the finished records."""
+    org_base = f"{BASE}/orgs/{org_id}/modules/architecture"
+    base = f"{BASE}/projects/{project_id}/modules/architecture"
+
+    def get(url: str) -> list[dict]:
+        r = httpx.get(url, headers=headers, timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+    domains = {row["name"].lower(): row["id"] for row in get(f"{org_base}/domains")}
+    symbols = {row["name"]: row["id"] for row in get(f"{org_base}/symbols")}
+    for name, shape, domain, symbol in (("E2E Software system", "hexagon", "software", "Server"), ("E2E Hardware module", "chip", "hardware", "Board")):
+        r = httpx.post(
+            f"{org_base}/element-types", headers=headers, timeout=30,
+            json={"name": name, "shape": shape, "domain_ids": [domains[domain]], "symbol_id": symbols.get(symbol)},
+        )
+        r.raise_for_status()
+    element_types = {row["name"]: row["id"] for row in get(f"{base}/element-types")}
+    connection_types = {row["name"]: row["id"] for row in get(f"{base}/connection-types")}
+
+    def element(name: str, type_name: str, description: str, ports: tuple = ()) -> dict:
+        r = httpx.post(
+            f"{base}/elements", headers=headers, timeout=30,
+            json={
+                "name": name, "description": description, "element_type_id": element_types[type_name], "activate": True,
+                "ports": [{"name": n, "direction": d, "connection_type_id": connection_types["REST API"]} for n, d in ports],
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+    service = element(ARCHITECTURE_SOFTWARE_NAME, "E2E Software system", "Plans missions and receives telemetry.", (("Telemetry API", "in"),))
+    board = element(ARCHITECTURE_HARDWARE_NAME, "E2E Hardware module", "Runs the control loop.", (("Telemetry out", "out"),))
+    link = httpx.post(
+        f"{base}/connections", headers=headers, timeout=30,
+        json={
+            "name": ARCHITECTURE_CONNECTION_NAME, "connection_type_id": connection_types["REST API"], "activate": True,
+            "source_element_id": board["id"], "source_port_id": board["ports"][0]["id"],
+            "target_element_id": service["id"], "target_port_id": service["ports"][0]["id"],
+        },
+    )
+    link.raise_for_status()
+    diagram = httpx.post(
+        f"{base}/diagrams", headers=headers, timeout=30,
+        json={"name": ARCHITECTURE_DIAGRAM_NAME, "purpose": "The board and the service it reports to.", "activate": True},
+    )
+    diagram.raise_for_status()
+    httpx.put(
+        f"{base}/diagrams/{diagram.json()['id']}/layout", headers=headers, timeout=30,
+        json={"version": diagram.json()["version"], "placements": [
+            {"element_id": board["id"], "x": 0, "y": 0}, {"element_id": service["id"], "x": 300, "y": 0},
+        ]},
+    ).raise_for_status()
+    machine = httpx.post(
+        f"{base}/state-machine-diagrams", headers=headers, timeout=30,
+        json={"name": ARCHITECTURE_STATE_MACHINE_NAME, "description": "The modes of the board.", "element_id": board["id"]},
+    )
+    machine.raise_for_status()
+    machine_id, version = machine.json()["id"], machine.json()["version"]
+    states: dict[str, str] = {}
+    for name, kind, x in (("Start", "initial", 0), ("Idle", "state", 160), ("Flying", "state", 360)):
+        r = httpx.post(
+            f"{base}/state-machine-diagrams/{machine_id}/states", headers=headers, timeout=30,
+            json={"version": version, "name": name, "kind": kind, "x": x, "y": 100},
+        )
+        r.raise_for_status()
+        states[name] = r.json()["id"]
+        version = r.json()["state_machine_diagram_version"]
+    for source, target, event in (("Start", "Idle", None), ("Idle", "Flying", "takeoff")):
+        r = httpx.post(
+            f"{base}/state-machine-diagrams/{machine_id}/transitions", headers=headers, timeout=30,
+            json={"version": version, "source_state_id": states[source], "target_state_id": states[target], **({"event": event} if event else {})},
+        )
+        r.raise_for_status()
+        version = r.json()["state_machine_diagram_version"]
+    httpx.post(
+        f"{base}/state-machine-diagrams/{machine_id}/status", headers=headers, timeout=30,
+        json={"version": version, "status": "active"},
+    ).raise_for_status()
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -1274,6 +1368,12 @@ def main() -> None:
         h_ab, alpha1["id"], alpha1_reqs[5]["id"], files_comment["id"], "e2e-comment-attachment.txt", b"E2E comment attachment.",
     )
     upload_project_report_image(h_ab, alpha1["id"], "e2e-library-picture.png", E2E_LIBRARY_PICTURE)
+
+    print(f"Seeding {ARCHITECTURE_PROJECT_NAME!r} on Gamma (System Architecture enabled for Gamma only): a software service and a"
+          " hardware board with a connection, a diagram and a state machine (seeded-architecture.spec.ts, read-only)...")
+    enable_module(h_g, gamma["id"], "architecture")
+    eta1 = create_project(h_g, gamma["id"], ARCHITECTURE_PROJECT_NAME, "E2E seed project — System Architecture fixture.")
+    seed_architecture(h_g, gamma["id"], eta1["id"])
 
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
