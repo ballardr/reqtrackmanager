@@ -114,12 +114,12 @@ class World:
         db = SessionLocal()
         try:
             # Decision types are seeded on root projects only; a nested project falls back to its ancestors'.
-            type_row = db.query(DecisionTypeDefinition.id).filter(
+            type_id = db.query(DecisionTypeDefinition.id).filter(
                 DecisionTypeDefinition.project_id.in_(
                     [project["id"], *self._ancestor_ids(db, project["id"])]
                 )
-            ).first()
-            type_id = type_row[0]
+            ).limit(1).scalar()
+            assert type_id is not None, "the project has no decision type"
             decision = Decision(
                 project_id=project["id"], unique_code=code, title=f"Decision {code}", decision_statement="S",
                 decision_type_id=type_id, owner_id=self.user_id, creator_id=self.user_id,

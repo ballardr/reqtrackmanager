@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
+from app.services.lookups import affected_rows
 
 settings = get_settings()
 
@@ -103,4 +104,4 @@ def revoke_matching(db: Session, predicate) -> int:
         .where(PersonalAccessToken.revoked_at.is_(None), predicate)
         .values(revoked_at=datetime.now(UTC))
     )
-    return result.rowcount
+    return affected_rows(result)

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { expectTextRows } from "../testing/menuRows";
 import { ReportExportButton } from "./ReportExportButton";
 
 const meta: Meta<typeof ReportExportButton> = {
@@ -28,8 +29,10 @@ export const DownloadPdfCallsOnDownloadWithPdf: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Export" });
+    // The formats are the shared text rows, never standard buttons.
+    await expectTextRows(dialog.querySelector<HTMLElement>('[role="menu"]') as HTMLElement, 2);
+    await userEvent.click(within(dialog).getByRole("menuitem", { name: "Download PDF report" }));
     await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("pdf"));
     // Selecting an option closes the menu, matching every other Popover-
     // based trigger in this codebase (`CsvImportWizard.tsx`'s Export menu).
@@ -43,11 +46,11 @@ export const OffersHtmlExcelAndOpenDocumentForACustomReport: Story = {
   play: async ({ canvasElement, args }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await expect(within(menu).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual([
+    await expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent?.trim())).toEqual([
       "Download PDF report", "Download Word report", "Download ODT report", "Download HTML report",
       "Download CSV report", "Download Excel report", "Download ODS report",
     ]);
-    await userEvent.click(within(menu).getByRole("button", { name: "Download Excel report" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download Excel report" }));
     await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("xlsx"));
   },
 };
@@ -58,8 +61,8 @@ export const OpenDocumentFormatsAreAcronymsWithAFullNameTooltip: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
     const menu = within(within(document.body).getByRole("dialog", { name: "Export" }));
-    await expect(menu.getByRole("button", { name: "Download ODT report" })).toHaveAttribute("title", "OpenDocument text");
-    await expect(menu.getByRole("button", { name: "Download ODS report" })).toHaveAttribute("title", "OpenDocument spreadsheet");
+    await expect(menu.getByRole("menuitem", { name: "Download ODT report" })).toHaveAttribute("title", "OpenDocument text");
+    await expect(menu.getByRole("menuitem", { name: "Download ODS report" })).toHaveAttribute("title", "OpenDocument spreadsheet");
     await expect(menu.queryByText(/OpenDocument/)).not.toBeInTheDocument();
   },
 };
@@ -71,8 +74,8 @@ export const OffersTheRequestedKindsUnderACustomLabel: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "More formats" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await expect(within(menu).queryByRole("button", { name: "Download PDF report" })).not.toBeInTheDocument();
-    await userEvent.click(within(menu).getByRole("button", { name: "Download Word report" }));
+    await expect(within(menu).queryByRole("menuitem", { name: "Download PDF report" })).not.toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download Word report" }));
     await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("docx"));
   },
 };
@@ -82,7 +85,7 @@ export const DownloadCsvCallsOnDownloadWithCsv: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download CSV report" }));
     await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("csv"));
   },
 };
@@ -90,13 +93,13 @@ export const DownloadCsvCallsOnDownloadWithCsv: Story = {
 /** While a download's promise is pending, both popover options disable and
  * relabel — `onDownload` here never resolves, so the story can assert the
  * mid-flight state deterministically rather than racing a real promise. */
-export const DisablesBothOptionsMidDownload: Story = {
+export const TriggerShowsExportingMidDownload: Story = {
   args: { onDownload: () => new Promise(() => {}) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download PDF report" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Exporting…" })).toBeInTheDocument());
   },
 };
@@ -111,7 +114,7 @@ export const ExtrasAndANoteSitUnderTheFormats: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
     const menu = within(within(document.body).getByRole("dialog", { name: "Export" }));
     await expect(menu.getByText("Some columns are left out.")).toBeInTheDocument();
-    await userEvent.click(menu.getByRole("button", { name: "Download import template" }));
+    await userEvent.click(menu.getByRole("menuitem", { name: "Download import template" }));
     await waitFor(() => expect(args.extras![0].onSelect).toHaveBeenCalledOnce());
     await expect(within(document.body).queryByRole("dialog", { name: "Export" })).not.toBeInTheDocument();
   },

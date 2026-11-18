@@ -1,0 +1,409 @@
+"""
+Module: modules.architecture.diagram_view
+
+Builds the resolved view of a diagram: the nodes, lines, toggles and notes a client draws and the server SVG renders.
+
+Responsibilities:
+- Load a diagram's placements, notes, toggles, the project's connections and every element involved in bulk, so the
+  number of statements does not grow with the size of the diagram.
+- Apply visibility: an element the viewer cannot read becomes a locked node (its code only) and is never matched by a
+  toggle or bridged through.
+- Evaluate each toggle's state (the saved default unless the request overrides it), find its members (manual members
+  plus what its rule matches) and hand the plain ids to `diagram_resolver.resolve`.
+- Shape the answer for the API (`DiagramView`); a line's label comes from `diagram_edge_label`.
+
+Design decisions:
+- **The viewer's project's connections only.** A connection belongs to the project that created it, so a diagram draws
+  that project's connections, even where an end is an element another owner shares.
+- **Boundary boxes are drawn from the stored boxes that are still outer.** Each is a placed element with no parent for the
+  resolver, so a realising connection reaches it; a box whose outside element the viewer cannot read is locked.
+- **A connection with a route of its own is a line of its own** (`ArchitectureDiagramAnchor.connection_id`): the stored
+  routes are handed to the resolver, which takes such a connection out of its merged line, and the line says which
+  connections can be routed this way (`routable_connection_ids`) and which one it is drawn for (`route_connection_id`).
+- **Retired and archived connections are left out** (retired only unless `include_retired`), as the lists' "Open only".
+  A retired or archived *element* stays drawn, flagged by its status, since a diagram is a view of what was placed.
+- **Rules are evaluated over every element the diagram involves** (placed elements and connection ends), so a transit
+  element that is not itself placed can still be switched off and bridged through.
+- **Nothing here reads a name the viewer may not see:** a locked node carries its code only, a connection to it comes
+  from `records.connection_outs`, which blanks the locked end, and a symbol is offered only if `visible_symbol_ids`
+  allows it.
+
+Dependencies: `diagram_resolver`, `diagrams`, `records`, `visibility`, `symbols`; core `services.tags`.
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Collection, Iterable, Mapping
+from dataclasses import dataclass
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.modules.architecture import boundaries as boundary_rules
+from app.modules.architecture import diagrams, records
+from app.modules.architecture.connection_tree import descendant_map
+from app.modules.architecture.diagram_edge_label import edge_label
+from app.modules.architecture.diagram_resolver import Boundary, ModelConnection, Resolution, outer_side, resolve
+from app.modules.architecture.enums import AttachPoint, ElementShape, LineShape
+from app.modules.architecture.labels import INACTIVE_STATUSES
+from app.modules.architecture.models import (
+    ArchitectureConnection,
+    ArchitectureConnectionType,
+    ArchitectureDiagram,
+    ArchitectureDiagramToggle,
+    ArchitectureElement,
+    ArchitectureElementType,
+)
+from app.modules.architecture.realisations import realisations_of
+from app.modules.architecture.schemas import (
+    AnchorOut,
+    DiagramView,
+    ToggleOut,
+    ToggleRule,
+    ViewBoundary,
+    ViewEdge,
+    ViewHop,
+    ViewNode,
+    ViewPort,
+    WaypointIn,
+)
+from app.modules.architecture.service import CONNECTION_ARTEFACT_TYPE, ELEMENT_ARTEFACT_TYPE
+from app.modules.architecture.symbols import visible_symbol_ids
+from app.modules.architecture.visibility import Viewer, ancestor_parents, visible_element_ids
+from app.services import tags as tag_service
+
+
+@dataclass(frozen=True)
+class ToggleState:
+    """Which toggles the request switches on or off, overriding each toggle's saved default.
+
+    Attributes:
+        on: Toggle ids forced on.
+        off: Toggle ids forced off (wins over `on`).
+    """
+
+    on: frozenset[uuid.UUID] = frozenset()
+    off: frozenset[uuid.UUID] = frozenset()
+
+    def is_on(self, toggle: ArchitectureDiagramToggle) -> bool:
+        """Whether the toggle is on: forced off, forced on, else its saved default."""
+        if toggle.id in self.off:
+            return False
+        return toggle.id in self.on or toggle.default_on
+
+
+def toggle_rule(toggle: ArchitectureDiagramToggle) -> ToggleRule:
+    """The stored rule as the API shape (an unreadable stored value reads as an empty rule)."""
+    try:
+        return ToggleRule.model_validate(toggle.rule or {})
+    except ValueError:
+        return ToggleRule()
+
+
+def rule_type_closure(db: Session, rules: Iterable[ToggleRule]) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """Each connection type the rules name with the types beneath it (one pass for all the rules)."""
+    return descendant_map(db, {t for rule in rules for t in rule.connection_type_ids})
+
+
+def matched_by_rules(
+    rules: dict[uuid.UUID, ToggleRule], toggles_off: Collection[uuid.UUID], elements: dict[uuid.UUID, ArchitectureElement],
+    connections: list[ArchitectureConnection], element_types: dict[uuid.UUID, ArchitectureElementType],
+    connection_types: dict[uuid.UUID, ArchitectureConnectionType], element_tags: dict[uuid.UUID, list[str]],
+    connection_tags: dict[uuid.UUID, list[str]], type_closure: Mapping[uuid.UUID, set[uuid.UUID]],
+) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
+    """The elements and connections the switched-off toggles' rules match. A rule naming a connection type also
+    matches the types beneath it: `type_closure` is `connection_tree.descendant_map` of the types the rules name."""
+    hidden_elements: set[uuid.UUID] = set()
+    hidden_connections: set[uuid.UUID] = set()
+    for toggle_id in toggles_off:
+        rule = rules[toggle_id]
+        type_ids, domains, tag_names = set(rule.element_type_ids), set(rule.domain_ids), set(rule.tags)
+        for element in elements.values():
+            kind = element_types.get(element.element_type_id)
+            if (
+                element.element_type_id in type_ids or (kind is not None and not domains.isdisjoint(kind.domain_ids))
+                or tag_names.intersection(element_tags.get(element.id, ()))
+            ):
+                hidden_elements.add(element.id)
+        connection_type_ids = set().union(*(type_closure.get(t, {t}) for t in rule.connection_type_ids))
+        for connection in connections:
+            connection_kind = connection_types.get(connection.connection_type_id)
+            if (
+                connection.connection_type_id in connection_type_ids
+                or (connection_kind is not None and not domains.isdisjoint(connection_kind.domain_ids))
+                or tag_names.intersection(connection_tags.get(connection.id, ()))
+            ):
+                hidden_connections.add(connection.id)
+    return hidden_elements, hidden_connections
+
+
+def build_view(
+    db: Session, project_id: uuid.UUID, viewer: Viewer, diagram: ArchitectureDiagram, *,
+    state: ToggleState | None = None, include_retired: bool = False,
+) -> DiagramView:
+    """The diagram resolved for `viewer`.
+
+    Args:
+        db: Session.
+        project_id: The diagram's project.
+        viewer: Who is reading (applies the visibility rules).
+        diagram: The diagram.
+        state: Toggle overrides; none uses every toggle's saved default.
+        include_retired: Also draw retired connections.
+
+    Returns:
+        The diagram's record, toggles with their state, nodes, lines, notes and line anchors.
+    """
+    state = state or ToggleState()
+    placements = diagrams.placements_of(db, diagram.id)
+    notes = diagrams.notes_of(db, diagram.id)
+    leaders = diagrams.leaders_of(db, [n.id for n in notes])
+    toggles = diagrams.toggles_of(db, diagram.id)
+    members = diagrams.toggle_members(db, [t.id for t in toggles])
+
+    connections = [
+        c for c in records.list_connections(db, project_id)
+        if include_retired or c.status not in INACTIVE_STATUSES
+    ]
+    placed_ids = [p.element_id for p in placements]
+    involved = set(placed_ids) | {c.source_element_id for c in connections} | {c.target_element_id for c in connections}
+    elements = {
+        e.id: e for e in db.scalars(select(ArchitectureElement).where(ArchitectureElement.id.in_(involved)))
+    } if involved else {}
+    readable = visible_element_ids(db, viewer, involved)
+    parents = ancestor_parents(db, involved)
+
+    types = {
+        t.id: t for t in db.scalars(select(ArchitectureElementType).where(
+            ArchitectureElementType.id.in_({elements[i].element_type_id for i in readable if i in elements})
+        ))
+    } if readable else {}
+    connection_types = {
+        t.id: t for t in db.scalars(select(ArchitectureConnectionType).where(
+            ArchitectureConnectionType.id.in_({c.connection_type_id for c in connections})
+        ))
+    } if connections else {}
+
+    rules = {t.id: toggle_rule(t) for t in toggles}
+    off = [t.id for t in toggles if not state.is_on(t)]
+    uses_tags = any(rules[t].tags for t in off)
+    readable_elements = {i: elements[i] for i in readable if i in elements}
+    element_tags: dict[uuid.UUID, list[str]] = {}
+    connection_tags: dict[uuid.UUID, list[str]] = {}
+    if uses_tags:
+        if readable_elements:
+            element_tags = tag_service.tag_names_for_records(db, ELEMENT_ARTEFACT_TYPE, readable_elements)
+        if connections:
+            connection_tags = tag_service.tag_names_for_records(db, CONNECTION_ARTEFACT_TYPE, [c.id for c in connections])
+    hidden_elements, hidden_connections = matched_by_rules(
+        rules, off, readable_elements, connections, types, connection_types, element_tags, connection_tags,
+        rule_type_closure(db, rules.values()),
+    )
+    connection_ids = {c.id for c in connections}
+    for toggle_id in off:
+        for member in members.get(toggle_id, ()):
+            if member.element_id is not None and member.element_id in readable_elements:
+                hidden_elements.add(member.element_id)
+            if member.connection_id is not None and member.connection_id in connection_ids:
+                hidden_connections.add(member.connection_id)
+
+    boundary_boxes = _boundary_boxes(db, viewer, diagram, connections, readable, parents)
+    anchors = diagrams.anchors_of(db, diagram.id)
+    resolution = resolve(
+        placed=placed_ids, parents=parents,
+        connections=[
+            ModelConnection(
+                c.id, c.source_element_id, c.target_element_id, connection_types[c.connection_type_id].directional,
+            )
+            for c in connections if c.source_element_id in elements and c.target_element_id in elements
+        ],
+        hidden_elements=hidden_elements, hidden_connections=hidden_connections,
+        merge_parallel=not diagram.connection_detail, boundaries=[b[0] for b in boundary_boxes],
+        routed={a.connection_id: (a.source_element_id, a.target_element_id) for a in anchors if a.connection_id is not None},
+    )
+
+    return DiagramView(
+        diagram=diagrams.diagram_outs(db, [diagram], viewer)[0],
+        toggles=_toggle_outs(toggles, members, rules, state),
+        nodes=_nodes(db, viewer, placements, elements, readable, types, resolution, hidden_elements, parents),
+        edges=_edges(
+            db, viewer, diagram, connections, connection_types, elements, readable, resolution,
+            {b[0].id for b in boundary_boxes},
+        ),
+        notes=[diagrams.note_out(n, leaders.get(n.id, [])) for n in notes],
+        anchors=[
+            AnchorOut(
+                source_element_id=a.source_element_id, target_element_id=a.target_element_id, connection_id=a.connection_id,
+                source_point=AttachPoint(a.source_point) if a.source_point else None,
+                target_point=AttachPoint(a.target_point) if a.target_point else None,
+                points=[WaypointIn(x=p["x"], y=p["y"]) for p in a.points],
+                line_shape=LineShape(a.line_shape) if a.line_shape else None,
+            )
+            for a in anchors
+        ],
+        boundaries=[b[1] for b in boundary_boxes],
+    )
+
+
+def _boundary_boxes(
+    db: Session, viewer: Viewer, diagram: ArchitectureDiagram, connections: list[ArchitectureConnection], readable,
+    parents,
+) -> list[tuple[Boundary, ViewBoundary]]:
+    """The diagram's boundary boxes that can be drawn, each as the resolver's input and the API shape.
+
+    A stored box whose connection is no longer live (retired, archived) or no longer outer for the scope is left out
+    (kept in the database, not drawn). A box whose outside element the viewer cannot read is locked: codes only and a
+    dot shape, so no direction is disclosed.
+    """
+    scope_id = diagram.scope_element_id
+    rows = boundary_rules.boundaries_of(db, diagram.id) if scope_id is not None else []
+    if scope_id is None or not rows:
+        return []
+    by_id = {c.id: c for c in connections}
+    drawn = [
+        (row, by_id[row.connection_id], side) for row in rows if row.connection_id in by_id
+        if (side := outer_side(scope_id, parents, by_id[row.connection_id].source_element_id, by_id[row.connection_id].target_element_id)) is not None
+    ]
+    if not drawn:
+        return []
+    outs = {o.id: o for o in records.connection_outs(db, [c for _row, c, _side in drawn], viewer)}
+    realised: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for r in realisations_of(db, [c.id for _row, c, _side in drawn]):
+        if r.outer_connection_id in outs and r.inner_connection_id in by_id:
+            realised.setdefault(r.outer_connection_id, []).append(r.inner_connection_id)
+    result: list[tuple[Boundary, ViewBoundary]] = []
+    for row, c, side in drawn:
+        out = outs[c.id]
+        scope_is_source = side == c.source_element_id
+        outside_id = c.target_element_id if scope_is_source else c.source_element_id
+        locked = outside_id not in readable
+        inner = realised.get(c.id, [])
+        shape = boundary_rules.shape_for(out.directional, scope_is_source, not locked)
+        result.append((
+            Boundary(id=row.id, element_id=side, outside_id=outside_id, connection_ids=tuple(inner)),
+            ViewBoundary(
+                id=row.id, connection_id=c.id, connection_code=c.unique_code, connection_name="" if locked else c.name,
+                type_name="" if locked else out.connection_type_name, shape=shape.value, locked=locked,
+                outside_element_id=outside_id,
+                outside_element_code=out.target_element_code if scope_is_source else out.source_element_code,
+                outside_element_name=out.target_element_name if scope_is_source else out.source_element_name,
+                scope_end_element_id=side,
+                scope_end_port_name=out.source_port_name if scope_is_source else out.target_port_name,
+                covered=bool(inner), realised_by_count=len(inner), x=row.x, y=row.y, width=row.width, height=row.height,
+            ),
+        ))
+    return result
+
+
+def _toggle_outs(toggles, members, rules, state: ToggleState) -> list[ToggleOut]:
+    """The toggles with their state in this view and their manual members."""
+    return [
+        ToggleOut(
+            id=t.id, name=t.name, default_on=t.default_on, on=state.is_on(t), rule=rules[t.id],
+            element_ids=[m.element_id for m in members.get(t.id, ()) if m.element_id is not None],
+            connection_ids=[m.connection_id for m in members.get(t.id, ()) if m.connection_id is not None],
+            sort_order=t.sort_order,
+        )
+        for t in toggles
+    ]
+
+
+def _nodes(
+    db: Session, viewer: Viewer, placements, elements, readable, types, resolution: Resolution, hidden_elements,
+    parents,
+) -> list[ViewNode]:
+    """The placed elements as drawn: locked ones carry a code only."""
+    readable_placed = [elements[p.element_id] for p in placements if p.element_id in readable and p.element_id in elements]
+    ports = records.ports_for(db, [e.id for e in readable_placed])
+    port_type_ids = {p.connection_type_id for ps in ports.values() for p in ps if p.connection_type_id}
+    port_types = {
+        t.id: t.name for t in db.scalars(select(ArchitectureConnectionType).where(ArchitectureConnectionType.id.in_(port_type_ids)))
+    } if port_type_ids else {}
+    wanted_symbols: set[uuid.UUID] = set()
+    for e in readable_placed:
+        drawn = e.symbol_id or (types[e.element_type_id].symbol_id if e.element_type_id in types else None)
+        if drawn is not None:
+            wanted_symbols.add(drawn)
+    symbol_ok = visible_symbol_ids(db, viewer, wanted_symbols)
+
+    nodes: list[ViewNode] = []
+    for p in placements:
+        element = elements.get(p.element_id)
+        if element is None:
+            continue
+        internal = list(resolution.internal.get(element.id, ()))
+        box = {"x": p.x, "y": p.y, "width": p.width, "height": p.height, "collapsed": p.collapsed}
+        if element.id not in readable:
+            nodes.append(ViewNode(
+                placement_id=p.id, element_id=element.id, unique_code=element.unique_code, name="", locked=True, shared=False,
+                hidden=False, status="", parent_id=None, element_type_id=None, element_type_name="",
+                shape=ElementShape.RECTANGLE.value, color_light=None, color_dark=None, symbol_id=None, ports=[],
+                internal_connection_ids=internal, **box,
+            ))
+            continue
+        kind = types.get(element.element_type_id)
+        symbol_id = element.symbol_id or (kind.symbol_id if kind is not None else None)
+        nodes.append(ViewNode(
+            placement_id=p.id, element_id=element.id, unique_code=element.unique_code, name=element.name,
+            display_note=element.display_note, locked=False,
+            shared=element.project_id != viewer.project_id, hidden=element.id in resolution.hidden_placed,
+            status=element.status, parent_id=element.parent_id, element_type_id=element.element_type_id,
+            element_type_name=kind.name if kind is not None else "",
+            shape=kind.shape if kind is not None else ElementShape.RECTANGLE.value,
+            color_light=kind.color_light if kind is not None else None, color_dark=kind.color_dark if kind is not None else None,
+            symbol_id=symbol_id if symbol_id in symbol_ok else None,
+            ports=[
+                ViewPort(
+                    id=port.id, name=port.name, direction=port.direction,
+                    connection_type_name=port_types.get(port.connection_type_id) if port.connection_type_id else None,
+                )
+                for port in ports.get(element.id, ())
+            ],
+            internal_connection_ids=internal, **box,
+        ))
+    return nodes
+
+
+def _code_order(code: str) -> tuple[int, str]:
+    """A sort key for `PREFIX-nnn` codes that puts `CON-9` before `CON-10` (the shared rule of the browser's port)."""
+    return len(code), code
+
+
+def _edges(
+    db: Session, viewer: Viewer, diagram: ArchitectureDiagram, connections, connection_types, elements, readable,
+    resolution: Resolution, boundary_ids: Collection[uuid.UUID] = (),
+) -> list[ViewEdge]:
+    """The lines to draw, each with the connections behind it (as the viewer may read them)."""
+    by_id = {c.id: c for c in connections}
+    used = [by_id[i] for line in resolution.lines for i in line.connection_ids if i in by_id]
+    outs = {o.id: o for o in records.connection_outs(db, list({c.id: c for c in used}.values()), viewer)} if used else {}
+    hop_ids = {h for line in resolution.lines for h in line.hops}
+    edges: list[ViewEdge] = []
+    for line in resolution.lines:
+        members = [outs[i] for i in line.connection_ids if i in outs]
+        type_ids = {m.connection_type_id for m in members}
+        kind = connection_types.get(next(iter(type_ids))) if len(type_ids) == 1 else None
+        detail = diagram.connection_detail
+        names = diagram.show_connection_names
+        protocols = {m.protocol for m in members}
+        edges.append(ViewEdge(
+            id=f"{line.source_id}-{line.target_id}-{line.connection_ids[0]}", source_element_id=line.source_id,
+            target_element_id=line.target_id, source_is_boundary=line.source_id in boundary_ids,
+            target_is_boundary=line.target_id in boundary_ids, two_way=line.two_way, indirect=line.indirect, rolled_up=line.rolled_up,
+            bridged=line.bridged, count=len(members),
+            type_name=kind.name if detail and kind is not None else None,
+            line_style=kind.line_style if detail and kind is not None else None,
+            color_light=kind.color_light if detail and kind is not None else None,
+            color_dark=kind.color_dark if detail and kind is not None else None,
+            label=edge_label(
+                len(members), kind.name if kind is not None else None, next(iter(protocols)) if len(protocols) == 1 else "",
+                detail=detail, names=[m.name for m in sorted(members, key=lambda m: _code_order(m.unique_code))] if names else (),
+            ),
+            connections=members, routable_connection_ids=list(line.routable), route_connection_id=line.own_route,
+            hops=[
+                ViewHop(element_id=h, unique_code=elements[h].unique_code, name=elements[h].name)
+                for h in line.hops if h in hop_ids and h in elements and h in readable
+            ],
+        ))
+    return edges

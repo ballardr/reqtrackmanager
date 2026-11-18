@@ -12,7 +12,7 @@ A requirement is the exception: it keeps its own single component and category, 
 
 Under a record's title, next to its tags, are its components. If you may tag that kind of record (the same people who may edit it), a picker is there.
 
-- Choose **Components and categories**, type to filter the list, and tick any number of places. A component on its own and the same component with a category are different places; tick both if you want both.
+- Choose **Components and categories**: each component is listed with its categories beneath it, and its arrow collapses or expands them. Type to filter (a match keeps its component open), and tick any number of places. A component on its own and the same component with a category are different places; tick both if you want both.
 - Remove a place with the delete button on its chip.
 - A change is saved at once and appears in the record's **Activity** tab ("Alex placed this in Hardware / Cooling").
 - A person who may only read the record sees its places but no picker.
@@ -29,7 +29,7 @@ flowchart LR
     M -- "no" --> H["Hidden"]
 ```
 
-- Every list has a **Component and category** filter in its filter panel. A record is shown when it sits in **any** ticked component or category; ticking a component on its own matches the record whatever its category.
+- Every list has a **Component and category** filter in its filter panel, the same collapsible tree. A record is shown when it sits in **any** ticked component or category; ticking a component on its own matches the record whatever its category.
 - The filter combines with the tag filter and the other filters, and **Export** respects it.
 - Once a project has placed records, a **Components** column shows where each listed record sits.
 - Global search can match component and category names: choose **Component and category** among the search fields.

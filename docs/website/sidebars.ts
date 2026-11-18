@@ -193,6 +193,21 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'System Architecture module',
+          items: [
+            'modules/system-architecture-module/overview',
+            'modules/system-architecture-module/elements-ports-and-connections',
+            'modules/system-architecture-module/block-diagram-editor',
+            'modules/system-architecture-module/allocation',
+            'modules/system-architecture-module/state-machine-diagrams',
+            'modules/system-architecture-module/baselines',
+            'modules/system-architecture-module/sharing-and-visibility',
+            'modules/system-architecture-module/reports-and-interchange',
+            'modules/system-architecture-module/ai-assistants',
+          ],
+        },
+        {
+          type: 'category',
           label: 'Risk Management module',
           items: [
             'modules/risk-management-module/overview',

@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { clickMenuRow, openMenuParent } from "./menuTree";
+
 /**
  * Opens a list's "List actions" kebab menu and returns it.
  *
@@ -14,22 +16,14 @@ export async function openListMenu(page: Page): Promise<Locator> {
  * Opens the menu, then Download shown items, and clicks one format.
  *
  * @param page The page showing the list.
- * @param format The format's name as the submenu shows it: "CSV", "PDF", "Word", "ODT" or "ODS".
- * @param kind For a list showing several record kinds, the heading the item sits under (e.g. "Stakeholders").
+ * @param format The format's name as the list shows it: "CSV", "PDF", "Word", "ODT" or "ODS".
+ * @param kind For a list showing several record kinds, the group the item sits under (e.g. "Stakeholders").
  */
 export async function chooseExport(page: Page, format: string, kind?: string): Promise<void> {
   const menu = await openListMenu(page);
-  const parentName = "Download shown items";
-  if (kind) {
-    await menu
-      .getByText(kind, { exact: true })
-      .locator("xpath=following-sibling::div[contains(@class,'menu-submenu-host')][1]")
-      .getByRole("menuitem", { name: parentName, exact: true })
-      .click();
-  } else {
-    await menu.getByRole("menuitem", { name: parentName, exact: true }).click();
-  }
-  await page.getByRole("menu", { name: parentName }).getByRole("menuitem", { name: new RegExp(`^${format}( |$)`) }).click();
+  const scope = kind ? await openMenuParent(page, kind, menu) : menu;
+  const formats = await openMenuParent(page, "Download shown items", scope);
+  await formats.getByRole("menuitem", { name: new RegExp(`^${format}( |$)`) }).click();
 }
 
 /**
@@ -37,18 +31,12 @@ export async function chooseExport(page: Page, format: string, kind?: string): P
  *
  * @param page The page showing the list.
  * @param item The item's accessible name, e.g. "Download report" or "Import from CSV".
- * @param kind For a list showing several record kinds, the heading the item sits under (e.g. "Stakeholders").
+ * @param kind For a list showing several record kinds, the group the item sits under (e.g. "Stakeholders").
  */
 export async function chooseListAction(page: Page, item: string, kind?: string): Promise<void> {
   const menu = await openListMenu(page);
-  if (!kind) {
-    await menu.getByRole("menuitem", { name: item, exact: true }).click();
-    return;
-  }
-  await menu
-    .getByText(kind, { exact: true })
-    .locator(`xpath=following-sibling::button[@role='menuitem' and normalize-space(.)='${item}'][1]`)
-    .click();
+  const scope = kind ? await openMenuParent(page, kind, menu) : menu;
+  await clickMenuRow(page, item, scope);
 }
 
 /**

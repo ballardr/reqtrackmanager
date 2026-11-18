@@ -95,7 +95,9 @@ order — an earlier source's `key` always wins if two collide:
    same plugin-discovery idiom pytest and Flask extensions use. Any package
    `pip install`-ed into the deployment's image that declares this entry
    point is picked up automatically at startup. This is how a third-party
-   module, published as its own installable package, is registered.
+   module, published as its own installable package, is registered. The
+   published backend image ships without pip, so a derived image runs
+   `python -m ensurepip` before `pip install`.
 3. **`EXTRA_MODULES_PATH`** — an optional local directory. Each immediate
    subdirectory containing a `module.py` that exposes a module-level
    `MODULE_DEFINITION` attribute is loaded. This is for a self-hosted
@@ -237,6 +239,14 @@ the default every project inherits. Such a sub-component sets
 it, so the project list omits it, the project `PUT` answers 404, creation and
 template copies write no project row, and `is_module_subcomponent_enabled`
 returns the organisation's state, ignoring any stored row. No core file names the key.
+
+**Which artefact types a sub-component serves.** A sub-component whose key is an artefact type's own name serves that type.
+One that serves several types, or types under other names, lists them in `ModuleSubComponentDefinition.artefact_types`
+(System Architecture's `architecture_state_machine` serves the state machine diagram and the state). The core's per-type
+gate (`artefact_type_enabled_for_project`, `registry.subcomponent_serving`) follows it, so a record route the module does
+not own (link graph, tags, comments, History, search, record lists) answers "not found" for a switched-off type, as the
+module's own routes do. A file or report that spans several types reads `service.enabled_record_types` and leaves the
+switched-off ones out.
 
 ```mermaid
 flowchart TD
@@ -1303,6 +1313,7 @@ Rules for a hook (reference implementations: `modules/risk_management/export.py`
 - An imported status is never an approval by someone else: no approver identity is carried, and project import is limited to organisation admins and project creators.
 - Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
 - Classify every key the project export returns for **template projects**: `template_configuration_keys` (vocabularies, hidden defaults, scoring definitions, settings), `template_record_keys` (starter records and the links among them) or `template_excluded` with a reason (the template's own lifecycle state or people). A project created from a template (`services/template_content.py`) exports through these hooks, keeps the configuration and record keys, calls `template_reset` (`services.template_reset.fresh_drafts` plus the module's initial status; no approval, review, vote or score state) and imports the result, so a module needs no clone code. `backend/tests/test_template_content.py` fails for an unclassified key, a key in two classes, record keys with no reset and an exclusion with no reason.
+- An organisation-level section that embeds files (the Architecture symbol library) sets the optional `ModuleOrgBundleHooks.export_files` (returns more `org.json` sections and adds each `FileAsset` to the bundle) and `import_files` (runs just before `import_`, receives the embedded bytes). A project hook already receives them. A file read from a bundle is untrusted input: check and sanitise it as an upload is, accept no database id from the bundle, and name another record (a type's symbol) by tier and name so the target resolves it.
 - A project's own scoring configuration (default model, offered models, bands, level thresholds, cell ratings, for every registered scheme) is core, not a module hook: `services/scoring_config.py` exports it as the project bundle's `scoring_configuration` key and imports it after every module (a custom model or axis is created afresh with a new key, so the bundle carries its label and the import matches by label). A template copies it the same way. A level is matched by scheme, axis and name; one the target organisation lacks is skipped with a warning.
 
 ```mermaid
@@ -1426,6 +1437,54 @@ flowchart LR
 | Scaling | | Placements are read for a page at once (`placements_for_records`, `GET .../placements/{type}`); `perf_dataset.records.add_tags` also places each batch, so generators need no extra call. |
 
 The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
+
+### 4l8. Record comments and pinned threads
+
+A module gives its records comments, and optionally pinned threads on a drawing, by declaring `ModuleDefinition.record_comments[type] = RecordCommentProvider(anchor_kinds, validate_anchor)`; it writes no table, route or core code. The two core tables `record_comments` and `record_comment_pins` are keyed by the registered artefact type and the record id, as tags and placements are. A comment with no `pin_id` is an ordinary comment on the record; comments sharing a `pin_id` are one pinned thread, and resolving belongs to the pin.
+
+```mermaid
+flowchart LR
+    P["RecordCommentProvider<br/>anchor kinds, validate_anchor"] --> S["services.record_comments<br/>rules, audit"]
+    S --> R["/projects/id/artefacts/type/id/comments<br/>comment-pins, anchored-comments"]
+    R --> H["useRecordComments"]
+    H --> L["useCanvasComments + GraphCanvas pins"]
+    H --> C["RecordCommentsCards"]
+```
+
+- **Read and write rule.** Reading and commenting follow the record's own visibility (`ArtefactResolver`, so a hidden record answers 404 and a module that is off answers 404) and the project view right; a provider cannot loosen it. Editing is the author only; deleting another person's comment and moving their pin need `manage` on the type. Every change is audited by id and count, never text, and comment text is searchable only when a person asks (`SearchComments` over the shared table with a `where` on the type).
+- **Anchors.** A pin is anchored to a record key (`node`, `edge`: for the architecture diagram an element id placed on it and a connection id), never a canvas id, validated by `validate_anchor`. A pin keeps its last position, so one whose anchor leaves the drawing stays where it was and is flagged.
+- **What the module still does.** Opt each type in; if its list endpoint is probed, serve `GET`/`POST <kind>/{id}/comments` under its own path (the architecture module's `comments.add_comment_routes` does); call `record_comments.forget_record_comments` where a record is deleted; carry `comments` and `comment_pins` in its bundle rows with `services.bundle_comments` (`export_comments`, `import_comments`) and remove them in its template reset (`strip_comments`); add the shared comment table to the type's `SearchComments`; and generate threads in its perf generator.
+- **Not built.** File attachments on these comments, notifications, unread markers, mentions and a live channel; the older module-local comment tables are unchanged.
+
+### 4l9. Baselines: records in a snapshot
+
+A baseline (`baselines`, `baseline_items`) holds more than requirements. `Baseline.kind` is `stage` (written when a stage enters a locked phase; names the stage and, for a component's own track, the component) or `manual` (taken on request, names no stage, approves and locks nothing). A `BaselineItem` has an `item_type`: `requirement` keeps its requirement and version columns, and any other type is a module's registered artefact type carrying a JSON `snapshot`. A module opts a type in with `ModuleDefinition.baseline_snapshots[type] = BaselineSnapshotProvider(snapshot, permission)`; it writes no table, route or core code.
+
+```mermaid
+flowchart LR
+    ST["Stage enters a locked phase"] --> B["services.baseline"]
+    MN["POST projects/id/baselines"] --> B
+    B --> RQ["Requirements: version rows"]
+    B --> P["BaselineSnapshotProvider.snapshot<br/>per enabled module type"]
+    RQ --> I["baseline_items"]
+    P --> I
+    I --> E["Project bundle<br/>module_items: snapshot only"]
+```
+
+- **When a provider runs.** For every baseline of a project where its module is on (`is_module_enabled_for_project`), inside the caller's transaction, so a failure stores no baseline. It receives a `BaselineSnapshotContext` (`kind`, `stage_id`, `component_id`, `actor_id`); a type whose records do not belong to a component returns nothing when `component_id` is set, so the project-wide baseline is the only one that holds them.
+- **Manual baselines.** `POST /projects/{id}/baselines` takes a `label` and optionally `item_types`; the default is every type the person may snapshot (`services.baseline.manual_baseline_types`): `requirement` for someone who manages the project, and each module type whose `permission` atom they hold (a server administrator gets no extra). `GET` lists baselines with per-type counts only; the content is read through the owning module's own routes, because its visibility is that module's rule.
+- **What a snapshot may hold.** A self-contained JSON copy, so the baseline survives the record changing or being deleted. A provider reads through its module's visibility rules and never stores a Restricted-classified or personal-data value, since the snapshot travels in the project bundle and outlives the record.
+- **Bundle.** The project bundle carries `kind` and, per baseline, `module_items` (`item_type` and `snapshot`). `item_id` is not exported and is NULL after an import, because the live record has another id there; an item of a type the importing installation does not register is skipped with a warning. Baselines are excluded from templates as before.
+- **Reference provider.** The Architecture module registers four (`modules/architecture/baseline_snapshot.py`): each record's project bundle entry, scrubbed of comments, creators and owners, with a reference to another owner's element written only when the project can read it. It reads and compares them through its own routes (`baseline_routes.py`, `baseline_compare.py`).
+- **Constraints.** `ck_baselines_kind_stage` (a `stage` baseline has a stage; a `manual` one has neither stage nor component), `ck_baseline_items_shape` (requirement columns for `requirement`, a snapshot for anything else) and one item per `(baseline, type, record)`.
+
+### 4l10. The shared graph canvas
+
+A module that draws nodes and connections (a diagram, a workflow, a term graph) uses `frontend/src/components/GraphCanvas.tsx`, never `@xyflow/react`: only `GraphCanvasView.tsx` may import the library (`scripts/check_graph_canvas_imports.py`), so the library is lazy-loaded, labels are always text, and every consumer shares one accessibility and theming rule set. The Architecture module's block and state machine editors are the reference consumers.
+
+- **What it provides, generically.** Selectable nodes and lines, eight attach points per box, bend points, line shapes (Straight, Curved, Spline), line hops, self loops, multi-line labels, containers (`container` / `parentId`: a pool holds lanes, a composite state holds states), marker nodes, node badges, leaders, comment pins and a comment mode, snap to grid, page-level Delete and Undo/Redo keys, and a list view that is the accessible and failed-load fallback.
+- **The consumer owns the data.** Positions, sizes and routes come in as props and go out as events on release. A rule the browser and the server must both apply (line anchors, hops, line paths, box fit, label measure) is written twice, once in `components/graph*.ts` and once in the module's Python, and pinned by one shared JSON cases file that the Python test regenerates (`UPDATE_SHAPE_CASES=1`); change both together.
+- **A missing capability is added to `GraphCanvas` for every consumer**, never as a module-specific branch, the same rule as the registration extension points above.
 
 ### 4l7. Activity kinds and the History Type list
 
@@ -3357,7 +3416,7 @@ component, never an edit to a core file.
 **Scaling probe.** Each type also registers a `ScalingProbe` (`ModuleDefinition.scaling_probes`, or a `no_scaling_probe`
 reason): its list path and a `create(api, project_id, start, count)` that makes records through the real create
 endpoint. `backend/tests/test_scaling_shapes.py` fills a project with a few and then more records and fails if the
-statements behind the type's list, detail, comments, link graph or project bundle export grow with them (a lookup per row). A module's export reads its records' tags, attachments, versions and links in bulk first (`prime_record_tag_names`, `prime_file_links`, `prime_current_versions`, `prime_links`) so its per-record code stays cheap. Growth that is
+statements behind the type's list, detail, comments, link graph or project bundle export grow with them (a lookup per row). A module's export reads its records' tags, attachments, versions and links in bulk first (`prime_record_tag_names`, `prime_file_links`, `prime_current_versions`, `prime_links`) so its per-record code stays cheap. The `api` a probe receives offers `post`, `put` and `get` (JSON in and out, a failure raises); a probe's last `post` must be the request that creates the record under test, because `test_creatable_record_types.py` runs that one as another person, so any `put` that shapes the data comes before it. Growth that is
 known and tracked is listed in that test's `KNOWN_GROWING`, strict both ways, so the list shrinks as fixes land.
 
 **Perf generator.** Each type also registers a `PerfDatasetGenerator` in `ModuleDefinition.perf_generators` (or a `no_perf_generator` reason), so the performance tooling's dataset tiers scale it. Build it from `services/perf_dataset/records.py` (`RecordBatch`, `add_comments`, `add_tags`, `link_to_earlier`) and add its ratio to `perf/datasets/profiles.yaml`; `backend/tests/test_perf_dataset.py` fails for a type with none, and its parity test compares the generated rows with an API-created one.

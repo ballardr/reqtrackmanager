@@ -6,48 +6,39 @@
  * Principle 11 already applies to grouped downloads, extended here to any
  * pair (or small group) of secondary actions that would otherwise sit on
  * screen together as separate, permanently-visible buttons competing for
- * the same row. See `docs/ux-style-guide.md`'s "Pattern: action menu" and
- * "Org Admin: Users/Groups, org-level
- * actions..." section — first call site is `OrgAdminPage.tsx`'s Overview
- * group, combining "Rename" and "Export {org} bundle" behind one trigger
- * instead of two adjacent buttons plus an always-visible rename input.
+ * the same row. See `docs/ux-style-guide.md`'s "Pattern: action menu".
  *
  * Design/implementation notes:
  * - Reuses `Popover` as the anchored, positioned, focus-trapped/restored
  *   container (`dialogA11y.ts`) rather than reinventing anchoring —
  *   the same reuse `SplitButtonTrigger` already makes for its own revealed
- *   alternatives list.
+ *   alternatives list. The popover closes on a click outside it (including
+ *   one on a diagram canvas), on Escape and on Tab.
  * - Record detail pages put this menu in `RecordHeader`, where it holds the
  *   record's object actions even when there is only one (style guide "Pattern:
  *   record header and object actions"); the usual two-or-more floor is waived
  *   there so the position never changes with permissions.
- * - `role="menu"` on the menu container and `role="menuitem"` on each
- * action, as required — `Popover`'s root keeps its
- *   existing `role="dialog"`/`aria-label`, so this nests a real ARIA menu
- *   inside it rather than changing `Popover` itself, which other callers
- *   (that aren't menus at all, e.g. "New group"'s create form) shouldn't
- *   be forced to inherit menu semantics from.
- * - Each item is a real, individually focusable `<button>`, so Tab/Shift+Tab
- *   moves between them and Escape/outside-click closes the menu (both via
- *   `Popover`'s shared `dialogA11y` hook). A short flat menu relies on that
- *   alone. A menu with a submenu (an item carrying `children`) also gets the
- *   WAI-ARIA menu keys, because a submenu cannot be reached or left without
- *   them: Up/Down/Home/End move within a level, Right (or Enter, Space, click)
- *   opens a submenu and focuses its first item, Left or Escape closes it and
- *   returns to its parent (Escape closes only the submenu, not the menu; with focus on an
- *   open parent it also closes only the submenu).
- *   Menus without a submenu are unchanged.
- * - A submenu opens on mouse hover after a short intent delay (so a diagonal
- *   move toward it does not close it), and on click or the keys above (a
- *   hover-only submenu cannot be opened on a touch screen or from the
- *   keyboard). It sits beside its parent (on the side with room) and, on a
- *   narrow screen, inline beneath it. One level only: a submenu item's own
- *   `children` are ignored.
+ * - `role="menu"` on the menu container and `role="menuitem"` on each row;
+ *   `Popover`'s root keeps its `role="dialog"`/`aria-label`, so this nests a real
+ *   ARIA menu inside it rather than changing `Popover` itself, which other
+ *   callers (that aren't menus at all) shouldn't inherit menu semantics from.
+ * - A row is a plain text row (class `menu-item`), not a `btn`: no border or fill
+ *   at rest, a tint on hover and focus, danger as coloured text.
+ * - A menu with more than one level is a tree, not a flat list and not a side
+ *   flyout: an item carrying `children`, or a run of more than one item with
+ *   the same `group`, is a parent row (chevron, `aria-expanded`) that expands in
+ *   place, its rows in a labelled `role="group"` indented under a guide line, to
+ *   three levels. A group holding one item stays a heading over that item; a
+ *   menu with neither stays flat. The first parent starts open.
+ * - Keys (every menu): Up/Down/Home/End move through the visible rows; Right on a
+ *   parent opens it and moves to its first row; Left closes an open parent, or the
+ *   level the focus is in, and returns to its parent; Escape closes the level the
+ *   focus is in (not the menu), and the menu itself when the focus is not in a level; Enter, Space and a click open or close a parent; Tab closes the menu.
  */
 import type { ReactNode } from "react";
 import { ChevronRight, MoreVertical } from "lucide-react";
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 
 import { Popover } from "./Popover";
 
@@ -65,27 +56,30 @@ export interface ActionMenuItem {
    * string label. Never relies on position, since the item list can change
    * while the menu is open. */
   key?: string;
-  /** A heading shown above this item when it starts a run of items with the same group (items of one group sit together). */
+  /** Items of one group sit together. A run of several becomes a parent row named for the group; a single item keeps
+   * the group's name as a heading above it. */
   group?: string;
   /** Muted words after the label, part of the item's name ("CSV re-imports"). */
   hint?: string;
   /** Tooltip, e.g. the full name of an acronym label. */
   title?: string;
-  /** Makes this item a parent: it opens a second list of these items (one level only; their own `children` are
-   * ignored) instead of acting itself, so its own `onSelect` is not called. */
+  /** Makes the item draggable: called when a drag starts, to set the data a drop target reads (a palette-style menu whose
+   * entries can also be dropped on a canvas). The menu closes when the drag ends, not when it starts, so the source stays
+   * mounted for the whole drag. Ignored on a submenu item and on a disabled one. */
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
+  /** Makes this item a parent: it expands in place to show these items (to three levels in all; a third-level item's
+   * own `children` are ignored) instead of acting itself, so its own `onSelect` is not called. */
   children?: ActionMenuItem[];
 }
 
-/** Milliseconds the pointer must rest on a parent before its submenu opens, and before one opened that way closes
- * after the pointer leaves, so a diagonal move toward the submenu does not drop it. */
-const HOVER_INTENT_MS = 150;
-/** Below this viewport width a submenu opens inline beneath its parent, not beside it. */
-const NARROW_VIEWPORT_PX = 640;
-const SUBMENU_GAP_PX = 2;
-const SUBMENU_MARGIN_PX = 8;
+/** Levels of a menu tree: a group, an item with children, and the items under it. */
+const MAX_LEVELS = 3;
 
-/** How a submenu came to be open: a hover one closes when the pointer leaves, the others stay until closed. */
-type OpenedBy = "hover" | "click" | "key";
+/** A row of the menu as drawn: a leaf (an action), a parent that expands, or a heading over a lone grouped item. */
+type MenuNode =
+  | { kind: "leaf"; key: string; item: ActionMenuItem }
+  | { kind: "parent"; key: string; label: ReactNode; name: string; icon?: ReactNode; children: MenuNode[] }
+  | { kind: "heading"; key: string; label: string };
 
 const itemKeyOf = (item: ActionMenuItem, index: number): string =>
   item.key ?? (typeof item.label === "string" ? item.label : String(index));
@@ -150,7 +144,7 @@ export function ActionMenu({
         {triggerText && <span style={{ marginLeft: "var(--space-1)" }}>{triggerText}</span>}
       </button>
       {open && (
-        <Popover anchorRef={triggerRef} fit title={triggerLabel} onClose={() => setOpen(false)}>
+        <Popover anchorRef={triggerRef} fit menu title={triggerLabel} onClose={() => setOpen(false)}>
           <ActionMenuList label={triggerLabel} items={items} footer={footer} onSelect={() => setOpen(false)} />
         </Popover>
       )}
@@ -159,13 +153,54 @@ export function ActionMenu({
 }
 
 /**
+ * Turns the items into the rows drawn: an item with `children` and a run of several items sharing a `group` become
+ * parents (down to `MAX_LEVELS`), a lone grouped item keeps its group as a heading, anything else is a leaf.
+ *
+ * @param items - The items of one level, in display order.
+ * @param level - 1 for the menu's own items; a group is only formed there.
+ * @param prefix - The parent's key, so a row's key is unique across the whole tree.
+ * @returns The rows of that level.
+ */
+function buildNodes(items: ActionMenuItem[], level: number, prefix: string): MenuNode[] {
+  const nodes: MenuNode[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const item = items[i];
+    const key = `${prefix}${itemKeyOf(item, i)}`;
+    if (item.children && item.children.length > 0 && level < MAX_LEVELS) {
+      const name = typeof item.label === "string" ? item.label : key;
+      nodes.push({ kind: "parent", key, label: item.label, name, icon: item.icon, children: buildNodes(item.children, level + 1, `${key}/`) });
+      i += 1;
+    } else if (level === 1 && item.group) {
+      let end = i;
+      while (end < items.length && items[end].group === item.group) end += 1;
+      const run = items.slice(i, end).map((member) => ({ ...member, group: undefined }));
+      if (run.length > 1) {
+        const groupKey = `${prefix}group:${item.group}`;
+        nodes.push({ kind: "parent", key: groupKey, label: item.group, name: item.group, children: buildNodes(run, level + 1, `${groupKey}/`) });
+      } else {
+        nodes.push({ kind: "heading", key: `${key}#heading`, label: item.group }, { kind: "leaf", key, item: run[0] });
+      }
+      i = end;
+    } else {
+      nodes.push({ kind: "leaf", key, item });
+      i += 1;
+    }
+  }
+  return nodes;
+}
+
+/** The key of the first parent at the top level, which starts open so the menu is not a column of closed rows. */
+const firstParentKey = (nodes: MenuNode[]): string | undefined => nodes.find((n) => n.kind === "parent")?.key;
+
+/**
  * The `role="menu"` list of items both `ActionMenu` (kebab) and `MenuButton` (labelled button) show in
  * their `Popover`. Selecting an item calls `onSelect` (the caller closes the popover) and then the item's
- * own `onSelect`.
+ * own `onSelect`; Tab calls `onSelect` alone, which closes the menu.
  *
  * @param label - The menu's accessible name.
  * @param items - The rows, in display order.
- * @param onSelect - Called first when any item is chosen.
+ * @param onSelect - Called first when any item is chosen, and when Tab leaves the menu.
  * @param footer - Muted text under the items.
  */
 export function ActionMenuList({
@@ -179,216 +214,160 @@ export function ActionMenuList({
   onSelect: () => void;
   footer?: ReactNode;
 }) {
-  const [open, setOpen] = useState<{ key: string; by: OpenedBy } | null>(null);
-  const hoverTimer = useRef<number | undefined>(undefined);
-  const hasSubmenu = items.some((item) => item.children && item.children.length > 0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const nodes = buildNodes(items, 1, "");
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(firstParentKey(nodes) ? [firstParentKey(nodes) as string] : []));
+  const focusInto = useRef<string | null>(null);
 
-  const clearHoverTimer = useCallback(() => window.clearTimeout(hoverTimer.current), []);
-  useEffect(() => clearHoverTimer, [clearHoverTimer]);
-
-  /** Moves the pointer onto a row: a parent opens after the intent delay, any other row closes a hover-opened submenu. */
-  function hoverRow(key: string | null) {
-    if (!hasSubmenu) return;
-    clearHoverTimer();
-    hoverTimer.current = window.setTimeout(() => {
-      setOpen((current) => {
-        if (key) return current?.key === key ? current : { key, by: "hover" };
-        return current?.by === "hover" ? null : current;
-      });
-    }, HOVER_INTENT_MS);
+  function setOpen(key: string, open: boolean) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   }
 
-  function leaveRow(key: string) {
-    clearHoverTimer();
-    hoverTimer.current = window.setTimeout(() => {
-      setOpen((current) => (current?.key === key && current.by === "hover" ? null : current));
-    }, HOVER_INTENT_MS);
+  /** Moves focus to the first row of a parent's group, which must be in the document. */
+  function focusFirstRowOf(parentKey: string) {
+    const group = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-group-key]") ?? []).find((g) => g.dataset.groupKey === parentKey);
+    group?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
   }
 
-  /** The menu keys, only for a menu that has a submenu (a flat menu relies on Tab, see the module comment). */
+  // After a key opens a parent, its first row takes focus once the group is in the document.
+  useEffect(() => {
+    if (focusInto.current === null) return;
+    focusFirstRowOf(focusInto.current);
+    focusInto.current = null;
+  }, [expanded]);
+
+  /** The menu keys (see the module comment). Events from outside a row (the footer) are ignored. */
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (!hasSubmenu) return;
     const target = e.target as HTMLElement;
     if (target.getAttribute("role") !== "menuitem") return;
-    const level = target.closest<HTMLElement>('[role="menu"]');
-    if (!level) return;
-    const inSubmenu = level !== e.currentTarget;
-    const siblings = Array.from(level.querySelectorAll<HTMLElement>(':scope > [role="menuitem"], :scope > .menu-submenu-host > [role="menuitem"]'));
-    const at = siblings.indexOf(target);
+    if (e.key === "Tab") {
+      e.preventDefault();
+      onSelect();
+      return;
+    }
+    const rows = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+    const at = rows.indexOf(target);
     const move = (to: number) => {
       e.preventDefault();
-      siblings[(to + siblings.length) % siblings.length]?.focus();
+      rows[(to + rows.length) % rows.length]?.focus();
+    };
+    const group = target.closest<HTMLElement>("[data-group-key]");
+    const parentKey = target.dataset.parentKey;
+    const isOpenParent = parentKey !== undefined && target.getAttribute("aria-expanded") === "true";
+    /** Closes the level the focus is in and returns to its parent row; true when there was one to close. */
+    const closeLevel = (closeOpenParent: boolean): boolean => {
+      if (closeOpenParent && isOpenParent && parentKey !== undefined) {
+        setOpen(parentKey, false);
+        return true;
+      }
+      if (!group?.dataset.groupKey) return false;
+      setOpen(group.dataset.groupKey, false);
+      Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-parent-key]") ?? []).find((p) => p.dataset.parentKey === group.dataset.groupKey)?.focus();
+      return true;
     };
     if (e.key === "ArrowDown") move(at + 1);
     else if (e.key === "ArrowUp") move(at - 1);
     else if (e.key === "Home") move(0);
-    else if (e.key === "End") move(siblings.length - 1);
-    else if (e.key === "ArrowRight" && !inSubmenu && target.getAttribute("aria-haspopup") === "menu") {
+    else if (e.key === "End") move(rows.length - 1);
+    else if (e.key === "ArrowRight" && parentKey !== undefined) {
       e.preventDefault();
-      setOpen({ key: target.dataset.itemKey ?? "", by: "key" });
-    } else if (e.key === "Escape" && !inSubmenu && target.getAttribute("aria-expanded") === "true") {
-      // Focus is on a parent whose submenu is open (opened by click or hover): Escape closes that first.
+      if (isOpenParent) focusFirstRowOf(parentKey);
+      else {
+        focusInto.current = parentKey;
+        setOpen(parentKey, true);
+      }
+    } else if ((e.key === "ArrowLeft" || e.key === "Escape") && closeLevel(e.key === "ArrowLeft")) {
+      // Only the level closes: stopping the event keeps the dialog's own Escape handler from closing the menu too.
       e.preventDefault();
       e.stopPropagation();
-      setOpen(null);
-    } else if ((e.key === "ArrowLeft" || e.key === "Escape") && inSubmenu) {
-      // Only the submenu closes: stopping the event keeps the dialog's own Escape handler from closing the menu too.
-      e.preventDefault();
-      e.stopPropagation();
-      const parent = level.parentElement?.querySelector<HTMLElement>(':scope > [role="menuitem"]');
-      setOpen(null);
-      parent?.focus();
     }
   }
 
   return (
-    <div role="menu" aria-label={label} className="stack" style={{ gap: "0.15rem", minWidth: 180 }} onKeyDown={onKeyDown}>
-      {items.map((item, i) => {
-        // Keyed by label, not index: a caller's item list can change while the menu is open (Org Admin adds
-        // "Rename" once its settings load), and an index key made React hand one item's button — and click
-        // handler — to another, so clicking "Export" opened Rename (found 2026-10-04 via the e2e suite).
-        const key = itemKeyOf(item, i);
-        return (
-          <Fragment key={key}>
-            {item.group && item.group !== items[i - 1]?.group && (
-              <span role="presentation" className="menu-group-label">{item.group}</span>
-            )}
-            {item.children && item.children.length > 0 ? (
-              <SubmenuItem
-                item={item}
-                itemKey={key}
-                isOpen={open?.key === key}
-                focusFirst={open?.key === key && open.by === "key"}
-                onHover={() => hoverRow(key)}
-                onLeave={() => leaveRow(key)}
-                onOpen={(by) => setOpen({ key, by })}
-                onSelect={onSelect}
-              />
-            ) : (
-              <button
-                type="button"
-                role="menuitem"
-                className={item.danger ? "btn btn-danger menu-item" : "btn menu-item"}
-                title={item.title}
-                disabled={item.disabled}
-                onMouseEnter={() => hoverRow(null)}
-                onClick={() => {
-                  onSelect();
-                  item.onSelect();
-                }}
-              >
-                {item.icon} {item.label}
-                {item.hint && <span className="text-muted menu-item-hint">{item.hint}</span>}
-              </button>
-            )}
-          </Fragment>
-        );
-      })}
+    <div ref={rootRef} role="menu" aria-label={label} className="menu-list" onKeyDown={onKeyDown}>
+      <MenuRows nodes={nodes} expanded={expanded} onToggle={(key) => setOpen(key, !expanded.has(key))} onSelect={onSelect} />
       {footer && <span role="presentation" className="menu-footer text-muted">{footer}</span>}
     </div>
   );
 }
 
 /**
- * A menu row that opens a second list (`ActionMenuItem.children`). The parent is a `menuitem` with
- * `aria-haspopup="menu"`/`aria-expanded`; the list is a `role="menu"` inside the same host element, so the
- * pointer moving into it stays within the host and the popover's outside-click and focus trap still cover it.
- * Beside the parent on a wide screen (on the side with room), inline beneath it on a narrow one.
+ * Draws one level of the menu: leaves as text rows, headings, and each parent as a row with its children in a
+ * labelled group beneath it while it is open.
+ *
+ * @param nodes - The rows of this level.
+ * @param expanded - The keys of the parents that are open.
+ * @param onToggle - Called with a parent's key when its row is clicked.
+ * @param onSelect - Called first when a leaf is chosen.
  */
-function SubmenuItem({
-  item, itemKey, isOpen, focusFirst, onHover, onLeave, onOpen, onSelect,
+function MenuRows({
+  nodes, expanded, onToggle, onSelect,
 }: {
-  item: ActionMenuItem;
-  itemKey: string;
-  isOpen: boolean;
-  focusFirst: boolean;
-  onHover: () => void;
-  onLeave: () => void;
-  onOpen: (by: OpenedBy) => void;
+  nodes: MenuNode[];
+  expanded: ReadonlySet<string>;
+  onToggle: (key: string) => void;
   onSelect: () => void;
 }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const listId = useId();
-  const name = typeof item.label === "string" ? item.label : itemKey;
-
-  // Place the list beside the parent, flipped to the left when the right has no room, kept inside the viewport.
-  useLayoutEffect(() => {
-    if (!isOpen) return;
-    function place() {
-      const host = hostRef.current;
-      const list = listRef.current;
-      if (!host || !list) return;
-      if (window.innerWidth < NARROW_VIEWPORT_PX) {
-        list.style.position = "static";
-        list.style.visibility = "visible";
-        return;
-      }
-      const parent = host.getBoundingClientRect();
-      const own = list.getBoundingClientRect();
-      const fitsRight = parent.right + SUBMENU_GAP_PX + own.width <= window.innerWidth - SUBMENU_MARGIN_PX;
-      const left = fitsRight ? parent.right + SUBMENU_GAP_PX : Math.max(SUBMENU_MARGIN_PX, parent.left - SUBMENU_GAP_PX - own.width);
-      const top = Math.max(SUBMENU_MARGIN_PX, Math.min(parent.top, window.innerHeight - own.height - SUBMENU_MARGIN_PX));
-      list.style.position = "fixed";
-      list.style.left = `${left}px`;
-      list.style.top = `${top}px`;
-      list.style.visibility = "visible";
-    }
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && focusFirst) listRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-  }, [isOpen, focusFirst]);
-
+  const idPrefix = useId();
   return (
-    <div ref={hostRef} className="menu-submenu-host" onMouseEnter={onHover} onMouseLeave={onLeave}>
-      <button
-        type="button"
-        role="menuitem"
-        className="btn menu-item menu-submenu-parent"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        aria-controls={isOpen ? listId : undefined}
-        data-item-key={itemKey}
-        onClick={() => onOpen("click")}
-      >
-        {item.icon} {item.label}
-        <ChevronRight aria-hidden="true" size={14} className="menu-submenu-chevron" />
-      </button>
-      {isOpen && (
-        <div
-          ref={listRef}
-          id={listId}
-          role="menu"
-          aria-label={name}
-          className="card stack menu-submenu"
-          style={{ gap: "0.15rem", visibility: "hidden" }}
-        >
-          {(item.children ?? []).map((child, j) => (
+    <>
+      {nodes.map((node) => {
+        // Keyed by label, not index: a caller's item list can change while the menu is open (Org Admin adds
+        // "Rename" once its settings load), and an index key made React hand one item's button — and click
+        // handler — to another, so clicking "Export" opened Rename (found 2026-10-04 via the e2e suite).
+        if (node.kind === "heading") return <span key={node.key} role="presentation" className="menu-group-label">{node.label}</span>;
+        if (node.kind === "leaf") {
+          const { item } = node;
+          return (
             <button
-              key={itemKeyOf(child, j)}
+              key={node.key}
               type="button"
               role="menuitem"
-              className={child.danger ? "btn btn-danger menu-item" : "btn menu-item"}
-              title={child.title}
+              className={item.danger ? "menu-item menu-item-danger" : "menu-item"}
+              title={item.title}
+              disabled={item.disabled}
+              draggable={item.onDragStart !== undefined && !item.disabled}
+              onDragStart={item.onDragStart}
+              onDragEnd={item.onDragStart ? onSelect : undefined}
               onClick={() => {
                 onSelect();
-                child.onSelect();
+                item.onSelect();
               }}
             >
-              {child.icon} {child.label}
-              {child.hint && <span className="text-muted menu-item-hint">{child.hint}</span>}
+              {item.icon} {item.label}
+              {item.hint && <span className="text-muted menu-item-hint">{item.hint}</span>}
             </button>
-          ))}
-        </div>
-      )}
-    </div>
+          );
+        }
+        const isOpen = expanded.has(node.key);
+        const groupId = `${idPrefix}-${node.key.replace(/\s+/g, "_")}`;
+        return (
+          <Fragment key={node.key}>
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item menu-parent"
+              aria-expanded={isOpen}
+              aria-controls={isOpen ? groupId : undefined}
+              data-parent-key={node.key}
+              onClick={() => onToggle(node.key)}
+            >
+              {node.icon} {node.label}
+              <ChevronRight aria-hidden="true" size={14} className="menu-parent-chevron" />
+            </button>
+            {isOpen && (
+              <div id={groupId} role="group" aria-label={node.name} className="menu-tree-group" data-group-key={node.key}>
+                <MenuRows nodes={node.children} expanded={expanded} onToggle={onToggle} onSelect={onSelect} />
+              </div>
+            )}
+          </Fragment>
+        );
+      })}
+    </>
   );
 }

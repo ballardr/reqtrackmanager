@@ -8,7 +8,7 @@
  * `PrincipalFormField`. Every field takes `help` (a `(?)` button revealing what the field means,
  * `FieldHelp`) or, for a self-explanatory field, `helpNotNeeded`.
  */
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
 import { normaliseHexColour } from "../utils/color";
@@ -58,9 +58,11 @@ export function TextField({
  * @param ariaLabel The input's accessible name.
  * @param type The HTML input type (`text`, `number`, `date`, `datetime-local`).
  * @param maxWidth Optional width cap in pixels.
+ * @param commitOnBlur Keeps what is typed in the field and reports it once, when the field loses focus or Enter is pressed,
+ *   so one edit is one change (an edit that is an undo step) rather than one per keystroke.
  */
 export function InlineTextInput({
-  ariaLabel, value, onChange, type = "text", maxWidth, placeholder, disabled,
+  ariaLabel, value, onChange, type = "text", maxWidth, placeholder, disabled, commitOnBlur,
 }: {
   ariaLabel: string;
   value: string;
@@ -69,11 +71,21 @@ export function InlineTextInput({
   maxWidth?: number;
   placeholder?: string;
   disabled?: boolean;
+  commitOnBlur?: boolean;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    setDraft(null);
+    if (draft !== value) onChange(draft);
+  };
   return (
     <input
-      className="input" type={type} style={maxWidth ? { maxWidth } : undefined} value={value} aria-label={ariaLabel}
-      placeholder={placeholder} disabled={disabled} onChange={(e) => onChange(e.target.value)}
+      className="input" type={type} style={maxWidth ? { maxWidth } : undefined} value={commitOnBlur ? draft ?? value : value} aria-label={ariaLabel}
+      placeholder={placeholder} disabled={disabled}
+      onChange={(e) => (commitOnBlur ? setDraft(e.target.value) : onChange(e.target.value))}
+      onBlur={commitOnBlur ? commit : undefined}
+      onKeyDown={commitOnBlur ? (e) => { if (e.key === "Enter") commit(); } : undefined}
     />
   );
 }

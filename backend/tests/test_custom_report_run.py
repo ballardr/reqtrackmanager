@@ -753,7 +753,8 @@ def test_an_organisation_run_lists_each_versioned_record_once(world, db):
 def test_every_versioned_report_type_exposes_its_current_version():
     from app.modules.registry import get_report_field_providers
 
-    versioned = {t: p for t, p in get_report_field_providers().items() if p.where}  # `valid_to IS NULL` marks a versioned type
+    # `valid_to IS NULL` marks a versioned type; another condition (a state is limited to elements the project owns) does not.
+    versioned = {t: p for t, p in get_report_field_providers().items() if any("valid_to" in str(w) for w in p.where)}
     assert "requirement" in versioned and "risk" in versioned
     assert [t for t, p in versioned.items() if p.columns.version is None] == []
 

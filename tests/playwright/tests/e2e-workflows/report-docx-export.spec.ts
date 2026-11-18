@@ -71,12 +71,12 @@ test.describe("Word (DOCX) report export", () => {
 
     await page.getByRole("button", { name: "More formats" }).click();
     const menu = page.getByRole("dialog", { name: "Export" });
-    await expect(menu.getByRole("button", { name: "Download PDF report" })).toHaveCount(0); // PDF has its own primary button
+    await expect(menu.getByRole("menuitem", { name: "Download PDF report" })).toHaveCount(0); // PDF has its own primary button
     for (const name of ["ODT", "HTML", "CSV", "Excel", "ODS"]) {
-      await expect(menu.getByRole("button", { name: `Download ${name} report` })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: `Download ${name} report` })).toBeVisible();
     }
     const downloadPromise = page.waitForEvent("download");
-    await menu.getByRole("button", { name: "Download Word report" }).click();
+    await menu.getByRole("menuitem", { name: "Download Word report" }).click();
     await expectWordFile(await downloadPromise, "-requirements.docx");
   });
 

@@ -2468,6 +2468,361 @@ def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str
     return out
 
 
+def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, int]:
+    """Seeds a small Falcon-3 architecture: the drone as a System with a flight-controller Board (ports on each),
+    a GPS Sensor, a Telemetry Service and a ground-station Service, and the connections between them (SPI, UART,
+    REST API, Power; one left on the "Serial bus" group to show a connection refined later; the airframe's own link to the
+    ground station, realised by the radio's upload), an organisation-owned identity service shared with the project
+    through a collection, a diagram of the airframe with a boundary box for that link and a toggle that hides its sensors, and
+    folders that organise the three lists (Hardware with Boards and Sensors, Software, Buses, Overviews, and the organisation's Shared services).
+    The Board, Sensor and Service types are added to the organisation and drawn with built-in symbols, and the
+    drone with a symbol uploaded to the project's own library. The flight controller is placed in the Avionics component, with
+    one requirement allocated to it and one suggestion dismissed. And a state machine diagram of the flight controller's modes
+    (with a nested Flying state), and a manual baseline of it taken before a later edit.
+    Returns the number of elements, connections, diagrams and state machine diagrams created."""
+    enable_module(headers, org_id, "architecture")
+    base = f"{BASE}/projects/{project_id}/modules/architecture"
+
+    # A new organisation is given neutral element types only (System, Subsystem, Component), so the hardware and software
+    # types this drone needs are added to the organisation first, each drawn with a built-in symbol.
+    org_arch = f"{BASE}/orgs/{org_id}/modules/architecture"
+    org_symbols = {row["name"]: row["id"] for row in httpx.get(f"{org_arch}/symbols", headers=headers, timeout=30).json()}
+    have = {row["name"] for row in httpx.get(f"{org_arch}/element-types", headers=headers, timeout=30).json()}
+    # Software and Hardware are seeded for a new organisation; a type is in the domains it names (none fits every domain).
+    org_domains = {row["name"].lower(): row["id"] for row in httpx.get(f"{org_arch}/domains", headers=headers, timeout=30).json()}
+    for name, shape, domain, symbol_name in (
+        ("Board", "chip", "hardware", "Board"), ("Sensor", "ellipse", "hardware", "Sensor"), ("Service", "hexagon", "software", "Server"),
+    ):
+        if name not in have:
+            created = httpx.post(
+                f"{org_arch}/element-types", headers=headers, timeout=30,
+                json={"name": name, "shape": shape, "domain_ids": [org_domains[domain]], "symbol_id": org_symbols.get(symbol_name)},
+            )
+            created.raise_for_status()
+
+    def effective(path: str) -> dict[str, str]:
+        r = httpx.get(f"{base}/{path}", headers=headers, timeout=30)
+        r.raise_for_status()
+        return {row["name"]: row["id"] for row in r.json()}
+
+    # A connection type's default protocol pre-fills a new connection of that type: the buses and the REST interface below
+    # take it where a protocol is left out. A type that already has one is left alone, so a second run changes nothing.
+    org_connection_types = httpx.get(f"{org_arch}/connection-types", headers=headers, timeout=30).json()
+    for row in org_connection_types:
+        default = {"SPI": "SPI mode 3, 8 MHz", "UART": "UART 115200 baud", "REST API": "HTTPS, JSON"}.get(row["name"])
+        if default and not row["default_protocol"]:
+            httpx.patch(
+                f"{org_arch}/connection-types/{row['id']}", headers=headers, timeout=30, json={"default_protocol": default},
+            ).raise_for_status()
+    element_types, connection_types = effective("element-types"), effective("connection-types")
+
+    def make_folder(url: str, kind: str, name: str, parent: str | None = None) -> str:
+        r = httpx.post(f"{url}/{kind}-folders", headers=headers, timeout=30, json={"name": name, "parent_id": parent})
+        r.raise_for_status()
+        return r.json()["id"]
+
+    # Folders only organise the lists: elements by discipline, the buses and the overview diagrams in a folder each.
+    hardware = make_folder(base, "element", "Hardware")
+    boards = make_folder(base, "element", "Boards", hardware)
+    sensors = make_folder(base, "element", "Sensors", hardware)
+    software = make_folder(base, "element", "Software")
+    buses = make_folder(base, "connection", "Buses")
+    overviews = make_folder(base, "diagram", "Overviews")
+    quadcopter = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" '
+        'stroke-linecap="round"><circle cx="14" cy="14" r="8"/><circle cx="50" cy="14" r="8"/><circle cx="14" cy="50" r="8"/>'
+        '<circle cx="50" cy="50" r="8"/><path d="M20 20l24 24M44 20L20 44"/><rect x="26" y="26" width="12" height="12" rx="2"/></svg>'
+    )
+    uploaded = httpx.post(
+        f"{base}/symbols", headers=headers, timeout=30, data={"name": "Quadcopter"},
+        files={"file": ("quadcopter.svg", quadcopter.encode(), "image/svg+xml")},
+    )
+    uploaded.raise_for_status()
+
+    def element(
+        name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = (), symbol: str | None = None,
+        folder: str | None = None, note: str = "",
+    ) -> dict:
+        r = httpx.post(
+            f"{base}/elements", headers=headers, timeout=30,
+            json={
+                "name": name, "description": description, "display_note": note, "element_type_id": element_types[type_name],
+                "parent_id": parent, "folder_id": folder, "activate": True, "symbol_id": symbol,
+                "ports": [{"name": n, "direction": d, "connection_type_id": connection_types.get(t)} for n, d, t in ports],
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def connect(
+        name: str, type_name: str, source: dict, source_port: str, target: dict, target_port: str, protocol: str | None,
+        folder: str | None = None,
+    ) -> dict:
+        """Creates a connection; a `protocol` of `None` is left out of the request, so the type's default applies."""
+        def port(item: dict, port_name: str) -> str | None:
+            return next((p["id"] for p in item["ports"] if p["name"] == port_name), None)
+
+        r = httpx.post(
+            f"{base}/connections", headers=headers, timeout=30,
+            json={
+                "name": name, "connection_type_id": connection_types[type_name],
+                **({} if protocol is None else {"protocol": protocol}),
+                "source_element_id": source["id"], "source_port_id": port(source, source_port),
+                "target_element_id": target["id"], "target_port_id": port(target, target_port), "activate": True,
+                "folder_id": folder,
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+    drone = element(
+        "Falcon-3 drone", "System", "The inspection drone and its ground segment.", symbol=uploaded.json()["id"],
+    )
+    airframe = element("Airframe electronics", "Subsystem", "Everything that flies.", parent=drone["id"])
+    fc = element(
+        "Flight controller", "Board", "Runs the control loop and the failsafes.", parent=airframe["id"],
+        ports=(("IMU bus", "both", "SPI"), ("GPS link", "in", "UART"), ("Telemetry link", "out", "UART")), folder=boards,
+        note="Control loop and failsafes",
+    )
+    gps = element("GPS receiver", "Sensor", "Position and time.", parent=airframe["id"], ports=(("UART out", "out", "UART"),), folder=sensors,
+                note="Position and time")
+    imu = element("IMU", "Sensor", "Attitude and acceleration.", parent=airframe["id"], ports=(("SPI", "both", "SPI"),), folder=sensors,
+                note="Attitude and acceleration")
+    radio = element(
+        "Telemetry radio", "Board", "Link to the ground station.", parent=airframe["id"],
+        ports=(("UART in", "in", "UART"), ("Downlink", "out", "Ethernet")), folder=boards,
+        note="Link to the ground station",
+    )
+    ground = element("Ground station service", "Service", "Receives telemetry and sends missions.", parent=drone["id"],
+                     ports=(("Telemetry API", "in", "REST API"),),
+                     folder=software, note="Receives telemetry, sends missions")
+    connect("IMU samples", "SPI", imu, "SPI", fc, "IMU bus", None, folder=buses)
+    imu_interrupt = connect("IMU data-ready interrupt", "Serial bus", imu, "", fc, "", "GPIO, active low", folder=buses)
+    connect("Position fixes", "UART", gps, "UART out", fc, "GPS link", "NMEA 0183, 115200 baud", folder=buses)
+    # Typed with the group "Serial bus" only: the physical link is known, the bus is chosen after detailed design.
+    connect("Telemetry out", "Serial bus", fc, "Telemetry link", radio, "UART in", "MAVLink 2", folder=buses)
+    upload = connect("Telemetry upload", "REST API", radio, "Downlink", ground, "Telemetry API", None)
+    # The interface as the layer above declares it (the airframe to the ground station); the radio's upload realises it.
+    downlink = connect("Airframe downlink", "REST API", airframe, "", ground, "Telemetry API", None)
+    httpx.put(
+        f"{base}/connections/{upload['id']}/realisations", headers=headers, timeout=30,
+        json={"version": upload["version"], "outer_connection_ids": [downlink["id"]]},
+    ).raise_for_status()
+
+    # An element the organisation owns, shared with Falcon-3 through a collection, and a connection to it.
+    org_base = f"{BASE}/orgs/{org_id}/modules/architecture"
+    org_types = {r["name"]: r["id"] for r in httpx.get(f"{org_base}/element-types", headers=headers, timeout=30).json()}
+    identity = httpx.post(
+        f"{org_base}/elements", headers=headers, timeout=30,
+        json={"name": "Corporate identity service", "description": "Sign-in for every product.",
+              "element_type_id": org_types["Service"], "activate": True,
+              "folder_id": make_folder(org_base, "element", "Shared services")},
+    )
+    identity.raise_for_status()
+    collection = httpx.post(f"{org_base}/collections", headers=headers, timeout=30, json={"name": "Corporate services"})
+    collection.raise_for_status()
+    collection_url = f"{org_base}/collections/{collection.json()['id']}"
+    httpx.post(
+        f"{collection_url}/members", headers=headers, timeout=30, json={"element_ids": [identity.json()["id"]]},
+    ).raise_for_status()
+    httpx.post(f"{collection_url}/grants", headers=headers, timeout=30, json={"project_id": project_id}).raise_for_status()
+    connect("Operator sign-in", "REST API", ground, "", identity.json(), "", "OpenID Connect")
+
+    # A diagram of the airframe: the sensors on the left, the flight controller and the radio in one row, with a view toggle that
+    # hides the sensors (so the toggle's saved default can be flipped on the page and in a report). Boxes are 160 to 170 units
+    # wide and each line's label needs about 140, so neighbours sit 250 or more apart and no line crosses another.
+    diagram = httpx.post(
+        f"{base}/diagrams", headers=headers, timeout=30,
+        json={"name": "Airframe data flow", "purpose": "How readings reach the ground station.", "activate": True,
+              "scope_element_id": airframe["id"], "connection_detail": True, "line_hops": True, "show_connection_names": True,
+              "folder_id": overviews},
+    )
+    diagram.raise_for_status()
+    placed = diagram.json()
+    boxes = [
+        {"element_id": item["id"], "x": x, "y": y}
+        for item, x, y in ((gps, 0, 0), (imu, 0, 250), (fc, 420, 120), (radio, 840, 120))
+    ]
+    # The airframe's outer connection (to the ground station, outside this diagram's scope) is drawn as a boundary box at the
+    # end of the radio's upload. Two annotations point at a box and at a line (a caution and an information note).
+    placed = httpx.put(
+        f"{base}/diagrams/{placed['id']}/layout", headers=headers, timeout=30,
+        json={
+            "version": placed["version"], "placements": boxes, "boundaries": [{"connection_id": downlink["id"], "x": 1240, "y": 140}],
+            # The interrupt line between the IMU and the flight controller has a route of its own (its connection, two vertices
+            # below both boxes), so it is drawn apart from the SPI bus. The GPS link is drawn as one bowed arc (Curved needs no vertices).
+            "anchors": [{"source_element_id": gps["id"], "target_element_id": fc["id"], "line_shape": "curved"},
+                        {"source_element_id": imu["id"], "target_element_id": fc["id"], "connection_id": imu_interrupt["id"],
+                         "points": [{"x": 200, "y": 380}, {"x": 500, "y": 380}]}],
+            "notes": [
+                {"title": "Redundancy", "text_align": "center",
+                 "text": "Single flight controller.\n\nRedundancy is decided separately.", "x": 380, "y": -140, "width": 250, "height": 90,
+                 "size_mode": "automatic",
+                 "tone": "warning",
+                 "leaders": [{"kind": "element", "element_id": fc["id"], "end_style": "arrow"}]},
+                {"text": "All telemetry leaves the airframe over this link.", "x": 960, "y": 260, "width": 200, "height": 60,
+                 "tone": "info",
+                 "leaders": [{"kind": "connection", "connection_id": upload["id"], "end_style": "dot", "start_style": "none"},
+                             {"kind": "point", "x": 1310, "y": 210, "points": [{"x": 1240, "y": 280}], "line_shape": "spline"}]},
+            ],
+        },
+    )
+    placed.raise_for_status()
+    placed = placed.json()
+    httpx.put(
+        f"{base}/diagrams/{placed['id']}/toggles", headers=headers, timeout=30,
+        json={"version": placed["version"], "toggles": [
+            {"name": "Sensors", "default_on": True, "rule": {"element_type_ids": [element_types["Sensor"]]}},
+        ]},
+    ).raise_for_status()
+
+    # Review comments (saved apart from the layout): a thread pinned on the flight controller's box with a reply, a resolved
+    # free marker on empty canvas, and an ordinary comment on an element's own page.
+    comments = f"{BASE}/projects/{project_id}/artefacts"
+    pinned = httpx.post(
+        f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
+        json={"body": "Should the flight controller have a second IMU bus for redundancy?",
+              "pin": {"anchor_kind": "node", "anchor_key": fc["id"], "x": 580, "y": 110}},
+    )
+    pinned.raise_for_status()
+    thread_pin = pinned.json()["pins"][0]["id"]
+    httpx.post(
+        f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
+        json={"body": "Yes, tracked as a decision; the second bus is a stretch goal.", "pin_id": thread_pin},
+    ).raise_for_status()
+    free = httpx.post(
+        f"{comments}/architecture_diagram/{placed['id']}/comments", headers=headers, timeout=30,
+        json={"body": "No connection to the battery monitor yet.", "pin": {"anchor_kind": "none", "x": 300, "y": 20}},
+    )
+    free.raise_for_status()
+    httpx.patch(
+        f"{comments}/architecture_diagram/{placed['id']}/comment-pins/{free.json()['pins'][-1]['id']}", headers=headers, timeout=30,
+        json={"resolved": True},
+    ).raise_for_status()
+    httpx.post(
+        f"{comments}/architecture_element/{gps['id']}/comments", headers=headers, timeout=30,
+        json={"body": "Confirm the receiver supports the 10 Hz update rate."},
+    ).raise_for_status()
+
+    # The flight controller's operating modes as a state machine diagram: a startup self-test, a composite Flying state
+    # (Armed, Hovering, Returning home) and a Failsafe state, with a self transition and a guarded exit. It is sound (no
+    # error finding), so it is activated.
+    machine = httpx.post(
+        f"{base}/state-machine-diagrams", headers=headers, timeout=30,
+        json={"name": "Flight controller modes", "description": "The modes the flight controller moves between in flight.",
+              "element_id": fc["id"]},
+    )
+    machine.raise_for_status()
+    machine_id, version = machine.json()["id"], machine.json()["version"]
+    states: dict[str, str] = {}
+    # Boxes are 160 to 170 units wide and a line label needs about 140, so states in a row sit 220 or more apart; the
+    # composite state is a frame around its children, and every line runs straight between facing sides.
+    for name, kind, parent, extra in (
+        ("Start", "initial", None, {"x": 0, "y": 190, "width": 20, "height": 20, "label": "Power on", "label_position": "above"}),
+        (
+            "Self-test", "state", None,
+            {"x": 110, "y": 160, "width": 170, "height": 80, "entry_action": "run_checks()", "activity": "wait_for_gps_fix()"},
+        ),
+        ("Flying", "state", None, {"x": 480, "y": 0, "width": 860, "height": 400}),
+        ("Flight start", "initial", "Flying", {"x": 520, "y": 150, "width": 20, "height": 20}),
+        ("Armed", "state", "Flying", {"x": 600, "y": 120, "width": 170, "height": 80, "entry_action": "spin_up_motors()"}),
+        ("Hovering", "state", "Flying", {"x": 960, "y": 120, "width": 170, "height": 80, "activity": "hold_position()"}),
+        ("Returning home", "state", "Flying", {"x": 640, "y": 270, "width": 170, "height": 80, "activity": "navigate_to_home()"}),
+        ("Battery check", "choice", "Flying", {"x": 1027, "y": 290, "width": 36, "height": 36, "label": "Battery low?", "label_position": "below"}),
+        (
+            "Failsafe", "state", None,
+            {"x": 1010, "y": 500, "width": 170, "height": 70, "entry_action": "cut_motors()", "description": "Entered on a sensor fault."},
+        ),
+        ("Landed", "final", None, {"x": 711, "y": 520, "width": 28, "height": 28, "label": "Landed", "label_position": "below"}),
+    ):
+        response = httpx.post(
+            f"{base}/state-machine-diagrams/{machine_id}/states", headers=headers, timeout=30,
+            json={"version": version, "name": name, "kind": kind, "parent_state_id": states[parent] if parent else None, **extra},
+        )
+        response.raise_for_status()
+        states[name] = response.json()["id"]
+        version = response.json()["state_machine_diagram_version"]
+    lines: dict[tuple[str, str], str] = {}
+    for source, target, fields in (
+        ("Start", "Self-test", {}),
+        ("Self-test", "Flying", {"event": "checks passed", "guard": "gps fix"}),
+        ("Flight start", "Armed", {}),
+        ("Armed", "Hovering", {"event": "takeoff", "action": "climb(2 m)"}),
+        ("Hovering", "Hovering", {"event": "position drift", "action": "correct()"}),
+        ("Hovering", "Battery check", {"event": "every 10 s", "source_point": "bottom", "target_point": "top"}),
+        ("Battery check", "Returning home", {"guard": "battery low", "source_point": "left", "target_point": "right"}),
+        # The way back to Hovering runs round the right of the choice through two vertices, so it crosses no other line.
+        ("Battery check", "Hovering", {
+            "guard": "battery ok", "source_point": "right", "target_point": "right",
+            "points": [{"x": 1230, "y": 308}, {"x": 1230, "y": 160}],
+        }),
+        ("Flying", "Failsafe", {"event": "sensor fault", "action": "alert()"}),
+        ("Returning home", "Landed", {"event": "touchdown"}),
+        ("Failsafe", "Landed", {"event": "motors stopped"}),
+    ):
+        response = httpx.post(
+            f"{base}/state-machine-diagrams/{machine_id}/transitions", headers=headers, timeout=30,
+            json={"version": version, "source_state_id": states[source], "target_state_id": states[target], **fields},
+        )
+        response.raise_for_status()
+        lines[(source, target)] = response.json()["id"]
+        version = response.json()["state_machine_diagram_version"]
+    # Notes explain the drawing: one below the Failsafe state, one in the free space beside the battery check's line, and a
+    # plain caption (no tone) at the top left.
+    noted = httpx.put(
+        f"{base}/state-machine-diagrams/{machine_id}/layout", headers=headers, timeout=30,
+        json={"version": version, "states": [], "transitions": [], "notes": [
+            {"title": "Fail safe", "text": "Cuts the motors and holds the airframe level.", "tone": "danger", "x": 1010, "y": 630,
+             "size_mode": "automatic",
+             "leaders": [{"kind": "state", "state_id": states["Failsafe"], "start_point": "top"}]},
+            {"text": "Checked every 10 s while hovering.", "tone": "info", "x": 820, "y": 205, "width": 170, "height": 68,
+             "size_mode": "manual",
+             "leaders": [{"kind": "transition", "transition_id": lines[("Hovering", "Battery check")]}]},
+            {"text": "Operating modes of the flight controller", "tone": "none", "x": 0, "y": 20, "size_mode": "automatic"},
+        ]},
+    )
+    noted.raise_for_status()
+    version = noted.json()["version"]
+    httpx.post(
+        f"{base}/state-machine-diagrams/{machine_id}/status", headers=headers, timeout=30,
+        json={"version": version, "status": "active"},
+    ).raise_for_status()
+    # Allocation: the flight controller sits in the Avionics component, so its requirements are suggested for it; one
+    # suggestion is accepted (an "Allocated to" link) and another dismissed, so the requirement's Architecture card and the
+    # element's Requirements card show all three lists.
+    components = httpx.get(f"{BASE}/projects/{project_id}/components", headers=headers, timeout=30)
+    components.raise_for_status()
+    avionics = next((c for c in components.json() if c.get("prefix") == "AV"), None)
+    if avionics is not None:
+        place_record(headers, project_id, "architecture_element", fc["id"], [(avionics, None)])
+        suggested = httpx.get(f"{base}/elements/{fc['id']}/allocation", headers=headers, timeout=30)
+        suggested.raise_for_status()
+        pairs = [
+            {"requirement_id": p["requirement"]["id"], "element_id": fc["id"]} for p in suggested.json()["suggested"]
+        ]
+        if pairs:
+            httpx.post(f"{base}/allocation/accept", headers=headers, timeout=30, json={"pairs": pairs[:1]}).raise_for_status()
+        if len(pairs) > 1:
+            httpx.post(f"{base}/allocation/dismiss", headers=headers, timeout=30, json=pairs[1]).raise_for_status()
+    # A manual baseline of the architecture, then a later edit, so the baseline's comparison with the live model has a difference.
+    httpx.post(
+        f"{BASE}/projects/{project_id}/baselines", headers=headers, timeout=30,
+        json={"label": "Falcon-3 architecture, first agreed", "item_types": [
+            "architecture_element", "architecture_connection", "architecture_diagram", "architecture_state_machine_diagram",
+        ]},
+    ).raise_for_status()
+    current = httpx.get(f"{base}/elements/{fc['id']}", headers=headers, timeout=30)
+    current.raise_for_status()
+    httpx.put(
+        f"{base}/elements/{fc['id']}", headers=headers, timeout=30,
+        json={
+            "version": current.json()["version"],
+            "description": "Dual-redundant flight controller; the second channel was added after the first baseline.",
+        },
+    ).raise_for_status()
+    return {"elements": 8, "connections": 6, "diagrams": 1, "state_machine_diagrams": 1}
+
+
 def main() -> None:
     admin_token = login(ADMIN_EMAIL, ADMIN_PASSWORD)
     h_admin = h(admin_token)
@@ -4333,6 +4688,11 @@ def main() -> None:
     for index, requirement in enumerate(list(cloud_reqs.values())[:3]):
         tag_record(h_pm, cloud["id"], "requirement", requirement["id"], [("Security", "Performance", "Availability")[index]])
 
+    print("Seeding System Architecture — enabling the module, then a small Falcon-3 block diagram: a drone System with"
+          " airframe electronics (flight controller, GPS, IMU, telemetry radio) and a ground-station service, joined by"
+          " SPI, UART and REST connections...")
+    architecture_counts = seed_architecture(h_pm, org["id"], drone["id"])
+
     # The project of this product's own records (requirements, decisions, SOC 2 assessment); a module of its own
     # because it loads a large fixture generated from the repository's documents.
     import seed_repo_demo
@@ -4405,6 +4765,11 @@ def main() -> None:
     print("  Evidence: every Falcon-3 requirement has a statement (six with equations); a Pain Point and the flight-controller Risk"
           " carry pictures and an SVG diagram; Pain Points, a Risk and a Decision are linked to requirements, so the"
           " 'Business Requirements Document (with evidence)' layout prints links, pictures and equations")
+    print(f"  System Architecture (enabled org-wide): {architecture_counts['elements']} elements on Falcon-3 in a tree"
+          f" (a System, a Subsystem, boards, sensors and a ground-station service, each with ports) and"
+          f" {architecture_counts['connections']} typed connections between them, and {architecture_counts['diagrams']}"
+          f" diagram of the airframe with a toggle that hides its sensors, and a state machine diagram of the flight controller's"
+          f" modes ({architecture_counts['state_machine_diagrams']})")
     if repo_counts:
         print(f"  {seed_repo_demo.PROJECT_NAME}: " + ", ".join(f"{count} {name}" for name, count in repo_counts.items())
               + " — loaded from this repository's documents (docs/decisions.md, docs/requirements.md, docs/soc2/)")

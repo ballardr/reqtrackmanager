@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { buildLayoutApi } from "../testing/reportLayoutFixtures";
+import { expectHeaderSorts } from "../testing/sortHelpers";
 import { ReportLayoutHistory } from "./ReportLayoutHistory";
 
 /** The History tab of the layout designer: every saved version and a line comparison of any two. */
@@ -84,5 +85,13 @@ export const ListsTheDraftAboveThePublishedVersions: Story = {
     await userEvent.click(within(row).getByRole("button", { name: "Discard draft" }));
     await expect(args.draft?.onDiscard).toHaveBeenCalled();
     await expect(await canvas.findByRole("table", { name: "Versions" })).toBeInTheDocument();
+  },
+};
+
+/** The Versions header orders the saved versions; the first click puts the oldest first. */
+export const VersionHeaderSortsTheVersions: Story = {
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Versions" });
+    await expectHeaderSorts(table, "Versions", ["Version 1", "Version 2 (current)"]);
   },
 };

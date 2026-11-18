@@ -49,3 +49,33 @@ export const HiddenWhenTheProjectHasNoComponents: Story = {
     await expect(within(canvasElement).queryByText("Component and category")).not.toBeInTheDocument();
   },
 };
+
+/** The tree opens with every component expanded; a component's chevron hides and shows its categories. */
+export const CollapsingAComponentHidesItsCategories: Story = {
+  args: { api: buildPlacementsApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Component and category" }));
+    const body = within(document.body);
+    await expect(await body.findByRole("checkbox", { name: "Hardware / Power" })).toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "Collapse Hardware" }));
+    await expect(body.queryByRole("checkbox", { name: "Hardware / Power" })).not.toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "Expand Hardware" }));
+    await expect(await body.findByRole("checkbox", { name: "Hardware / Power" })).toBeInTheDocument();
+  },
+};
+
+/** A search keeps the matching category and the component above it, and hides the rest. */
+export const SearchKeepsTheComponentAboveAMatch: Story = {
+  args: { api: buildPlacementsApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Component and category" }));
+    const body = within(document.body);
+    await userEvent.type(await body.findByRole("searchbox"), "Cool");
+    await expect(await body.findByRole("checkbox", { name: "Hardware / Cooling" })).toBeInTheDocument();
+    await expect(body.getByText("Hardware")).toBeInTheDocument();
+    await expect(body.queryByRole("checkbox", { name: "Software" })).not.toBeInTheDocument();
+    await expect(body.queryByRole("checkbox", { name: "Hardware / Power" })).not.toBeInTheDocument();
+  },
+};

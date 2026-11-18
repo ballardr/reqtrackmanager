@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ImportedPeopleList } from "../api/types";
+import { expectHeaderSorts } from "../testing/sortHelpers";
 import { withToast } from "../testing/storybook-helpers";
 import { ImportedPeoplePanel } from "./ImportedPeoplePanel";
 
@@ -83,5 +84,14 @@ export const Empty: Story = {
   },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText("No imported people.")).toBeInTheDocument();
+  },
+};
+
+/** The Name and Status headers order the people; status puts those due for removal first. */
+export const HeadersSortThePeople: Story = {
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Imported people" });
+    await expectHeaderSorts(table, "Name", ["Alex Morgan", "Former person", "Kim Ito"]);
+    await expectHeaderSorts(table, "Status", ["Due for removal", "In use", "In use"]);
   },
 };

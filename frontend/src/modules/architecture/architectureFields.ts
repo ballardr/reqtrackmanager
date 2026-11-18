@@ -1,0 +1,183 @@
+/**
+ * Module: modules/architecture/architectureFields
+ *
+ * Pure helpers shared by the element and connection forms and pages: blank and from-record field values, the
+ * fields an edit changed (the update sends only those, plus the version lock), the element ids below an element (so a
+ * parent picker never offers a cycle) and the text shown for an element in a picker.
+ */
+import { principalRef } from "../../api/types";
+import type {
+  ArchitectureConnection, ArchitectureDiagram, ArchitectureElement, ConnectionFieldValues, ConnectionType, DiagramFieldValues,
+  ElementFieldValues,
+} from "./types";
+
+/** An empty element form; `elementTypeId` preselects the first type. */
+export function blankElementValues(
+  elementTypeId = "", parentId: string | null = null, folderId: string | null = null,
+): ElementFieldValues {
+  return {
+    name: "", description: "", display_note: "", element_type_id: elementTypeId, parent_id: parentId, folder_id: folderId,
+    owner: null, symbol_id: null,
+  };
+}
+
+/**
+ * The name a newly added element starts with: the type's name and the first number not in use ("Sensor 1", "Sensor 2").
+ *
+ * @param typeName The element type's name.
+ * @param taken The names the project's elements already have.
+ * @returns A name not in `taken` (compared without case).
+ */
+export function defaultElementName(typeName: string, taken: readonly string[]): string {
+  const used = new Set(taken.map((name) => name.trim().toLowerCase()));
+  let n = 1;
+  while (used.has(`${typeName} ${n}`.toLowerCase())) n += 1;
+  return `${typeName} ${n}`;
+}
+
+/** The editable fields of an element, as the form holds them. */
+export function valuesFromElement(element: ArchitectureElement): ElementFieldValues {
+  return {
+    name: element.name, description: element.description, display_note: element.display_note,
+    element_type_id: element.element_type_id,
+    parent_id: element.parent_id, folder_id: element.folder_id, owner: principalRef(element.owner), symbol_id: element.symbol_id,
+  };
+}
+
+/** The fields whose value differs between `before` and `after` (compared by value, owners by type and id). */
+export function diffElementFields(before: ElementFieldValues, after: ElementFieldValues): Partial<ElementFieldValues> {
+  const changed: Partial<ElementFieldValues> = {};
+  (Object.keys(after) as (keyof ElementFieldValues)[]).forEach((key) => {
+    const a = before[key];
+    const b = after[key];
+    const same = key === "owner"
+      ? (a as ElementFieldValues["owner"])?.id === (b as ElementFieldValues["owner"])?.id
+        && (a as ElementFieldValues["owner"])?.type === (b as ElementFieldValues["owner"])?.type
+      : a === b;
+    if (!same) (changed as Record<string, unknown>)[key] = b;
+  });
+  return changed;
+}
+
+/**
+ * An empty connection form.
+ *
+ * @param connectionTypeId The type the connection starts with.
+ * @param sourceElementId The source element, when known.
+ * @param targetElementId The target element, when known.
+ * @param folderId The folder the connection starts in.
+ * @param protocol The protocol to start with: the type's default protocol (`ConnectionType.default_protocol`).
+ */
+export function blankConnectionValues(
+  connectionTypeId = "", sourceElementId = "", targetElementId = "", folderId: string | null = null, protocol = "",
+): ConnectionFieldValues {
+  return {
+    name: "", connection_type_id: connectionTypeId, source_element_id: sourceElementId, source_port_id: null,
+    target_element_id: targetElementId, target_port_id: null, protocol, description: "", folder_id: folderId,
+  };
+}
+
+/**
+ * The Protocol a connection form holds after its type changes. A default protocol pre-fills; it never overwrites what a person
+ * typed: the new type's default replaces the Protocol only while it is empty or still equals the previous type's default.
+ *
+ * @param protocol The Protocol as it stands.
+ * @param previous The type the form had (undefined when none).
+ * @param next The type chosen (undefined when none, which leaves the Protocol alone).
+ * @returns The Protocol to hold.
+ */
+export function protocolAfterTypeChange(protocol: string, previous: ConnectionType | undefined, next: ConnectionType | undefined): string {
+  if (!next) return protocol;
+  const untouched = protocol.trim() === "" || protocol === (previous?.default_protocol ?? "");
+  return untouched ? next.default_protocol : protocol;
+}
+
+/** The editable fields of a connection, as the form holds them. */
+export function valuesFromConnection(connection: ArchitectureConnection): ConnectionFieldValues {
+  return {
+    name: connection.name, connection_type_id: connection.connection_type_id,
+    source_element_id: connection.source_element_id, source_port_id: connection.source_port_id,
+    target_element_id: connection.target_element_id, target_port_id: connection.target_port_id,
+    protocol: connection.protocol, description: connection.description, folder_id: connection.folder_id,
+  };
+}
+
+/** The fields whose value differs between `before` and `after`. */
+export function diffConnectionFields(before: ConnectionFieldValues, after: ConnectionFieldValues): Partial<ConnectionFieldValues> {
+  const changed: Partial<ConnectionFieldValues> = {};
+  (Object.keys(after) as (keyof ConnectionFieldValues)[]).forEach((key) => {
+    if (before[key] !== after[key]) (changed as Record<string, unknown>)[key] = after[key];
+  });
+  return changed;
+}
+
+/** The ids of `elementId` and every element below it in `elements`' parent links (cycle-safe). */
+export function subtreeIds(elementId: string, elements: ArchitectureElement[]): Set<string> {
+  const childrenOf = new Map<string, string[]>();
+  for (const e of elements) {
+    if (e.parent_id) childrenOf.set(e.parent_id, [...(childrenOf.get(e.parent_id) ?? []), e.id]);
+  }
+  const seen = new Set<string>([elementId]);
+  const queue = [elementId];
+  while (queue.length > 0) {
+    for (const child of childrenOf.get(queue.shift() as string) ?? []) {
+      if (!seen.has(child)) {
+        seen.add(child);
+        queue.push(child);
+      }
+    }
+  }
+  return seen;
+}
+
+/** A node of the element tree. */
+export interface ElementTreeNode {
+  id: string;
+  element: ArchitectureElement;
+  children: ElementTreeNode[];
+}
+
+/**
+ * Arranges `elements` as a forest by their parent links. An element whose parent is not in the list (filtered out, or
+ * owned by another project) is a root of the forest, so a filtered list still shows every match.
+ */
+export function buildElementTree(elements: ArchitectureElement[]): ElementTreeNode[] {
+  const nodes = new Map<string, ElementTreeNode>(elements.map((e) => [e.id, { id: e.id, element: e, children: [] }]));
+  const roots: ElementTreeNode[] = [];
+  for (const node of nodes.values()) {
+    const parent = node.element.parent_id ? nodes.get(node.element.parent_id) : undefined;
+    if (parent && parent !== node) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+/** The record-code inputs for an element, so `ScopedRecordCode` qualifies an organisation-owned one by its organisation. */
+export function elementCodeRecord(element: ArchitectureElement) {
+  return {
+    unique_code: element.unique_code, scope: element.organization_id ? "organization" : "project",
+    organization_id: element.organization_id, from_project_code: element.from_project_code,
+  };
+}
+
+/** An empty diagram form; `scopeId` preselects the element the diagram shows the inside of. */
+export function blankDiagramValues(scopeId: string | null = null, folderId: string | null = null): DiagramFieldValues {
+  return { name: "", purpose: "", scope_element_id: scopeId, connection_detail: false, folder_id: folderId };
+}
+
+/** The editable fields of a diagram, as the form holds them. */
+export function valuesFromDiagram(diagram: ArchitectureDiagram): DiagramFieldValues {
+  return {
+    name: diagram.name, purpose: diagram.purpose, scope_element_id: diagram.scope_element_id,
+    connection_detail: diagram.connection_detail, folder_id: diagram.folder_id,
+  };
+}
+
+/** The fields whose value differs between `before` and `after`. */
+export function diffDiagramFields(before: DiagramFieldValues, after: DiagramFieldValues): Partial<DiagramFieldValues> {
+  const changed: Partial<DiagramFieldValues> = {};
+  (Object.keys(after) as (keyof DiagramFieldValues)[]).forEach((key) => {
+    if (before[key] !== after[key]) (changed as Record<string, unknown>)[key] = after[key];
+  });
+  return changed;
+}

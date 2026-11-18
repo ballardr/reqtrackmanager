@@ -178,12 +178,13 @@ async def test_declarative_tool_raises_clean_error_on_missing_required_param():
         await registered_tool.run({})
 
 
-def test_apply_manifest_does_not_reregister_an_unchanged_tool():
+@pytest.mark.asyncio
+async def test_apply_manifest_does_not_reregister_an_unchanged_tool():
     specs = srv._parse_module_tool_manifest([_manifest_entry()])
     srv._apply_module_tool_manifest(specs)
-    registered_before = srv.mcp.local_provider._get_component("tool:fixture_list_things")
+    registered_before = await srv.mcp.local_provider.get_tool("fixture_list_things")
     srv._apply_module_tool_manifest(specs)  # identical manifest again
-    registered_after = srv.mcp.local_provider._get_component("tool:fixture_list_things")
+    registered_after = await srv.mcp.local_provider.get_tool("fixture_list_things")
     assert registered_before is registered_after  # never replaced, so never even a duplicate-warning log
 
 

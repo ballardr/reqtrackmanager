@@ -1,6 +1,6 @@
 # Stages: `base` (application code and dependencies), `backup` (base plus the disaster-recovery tools), `profile`
 # (base plus the profilers, for developers) and `backend`, the last stage and so the default target, which is the API image every existing build produces.
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 # Build identity (GET /api/v1/system/version, app/version.py): supplied via
 # --build-arg by the docker-build CI job, which already computes a
@@ -23,8 +23,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc curl zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
+# pip is removed once the dependencies are installed: the base image's pip vendors msgpack, urllib3 and setuptools
+# copies that Trivy flags (HIGH), and no release of pip is free of them. A derived image that installs a module
+# package restores it first with `python -m ensurepip` (docs/modules.md).
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y pip
 
 COPY . .
 
@@ -68,7 +72,8 @@ CMD ["run"]
 # /profile is created here so a fresh named volume inherits the app user's ownership.
 FROM base AS profile
 USER root
-RUN pip install --no-cache-dir memray==1.20.0 py-spy==0.4.2 \
+RUN python -m ensurepip \
+    && python -m pip install --no-cache-dir memray==1.20.0 py-spy==0.4.2 \
     && mkdir -p /profile && chown app:app /profile \
     && chmod +x /app/scripts/profile_entrypoint.sh
 USER app

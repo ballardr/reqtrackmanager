@@ -7,6 +7,7 @@ Responsibilities:
 - `get_or_404`: one row by primary key, else an HTTP 404 naming the record kind.
 - `project_or_404`: the project, else 404 `Project not found.`
 - `present`: the non-`None` members of a nullable column's values, typed as such.
+- `affected_rows`: how many rows an `UPDATE` or `DELETE` changed, typed as the integer it is.
 
 Design decisions:
 - A route that has already passed its permission dependency still has to prove the row exists
@@ -21,10 +22,11 @@ Dependencies: SQLAlchemy sessions, FastAPI's `HTTPException`, the `Project` mode
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import CursorResult, Result
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -65,3 +67,23 @@ def present(values: Iterable[_T | None]) -> list[_T]:
     narrowing is stated in the type as well as in the SQL.
     """
     return [value for value in values if value is not None]
+
+
+def affected_rows(result: Result[Any]) -> int:
+    """How many rows the `UPDATE` or `DELETE` that produced `result` changed.
+
+    `Session.execute` is typed as returning the general `Result`, which has no row count; a data-changing statement
+    returns the `CursorResult` that has one, so this narrows by checking the type rather than casting.
+
+    Args:
+        result: What `Session.execute` returned for an `update(...)` or `delete(...)`.
+
+    Returns:
+        The number of rows changed; 0 when the driver reports none or cannot tell.
+
+    Raises:
+        TypeError: If `result` came from a statement that does not change data.
+    """
+    if not isinstance(result, CursorResult):
+        raise TypeError("A row count needs the result of an UPDATE or DELETE statement.")
+    return max(result.rowcount, 0)

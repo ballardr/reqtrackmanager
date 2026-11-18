@@ -169,7 +169,7 @@ jobs:
     # kept in lockstep across ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
     # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
     # The story suite (400 files, ~3.3k tests, ~1,900 CPU-seconds) takes
     # ~7 minutes on a 5-core laptop and longer on a 4-vCPU runner; the rest of
     # the job is ~2 minutes. This is headroom — see backend-tests'/e2e-tests'
@@ -208,7 +208,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -613,7 +613,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: tests/playwright/package-lock.json
 
@@ -813,7 +813,7 @@ jobs:
             -e CI=true \
             -e PLAYWRIGHT_JUNIT_OUTPUT_NAME=playwright-report.xml \
             -v "$(git rev-parse --show-toplevel)":/work -w /work/tests/playwright \
-            mcr.microsoft.com/playwright:v1.62.1-noble \
+            mcr.microsoft.com/playwright:v1.65.1-noble \
             npx playwright test --reporter=list,junit
 
       # Same continue-on-error reasoning as backend-tests' Publish/Upload
@@ -887,14 +887,14 @@ jobs:
       # directory's contents — no `tests/container/`/`frontend/` prefix to
       # account for below.
       - name: Download backend test reports
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: backend-test-reports
           path: backend-reports
 
       - name: Download frontend test reports
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: frontend-test-reports
@@ -1013,7 +1013,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       # pip-audit resolves the full dependency tree (so a vulnerable
       # transitive package is found, not only the ones named in the file).
@@ -1206,7 +1206,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3
+        uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
         with:
           versionSpec: "6.x"
 
@@ -1217,7 +1217,7 @@ jobs:
       # and increments from there.
       - name: Determine version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3
+        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
 
       # Feeds the APP_VERSION/GIT_SHA/BUILD_DATE build args of the images that
       # report their own build identity (GET /api/v1/system/version, the nav
@@ -1473,7 +1473,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: docs/website/package-lock.json
       - name: Check documentation references resolve
@@ -1494,13 +1494,13 @@ jobs:
     name: Deploy documentation website to GitHub Pages
     runs-on: ubuntu-latest
     needs: [docs]
-    # Only push a new deployment from main, never from a PR — mirrors
-    # docker-build's push-vs-PR gating above. GitHub Pages must be enabled
+    # Only push a new deployment from main (a push or a manual run), never
+    # from a PR — mirrors docker-build's push-vs-PR gating above. GitHub Pages must be enabled
     # in this repo's own Settings → Pages (source: "GitHub Actions") before
     # this job can succeed — a repo-admin action outside git/CI that CI
     # itself cannot perform; until it's enabled, this job fails with a
     # clear "Pages not enabled" error, which is expected, not a bug here.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
     permissions:
       pages: write
@@ -1515,7 +1515,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: docs/website/package-lock.json
       # A separate job has a separate runner/workspace, so `docs` above

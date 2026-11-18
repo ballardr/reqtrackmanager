@@ -84,6 +84,11 @@ class _Recorder(ScalingProbeApi):
         assert resp.status_code in (200, 201), f"POST {path}: {resp.status_code} {resp.text}"
         return resp.json()
 
+    def put(self, path, body=None):
+        resp = self._client.put(f"/api/v1{path}", json=body or {}, headers=self._admin)
+        assert resp.status_code in (200, 201), f"PUT {path}: {resp.status_code} {resp.text}"
+        return resp.json()
+
     def get(self, path):
         resp = self._client.get(f"/api/v1{path}", headers=self._admin)
         assert resp.status_code == 200, f"GET {path}: {resp.status_code} {resp.text}"

@@ -123,13 +123,13 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const exportMenu = page.getByRole("dialog", { name: "Export" });
     const pdfDownloadPromise = page.waitForEvent("download");
-    await exportMenu.getByRole("button", { name: "Download PDF report" }).click();
+    await exportMenu.getByRole("menuitem", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
 
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const csvDownloadPromise = page.waitForEvent("download");
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("menuitem", { name: "Download CSV report" }).click();
     const csvDownload = await csvDownloadPromise;
     expect(csvDownload.suggestedFilename()).toContain("compliance-report.csv");
 
@@ -137,10 +137,10 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const formatMenu = page.getByRole("dialog", { name: "Export" });
     for (const name of ["Word", "ODT", "HTML", "Excel", "ODS"]) {
-      await expect(formatMenu.getByRole("button", { name: `Download ${name} report` })).toBeVisible();
+      await expect(formatMenu.getByRole("menuitem", { name: `Download ${name} report` })).toBeVisible();
     }
     const odtDownloadPromise = page.waitForEvent("download");
-    await formatMenu.getByRole("button", { name: "Download ODT report" }).click();
+    await formatMenu.getByRole("menuitem", { name: "Download ODT report" }).click();
     expect((await odtDownloadPromise).suggestedFilename()).toContain("compliance-report.odt");
 
     // --- Drill into the assignment; the one requirement should be listed.
@@ -336,7 +336,7 @@ test.describe("Compliance Module: project compliance view", () => {
         req.url().includes("requirement_id=")
     );
     await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("menuitem", { name: "Download CSV report" }).click();
     await reportRequestPromise;
   });
 });

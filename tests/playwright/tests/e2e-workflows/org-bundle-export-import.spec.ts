@@ -95,7 +95,7 @@ test.describe("organisation bundle export/import", () => {
       // Import is the second door beside "New organisation": the split button's chevron offers it and it
       // opens its own dialog, scoped here rather than the whole page.
       await page.getByRole("button", { name: "More options" }).click();
-      await page.getByRole("button", { name: "Import organisation" }).click();
+      await page.getByRole("menuitem", { name: "Import organisation" }).click();
       const dialog = page.getByRole("dialog", { name: "Import organisation" });
       await dialog.getByLabel(/Organisation name/).fill(newOrgName);
       const fileInput = dialog.locator('input[type="file"][accept*="zip"]');

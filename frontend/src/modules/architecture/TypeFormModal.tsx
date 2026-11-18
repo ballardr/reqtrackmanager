@@ -1,0 +1,182 @@
+/**
+ * Module: modules/architecture/TypeFormModal
+ *
+ * Create and edit dialog for an element type or a connection type, shared by the project and organisation panels
+ * (and told apart from create by whether `initial` is passed, as the other module forms are). The two kinds share
+ * the name, the domains it is in and the colour pair; an element type adds a shape, a symbol and the connection types it suggests, a
+ * connection type a line style, the groups it sits under and whether it is one-way. Colours are optional and given for the light and the dark theme, so a type stays legible
+ * in both.
+ */
+import { useState } from "react";
+
+import { FormActions } from "../../components/FormActions";
+import { ColorField, ToggleField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { Modal } from "../../components/Modal";
+import { TreeSelectField } from "../../components/TreeSelectField";
+import { labelOptions } from "../../utils/labelOptions";
+import type { TypesScope } from "./ArchitectureTypesPanel";
+import { connectionTypeNodes, cycleReasons } from "./connectionTypeTree";
+import { ARCHITECTURE_HELP } from "./help";
+import { SymbolPicker } from "./SymbolPicker";
+import {
+  ELEMENT_SHAPE_LABEL, LINE_STYLE_LABEL,
+  type ArchitectureDomain, type ArchitectureSymbol, type ConnectionType, type ConnectionTypeValues, type ElementShape,
+  type ElementType, type ElementTypeValues, type LineStyle,
+} from "./types";
+
+/** The fields of either kind in one draft; the unused kind's fields are never sent. */
+interface Draft {
+  name: string;
+  domain_ids: string[];
+  color_light: string;
+  color_dark: string;
+  shape: ElementShape;
+  symbol_id: string | null;
+  line_style: LineStyle;
+  directional: boolean;
+  default_protocol: string;
+  parent_ids: string[];
+  suggested_connection_type_ids: string[];
+}
+
+function blankDraft(): Draft {
+  return {
+    name: "", domain_ids: [], color_light: "", color_dark: "", shape: "rectangle", symbol_id: null,
+    line_style: "solid", directional: true, default_protocol: "", parent_ids: [], suggested_connection_type_ids: [],
+  };
+}
+
+function draftFrom(row: ElementType | ConnectionType): Draft {
+  return {
+    ...blankDraft(),
+    name: row.name, domain_ids: row.domain_ids, color_light: row.color_light ?? "", color_dark: row.color_dark ?? "",
+    ...("shape" in row
+      ? { shape: row.shape, symbol_id: row.symbol_id, suggested_connection_type_ids: row.suggested_connection_type_ids }
+      : { line_style: row.line_style, directional: row.directional, default_protocol: row.default_protocol, parent_ids: row.parent_ids }),
+  };
+}
+
+/**
+ * @param kind Which vocabulary the dialog edits.
+ * @param initial The type being edited; omit to create.
+ * @param symbols The symbols an element type may use (ignored for a connection type).
+ * @param symbolUrl The API path of a symbol's content, for the preview.
+ * @param scope The project or organisation the type belongs to, for the symbol picker's upload.
+ * @param onSymbolsChanged Called after a symbol is uploaded from the picker, so the caller reloads `symbols`.
+ * @param domains The domains the type may be in (the owner's list); none chosen means it fits every domain.
+ * @param connectionTypes The connection types a connection type may sit under, or an element type may suggest.
+ * @param error A save error to show.
+ * @param onSave Called with the values for the kind.
+ */
+export function TypeFormModal({
+  kind, initial, symbols = [], symbolUrl = () => "", scope, onSymbolsChanged, domains = [], connectionTypes = [], error, onCancel, onSave,
+}: {
+  kind: "element" | "connection";
+  initial?: ElementType | ConnectionType;
+  symbols?: ArchitectureSymbol[];
+  symbolUrl?: (symbolId: string) => string;
+  scope?: TypesScope;
+  onSymbolsChanged?: () => void;
+  domains?: ArchitectureDomain[];
+  connectionTypes?: ConnectionType[];
+  error?: string | null;
+  onCancel: () => void;
+  onSave: (values: ElementTypeValues | ConnectionTypeValues) => void;
+}) {
+  const [draft, setDraft] = useState<Draft>(() => (initial ? draftFrom(initial) : blankDraft()));
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
+  const noun = kind === "element" ? "element type" : "connection type";
+
+  function save() {
+    const common = {
+      name: draft.name.trim(), domain_ids: draft.domain_ids,
+      color_light: draft.color_light || null, color_dark: draft.color_dark || null,
+    };
+    onSave(kind === "element"
+      ? { ...common, shape: draft.shape, symbol_id: draft.symbol_id, suggested_connection_type_ids: draft.suggested_connection_type_ids }
+      : {
+        ...common, line_style: draft.line_style, directional: draft.directional, default_protocol: draft.default_protocol.trim(),
+        parent_ids: draft.parent_ids,
+      });
+  }
+
+  return (
+    <Modal title={initial ? `Edit ${initial.name}` : `New ${noun}`} onClose={onCancel} size="lg">
+      <div className="stack">
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Name" value={draft.name} onChange={(value) => set("name", value)} />
+          </FormGridFull>
+          <TreeSelectField
+            help={ARCHITECTURE_HELP.typeDomain} label="Domains" emptyLabel="Any domain" value={draft.domain_ids}
+            onChange={(next) => set("domain_ids", next)}
+            nodes={domains.map((d) => ({ id: d.id, label: d.name, children: [] }))}
+          />
+          {kind === "element" ? (
+            <LabeledSelect
+              help={ARCHITECTURE_HELP.typeShape} label="Shape" value={draft.shape} placeholder={null}
+              onChange={(next) => set("shape", next as ElementShape)} options={labelOptions(ELEMENT_SHAPE_LABEL)}
+            />
+          ) : (
+            <LabeledSelect
+              help={ARCHITECTURE_HELP.connectionLineStyle} label="Line style" value={draft.line_style} placeholder={null}
+              onChange={(next) => set("line_style", next as LineStyle)} options={labelOptions(LINE_STYLE_LABEL)}
+            />
+          )}
+          <ColorField
+            help={ARCHITECTURE_HELP.typeColor} label="Colour (light theme)" value={draft.color_light}
+            onChange={(value) => set("color_light", value)} emptyLabel="Default"
+          />
+          <ColorField
+            help={ARCHITECTURE_HELP.typeColor} label="Colour (dark theme)" value={draft.color_dark}
+            onChange={(value) => set("color_dark", value)} emptyLabel="Default"
+          />
+          {kind === "element" && (
+            <FormGridFull>
+              <SymbolPicker
+                help={ARCHITECTURE_HELP.typeSymbol} label="Symbol" symbols={symbols} value={draft.symbol_id}
+                onChange={(next) => set("symbol_id", next)} urlFor={symbolUrl} emptyLabel="Draw the shape"
+                scope={scope} onSymbolsChanged={onSymbolsChanged}
+              />
+            </FormGridFull>
+          )}
+          {kind === "element" && (
+            <FormGridFull>
+              <TreeSelectField
+                help={ARCHITECTURE_HELP.typeSuggestedConnections} label="Suggested connection types" searchable emptyLabel="None"
+                value={draft.suggested_connection_type_ids} onChange={(next) => set("suggested_connection_type_ids", next)}
+                nodes={connectionTypeNodes(connectionTypes)}
+              />
+            </FormGridFull>
+          )}
+          {kind === "connection" && (
+            <FormGridFull>
+              <TreeSelectField
+                help={ARCHITECTURE_HELP.typeParents} label="Sits under" searchable emptyLabel="Top level"
+                value={draft.parent_ids} onChange={(next) => set("parent_ids", next)}
+                nodes={connectionTypeNodes(connectionTypes, cycleReasons(connectionTypes, initial?.id))}
+              />
+            </FormGridFull>
+          )}
+          {kind === "connection" && (
+            <TextField
+              help={ARCHITECTURE_HELP.connectionDefaultProtocol} label="Default protocol" value={draft.default_protocol}
+              onChange={(value) => set("default_protocol", value)}
+            />
+          )}
+          {kind === "connection" && (
+            <FormGridFull>
+              <ToggleField
+                help={ARCHITECTURE_HELP.connectionDirectional} label="One-way" checked={draft.directional}
+                onChange={(next) => set("directional", next)}
+              />
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={draft.name.trim() === ""} />
+      </div>
+    </Modal>
+  );
+}

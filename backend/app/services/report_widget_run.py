@@ -26,6 +26,9 @@ Design decisions:
   without regard to case, and an empty cell last in either direction. A rating such as "High" therefore sorts
   alphabetically, not by severity; a widget cannot know the order of a report's own scale. A heading the table
   does not have is a warning and is ignored, never an error.
+- **A drawing is a picture.** A section that carries one (`ReportSection.drawing`) gives an `Image` of it, which every
+  renderer allow-lists and draws (vector in PDF and HTML); it takes the full text width, and the layout's own image
+  rules do not apply. A sort on it is ignored with a warning.
 - **Sections the screen hides are included.** `ReportSection.screen` only decides what the Reports page
   shows; a document has no screen, and the PDF of the report always carries them.
 - Cell text is plain; the renderers escape it, as for every other table.
@@ -51,7 +54,7 @@ from app.services.report_framework import (
     apply_usual_widths,
     normalise_metrics,
 )
-from app.services.report_model import Block, Note, Table
+from app.services.report_model import Block, Image, Note, Table
 from app.services.report_widgets import KIND_FIGURES, KIND_NOTES, WidgetInfo, WidgetPart
 
 
@@ -172,6 +175,10 @@ def part_blocks(
         tones = usual = None
     else:
         section = next((s for s in result.sections if s.key == part.key), None)
+        if section is not None and section.drawing:
+            if sort:
+                say("A drawing is not a table, so the sort was ignored.")
+            return [Image(svg=section.drawing, alt=section.title, width=100, width_unit="percent")]
         if section is None or not section.rows or not section.columns:
             return []
         columns, rows, tones, usual = section.columns, section.rows, section.tones, section.usual_widths
@@ -188,7 +195,10 @@ def output_digest(result: ReportResult) -> str:
     A report's rows are its source data as the report states it, so a change in the data changes this.
     """
     metrics = [[m.group, m.label, str(m.value)] for m in normalise_metrics(result.metrics)]
-    sections = [[s.key, s.title, s.columns, s.rows, s.note] for s in result.sections]
+    sections = [
+        [s.key, s.title, s.columns, s.rows, s.note, hashlib.sha256(s.drawing.encode()).hexdigest() if s.drawing else ""]
+        for s in result.sections
+    ]
     payload = json.dumps([result.notes, metrics, sections], sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()
 

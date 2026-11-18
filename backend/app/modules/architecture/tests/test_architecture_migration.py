@@ -1,0 +1,372 @@
+"""Tests for the vocabulary migration (`migrations/0172_architecture_vocabularies.py`): downgrading drops both tables and
+upgrading recreates them and backfills the default types for an organisation that already exists, without doubling the
+types an organisation was already given. A second test covers the record tables of `0173_architecture_records.py`.
+Runs the real migrations and always upgrades back to head."""
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import text
+
+from alembic import command
+from app.database import engine
+from app.modules.architecture.service import DEFAULT_ELEMENT_TYPES
+from tests.conftest import build_alembic_config, create_org_admin_in
+
+#: The flat connection types the vocabulary migration backfills for an existing organisation; the groups a new
+#: organisation is seeded with (`DEFAULT_CONNECTION_TYPES`) are not added to an existing one.
+_BACKFILLED_CONNECTION_TYPES = 14
+
+#: The element types the same migration backfills (its own list as of that release); a new organisation is seeded with
+#: the neutral `DEFAULT_ELEMENT_TYPES` only.
+_BACKFILLED_ELEMENT_TYPES = [
+    "System", "Subsystem", "Component", "Service", "Container", "Package", "Datastore", "Queue", "Board", "Sensor",
+    "Connector", "Enclosure",
+]
+
+
+def _count(table: str, org_id: str) -> int:
+    with engine.connect() as conn:
+        return conn.execute(text(f"SELECT count(*) FROM {table} WHERE organization_id = :o"), {"o": uuid.UUID(org_id)}).scalar_one()
+
+
+def _table_exists(table: str) -> bool:
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar_one() is not None
+
+
+def test_downgrade_drops_the_tables_and_upgrade_backfills_existing_organisations(client, admin_token):
+    org, _token = create_org_admin_in(client, admin_token, "Arch migration org")
+    assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)
+
+    command.downgrade(build_alembic_config(), "0171")
+    try:
+        assert not _table_exists("architecture_element_types")
+        assert not _table_exists("architecture_connection_types")
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+
+    assert _count("architecture_element_types", org["id"]) == len(_BACKFILLED_ELEMENT_TYPES)
+    assert _count("architecture_connection_types", org["id"]) == _BACKFILLED_CONNECTION_TYPES
+    with engine.connect() as conn:
+        names = [r[0] for r in conn.execute(
+            text("SELECT name FROM architecture_element_types WHERE organization_id = :o ORDER BY sort_order"),
+            {"o": uuid.UUID(org["id"])},
+        )]
+    assert names == _BACKFILLED_ELEMENT_TYPES
+
+
+def test_upgrading_twice_does_not_double_the_backfill(client, admin_token):
+    org, _token = create_org_admin_in(client, admin_token, "Arch migration twice")
+    command.downgrade(build_alembic_config(), "0171")
+    command.upgrade(build_alembic_config(), "head")
+    command.downgrade(build_alembic_config(), "0171")
+    command.upgrade(build_alembic_config(), "head")
+    assert _count("architecture_element_types", org["id"]) == len(_BACKFILLED_ELEMENT_TYPES)
+
+
+def test_the_records_migration_drops_and_recreates_the_record_tables_leaving_the_vocabularies(client, admin_token):
+    """Downgrading 0173 removes elements, ports and connections only; upgrading recreates them empty."""
+    org, _token = create_org_admin_in(client, admin_token, "Arch records migration")
+    command.downgrade(build_alembic_config(), "0172")
+    try:
+        for table in ("architecture_elements", "architecture_ports", "architecture_connections"):
+            assert not _table_exists(table)
+        assert _table_exists("architecture_element_types") and _table_exists("architecture_connection_types")
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    for table in ("architecture_elements", "architecture_ports", "architecture_connections"):
+        assert _table_exists(table)
+    assert _count("architecture_element_types", org["id"]) == len(DEFAULT_ELEMENT_TYPES)
+
+
+def test_the_sharing_migration_adds_the_owner_column_and_the_collection_tables_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0174 removes the collection tables, the organisation owner column and organisation-owned elements;
+    upgrading restores the shape. Project-owned elements survive both ways."""
+    from app.modules.architecture.tests._helpers import make_element, make_org_element, setup
+
+    org, project, token = setup(client, admin_token, "Arch sharing migration")
+    kept = make_element(client, token, project["id"], "Kept")
+    make_org_element(client, token, org["id"], "Dropped")
+    command.downgrade(build_alembic_config(), "0173")
+    try:
+        for table in ("architecture_collections", "architecture_collection_members", "architecture_collection_grants"):
+            assert not _table_exists(table)
+        with engine.connect() as conn:
+            columns = {r[0] for r in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_elements'"
+            ))}
+            remaining = {str(r[0]) for r in conn.execute(text("SELECT id FROM architecture_elements"))}
+        assert "organization_id" not in columns and kept["id"] in remaining
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    for table in ("architecture_collections", "architecture_collection_members", "architecture_collection_grants"):
+        assert _table_exists(table)
+    with engine.connect() as conn:
+        assert conn.execute(text(
+            "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'architecture_elements' AND column_name = 'project_id'"
+        )).scalar_one() == "YES"
+
+
+def test_the_symbols_migration_adds_the_table_and_columns_backfills_builtins_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0175 removes the symbol table and the `symbol_id` columns, leaving the types and elements; upgrading
+    recreates them and gives an organisation that already exists the built-in symbols (rows only), changing no type."""
+    from app.modules.architecture.service import DEFAULT_SYMBOLS
+    from app.modules.architecture.tests._helpers import make_element, setup
+
+    org, project, token = setup(client, admin_token, "Arch symbols migration")
+    kept = make_element(client, token, project["id"], "Kept")
+    command.downgrade(build_alembic_config(), "0174")
+    try:
+        assert not _table_exists("architecture_symbols")
+        with engine.connect() as conn:
+            columns = {
+                (r[0], r[1]) for r in conn.execute(text(
+                    "SELECT table_name, column_name FROM information_schema.columns "
+                    "WHERE table_name IN ('architecture_elements', 'architecture_element_types')"
+                ))
+            }
+            remaining = {str(r[0]) for r in conn.execute(text("SELECT id FROM architecture_elements"))}
+        assert ("architecture_elements", "symbol_id") not in columns and ("architecture_element_types", "symbol_id") not in columns
+        assert kept["id"] in remaining
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_symbols")
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT name, builtin_key, file_asset_id FROM architecture_symbols WHERE organization_id = :o ORDER BY sort_order"),
+            {"o": uuid.UUID(org["id"])},
+        ).all()
+        assigned = conn.execute(text(
+            "SELECT count(*) FROM architecture_element_types WHERE organization_id = :o AND symbol_id IS NOT NULL"
+        ), {"o": uuid.UUID(org["id"])}).scalar_one()
+    assert [(r[1], r[0]) for r in rows] == [(key, name) for key, name in DEFAULT_SYMBOLS]
+    assert all(r[2] is None for r in rows) and assigned == 0
+
+
+def test_the_diagrams_migration_adds_the_tables_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0176 drops the five diagram tables and leaves the elements they placed; upgrading recreates them
+    empty (nothing is seeded)."""
+    from app.modules.architecture.tests._helpers import make_diagram, make_element, place, setup
+
+    _org, project, token = setup(client, admin_token, "Arch diagrams migration")
+    kept = make_element(client, token, project["id"], "Kept")
+    place(client, token, project["id"], make_diagram(client, token, project["id"], "Context"), kept["id"])
+    tables = (
+        "architecture_diagrams", "architecture_diagram_placements", "architecture_diagram_notes",
+        "architecture_diagram_toggles", "architecture_diagram_toggle_members",
+    )
+    command.downgrade(build_alembic_config(), "0175")
+    try:
+        assert not any(_table_exists(t) for t in tables)
+        with engine.connect() as conn:
+            remaining = {str(r[0]) for r in conn.execute(text("SELECT id FROM architecture_elements"))}
+        assert kept["id"] in remaining
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert all(_table_exists(t) for t in tables)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM architecture_diagrams")).scalar_one() == 0
+
+
+def test_the_type_tree_migration_adds_the_link_table_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0177 drops the parent link table and leaves the connection types; upgrading recreates it empty
+    (nothing is seeded, so an existing organisation's flat list is unchanged)."""
+    from app.modules.architecture.tests._helpers import setup
+
+    org, _project, _token = setup(client, admin_token, "Arch tree migration")
+    before = _count("architecture_connection_types", org["id"])
+    command.downgrade(build_alembic_config(), "0176")
+    try:
+        assert not _table_exists("architecture_connection_type_parents")
+        assert _count("architecture_connection_types", org["id"]) == before
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_connection_type_parents")
+    assert _count("architecture_connection_types", org["id"]) == before
+    with engine.connect() as conn:
+        # The seeded organisation's links are gone with the table; the types keep their rows and no row is invented.
+        assert conn.execute(text("SELECT count(*) FROM architecture_connection_type_parents")).scalar_one() == 0
+
+
+def test_the_suggestions_migration_adds_the_link_table_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0178 drops the suggestion table and leaves the element types; upgrading recreates it empty (nothing is
+    seeded, so an existing organisation's element types are unchanged)."""
+    from app.modules.architecture.tests._helpers import setup
+
+    org, _project, _token = setup(client, admin_token, "Arch guidance migration")
+    before = _count("architecture_element_types", org["id"])
+    command.downgrade(build_alembic_config(), "0177")
+    try:
+        assert not _table_exists("architecture_element_type_suggestions")
+        assert _count("architecture_element_types", org["id"]) == before
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_element_type_suggestions")
+    assert _count("architecture_element_types", org["id"]) == before
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM architecture_element_type_suggestions")).scalar_one() == 0
+
+
+def test_the_anchors_migration_adds_the_table_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0179 drops the anchor table and leaves the diagrams; upgrading recreates it empty (a line with no
+    anchor uses the nearest points, so no existing diagram changes)."""
+    from app.modules.architecture.tests._helpers import make_diagram, setup
+
+    _org, project, token = setup(client, admin_token, "Arch anchors migration")
+    diagram = make_diagram(client, token, project["id"], "Kept")
+    command.downgrade(build_alembic_config(), "0178")
+    try:
+        assert not _table_exists("architecture_diagram_anchors")
+        with engine.connect() as conn:
+            assert conn.execute(
+                text("SELECT count(*) FROM architecture_diagrams WHERE id = :i"), {"i": uuid.UUID(diagram["id"])},
+            ).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    assert _table_exists("architecture_diagram_anchors")
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM architecture_diagram_anchors")).scalar_one() == 0
+
+
+def test_the_boundaries_migration_adds_both_tables_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0180 drops the boundary and realisation tables and leaves the diagrams and connections; upgrading
+    recreates them empty (a diagram with no box draws none, so no existing diagram changes)."""
+    from app.modules.architecture.tests._helpers import make_connection, make_diagram, make_element, setup
+
+    _org, project, token = setup(client, admin_token, "Arch boundaries migration")
+    a = make_element(client, token, project["id"], "Alpha")
+    b = make_element(client, token, project["id"], "Bravo")
+    connection = make_connection(client, token, project["id"], a["id"], b["id"])
+    diagram = make_diagram(client, token, project["id"], "Kept")
+    command.downgrade(build_alembic_config(), "0179")
+    try:
+        assert not _table_exists("architecture_diagram_boundaries")
+        assert not _table_exists("architecture_connection_realisations")
+        with engine.connect() as conn:
+            assert conn.execute(
+                text("SELECT count(*) FROM architecture_diagrams WHERE id = :i"), {"i": uuid.UUID(diagram["id"])},
+            ).scalar_one() == 1
+            assert conn.execute(
+                text("SELECT count(*) FROM architecture_connections WHERE id = :i"), {"i": uuid.UUID(connection["id"])},
+            ).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    for table in ("architecture_diagram_boundaries", "architecture_connection_realisations"):
+        assert _table_exists(table)
+        with engine.connect() as conn:
+            assert conn.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+
+
+def test_the_display_note_migration_adds_the_column_with_an_empty_default_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0181 drops `display_note`; upgrading restores it empty for every existing element."""
+    from app.modules.architecture.tests._helpers import make_element, setup
+
+    _org, project, token = setup(client, admin_token, "Arch note migration")
+    element = make_element(client, token, project["id"], "Kept", display_note="Dropped with the column.")
+    command.downgrade(build_alembic_config(), "0181")
+    try:
+        with engine.connect() as conn:
+            columns = {r[0] for r in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_elements'"
+            ))}
+            assert "display_note" not in columns
+            assert conn.execute(text("SELECT count(*) FROM architecture_elements WHERE id = :i"), {"i": element["id"]}).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        assert conn.execute(
+            text("SELECT display_note FROM architecture_elements WHERE id = :i"), {"i": element["id"]},
+        ).scalar_one() == ""
+
+
+def test_the_note_leader_migration_adds_the_columns_with_neutral_defaults_and_reverses_cleanly(client, admin_token):
+    """Downgrading 0182 drops the annotation columns; upgrading gives every existing note a neutral tone and no leader."""
+    from app.modules.architecture.tests._helpers import make_connection, make_diagram, make_element, place_all, project_base, setup
+    from tests.conftest import auth_headers
+
+    _org, project, token = setup(client, admin_token, "Arch leader migration")
+    a, b = make_element(client, token, project["id"], "Alpha"), make_element(client, token, project["id"], "Bravo")
+    make_connection(client, token, project["id"], a["id"], b["id"])
+    diagram = place_all(client, token, project["id"], make_diagram(client, token, project["id"], "Flow"), a["id"], b["id"])
+    saved = client.put(
+        f"{project_base(project['id'])}/diagrams/{diagram['id']}/layout", headers=auth_headers(token),
+        json={
+            "version": diagram["version"], "placements": [{"element_id": a["id"]}, {"element_id": b["id"], "x": 300}],
+            "notes": [{"text": "Kept", "tone": "danger", "leaders": [{"kind": "element", "element_id": a["id"]}]}],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    command.downgrade(build_alembic_config(), "0182")
+    try:
+        with engine.connect() as conn:
+            columns = {r[0] for r in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_diagram_notes'"
+            ))}
+            assert columns.isdisjoint({"tone", "leader_kind", "leader_element_id", "leader_connection_id", "leader_x", "leader_y", "leader_arrow"})
+            assert conn.execute(text("SELECT count(*) FROM architecture_diagram_notes WHERE text = 'Kept'")).scalar_one() == 1
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        tone = conn.execute(text("SELECT tone FROM architecture_diagram_notes WHERE text = 'Kept'")).scalar_one()
+        leaders = conn.execute(text(
+            "SELECT count(*) FROM architecture_note_leaders l JOIN architecture_diagram_notes n ON n.id = l.note_id WHERE n.text = 'Kept'"
+        )).scalar_one()
+    assert (tone, leaders) == ("neutral", 0)
+
+
+def test_the_leader_lines_migration_moves_each_leader_into_a_row_and_back(client, admin_token):
+    """Downgrading 0190 puts each note's first leader back into the note's columns (an element, a connection, a point and none
+    each keep their meaning, the arrow flag follows the end style); upgrading moves them into rows again with a start style of
+    none, no start point, no vertices and an end style of arrow or none."""
+    from app.modules.architecture.tests._helpers import make_connection, make_diagram, make_element, place_all, project_base, setup
+    from tests.conftest import auth_headers
+
+    _org, project, token = setup(client, admin_token, "Arch leader rows migration")
+    p = project["id"]
+    a, b = make_element(client, token, p, "Alpha"), make_element(client, token, p, "Bravo")
+    link = make_connection(client, token, p, a["id"], b["id"])
+    diagram = place_all(client, token, p, make_diagram(client, token, p, "Flow"), a["id"], b["id"])
+    notes = [
+        {"text": "Box", "leaders": [{"kind": "element", "element_id": a["id"], "end_style": "none"}, {"kind": "point", "x": 9, "y": 9}]},
+        {"text": "Line", "leaders": [{"kind": "connection", "connection_id": link["id"], "points": [{"x": 1, "y": 1}], "line_shape": "spline"}]},
+        {"text": "Spot", "leaders": [{"kind": "point", "x": 5.5, "y": -6, "start_point": "top", "start_style": "dot"}]},
+        {"text": "Plain"},
+    ]
+    saved = client.put(
+        f"{project_base(p)}/diagrams/{diagram['id']}/layout", headers=auth_headers(token),
+        json={"version": diagram["version"], "placements": [{"element_id": a["id"]}, {"element_id": b["id"], "x": 300}], "notes": notes},
+    )
+    assert saved.status_code == 200, saved.text
+    command.downgrade(build_alembic_config(), "0189")
+    try:
+        with engine.connect() as conn:
+            tables = {r[0] for r in conn.execute(text("SELECT table_name FROM information_schema.tables"))}
+            assert "architecture_note_leaders" not in tables
+            rows = {r[0]: tuple(r[1:]) for r in conn.execute(text(
+                "SELECT text, leader_kind, leader_element_id::text, leader_connection_id::text, leader_x, leader_y, leader_arrow "
+                "FROM architecture_diagram_notes WHERE text IN ('Box', 'Line', 'Spot', 'Plain')"
+            ))}
+            assert rows["Box"] == ("element", a["id"], None, None, None, False)
+            assert rows["Line"] == ("connection", None, link["id"], None, None, True)
+            assert rows["Spot"] == ("point", None, None, 5.5, -6.0, True)
+            assert rows["Plain"] == ("none", None, None, None, None, True)
+            conn.execute(text("UPDATE architecture_diagram_notes SET leader_arrow = false WHERE text = 'Spot'"))
+            conn.commit()
+    finally:
+        command.upgrade(build_alembic_config(), "head")
+    with engine.connect() as conn:
+        moved = {r[0]: tuple(r[1:]) for r in conn.execute(text(
+            "SELECT n.text, l.kind, l.element_id::text, l.connection_id::text, l.x, l.y, l.start_point, l.points::text, l.line_shape, "
+            "l.start_style, l.end_style FROM architecture_note_leaders l JOIN architecture_diagram_notes n ON n.id = l.note_id "
+            "WHERE n.text IN ('Box', 'Line', 'Spot', 'Plain')"
+        ))}
+        columns = {r[0] for r in conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'architecture_diagram_notes'"
+        ))}
+    assert set(moved) == {"Box", "Line", "Spot"}  # a note with no leader has no row
+    assert moved["Box"] == ("element", a["id"], None, None, None, None, "[]", None, "none", "none")
+    assert moved["Line"] == ("connection", None, link["id"], None, None, None, "[]", None, "none", "arrow")
+    assert moved["Spot"] == ("point", None, None, 5.5, -6.0, None, "[]", None, "none", "none")
+    assert columns.isdisjoint({"leader_kind", "leader_element_id", "leader_connection_id", "leader_x", "leader_y", "leader_arrow"})

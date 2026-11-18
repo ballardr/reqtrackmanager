@@ -116,6 +116,7 @@ from app.services.report_model import (
     Block,
     Gap,
     Heading,
+    Image,
     Note,
     ReportDocument,
     Sheet,
@@ -160,6 +161,10 @@ class ReportSection:
             tone), for a cell the screen colours (a rating band, a matrix
             cell). PDF and Word fill the cell; CSV and JSON carry the text
             only, so the cell text must name the band too.
+        drawing: SVG markup of a figure this section is (a diagram), with no columns or rows. It is untrusted until the
+            renderer has allow-listed it (`report_svg.sanitize_svg`). The document prints it as a picture and a
+            layout widget embeds it as one; the screen, CSV and JSON carry no picture, so a report that offers a
+            drawing also offers a table of what it shows.
 
     Raises:
         ValueError: If `tones` is not shaped like `rows` or names a tone
@@ -177,6 +182,7 @@ class ReportSection:
     tones: list[list[str | None]] | None = None
     weights: list[float] | None = None
     usual_widths: list[str | None] | None = None
+    drawing: str | None = None
 
     def __post_init__(self) -> None:
         if self.weights is not None and len(self.weights) != len(self.columns):
@@ -613,7 +619,9 @@ def build_result_document(result: ReportResult, *, branding: ReportBranding | No
         blocks += [Gap(0.4), Heading(section.title, 2)]
         if section.note:
             blocks.append(Note(section.note))
-        if section.rows and section.columns:
+        if section.drawing:
+            blocks.append(Image(svg=section.drawing, alt=section.title, width=100, width_unit="percent"))
+        elif section.rows and section.columns:
             blocks.append(Table(section.columns, section.rows, compact=True, tones=section.tones))
         else:
             blocks.append(Note("None."))

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
+import { expectHeaderSorts } from "../testing/sortHelpers";
 import { buildPhasePlan, buildStage, buildStageWorkflow, withToast } from "../testing/storybook-helpers";
 import { StagePlanTable } from "./StagePlanTable";
 
@@ -71,5 +72,13 @@ export const TimelineView: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getAllByRole("listitem")).toHaveLength(2);
     await expect(canvas.getByText("Overdue")).toBeInTheDocument();
+  },
+};
+
+/** The Stage header orders the stages by name, ascending then descending (the default is the project's stage order). */
+export const StageHeaderSortsTheStages: Story = {
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table");
+    await expectHeaderSorts(table, "Stage", ["Build", "Design"]);
   },
 };

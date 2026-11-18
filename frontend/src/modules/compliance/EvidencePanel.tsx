@@ -32,7 +32,21 @@ import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, type ComplianceEvidence } fro
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTableSort } from "../../hooks/useTableSort";
+import type { SortValue } from "../../utils/sortRows";
 import { evidencePath } from "./paths";
+
+const NO_EVIDENCE: ComplianceEvidence[] = [];
+
+/** Sortable value of each sortable column; the same text the cell shows, so the order matches what is read. */
+const EVIDENCE_SORT_VALUES: Record<string, (e: ComplianceEvidence) => SortValue> = {
+  title: (e) => e.title,
+  code: (e) => e.unique_code,
+  issuing_organisation: (e) => e.issuing_organisation,
+  expiry_date: (e) => e.expiry_date,
+  validity: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state],
+  status: (e) => (e.is_archived ? "Archived" : "Active"),
+};
 
 /**
  * The evidence list for one project, with search, a "Show archived" filter and the Add evidence dialog.
@@ -68,20 +82,21 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
     return params;
   }
 
+  const table = useTableSort(evidence ?? NO_EVIDENCE, EVIDENCE_SORT_VALUES);
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (evidence === null) return <Spinner />;
 
-  const filtered = evidence
+  const filtered = table.rows
     .filter((e) => includeArchived || !e.is_archived)
     .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
 
   const columns: DirectoryColumn<ComplianceEvidence>[] = [
-    { key: "title", label: "Title", render: (e) => e.title },
-    { key: "code", label: "Code", render: (e) => <RecordCode code={e.unique_code} /> },
-    { key: "issuing_organisation", label: "Issuing organisation", render: (e) => e.issuing_organisation ?? "—" },
-    { key: "expiry_date", label: "Expiry", render: (e) => e.expiry_date ?? "—" },
-    { key: "validity", label: "Validity", render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
-    { key: "status", label: "Status", render: (e) => (e.is_archived ? "Archived" : "Active") },
+    { key: "title", label: "Title", sortable: true, render: (e) => e.title },
+    { key: "code", label: "Code", sortable: true, render: (e) => <RecordCode code={e.unique_code} /> },
+    { key: "issuing_organisation", label: "Issuing organisation", sortable: true, render: (e) => e.issuing_organisation ?? "—" },
+    { key: "expiry_date", label: "Expiry", sortable: true, render: (e) => e.expiry_date ?? "—" },
+    { key: "validity", label: "Validity", sortable: true, render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
+    { key: "status", label: "Status", sortable: true, render: (e) => (e.is_archived ? "Archived" : "Active") },
   ];
 
   return (
@@ -97,6 +112,8 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           ariaLabel="Compliance evidence"
           columns={columns}
           rows={filtered}
+          sort={table.sort}
+          onSort={table.onSort}
           rowKey={(e) => e.id}
           placements={{ projectId, artefactType: "compliance_evidence", rowId: (e) => e.id }}
           rowHref={(e) => evidencePath(projectId, e.id)}

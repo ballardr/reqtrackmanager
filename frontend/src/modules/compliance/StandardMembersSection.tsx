@@ -58,6 +58,8 @@ import {
 import { Badge } from "../../components/Badge";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useSortState } from "../../hooks/useTableSort";
+import { sortRows, type SortValue } from "../../utils/sortRows";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 const STANDARD_ROLE_KEYS: ComplianceStandardRoleKey[] = ["standards_manager", "standards_contributor"];
@@ -68,6 +70,12 @@ const LAST_MANAGER_TITLE =
   "before removing the last one.";
 
 type Row = { kind: "user"; member: ComplianceStandardMember } | { kind: "group"; group: ComplianceStandardGroupMember };
+
+/** Sortable value of each sortable column; a group's Email cell shows its member count, so that text orders it. */
+const MEMBER_SORT_VALUES: Record<string, (row: Row) => SortValue> = {
+  name: (row) => (row.kind === "user" ? row.member.display_name : row.group.group_name),
+  email: (row) => (row.kind === "user" ? row.member.email : `${row.group.member_count} member${row.group.member_count === 1 ? "" : "s"}`),
+};
 
 export function StandardMembersSection({
   orgId,
@@ -152,6 +160,7 @@ export function StandardMembersSection({
     }
   }
 
+  const sorting = useSortState();
   if (!data) return <Spinner />;
 
   // Manager-floor client-side hint: every explicit `standards_manager`
@@ -173,6 +182,7 @@ export function StandardMembersSection({
     {
       key: "name",
       label: "Name",
+      sortable: true,
       render: (row) =>
         row.kind === "user" ? (
           row.member.display_name
@@ -186,6 +196,7 @@ export function StandardMembersSection({
     {
       key: "email",
       label: "Email",
+      sortable: true,
       render: (row) =>
         row.kind === "user"
           ? row.member.email
@@ -257,7 +268,9 @@ export function StandardMembersSection({
       <DirectoryTable
         ariaLabel={`Members of ${standard.name}`}
         columns={columns}
-        rows={rows}
+        rows={sortRows(rows, sorting.sort, MEMBER_SORT_VALUES)}
+        sort={sorting.sort}
+        onSort={sorting.onSort}
         rowKey={(row) => (row.kind === "user" ? `user:${row.member.user_id}` : `group:${row.group.org_group_id}`)}
         emptyState={<p className="text-muted">No direct members yet.</p>}
       />

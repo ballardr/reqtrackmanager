@@ -1,0 +1,200 @@
+/**
+ * Module: modules/architecture/AddElementsDialog
+ *
+ * Picks existing elements to place on a diagram: a table of the elements not yet on it (the project's own and those shared
+ * with it), narrowed by search, element type and domain. "Add selected" places the ticked rows; "Add all matching" places
+ * every row the filters leave, which is how a person adds, for example, every hardware element at once. The component
+ * filter is the shared collapsible tree of the project's components (`placementTree`); an element matches when it sits
+ * in any ticked component or category. Only the project's own elements carry components (an element shared from another
+ * owner has none here), so ticking a component narrows the list to the project's own.
+ *
+ * The Folder filter groups the elements by owner (this project, the organisation, another project) and then by the owner's
+ * folders, drawing only the folders on the way to an element the person may read, so another owner's folder structure is
+ * never shown beyond that. Ticking an owner takes all its elements; ticking a folder takes those in it and below it.
+ */
+import { useEffect, useMemo, useState } from "react";
+
+import { recordPlacementsApi, type Placement, type PlacementTree, type RecordPlacementsApi } from "../../api/placements";
+import { FieldCaption } from "../../components/FieldHelp";
+import { FormActions } from "../../components/FormActions";
+import { TextField } from "../../components/FormFields";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { Modal } from "../../components/Modal";
+import { placementNodes, placesOfNodeIds } from "../../components/placementTree";
+import { TreeSelect } from "../../components/TreeSelect";
+import { useStrings } from "../../context/TerminologyContext";
+import { useRecordCode } from "../../hooks/useRecordCode";
+import { inChosenOwnerFolders, ownerFolderNodes } from "./folderTree";
+import { ARCHITECTURE_HELP } from "./help";
+import type { ArchitectureDomain, ArchitectureElement, ElementType } from "./types";
+
+/** Who owns an element, as a key for the Folder filter: this project (`own`), the organisation, or another project. */
+function ownerOf(e: ArchitectureElement, projectId: string): string {
+  return e.project_id === projectId ? "own" : e.organization_id ? "org" : `project:${e.project_id}`;
+}
+
+/** The owner's name in the Folder filter. */
+function ownerLabel(e: ArchitectureElement, projectId: string): string {
+  if (e.project_id === projectId) return "This project";
+  if (e.organization_id) return "Organisation";
+  return `Another project${e.from_project_code ? ` (${e.from_project_code})` : ""}`;
+}
+
+/** The most records one placements read answers for (the server's page limit). */
+const PLACEMENT_PAGE = 500;
+
+/**
+ * Loads the project's component tree and the places of the candidate elements.
+ *
+ * @param projectId The project the diagram belongs to.
+ * @param candidates The elements offered.
+ * @param api The placement calls.
+ * @returns The tree (null until read, or when the read fails: the filter is then not offered) and `{element id: places}`.
+ */
+function useCandidatePlacements(projectId: string, candidates: ArchitectureElement[], api: RecordPlacementsApi) {
+  const [tree, setTree] = useState<PlacementTree | null>(null);
+  const [places, setPlaces] = useState<Record<string, Placement[]>>({});
+  // Keyed by the ids themselves, so a parent that rebuilds the list on every render does not re-read.
+  const key = candidates.map((e) => e.id).join(",");
+  useEffect(() => {
+    let active = true;
+    const ids = key ? key.split(",") : [];
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += PLACEMENT_PAGE) chunks.push(ids.slice(i, i + PLACEMENT_PAGE));
+    Promise.all([api.tree(projectId), Promise.all(chunks.map((chunk) => api.page(projectId, "architecture_element", chunk)))])
+      .then(([loaded, pages]) => {
+        if (!active) return;
+        setTree(loaded);
+        setPlaces(Object.assign({}, ...pages));
+      })
+      .catch(() => active && setTree(null));
+    return () => {
+      active = false;
+    };
+  }, [api, projectId, key]);
+  return { tree, places };
+}
+
+/**
+ * @param projectId The project the diagram belongs to (its component tree is offered as a filter).
+ * @param candidates Elements that may be added (already filtered of those on the diagram and of archived ones).
+ * @param elementTypes The project's element types, for the type filter and each element's domains.
+ * @param domains The project's domains, for the domain filter.
+ * @param onAdd Called with the chosen elements.
+ * @param placementsApi Injectable calls (stories pass a fake).
+ */
+export function AddElementsDialog({
+  projectId, candidates, elementTypes, domains, onCancel, onAdd, placementsApi = recordPlacementsApi,
+}: {
+  projectId: string;
+  placementsApi?: RecordPlacementsApi;
+  candidates: ArchitectureElement[];
+  elementTypes: ElementType[];
+  domains: ArchitectureDomain[];
+  onCancel: () => void;
+  onAdd: (elements: ArchitectureElement[]) => void;
+}) {
+  const formatCode = useRecordCode();
+  const strings = useStrings();
+  const { tree, places } = useCandidatePlacements(projectId, candidates, placementsApi);
+  const [componentNodeIds, setComponentNodeIds] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const [folderNodeIds, setFolderNodeIds] = useState<string[]>([]);
+  const [typeId, setTypeId] = useState("");
+  const [domainId, setDomainId] = useState("");
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+
+  const domainsOf = useMemo(() => new Map(elementTypes.map((t) => [t.id, t.domain_ids])), [elementTypes]);
+  const folderNodes = useMemo(
+    () => ownerFolderNodes(candidates.map((e) => ({ ownerKey: ownerOf(e, projectId), ownerLabel: ownerLabel(e, projectId), folderPath: e.folder_path })), "own"),
+    [candidates, projectId],
+  );
+  const wanted = useMemo(() => (tree ? placesOfNodeIds(componentNodeIds, tree) : []), [tree, componentNodeIds]);
+  const shown = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return candidates.filter((e) => {
+      if (wanted.length > 0) {
+        const own = places[e.id] ?? [];
+        const inWanted = wanted.some((w) => own.some((p) => (w.category_id ? p.category_id === w.category_id : p.component_id === w.component_id)));
+        if (!inWanted) return false;
+      }
+      if (!inChosenOwnerFolders(folderNodeIds, ownerOf(e, projectId), e.folder_path)) return false;
+      if (typeId && e.element_type_id !== typeId) return false;
+      // An element matches a domain when its type is in it, or in none (a type in no domain fits every domain).
+      const typeDomains = domainsOf.get(e.element_type_id) ?? [];
+      if (domainId && typeDomains.length > 0 && !typeDomains.includes(domainId)) return false;
+      return !needle || `${e.unique_code} ${e.name} ${e.element_type_name}`.toLowerCase().includes(needle);
+    });
+  }, [candidates, search, typeId, domainId, domainsOf, wanted, places, folderNodeIds, projectId]);
+  const chosen = candidates.filter((e) => ticked.has(e.id));
+
+  const toggle = (id: string) => setTicked((current) => {
+    const next = new Set(current);
+    if (!next.delete(id)) next.add(id);
+    return next;
+  });
+
+  return (
+    <Modal title="Add existing elements" onClose={onCancel} size="lg">
+      <div className="stack">
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <TextField helpNotNeeded label="Search" value={search} onChange={setSearch} />
+          <LabeledSelect
+            helpNotNeeded label="Element type" value={typeId} placeholder="All types" onChange={setTypeId}
+            options={elementTypes.map((t) => ({ value: t.id, label: t.name }))}
+          />
+          <LabeledSelect
+            helpNotNeeded label="Domain" value={domainId} placeholder="All domains" onChange={setDomainId}
+            options={domains.map((d) => ({ value: d.id, label: d.name }))}
+          />
+          {candidates.some((e) => e.folder_path) && (
+            <div className="stack" style={{ gap: "var(--space-1)", minWidth: "14rem" }}>
+              <FieldCaption label="Folder" help={ARCHITECTURE_HELP.folderPicker} />
+              <TreeSelect
+                triggerLabel="Folder" emptyLabel="All folders" nodes={folderNodes} selectedIds={folderNodeIds} onChange={setFolderNodeIds} searchable
+              />
+            </div>
+          )}
+          {tree && tree.components.length > 0 && (
+            <div className="stack" style={{ gap: "var(--space-1)", minWidth: "14rem" }}>
+              <FieldCaption label={strings.placements.filterLabel} help={strings.help.recordComponentsFilter} />
+              <TreeSelect
+                triggerLabel={strings.placements.filterLabel} emptyLabel={strings.placements.choose} nodes={placementNodes(tree)}
+                selectedIds={componentNodeIds} onChange={setComponentNodeIds} searchable
+              />
+            </div>
+          )}
+        </div>
+        {shown.length === 0 ? (
+          <p className="text-muted">{candidates.length === 0 ? "Every available element is already on this diagram." : "No elements match these filters."}</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th scope="col">Add</th><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Folder</th></tr>
+            </thead>
+            <tbody>
+              {shown.map((e) => (
+                <tr key={e.id}>
+                  <td>
+                    <input type="checkbox" checked={ticked.has(e.id)} onChange={() => toggle(e.id)} aria-label={`Add ${e.name}`} />
+                  </td>
+                  <td>{formatCode.code(e.unique_code, e.from_project_code)}</td>
+                  <td>{e.name}{e.shared ? " (shared)" : ""}</td>
+                  <td>{e.element_type_name}</td>
+                  <td>{e.folder_path ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <FormActions
+          onCancel={onCancel} onSave={() => onAdd(chosen)} saveLabel={`Add selected (${chosen.length})`} saveDisabled={chosen.length === 0}
+        >
+          <button type="button" className="btn" disabled={shown.length === 0} onClick={() => onAdd(shown)}>
+            Add all matching ({shown.length})
+          </button>
+        </FormActions>
+      </div>
+    </Modal>
+  );
+}

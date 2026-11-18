@@ -1,0 +1,1161 @@
+"""
+Module: modules.architecture.models
+
+The two vocabularies every architecture record is typed by, and the records:
+
+- `ArchitectureSymbol` — a drawing (a sanitised SVG, or one of the built-in set) an element type or element is shown with.
+- `ArchitectureDomain` — a name (Software, Hardware, ...) a type can be in; a type is in any number of domains (a link
+  table each), and none means every domain.
+- `ArchitectureElementType` — what an element is (System, Service, Board, ...); it may name suggested connection types
+  (`ArchitectureElementTypeSuggestion`) that a connection picker lists first.
+- `ArchitectureConnectionType` — what an interface is (REST API, SPI, Power, ...); a type sits in a tree of any depth
+  and may have several parents (`ArchitectureConnectionTypeParent`), so a group is itself a usable type.
+- `ArchitectureElement` — a part of the product, in a tree, with `ArchitecturePort`s; owned by a project
+  or by the organisation.
+- `ArchitectureConnection` — an interface between two elements; `ArchitectureConnectionRealisation` marks an inner
+  connection as realising an outer one.
+- `ArchitectureFolder` — a name in a tree that organises the list of elements, connections or diagrams; navigation only.
+- `ArchitectureCollection`, `ArchitectureCollectionMember`, `ArchitectureCollectionGrant` — a named set of
+  elements and who it is shared with (a project, optionally with its descendants, or a group).
+- `ArchitectureDiagram` with its `ArchitectureDiagramPlacement`s, `ArchitectureDiagramNote`s,
+  `ArchitectureNoteLeader`s (the lines from a note to what it describes), `ArchitectureDiagramAnchor`s,
+  `ArchitectureDiagramBoundary`s (the outer connections drawn inside a scope) and
+  `ArchitectureDiagramToggle`s (and their manual `ArchitectureDiagramToggleMember`s) — a saved view over the project's
+  model; it holds no truth of its own.
+- `ArchitectureStateMachineDiagram`, `ArchitectureState` and `ArchitectureTransition` — the behaviour of one element as
+  states (with a place on the drawing) and the labelled arrows between them.
+- `ArchitectureAllocationDismissal` — a requirement's suggested allocation to an element that a person dismissed.
+
+Each is one table whose owner is a project *or* an organisation (a CHECK keeps
+exactly one). An organisation row is a default every project of the organisation
+sees; a project row is its own addition. A project hides an organisation
+default with a tombstone (`services.definition_suppression`) instead of
+overriding it, so a row never needs a second set of columns for overrides.
+
+A name is unique within its owner. Records will reference a type row directly,
+whichever tier owns it, so hiding a default never changes a record that holds it.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column, relationship
+
+from app.database import Base
+from app.models.base import TimestampMixin, UUIDPKMixin
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
+from app.modules.architecture.enums import DISPLAY_NOTE_MAX, NOTE_TITLE_MAX, SYMBOL_LABEL_LENGTH
+
+
+class OwnedNamedMixin(UUIDPKMixin, TimestampMixin):
+    """Columns shared by every table a project or the organisation owns a named, ordered list of (the two vocabularies
+    and the symbol library), so the code that lists, hides and orders them treats them alike.
+
+    Attributes:
+        project_id: The owning project, or `NULL` for an organisation default.
+        organization_id: The owning organisation, or `NULL` for a project row.
+        name: Display name, unique within the owner.
+        sort_order: Picker order among the owner's rows.
+    """
+
+    @declared_attr
+    def project_id(cls) -> Mapped[uuid.UUID | None]:
+        return mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    @declared_attr
+    def organization_id(cls) -> Mapped[uuid.UUID | None]:
+        return mapped_column(
+            UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True,
+        )
+
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class OwnedVocabularyMixin(OwnedNamedMixin):
+    """Columns shared by both type vocabularies, on top of `OwnedNamedMixin`.
+
+    Attributes:
+        color_light: Accent colour on a light theme, `#RRGGBB`, or `NULL` for the theme default.
+        color_dark: Accent colour on a dark theme, `#RRGGBB`, or `NULL` for the theme default.
+    """
+
+    color_light: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    color_dark: Mapped[str | None] = mapped_column(String(7), nullable=True)
+
+
+class ArchitectureDomain(OwnedNamedMixin, Base):
+    """A domain (Software, Hardware, Mechanical, ...): a name an element type or a connection type can be in, used to
+    narrow the pickers and a diagram's toggle rules. A vocabulary of its own with the two tiers of the types; it has no
+    colour. A type with no domain fits every domain.
+
+    A domain a type links to (`ArchitectureElementTypeDomain`, `ArchitectureConnectionTypeDomain`) or a toggle rule names
+    is never deleted (`records.register_usage_checks`).
+    """
+
+    __tablename__ = "architecture_domains"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_domains_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_domains_org_name"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_domains_one_owner"),
+    )
+
+
+class ArchitectureSymbol(OwnedNamedMixin, Base):
+    """A drawing an element type, or one element, is shown with: a library entry, not a record (no code, link or search).
+
+    Owned by a project or the organisation (a CHECK keeps exactly one) and listed, hidden and restored like a type
+    (`service.SymbolLibrary`). Either a stored file (`file_asset_id`: an upload, kept in its sanitised form) or a
+    built-in drawing (`builtin_key`, drawn by `symbols.BUILTIN_SVG`, no file); a CHECK keeps exactly one.
+
+    Attributes:
+        file_asset_id: The stored SVG, or `None` for a built-in. A copy of an inherited project row shares the file, so
+            the file is deleted only with the last row that names it. `SET NULL` is a backstop only.
+        builtin_key: The built-in drawing, or `None` for an upload. Built-in rows cannot be renamed.
+    """
+
+    __tablename__ = "architecture_symbols"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_symbols_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_symbols_org_name"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_symbols_one_owner"),
+        CheckConstraint("(file_asset_id IS NULL) <> (builtin_key IS NULL)", name="ck_architecture_symbols_one_source"),
+    )
+
+    file_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    builtin_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    @property
+    def is_builtin(self) -> bool:
+        """Whether this is one of the built-in drawings."""
+        return self.builtin_key is not None
+
+
+class ArchitectureElementType(OwnedVocabularyMixin, Base):
+    """An element type (a project's own, or an organisation default).
+
+    Attributes:
+        shape: An `ElementShape` value, the outline drawn when no symbol is set.
+        symbol_id: The symbol its elements are drawn with, or `None` to draw `shape`. `SET NULL` is a backstop: a
+            symbol in use is never deleted.
+        suggestion_links: The connection types suggested for a connection that has an element of this type at an end.
+    """
+
+    __tablename__ = "architecture_element_types"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_element_types_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_element_types_org_name"),
+        CheckConstraint(
+            "(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_element_types_one_owner",
+        ),
+    )
+
+    shape: Mapped[str] = mapped_column(String(20), default="rectangle")
+    symbol_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_symbols.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Declared only so a flush inserts a new symbol before a type or element that names it; never loaded through.
+    symbol: Mapped[ArchitectureSymbol | None] = relationship("ArchitectureSymbol", lazy="raise", viewonly=False)
+    # Loaded with the row (one extra statement per list) so an API list carries the ids without a read per row.
+    suggestion_links: Mapped[list[ArchitectureElementTypeSuggestion]] = relationship(
+        "ArchitectureElementTypeSuggestion", foreign_keys="ArchitectureElementTypeSuggestion.element_type_id",
+        lazy="selectin", cascade="all, delete-orphan", order_by="ArchitectureElementTypeSuggestion.connection_type_id",
+        back_populates="element_type",
+    )
+
+    domain_links: Mapped[list[ArchitectureElementTypeDomain]] = relationship(
+        "ArchitectureElementTypeDomain", foreign_keys="ArchitectureElementTypeDomain.element_type_id", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ArchitectureElementTypeDomain.domain_id", back_populates="element_type",
+    )
+
+    @property
+    def suggested_connection_type_ids(self) -> list[uuid.UUID]:
+        """The ids of the connection types suggested for this element type (empty for none)."""
+        return [link.connection_type_id for link in self.suggestion_links]
+
+    @property
+    def domain_ids(self) -> list[uuid.UUID]:
+        """The ids of the domains this type is in (empty: it fits every domain)."""
+        return [link.domain_id for link in self.domain_links]
+
+
+class ArchitectureElementTypeSuggestion(Base):
+    """One suggestion: a connection with an element of `element_type_id` at an end is offered `connection_type_id` first.
+
+    Guidance only: nothing is refused when another type is chosen. The connection type is in the element type's own
+    tier or an organisation default visible to it (the service checks). Deleting either type removes the row.
+
+    Attributes:
+        element_type_id: The element type the suggestion belongs to.
+        connection_type_id: The suggested connection type.
+    """
+
+    __tablename__ = "architecture_element_type_suggestions"
+
+    element_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_element_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    connection_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True,
+        index=True,
+    )
+    element_type: Mapped[ArchitectureElementType] = relationship(
+        "ArchitectureElementType", foreign_keys=[element_type_id], back_populates="suggestion_links", lazy="raise",
+    )
+
+
+class ArchitectureElementTypeDomain(Base):
+    """One domain an element type is in. The domain is in the type's own tier or an organisation default visible to it
+    (the service checks); deleting either removes the row.
+
+    Attributes:
+        element_type_id: The element type.
+        domain_id: The domain it is in.
+    """
+
+    __tablename__ = "architecture_element_type_domains"
+
+    element_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_element_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_domains.id", ondelete="CASCADE"), primary_key=True, index=True,
+    )
+    element_type: Mapped[ArchitectureElementType] = relationship(
+        "ArchitectureElementType", foreign_keys=[element_type_id], back_populates="domain_links", lazy="raise",
+    )
+
+
+class ArchitectureConnectionType(OwnedVocabularyMixin, Base):
+    """A connection type (a project's own, or an organisation default).
+
+    Attributes:
+        line_style: A `LineStyle` value.
+        directional: Whether the interface has a direction (one-way); `False` is two-way.
+        default_protocol: The protocol a new connection of this type starts with (blank for none); it pre-fills only and is
+            never applied to a connection that exists.
+    """
+
+    __tablename__ = "architecture_connection_types"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_connection_types_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_connection_types_org_name"),
+        CheckConstraint(
+            "(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_connection_types_one_owner",
+        ),
+    )
+
+    line_style: Mapped[str] = mapped_column(String(20), default="solid")
+    directional: Mapped[bool] = mapped_column(Boolean, default=True)
+    default_protocol: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    # Loaded with the row (one extra statement per list) so an API list carries `parent_ids` without a read per row.
+    parent_links: Mapped[list[ArchitectureConnectionTypeParent]] = relationship(
+        "ArchitectureConnectionTypeParent", foreign_keys="ArchitectureConnectionTypeParent.child_id", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ArchitectureConnectionTypeParent.parent_id", back_populates="child",
+    )
+
+    domain_links: Mapped[list[ArchitectureConnectionTypeDomain]] = relationship(
+        "ArchitectureConnectionTypeDomain", foreign_keys="ArchitectureConnectionTypeDomain.connection_type_id", lazy="selectin",
+        cascade="all, delete-orphan", order_by="ArchitectureConnectionTypeDomain.domain_id", back_populates="connection_type",
+    )
+
+    @property
+    def parent_ids(self) -> list[uuid.UUID]:
+        """The ids of the types this one sits under (empty for a root)."""
+        return [link.parent_id for link in self.parent_links]
+
+    @property
+    def domain_ids(self) -> list[uuid.UUID]:
+        """The ids of the domains this type is in (empty: it fits every domain)."""
+        return [link.domain_id for link in self.domain_links]
+
+
+class ArchitectureConnectionTypeDomain(Base):
+    """One domain a connection type is in (see `ArchitectureElementTypeDomain`).
+
+    Attributes:
+        connection_type_id: The connection type.
+        domain_id: The domain it is in.
+    """
+
+    __tablename__ = "architecture_connection_type_domains"
+
+    connection_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    domain_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_domains.id", ondelete="CASCADE"), primary_key=True, index=True,
+    )
+    connection_type: Mapped[ArchitectureConnectionType] = relationship(
+        "ArchitectureConnectionType", foreign_keys=[connection_type_id], back_populates="domain_links", lazy="raise",
+    )
+
+
+class ArchitectureConnectionTypeParent(Base):
+    """One edge of the connection type tree: `child_id` sits under `parent_id`.
+
+    A type may have several parents and the tree has any depth (the service refuses a cycle and a chain deeper than
+    `connection_tree.MAX_TYPE_DEPTH`). A parent is in the child's own tier or an organisation default visible to it.
+    Deleting either type removes the edge: the children of a deleted group become roots.
+
+    Attributes:
+        child_id: The nested type.
+        parent_id: The type it sits under.
+    """
+
+    __tablename__ = "architecture_connection_type_parents"
+    __table_args__ = (CheckConstraint("child_id <> parent_id", name="ck_architecture_connection_type_parents_not_self"),)
+
+    child_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True,
+    )
+    parent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="CASCADE"), primary_key=True, index=True,
+    )
+    child: Mapped[ArchitectureConnectionType] = relationship(
+        "ArchitectureConnectionType", foreign_keys=[child_id], back_populates="parent_links", lazy="raise",
+    )
+
+
+class ArchitectureFolder(UUIDPKMixin, TimestampMixin, Base):
+    """A name in a tree that organises one list (elements, connections or diagrams): navigation only.
+
+    A folder has no code, is not linkable and means nothing to the roll-up, the resolver or a report. Each kind has its
+    own tree. A project owns folders of any kind; the organisation owns element folders only (a CHECK keeps that).
+    A record is in one folder or none; deleting a folder moves its records and sub-folders to its parent.
+
+    Attributes:
+        project_id / organization_id: The owner; exactly one is set.
+        kind: A `FolderKind` value.
+        name: Unique among the folders of one parent (ignoring case); never contains `/`, which separates a path.
+        parent_id: The containing folder, or `None` for a top-level one. `SET NULL` is a backstop only: the service
+            moves a folder's children up before deleting it.
+        sort_order: Order among siblings.
+        creator_id: Who created it.
+    """
+
+    __tablename__ = "architecture_folders"
+    __table_args__ = (
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_folders_one_owner"),
+        CheckConstraint("organization_id IS NULL OR kind = 'element'", name="ck_architecture_folders_org_elements_only"),
+        CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_architecture_folders_not_own_parent"),
+    )
+
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(100))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureElement(UUIDPKMixin, TimestampMixin, Base):
+    """A part of the product: a system, service, board, sensor and so on.
+
+    Elements form a tree through `parent_id` (the service enforces the same owner, no cycles and the depth
+    cap). The record has no version rows: `version` is an optimistic counter that a save must quote, and the
+    audit trail holds the history. An element is owned by a project or by the organisation (a CHECK keeps
+    exactly one); another owner reaches it only through the visibility rules in `visibility`.
+
+    Attributes:
+        project_id: The owning project, or `None` for an organisation-owned element.
+        organization_id: The owning organisation, or `None` for a project-owned element.
+        unique_code: Identifier unique within its owner (`ELM-001`), from `services.sequences.generate_unique_code`.
+        name / description: Display name and free text.
+        display_note: A short plain-text line drawn inside the element's box on every diagram that places it (at most
+            `DISPLAY_NOTE_MAX` characters); the `description` is never drawn.
+        element_type_id: The element's type row, whichever tier owns it. No cascade (checked at the end of the
+            statement, so a project's deletion can remove its types and elements together): the service never
+            deletes a type that is in use.
+        parent_id: The containing element, or `None` for a root. `SET NULL` is a backstop only: the service
+            refuses to delete an element that has children.
+        owner_type / owner_id: Optional principal (a user or a group) accountable for the element.
+        folder_id: The folder the element is listed in, or `None` for the top level (an owner's own element folder).
+        symbol_id: A symbol drawn instead of the type's, or `None` to use the type's. The owner's own symbol (a project
+            element: the project's effective library; an organisation element: the organisation's). `SET NULL` is a backstop.
+        status: A `RecordStatus` value.
+        version: Optimistic counter, starting at 1 and advanced by every change to the element or its ports.
+        creator_id: Who created the record.
+        is_archived / archived_at / archived_by: Soft-delete.
+    """
+
+    __tablename__ = "architecture_elements"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_elements_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_architecture_elements_org_unique_code"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_elements_one_owner"),
+        CheckConstraint("parent_id IS NULL OR parent_id <> id", name="ck_architecture_elements_not_own_parent"),
+        principal_check_constraint("owner", nullable=True),
+        Index("ix_architecture_elements_project_parent", "project_id", "parent_id"),
+    )
+
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    display_note: Mapped[str] = mapped_column(String(DISPLAY_NOTE_MAX), default="", server_default="")
+    element_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_element_types.id"), index=True
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    symbol_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_symbols.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Declared only so a flush inserts a new symbol before a type or element that names it; never loaded through.
+    symbol: Mapped[ArchitectureSymbol | None] = relationship("ArchitectureSymbol", lazy="raise", viewonly=False)
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitecturePort(UUIDPKMixin, TimestampMixin, Base):
+    """A named attachment point on an element. A child list of the element, not a coded record.
+
+    Attributes:
+        element_id: The element it belongs to; deleting the element removes its ports.
+        name: Unique within the element.
+        direction: A `PortDirection` value.
+        connection_type_id: The interface the port speaks, or `None`. `SET NULL` is a backstop: a connection
+            type in use is never deleted.
+        sort_order: Order within the element.
+    """
+
+    __tablename__ = "architecture_ports"
+    __table_args__ = (UniqueConstraint("element_id", "name", name="uq_architecture_ports_element_name"),)
+
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    direction: Mapped[str] = mapped_column(String(10), default="both")
+    connection_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id", ondelete="SET NULL"), nullable=True,
+        index=True,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ArchitectureConnection(UUIDPKMixin, TimestampMixin, Base):
+    """An interface between two elements (optionally via a port on each).
+
+    Attributes:
+        project_id: The owning project, which created it.
+        unique_code: Project-scoped identifier (`CON-001`).
+        name: Display name; may be empty in the API, in which case the summary shows the ends.
+        connection_type_id: The interface type row. No cascade, as for `ArchitectureElement.element_type_id`.
+        source_element_id / target_element_id: The two ends (never the same element). An end may belong to
+            another owner the project can see (`visibility`). No cascade: the service refuses to delete an
+            element a connection names, since the connection would lose an end.
+        source_port_id / target_port_id: A port of the matching end, or `None`. `SET NULL` when the port is removed.
+        protocol: Free-text detail (version, topic, baud rate).
+        description: Free text.
+        folder_id: The project's connection folder the connection is listed in, or `None` for the top level.
+        status: A `RecordStatus` value.
+        version: Optimistic counter.
+        creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
+    """
+
+    __tablename__ = "architecture_connections"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_connections_project_unique_code"),
+        CheckConstraint("source_element_id <> target_element_id", name="ck_architecture_connections_distinct_ends"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    connection_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connection_types.id"), index=True
+    )
+    source_element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id"), index=True
+    )
+    source_port_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_ports.id", ondelete="SET NULL"), nullable=True
+    )
+    target_element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id"), index=True
+    )
+    target_port_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_ports.id", ondelete="SET NULL"), nullable=True
+    )
+    protocol: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitectureCollection(UUIDPKMixin, TimestampMixin, Base):
+    """A named set of elements that an owner shares with projects and groups.
+
+    A collection has no code and no record page of its own: it is an access grouping, not something a
+    requirement or report names. Its owner is a project or the organisation (a CHECK keeps exactly one) and
+    its members belong to that same owner.
+
+    Attributes:
+        project_id / organization_id: The owner; exactly one is set.
+        name: Unique within the owner.
+        description: Free text.
+        creator_id: Who created it.
+    """
+
+    __tablename__ = "architecture_collections"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_architecture_collections_project_name"),
+        UniqueConstraint("organization_id", "name", name="uq_architecture_collections_org_name"),
+        CheckConstraint("(project_id IS NULL) <> (organization_id IS NULL)", name="ck_architecture_collections_one_owner"),
+    )
+
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureCollectionMember(UUIDPKMixin, TimestampMixin, Base):
+    """An element in a collection. Its children follow it (the nearest member ancestor decides), so only the
+    top of a subtree is listed.
+
+    Attributes:
+        collection_id: The collection; deleting it removes its members.
+        element_id: The element, which the service keeps in the collection's owner; deleting the element removes
+            the membership.
+    """
+
+    __tablename__ = "architecture_collection_members"
+    __table_args__ = (UniqueConstraint("collection_id", "element_id", name="uq_architecture_collection_members"),)
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_collections.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+
+
+class ArchitectureCollectionGrant(UUIDPKMixin, TimestampMixin, Base):
+    """Access to a collection for one project or one group of the collection owner's organisation.
+
+    Exactly one target is set: a project (with `include_descendants`, resolved at read time so a child project
+    added later is covered), or a group (`group_type` is `org_group` or `project_group`). The group has no
+    foreign key (see `models.principal`); `PrincipalReference` blocks deleting a group a grant names.
+
+    Attributes:
+        collection_id: The collection; deleting it removes its grants.
+        project_id: The granted project, or `None` for a group grant.
+        group_type / group_id: The granted group, or `None` for a project grant.
+        include_descendants: For a project grant, whether every child project (now or later) is included.
+        created_by: Who granted it.
+    """
+
+    __tablename__ = "architecture_collection_grants"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "project_id", name="uq_architecture_collection_grants_project"),
+        UniqueConstraint("collection_id", "group_type", "group_id", name="uq_architecture_collection_grants_group"),
+        CheckConstraint("(project_id IS NULL) <> (group_id IS NULL)", name="ck_architecture_collection_grants_one_target"),
+        CheckConstraint("project_id IS NOT NULL OR NOT include_descendants", name="ck_architecture_collection_grants_descendants"),
+        CheckConstraint("group_type IS NULL OR group_type IN ('org_group', 'project_group')", name="ck_architecture_collection_grants_group_type"),
+        principal_check_constraint("group", nullable=True),
+    )
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_collections.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    group_type: Mapped[str | None] = principal_type_column(nullable=True)
+    group_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    include_descendants: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureDiagram(UUIDPKMixin, TimestampMixin, Base):
+    """A saved view over the project's model: which elements are drawn where, and how connections are shown.
+
+    A diagram stores placements, notes and toggles only; the elements and connections it draws are the model's, so
+    deleting a diagram loses nothing from the model. Its `version` is advanced by every change to the diagram or to
+    its placements, notes and toggles, so an editor holding a stale copy is told before it overwrites.
+
+    Attributes:
+        project_id: The owning project.
+        unique_code: Project-scoped identifier (`DGM-001`).
+        name / purpose: Display name and what the view is for.
+        scope_element_id: The element the diagram shows the inside of, or `None` for the system context (the
+            root elements). `SET NULL` when the element is deleted.
+        connection_detail: When false the diagram draws plain lines (no type, protocol or port labels) and
+            parallel lines collapse into one; when true connections are typed and labelled.
+        line_hops: When true a line that crosses another is drawn with a small arc over it (the later line by id hops).
+        show_connection_names: When true a line is labelled with the names of the connections behind it (a connection with
+            no name adds nothing), above the type and protocol text that connection detail adds.
+        line_shape: A `LineShape` value: how a line with no shape of its own is drawn (new diagrams are straight).
+        folder_id: The project's diagram folder the diagram is listed in, or `None` for the top level.
+        status: A `RecordStatus` value.
+        version: Optimistic counter.
+        creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
+    """
+
+    __tablename__ = "architecture_diagrams"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_diagrams_project_unique_code"),
+        CheckConstraint("line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_diagrams_line_shape"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    purpose: Mapped[str] = mapped_column(Text, default="")
+    scope_element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    connection_detail: Mapped[bool] = mapped_column(Boolean, default=False)
+    line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    show_connection_names: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str] = mapped_column(String(16), default="straight", server_default="straight")
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitectureDiagramPlacement(UUIDPKMixin, TimestampMixin, Base):
+    """An element drawn on a diagram, with its box.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its placements.
+        element_id: The element (the diagram's project's own, or one another owner shares with it). Deleting the
+            element removes the placement; deleting the placement never touches the element.
+        x / y / width / height: The box in diagram units.
+        collapsed: Whether the box is drawn as one block (its placed descendants are not nested inside it). Carried
+            for the editor; the resolver does not read it.
+    """
+
+    __tablename__ = "architecture_diagram_placements"
+    __table_args__ = (UniqueConstraint("diagram_id", "element_id", name="uq_architecture_diagram_placements"),)
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=160.0)
+    height: Mapped[float] = mapped_column(Float, default=80.0)
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ArchitectureDiagramNote(UUIDPKMixin, TimestampMixin, Base):
+    """An annotation on a diagram: a plain-text block with a tone. It is the only shape with no element behind it. Never
+    rendered as markup. What it points at is its leaders (`ArchitectureNoteLeader`), none or several. A note belongs to a
+    block diagram or to a state machine diagram, exactly one.
+
+    Attributes:
+        diagram_id: The block diagram, or `None` for a note of a state machine diagram; deleting it removes its notes.
+        state_machine_diagram_id: The state machine diagram, or `None` for a note of a block diagram; deleting it removes its
+            notes.
+        text: The note's text.
+        x / y / width / height: The block in diagram units.
+        sort_order: Order among the diagram's notes.
+        tone: A `NoteTone` value.
+        title: A short text drawn in bold above the text (empty for none).
+        text_align: A `NoteAlign` value: how the title and the text sit in the block.
+        size_mode: A `NoteSizeMode` value: `automatic` draws the note at the size its content needs (width and height are then
+            kept as the size a Manual note returns to), `manual` at the stored width and height.
+    """
+
+    __tablename__ = "architecture_diagram_notes"
+    __table_args__ = (
+        CheckConstraint("text_align IN ('left', 'center', 'right')", name="ck_architecture_diagram_notes_text_align"),
+        CheckConstraint("size_mode IN ('automatic', 'manual')", name="ck_architecture_diagram_notes_size_mode"),
+        CheckConstraint(
+            "(diagram_id IS NULL) <> (state_machine_diagram_id IS NULL)", name="ck_architecture_diagram_notes_one_owner"
+        ),
+    )
+
+    diagram_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    state_machine_diagram_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    text: Mapped[str] = mapped_column(Text, default="")
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=160.0)
+    height: Mapped[float] = mapped_column(Float, default=60.0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    tone: Mapped[str] = mapped_column(String(16), default="neutral", server_default="neutral")
+    title: Mapped[str] = mapped_column(String(NOTE_TITLE_MAX), default="", server_default="")
+    text_align: Mapped[str] = mapped_column(String(16), default="left", server_default="left")
+    size_mode: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
+
+
+class ArchitectureNoteLeader(UUIDPKMixin, TimestampMixin, Base):
+    """A line drawn from an annotation note to what it describes: a placed element's box, a connection's drawn line, a state
+    or transition of a state machine diagram, or a free point. A note has none or several. Deleting the target deletes its
+    leader (the note stays).
+
+    Attributes:
+        note_id: The note; deleting it removes its leaders.
+        sort_order: Order among the note's leaders.
+        kind: A `LeaderKind` value (never `none`). `element_id` is set only for `element`, `connection_id` only for
+            `connection`, `state_id` only for `state`, `transition_id` only for `transition` and `x`/`y` (both) only for
+            `point`.
+        start_point: An `AttachPoint` value of the note's block the line leaves from, or `None` for the nearest point.
+        points: The line's vertices as `{x, y}` in canvas units, in order from the note to its end.
+        line_shape: A `LineShape` value, or `None` to follow the diagram's default.
+        start_style / end_style: A `LineEnd` value for each end of the line.
+    """
+
+    __tablename__ = "architecture_note_leaders"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('element', 'connection', 'state', 'transition', 'point')", name="ck_architecture_note_leaders_kind"
+        ),
+        CheckConstraint(
+            "(kind = 'element') = (element_id IS NOT NULL) AND (kind = 'connection') = (connection_id IS NOT NULL)"
+            " AND (kind = 'state') = (state_id IS NOT NULL) AND (kind = 'transition') = (transition_id IS NOT NULL)"
+            " AND (kind = 'point') = (x IS NOT NULL AND y IS NOT NULL) AND (kind = 'point' OR (x IS NULL AND y IS NULL))",
+            name="ck_architecture_note_leaders_target",
+        ),
+        CheckConstraint(
+            "start_style IN ('none', 'arrow', 'dot') AND end_style IN ('none', 'arrow', 'dot')",
+            name="ck_architecture_note_leaders_style",
+        ),
+        CheckConstraint("line_shape IS NULL OR line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_note_leaders_line_shape"),
+    )
+
+    note_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagram_notes.id", ondelete="CASCADE"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(16))
+    element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    state_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    transition_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_transitions.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    start_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
+    line_shape: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    start_style: Mapped[str] = mapped_column(String(8), default="none", server_default="none")
+    end_style: Mapped[str] = mapped_column(String(8), default="arrow", server_default="arrow")
+
+
+class ArchitectureDiagramAnchor(UUIDPKMixin, TimestampMixin, Base):
+    """Where a drawn line meets its boxes, when a person has chosen it (otherwise the nearest points are used).
+
+    A row without `connection_id` belongs to the *drawn line*, keyed by the pair of placed elements it joins, so a line
+    that stands for several connections (merged or rolled up) has one such row for all of them. A row with `connection_id`
+    is one connection's own route: that connection is drawn as a line of its own apart from the pair's line, using this
+    route. An end left empty is chosen automatically: the point of its box nearest the other end.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its anchors.
+        source_element_id / target_element_id: The two placed elements; deleting either removes the anchor. Both must
+            be placed on the diagram, which the layout save enforces and an unplace repeats. For a connection's route
+            they are the boxes of the line it was drawn as; the route applies only while the connection is still drawn
+            between them (either way round).
+        connection_id: The connection this route is for, or `None` for the pair's route; deleting the connection
+            removes the row.
+        source_point / target_point: An `AttachPoint` value, or `None` for automatic.
+        points: The line's vertices as `{x, y}` in canvas units, in order from `source_element_id` to `target_element_id`
+            (a line drawn the other way round reads them reversed). A pair's row sets at least one of the two points, a
+            vertex or a shape; a connection's route may set none (a line of its own, placed automatically).
+        line_shape: A `LineShape` value, or `None` to follow the diagram's default.
+    """
+
+    __tablename__ = "architecture_diagram_anchors"
+    __table_args__ = (
+        Index(
+            "uq_architecture_diagram_anchors", "diagram_id", "source_element_id", "target_element_id", unique=True,
+            postgresql_where=text("connection_id IS NULL"),
+        ),
+        Index(
+            "uq_architecture_diagram_anchors_connection", "diagram_id", "connection_id", unique=True,
+            postgresql_where=text("connection_id IS NOT NULL"),
+        ),
+        CheckConstraint("source_element_id <> target_element_id", name="ck_architecture_diagram_anchors_distinct"),
+        CheckConstraint(
+            "connection_id IS NOT NULL OR source_point IS NOT NULL OR target_point IS NOT NULL OR jsonb_array_length(points) > 0"
+            " OR line_shape IS NOT NULL",
+            name="ck_architecture_diagram_anchors_something_set",
+        ),
+        CheckConstraint("line_shape IS NULL OR line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_diagram_anchors_line_shape"),
+    )
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    source_element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    target_element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
+    line_shape: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class ArchitectureDiagramBoundary(UUIDPKMixin, TimestampMixin, Base):
+    """A box that stands, inside a scoped diagram, for one connection between the scope (or a descendant) and an
+    element outside it (an *outer* connection), so inner elements can be connected to it.
+
+    A box is keyed by the outer connection, not by an element, so two links to the same outside element are two boxes.
+    Whether the connection is still outer (the model may have changed since) is decided when the view is built; a box
+    that is no longer outer is kept and simply not drawn.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its boxes.
+        connection_id: The outer connection; deleting it removes the box.
+        x / y / width / height: The box in diagram units.
+    """
+
+    __tablename__ = "architecture_diagram_boundaries"
+    __table_args__ = (UniqueConstraint("diagram_id", "connection_id", name="uq_architecture_diagram_boundaries"),)
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True
+    )
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=120.0)
+    height: Mapped[float] = mapped_column(Float, default=48.0)
+
+
+class ArchitectureConnectionRealisation(UUIDPKMixin, TimestampMixin, Base):
+    """An inner connection marked as realising an outer one: the lower layer's part of an interface the layer above
+    declares. Both connections belong to the same project; the rules (ends inside the outer end's element, no cycles)
+    are checked by `boundaries.set_realisations`.
+
+    Attributes:
+        inner_connection_id: The connection that realises; deleting it removes the row.
+        outer_connection_id: The connection realised; deleting it removes the row.
+    """
+
+    __tablename__ = "architecture_connection_realisations"
+    __table_args__ = (
+        UniqueConstraint("inner_connection_id", "outer_connection_id", name="uq_architecture_connection_realisations"),
+        CheckConstraint("inner_connection_id <> outer_connection_id", name="ck_architecture_connection_realisations_distinct"),
+    )
+
+    inner_connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True
+    )
+    outer_connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), index=True
+    )
+
+
+class ArchitectureDiagramToggle(UUIDPKMixin, TimestampMixin, Base):
+    """A named switch on a diagram (for example "Security devices"): when off, its members are hidden.
+
+    Membership is the union of the manual members (`ArchitectureDiagramToggleMember`) and the elements and
+    connections the `rule` matches.
+
+    Attributes:
+        diagram_id: The diagram; deleting it removes its toggles.
+        name: Unique within the diagram.
+        default_on: The state a report or export uses unless a call names the states.
+        rule: `{"element_type_ids", "domain_ids", "connection_type_ids", "tags"}`, each a list (all optional). It names
+            vocabulary rows, domains and tag names, never a record, so it travels in a bundle without references.
+        sort_order: Order among the diagram's toggles.
+    """
+
+    __tablename__ = "architecture_diagram_toggles"
+    __table_args__ = (UniqueConstraint("diagram_id", "name", name="uq_architecture_diagram_toggles_name"),)
+
+    diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    default_on: Mapped[bool] = mapped_column(Boolean, default=True)
+    rule: Mapped[dict] = mapped_column(JSONB, default=dict)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ArchitectureDiagramToggleMember(UUIDPKMixin, TimestampMixin, Base):
+    """An element or a connection a toggle names by hand; exactly one of the two ids is set.
+
+    Attributes:
+        toggle_id: The toggle; deleting it removes its members.
+        element_id / connection_id: The member; deleting the record removes the membership.
+    """
+
+    __tablename__ = "architecture_diagram_toggle_members"
+    __table_args__ = (
+        CheckConstraint("(element_id IS NULL) <> (connection_id IS NULL)", name="ck_architecture_diagram_toggle_members_one"),
+        UniqueConstraint("toggle_id", "element_id", name="uq_architecture_diagram_toggle_members_element"),
+        UniqueConstraint("toggle_id", "connection_id", name="uq_architecture_diagram_toggle_members_connection"),
+    )
+
+    toggle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_diagram_toggles.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_connections.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+
+class ArchitectureStateMachineDiagram(UUIDPKMixin, TimestampMixin, Base):
+    """The behaviour of one element drawn as states and transitions (a UML state machine).
+
+    It is a record of its own (code, status, version, tags, links, comments) that holds its states
+    (`ArchitectureState`) and transitions (`ArchitectureTransition`). Its `version` is advanced by every change to the
+    diagram or to a state or transition it holds, so an editor holding a stale copy is told before it overwrites.
+
+    Attributes:
+        project_id: The owning project.
+        unique_code: Project-scoped identifier (`SMD-001`).
+        name / description: Display name and what the behaviour is for.
+        element_id: The element described. Required; one element may have several (operating modes, a connection's
+            lifecycle). The element may belong to another owner the project can read; the database refuses to delete it
+            while a state machine diagram describes it.
+        line_hops: When true a transition that crosses another is drawn with a small arc over it (the later by id hops).
+        line_shape: A `LineShape` value: how a transition or leader with no shape of its own is drawn.
+        status: A `RecordStatus` value.
+        version: Optimistic counter.
+        creator_id / is_archived / archived_at / archived_by: As for `ArchitectureElement`.
+    """
+
+    __tablename__ = "architecture_state_machine_diagrams"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_state_machine_diagrams_project_unique_code"),
+        CheckConstraint("line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_state_machine_diagrams_line_shape"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id"), index=True
+    )
+    line_hops: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    line_shape: Mapped[str] = mapped_column(String(16), default="straight", server_default="straight")
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class ArchitectureState(UUIDPKMixin, TimestampMixin, Base):
+    """A state (or an initial, final or choice marker) of a state machine diagram, with its place on the drawing.
+
+    A state has no status of its own (it follows its state machine diagram) and no placement table: a state machine
+    diagram has exactly one drawing, so the layout is on the state.
+
+    Attributes:
+        state_machine_diagram_id: The state machine diagram; deleting it removes its states.
+        project_id: The diagram's project (kept for the code counter and the project scope).
+        unique_code: Project-scoped identifier (`STE-001`), never reused.
+        name: Unique within the state machine diagram (compared without regard to case).
+        description: Plain text.
+        kind: A `StateKind` value.
+        parent_state_id: The composite state this state is nested in, or `None` at the top level. The database
+            refuses to delete a state that still has children (the rules ask for them to be moved or deleted first).
+        entry_action / exit_action / activity: Plain text a person reads, never evaluated or drawn as markup.
+        label: Up to 256 characters of plain text drawn inside an initial, final or choice symbol (`SYMBOL_LABEL_LENGTH`);
+            empty for an ordinary state, whose name is drawn in its box.
+        label_position: A `LabelPosition` value: where the label is drawn relative to the symbol (`inside` by default, and
+            always `inside` for an ordinary state).
+        x / y / width / height / collapsed: The box in diagram units; a collapsed composite state is drawn as one box.
+        creator_id: The author.
+    """
+
+    __tablename__ = "architecture_states"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_architecture_states_project_unique_code"),
+        UniqueConstraint("state_machine_diagram_id", "name", name="uq_architecture_states_name"),
+        CheckConstraint("kind IN ('initial', 'state', 'final', 'choice')", name="ck_architecture_states_kind"),
+        CheckConstraint(
+            "label_position IN ('inside', 'left', 'right', 'above', 'below')", name="ck_architecture_states_label_position"
+        ),
+    )
+
+    state_machine_diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    unique_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(16), default="state")
+    parent_state_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id"), nullable=True, index=True
+    )
+    entry_action: Mapped[str] = mapped_column(Text, default="")
+    exit_action: Mapped[str] = mapped_column(Text, default="")
+    activity: Mapped[str] = mapped_column(Text, default="")
+    label: Mapped[str] = mapped_column(String(SYMBOL_LABEL_LENGTH), default="", server_default="")
+    label_position: Mapped[str] = mapped_column(String(16), default="inside", server_default="inside")
+    x: Mapped[float] = mapped_column(Float, default=0.0)
+    y: Mapped[float] = mapped_column(Float, default=0.0)
+    width: Mapped[float] = mapped_column(Float, default=160.0)
+    height: Mapped[float] = mapped_column(Float, default=64.0)
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=False)
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class ArchitectureTransition(UUIDPKMixin, TimestampMixin, Base):
+    """An arrow between two states of one state machine diagram, labelled `event [guard] / action`.
+
+    A transition has no code and is not a registered type: a link names its source or target state, or the state machine
+    diagram. A self transition (source equals target) is allowed.
+
+    Attributes:
+        state_machine_diagram_id: The state machine diagram; deleting it removes its transitions.
+        source_state_id / target_state_id: The two states, both of this state machine diagram. Deleting a state removes
+            the transitions that start or end at it.
+        event / guard / action / description: Plain text a person reads; never evaluated.
+        sort_order: Order among the diagram's transitions.
+        source_point / target_point: An `AttachPoint` value fixing where the line meets a box, or `None` for automatic.
+        points / line_shape: The line's vertices as `{x, y}` in canvas units from the source state to the target state, and
+            its own shape or `None` to follow the diagram's default (see `ArchitectureDiagramAnchor`).
+    """
+
+    __tablename__ = "architecture_transitions"
+    __table_args__ = (
+        CheckConstraint("line_shape IS NULL OR line_shape IN ('straight', 'curved', 'spline')", name="ck_architecture_transitions_line_shape"),
+    )
+
+    state_machine_diagram_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_state_machine_diagrams.id", ondelete="CASCADE"), index=True
+    )
+    source_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id", ondelete="CASCADE"), index=True
+    )
+    target_state_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_states.id", ondelete="CASCADE"), index=True
+    )
+    event: Mapped[str] = mapped_column(String(200), default="")
+    guard: Mapped[str] = mapped_column(String(500), default="")
+    action: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    source_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_point: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    points: Mapped[list[dict[str, float]]] = mapped_column(JSONB, default=list, server_default="[]")
+    line_shape: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class ArchitectureAllocationDismissal(UUIDPKMixin, TimestampMixin, Base):
+    """A person's decision that an element is not a suggested allocation for a requirement.
+
+    A suggestion is computed from an element's place in the requirement's component (`allocation`); this row only
+    hides one suggestion. It applies while the element has stayed in that component since `created_at`, so removing the
+    element from the component and placing it there again suggests it afresh (`allocation.dismissal_applies`).
+
+    Attributes:
+        project_id: The owning project (the requirement's and the element's).
+        requirement_id: The requirement the suggestion was for; deleting it removes the row.
+        element_id: The element suggested; deleting it removes the row.
+        dismissed_by: The person who dismissed it, kept empty if they are later removed.
+    """
+
+    __tablename__ = "architecture_allocation_dismissals"
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "element_id", name="uq_architecture_allocation_dismissals_pair"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE"), index=True
+    )
+    element_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_elements.id", ondelete="CASCADE"), index=True
+    )
+    dismissed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

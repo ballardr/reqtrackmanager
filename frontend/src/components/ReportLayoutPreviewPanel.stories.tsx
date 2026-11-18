@@ -264,11 +264,11 @@ export const ADocumentDraftCanBeDownloadedInEveryDocumentFormat: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /Download preview/ }));
     const menu = within(document.body);
     for (const name of ["Download PDF report", "Download Word report", "Download ODT report", "Download HTML report"]) {
-      await expect(await menu.findByRole("button", { name })).toBeInTheDocument();
+      await expect(await menu.findByRole("menuitem", { name })).toBeInTheDocument();
     }
-    await expect(menu.queryByRole("button", { name: /CSV/ })).toBeNull();
+    await expect(menu.queryByRole("menuitem", { name: /CSV/ })).toBeNull();
 
-    await userEvent.click(menu.getByRole("button", { name: "Download Word report" }));
+    await userEvent.click(menu.getByRole("menuitem", { name: "Download Word report" }));
     await waitFor(() => expect(args.api.downloadPreview).toHaveBeenCalledWith(
       { text: "@layout document\n", name: "Requirements", include_children: false, project_ids: undefined }, "docx",
     ));
@@ -283,9 +283,9 @@ export const ATableDraftCanBeDownloadedAsCsvExcelOrOds: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /Download preview/ }));
     const menu = within(document.body);
     for (const name of ["Download CSV report", "Download Excel report", "Download ODS report"]) {
-      await expect(await menu.findByRole("button", { name })).toBeInTheDocument();
+      await expect(await menu.findByRole("menuitem", { name })).toBeInTheDocument();
     }
-    await expect(menu.queryByRole("button", { name: /PDF/ })).toBeNull();
+    await expect(menu.queryByRole("menuitem", { name: /PDF/ })).toBeNull();
   },
 };
 
@@ -310,7 +310,7 @@ export const ADownloadThatIsTooBigSaysSoAndIsNotQueued: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: /Download preview/ }));
-    await userEvent.click(await within(document.body).findByRole("button", { name: "Download PDF report" }));
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Download PDF report" }));
     await expect(await within(document.body).findByText(/too big to produce while you wait/)).toBeInTheDocument();
   },
 };

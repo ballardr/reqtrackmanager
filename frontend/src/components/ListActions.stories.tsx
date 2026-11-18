@@ -46,8 +46,9 @@ export const TheActionsShareOneBurgerMenu: Story = {
     for (const name of ["Download report", "Download shown items", "Download import template", "Import from CSV"]) {
       await expect(menu.getByRole("menuitem", { name })).toBeInTheDocument();
     }
-    // The formats are one level down, not flat in the menu.
-    await expect(menu.queryByRole("menuitem", { name: /^CSV/ })).not.toBeInTheDocument();
+    // The formats are one level down, in the group under their parent, not flat in the menu.
+    const formats = within(await within(document.body).findByRole("group", { name: "Download shown items" }));
+    await expect(formats.getByRole("menuitem", { name: /^CSV/ })).toBeInTheDocument();
   },
 };
 
@@ -56,65 +57,36 @@ export const DownloadShownItemsListsEveryFormat: Story = {
   play: async ({ canvasElement }) => {
     const menu = await openListMenu(within(canvasElement));
     const parent = menu.getByRole("menuitem", { name: "Download shown items" });
-    await expect(parent).toHaveAttribute("aria-haspopup", "menu");
-    await expect(parent).toHaveAttribute("aria-expanded", "false");
-    await userEvent.click(parent);
+    // The first parent starts open; the formats are in the group under it, not flat in the menu.
+    if (parent.getAttribute("aria-expanded") !== "true") await userEvent.click(parent);
     await expect(parent).toHaveAttribute("aria-expanded", "true");
-    const submenu = within(await within(document.body).findByRole("menu", { name: "Download shown items" }));
-    const names = submenu.getAllByRole("menuitem").map((item) => item.textContent?.trim());
+    const group = within(await within(document.body).findByRole("group", { name: "Download shown items" }));
+    const names = group.getAllByRole("menuitem").map((item) => item.textContent?.trim());
     await expect(names).toEqual(["CSVre-imports", "PDF", "Word", "ODT", "ODS"]);
-    await expect(submenu.getByRole("menuitem", { name: "ODT" })).toHaveAttribute("title", "OpenDocument text");
-    await expect(submenu.getByRole("menuitem", { name: "ODS" })).toHaveAttribute("title", "OpenDocument spreadsheet");
+    await expect(group.getByRole("menuitem", { name: "ODT" })).toHaveAttribute("title", "OpenDocument text");
+    await expect(group.getByRole("menuitem", { name: "ODS" })).toHaveAttribute("title", "OpenDocument spreadsheet");
   },
 };
 
-/** The pointer resting on the parent opens the submenu (after a short delay) without a click. */
-export const HoveringTheParentOpensTheSubmenu: Story = {
+/** The keyboard moves through the tree: Right opens the formats on the first, Down moves, Escape closes only that level
+ * (the menu stays and focus returns to the parent). */
+export const TheKeyboardOpensAndLeavesTheFormats: Story = {
   play: async ({ canvasElement }) => {
     const menu = await openListMenu(within(canvasElement));
-    await userEvent.hover(menu.getByRole("menuitem", { name: "Download shown items" }));
-    await expect(await within(document.body).findByRole("menu", { name: "Download shown items" })).toBeInTheDocument();
-  },
-};
-
-/** The keyboard opens the submenu with Right, moves with Down, and Escape closes only the submenu (the menu stays). */
-export const TheKeyboardOpensAndLeavesTheSubmenu: Story = {
-  play: async ({ canvasElement }) => {
-    const menu = await openListMenu(within(canvasElement));
-    menu.getByRole("menuitem", { name: "Download report" }).focus();
-    await userEvent.keyboard("{ArrowDown}");
-    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toHaveFocus();
+    const parent = menu.getByRole("menuitem", { name: "Download shown items" });
+    parent.focus();
+    // The parent starts open: Left closes it, Right opens it on its first format.
+    await userEvent.keyboard("{ArrowLeft}");
+    await expect(parent).toHaveAttribute("aria-expanded", "false");
     await userEvent.keyboard("{ArrowRight}");
-    const submenu = within(await within(document.body).findByRole("menu", { name: "Download shown items" }));
-    await waitFor(() => expect(submenu.getByRole("menuitem", { name: /^CSV/ })).toHaveFocus());
+    const group = within(await within(document.body).findByRole("group", { name: "Download shown items" }));
+    await waitFor(() => expect(group.getByRole("menuitem", { name: /^CSV/ })).toHaveFocus());
     await userEvent.keyboard("{ArrowDown}");
-    await expect(submenu.getByRole("menuitem", { name: "PDF" })).toHaveFocus();
+    await expect(group.getByRole("menuitem", { name: "PDF" })).toHaveFocus();
     await userEvent.keyboard("{Escape}");
-    await expect(within(document.body).queryByRole("menu", { name: "Download shown items" })).not.toBeInTheDocument();
-    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toHaveFocus();
+    await expect(within(document.body).queryByRole("group", { name: "Download shown items" })).not.toBeInTheDocument();
+    await expect(parent).toHaveFocus();
     await expect(within(document.body).getByRole("dialog", { name: "List actions" })).toBeInTheDocument();
-    await userEvent.keyboard("{ArrowRight}{ArrowLeft}");
-    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toHaveFocus();
-  },
-};
-
-/** On a narrow screen (touch) the submenu opens inline beneath its parent, and a tap on a format downloads. */
-export const OnANarrowScreenTheSubmenuOpensInline: Story = {
-  beforeEach: () => {
-    // The submenu places itself from the window width, so narrow the window it reads.
-    const original = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", { value: 500, configurable: true });
-    return () => {
-      Object.defineProperty(window, "innerWidth", { value: original, configurable: true });
-    };
-  },
-  play: async ({ canvasElement, args }) => {
-    const menu = await openListMenu(within(canvasElement));
-    await userEvent.click(menu.getByRole("menuitem", { name: "Download shown items" }));
-    const list = await within(document.body).findByRole("menu", { name: "Download shown items" });
-    await expect(getComputedStyle(list).position).toBe("static");
-    await userEvent.click(within(list).getByRole("menuitem", { name: "ODS" }));
-    await waitFor(() => expect(args.tables!.exportFile).toHaveBeenCalled());
   },
 };
 
@@ -268,7 +240,6 @@ export const SeveralKindsShareOneMenu: Story = {
     const menu = await openListMenu(canvas);
     await expect(menu.getByText("Personas")).toBeInTheDocument();
     await expect(menu.getByText("Stakeholders")).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV", "Stakeholders");
     await waitFor(() =>
       expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "stakeholder", "csv", "status=draft&tag=safety&tag_mode=any"),

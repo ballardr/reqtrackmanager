@@ -60,6 +60,14 @@ for project in "${PROJECTS[@]}"; do
 
     REQUIRED_NODE_MAJOR="$(cat .nvmrc)"
     ACTUAL_NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo '')"
+    # A commit made from an editor or a shell on another Node major: switch to the pinned one through nvm when it is installed
+    # (the same version `nvm use` selects), so the check runs under the Node CI uses instead of failing on the shell's default.
+    if [[ "$ACTUAL_NODE_MAJOR" != "$REQUIRED_NODE_MAJOR" && -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]]; then
+      # shellcheck disable=SC1091
+      source "${NVM_DIR:-$HOME/.nvm}/nvm.sh" >/dev/null 2>&1 || true
+      nvm use --silent "$REQUIRED_NODE_MAJOR" >/dev/null 2>&1 || true
+      ACTUAL_NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo '')"
+    fi
     if [[ "$ACTUAL_NODE_MAJOR" != "$REQUIRED_NODE_MAJOR" ]]; then
       echo "pre-commit: active Node is $(node -v 2>/dev/null || echo 'not found'), but $project/.nvmrc pins Node $REQUIRED_NODE_MAJOR (matches CI/Dockerfile)." >&2
       echo "pre-commit: run 'nvm use' in $project/ first, then retry the commit." >&2

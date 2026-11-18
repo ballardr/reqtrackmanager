@@ -74,6 +74,7 @@ from app.models.change_request import (
 from app.models.custom_field import CustomFieldDefinition, CustomFieldEntityKind, CustomFieldType
 from app.models.enums import (
     ArtefactType,
+    BaselineKind,
     ChangeRequestKind,
     ChangeRequestStatus,
     ChangeRequestVoteChoice,
@@ -105,7 +106,7 @@ from app.models.requirement import (
 )
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
-from app.modules.registry import get_all_module_project_bundle_hooks
+from app.modules.registry import get_all_module_project_bundle_hooks, get_all_registered_artefact_types
 from app.services import nav_labels, overview_widgets
 from app.services.audit import log_event
 from app.services.bundle_approval_state import count_approval_state, strip_approval_state
@@ -493,14 +494,22 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     baselines_json = [
         {
-            "stage_name": stage_name_by_id.get(b.stage_id), "label": b.label, "created_by_email": email(b.created_by),
+            "kind": b.kind.value, "stage_name": stage_name_by_id.get(b.stage_id) if b.stage_id else None, "label": b.label,
+            "created_by_email": email(b.created_by),
             "component": component_prefix_by_id.get(b.component_id) if b.component_id else None,
             "created_at": _j(b.created_at),
             "items": [
                 {"unique_code": req_code_by_id.get(item.requirement_id), "version_number": next(
                     (v.version_number for v in versions_by_req.get(item.requirement_id, []) if v.id == item.requirement_version_id), None
                 )}
-                for item in baseline_items_by_baseline.get(b.id, []) if item.requirement_id in req_code_by_id
+                for item in baseline_items_by_baseline.get(b.id, [])
+                if item.item_type == "requirement" and item.requirement_id in req_code_by_id
+            ],
+            # A module's records: the self-contained snapshot only. `item_id` is the live record's id, which means
+            # nothing in another project, so it is not exported.
+            "module_items": [
+                {"item_type": item.item_type, "snapshot": item.snapshot}
+                for item in baseline_items_by_baseline.get(b.id, []) if item.item_type != "requirement"
             ],
         }
         for b in baselines
@@ -1020,12 +1029,15 @@ def apply_project_data(
             if version_id and cr_id:
                 get_or_404(db, RequirementVersion, version_id, "Requirement version").change_request_id = cr_id
 
+    registered_item_types = get_all_registered_artefact_types()
     for b in data.get("baselines", []):
-        stage_id = stage_id_by_name.get(b["stage_name"])
-        if stage_id is None:
+        kind = BaselineKind(b.get("kind") or BaselineKind.STAGE.value)
+        stage_id = stage_id_by_name.get(b.get("stage_name"))
+        if kind == BaselineKind.STAGE and stage_id is None:
             continue
         baseline = Baseline(
-            project_id=project.id, stage_id=stage_id, label=b["label"], component_id=component_id_by_prefix.get(b.get("component") or ""),
+            project_id=project.id, kind=kind, stage_id=stage_id if kind == BaselineKind.STAGE else None, label=b["label"],
+            component_id=component_id_by_prefix.get(b.get("component") or "") if kind == BaselineKind.STAGE else None,
             created_by=users.resolve(b.get("created_by_email"), required=True, context=f"Baseline '{b['label']}' creator"),
         )
         db.add(baseline)
@@ -1034,7 +1046,19 @@ def apply_project_data(
             requirement_id = requirement_id_by_code.get(item["unique_code"])
             version_id = version_id_by_code_and_number.get((item["unique_code"], item["version_number"]))
             if requirement_id and version_id:
-                db.add(BaselineItem(baseline_id=baseline.id, requirement_id=requirement_id, requirement_version_id=version_id))
+                db.add(BaselineItem(
+                    baseline_id=baseline.id, item_type="requirement", item_id=requirement_id,
+                    requirement_id=requirement_id, requirement_version_id=version_id,
+                ))
+        for item in b.get("module_items", []):
+            item_type = item.get("item_type")
+            snapshot = item.get("snapshot")
+            # A type this installation does not register (or a malformed row) is dropped with a warning, never stored:
+            # the snapshot would be unreadable here.
+            if item_type not in registered_item_types or item_type == "requirement" or not isinstance(snapshot, dict):
+                warnings.add(f"Baseline '{b['label']}': a captured record of type '{item_type}' was skipped.")
+                continue
+            db.add(BaselineItem(baseline_id=baseline.id, item_type=item_type, item_id=None, snapshot=snapshot))
 
     import_component_phases(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)
     import_phase_schedule(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)

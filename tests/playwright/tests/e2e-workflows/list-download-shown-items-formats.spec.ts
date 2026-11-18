@@ -4,10 +4,11 @@ import { expect, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 import { chooseExport, openListMenu } from "../listActions";
+import { openMenuParent } from "../menuTree";
 
 /**
  * Job to be done: take the list I am looking at out of the product as an OpenDocument file (a text report or a
- * spreadsheet), with the page's filters applied, from the List actions menu's Download shown items submenu.
+ * spreadsheet), with the page's filters applied, from the List actions menu's Download shown items group.
  *
  * Each test works in its own disposable project, so nothing here depends on another test or an earlier run.
  */
@@ -31,26 +32,20 @@ test.describe("Download shown items on a record list", () => {
     return name;
   }
 
-  test("the submenu lists CSV, PDF, Word, ODT and ODS, and the formats are not flat in the menu", async ({ page }) => {
+  test("the parent lists CSV, PDF, Word, ODT and ODS in a group beneath it, not flat in the menu", async ({ page }) => {
     await projectWithChangeRequest(page);
     const menu = await openListMenu(page);
-    await expect(menu.getByRole("menuitem", { name: /^CSV/ })).toHaveCount(0);
-    await menu.getByRole("menuitem", { name: "Download shown items" }).click();
-    const submenu = page.getByRole("menu", { name: "Download shown items" });
+    const formats = await openMenuParent(page, "Download shown items", menu);
     for (const name of ["CSV", "PDF", "Word", "ODT", "ODS"]) {
-      await expect(submenu.getByRole("menuitem", { name: new RegExp(`^${name}`) })).toBeVisible();
+      await expect(formats.getByRole("menuitem", { name: new RegExp(`^${name}`) })).toBeVisible();
     }
-    // Escape closes the submenu first, the menu second.
+    // Escape closes the level first, the menu second.
+    await menu.getByRole("menuitem", { name: "PDF" }).focus();
     await page.keyboard.press("Escape");
-    await expect(submenu).toHaveCount(0);
+    await expect(formats).toHaveCount(0);
     await expect(page.getByRole("dialog", { name: "List actions" })).toBeVisible();
-  });
-
-  test("the submenu opens on hover", async ({ page }) => {
-    await projectWithChangeRequest(page);
-    const menu = await openListMenu(page);
-    await menu.getByRole("menuitem", { name: "Download shown items" }).hover();
-    await expect(page.getByRole("menu", { name: "Download shown items" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "List actions" })).toHaveCount(0);
   });
 
   test("ODT and ODS download the shown change requests as OpenDocument files", async ({ page }) => {

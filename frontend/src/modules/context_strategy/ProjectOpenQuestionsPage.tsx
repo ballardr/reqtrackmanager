@@ -33,10 +33,12 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { OPEN_QUESTION_SORT_KEYS, OPEN_QUESTION_SORT_VALUES } from "./contextStrategySort";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
@@ -44,7 +46,8 @@ import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQ
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows } from "../../utils/sortRows";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -75,6 +78,7 @@ export function ProjectOpenQuestionsPage() {
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]);
   const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]);
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [sort, setSort] = useUrlSort<string>(OPEN_QUESTION_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(OPEN_QUESTION_STATUS_LABEL));
@@ -134,14 +138,14 @@ export function ProjectOpenQuestionsPage() {
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && openQuestions.some((q) => matches(q, false));
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
-    { key: "code", label: "Code", render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
-    { key: "priority", label: "Priority", render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
+    { key: "question", label: "Question", sortable: true, render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
+    { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
+    { key: "priority", label: "Priority", sortable: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
     },
-    { key: "due_date", label: "Due", render: (q) => q.due_date ?? "—" },
+    { key: "due_date", label: "Due", sortable: true, render: (q) => q.due_date ?? "—" },
   ];
 
   return (
@@ -185,7 +189,9 @@ export function ProjectOpenQuestionsPage() {
         <DirectoryTable
           ariaLabel="Open Questions"
           columns={columns}
-          rows={filtered}
+          rows={sortRows(filtered, sort, OPEN_QUESTION_SORT_VALUES)}
+          sort={sort}
+          onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(q) => q.id}
           placements={{ projectId, artefactType: "open_question", rowId: (q) => q.id }}
           onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}

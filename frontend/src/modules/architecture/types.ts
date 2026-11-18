@@ -1,0 +1,1102 @@
+/**
+ * Module: modules/architecture/types
+ *
+ * Frontend vocabulary for the System Architecture module: the wire values of its enums with their display labels.
+ * Mirrors `backend/app/modules/architecture/enums.py` and `labels.py` by hand; any place that shows an enum value
+ * goes through its label map, never the raw string.
+ */
+
+import type { BadgeTone, Principal, PrincipalRef } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
+import type { AttachPoint } from "../../components/graphAttachPoints";
+import type { LineShape } from "../../components/graphLinePath";
+
+export type ArchitectureRecordStatus = "draft" | "proposed" | "active" | "retired" | "rejected";
+
+export const ARCHITECTURE_STATUS_LABEL: Record<ArchitectureRecordStatus, string> = {
+  draft: "Draft",
+  proposed: "Proposed",
+  active: "Active",
+  retired: "Retired",
+  rejected: "Rejected",
+};
+
+export type PortDirection = "in" | "out" | "both";
+
+/** The colour family of an annotation note on a diagram; `none` draws the text alone, with no box. */
+export type NoteTone = "none" | "neutral" | "info" | "success" | "warning" | "danger";
+
+export const NOTE_TONE_LABEL: Record<NoteTone, string> = {
+  none: "None", neutral: "Neutral", info: "Information", success: "Positive", warning: "Caution", danger: "Critical",
+};
+
+/** How a note's title and text are aligned in its block. Full justification is not offered: the exports cannot draw it. */
+export type NoteTextAlign = "left" | "center" | "right";
+
+export const NOTE_TEXT_ALIGN_LABEL: Record<NoteTextAlign, string> = { left: "Left", center: "Centre", right: "Right" };
+
+/** Whether a note is drawn at the size its content needs (Automatic) or at the size stored for it (Manual). */
+export type NoteSizeMode = "automatic" | "manual";
+
+export const NOTE_SIZE_MODE_LABEL: Record<NoteSizeMode, string> = { automatic: "Automatic", manual: "Manual" };
+
+/** The longest note title (characters); the server refuses a longer one. */
+export const NOTE_TITLE_MAX = 120;
+
+/** What an annotation's leader line ends at. */
+export type LeaderKind = "element" | "connection" | "state" | "transition" | "point";
+
+/** How a leader line begins or ends. */
+export type LineEnd = "none" | "arrow" | "dot";
+
+export const LINE_END_LABEL: Record<LineEnd, string> = { none: "None", arrow: "Arrow", dot: "Dot" };
+
+/** A leader line of a note as the view lists it (mirrors `LeaderOut` in `schemas.py`): where it ends, how it runs and how its ends look. */
+export interface DiagramLeader {
+  id: string;
+  kind: LeaderKind;
+  element_id: string | null;
+  connection_id: string | null;
+  /** The state a note on a state machine diagram points at (`kind` "state"). */
+  state_id: string | null;
+  /** The transition a note on a state machine diagram points at (`kind` "transition"). */
+  transition_id: string | null;
+  x: number | null;
+  y: number | null;
+  start_point: AttachPoint | null;
+  points: LineWaypoint[];
+  /** The line's own shape, or null to follow the diagram's default. */
+  line_shape: LineShape | null;
+  start_style: LineEnd;
+  end_style: LineEnd;
+}
+
+/** A leader line as saved (mirrors `LeaderIn`; `id` keeps an existing leader of the note, none creates one). */
+export interface LeaderValues extends Omit<DiagramLeader, "id"> {
+  id: string | null;
+}
+
+export const PORT_DIRECTION_LABEL: Record<PortDirection, string> = {
+  in: "In",
+  out: "Out",
+  both: "Both",
+};
+
+/** The states that mean a record is out of use: hidden by "Open only", not offered as a new end, parent, scope or box, drawn faded. */
+export const ARCHITECTURE_INACTIVE_STATUSES: ArchitectureRecordStatus[] = ["retired", "rejected"];
+
+/** Whether a record in `status` is out of use (retired or rejected). */
+export function isOutOfUse(status: ArchitectureRecordStatus): boolean {
+  return ARCHITECTURE_INACTIVE_STATUSES.includes(status);
+}
+
+export const ARCHITECTURE_STATUS_TONE: Record<ArchitectureRecordStatus, BadgeTone> = {
+  draft: "muted",
+  proposed: "info",
+  active: "accent",
+  retired: "muted",
+  rejected: "danger",
+};
+
+export type ElementShape =
+  | "rectangle" | "rounded" | "cylinder" | "hexagon" | "ellipse" | "parallelogram" | "folder" | "chip";
+
+export const ELEMENT_SHAPE_LABEL: Record<ElementShape, string> = {
+  rectangle: "Rectangle",
+  rounded: "Rounded rectangle",
+  cylinder: "Cylinder",
+  hexagon: "Hexagon",
+  ellipse: "Ellipse",
+  parallelogram: "Parallelogram",
+  folder: "Folder",
+  chip: "Chip",
+};
+
+export type LineStyle = "solid" | "dashed" | "dotted";
+
+export const LINE_STYLE_LABEL: Record<LineStyle, string> = {
+  solid: "Solid",
+  dashed: "Dashed",
+  dotted: "Dotted",
+};
+
+// --- Response and request shapes (mirror `backend/app/modules/architecture/schemas.py`) ---
+
+/** A domain (Software, Hardware, ...): a name a type can be in. Exactly one of `project_id` and `organization_id` is set. */
+export interface ArchitectureDomain {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  name: string;
+  sort_order: number;
+}
+
+/** The writable fields of a domain. */
+export interface ArchitectureDomainValues {
+  name: string;
+}
+
+/** A type vocabulary row. Exactly one of `project_id` and `organization_id` is set (its owner). */
+interface VocabularyRow {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  name: string;
+  color_light: string | null;
+  color_dark: string | null;
+  sort_order: number;
+  /** The domains the type is in; empty means it fits every domain. */
+  domain_ids: string[];
+}
+
+export interface ElementType extends VocabularyRow {
+  shape: ElementShape;
+  symbol_id: string | null;
+  /** The connection types a connection picker lists first when an element of this type is at an end (guidance only). */
+  suggested_connection_type_ids: string[];
+}
+
+export interface ConnectionType extends VocabularyRow {
+  line_style: LineStyle;
+  directional: boolean;
+  /** The protocol a new connection of this type starts with (empty for none); it pre-fills only. */
+  default_protocol: string;
+  /** The types this one sits under (empty for a root); a type may have several parents, to any depth. */
+  parent_ids: string[];
+}
+
+/** The writable fields of an element type (`symbol_id: null` clears the symbol). */
+export interface ElementTypeValues {
+  name: string;
+  domain_ids: string[];
+  shape: ElementShape;
+  color_light: string | null;
+  color_dark: string | null;
+  symbol_id: string | null;
+  /** The suggested connection types; an empty list clears them. */
+  suggested_connection_type_ids: string[];
+}
+
+export interface ConnectionTypeValues {
+  name: string;
+  domain_ids: string[];
+  line_style: LineStyle;
+  directional: boolean;
+  default_protocol: string;
+  color_light: string | null;
+  color_dark: string | null;
+  /** The types this one sits under; an empty list makes it a root. */
+  parent_ids: string[];
+}
+
+/** A symbol library entry; its drawing is read from `.../symbols/{id}/content`. */
+export interface ArchitectureSymbol {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  name: string;
+  builtin_key: string | null;
+  is_builtin: boolean;
+  sort_order: number;
+}
+
+/** A project type hidden from an organisation default (`.../hidden`). */
+export type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
+
+export interface Port {
+  id: string;
+  element_id: string;
+  name: string;
+  direction: PortDirection;
+  connection_type_id: string | null;
+  connection_type_name: string | null;
+  sort_order: number;
+}
+
+export interface PortValues {
+  name: string;
+  direction: PortDirection;
+  connection_type_id: string | null;
+}
+
+export interface ArchitectureElement extends ProjectScopedRow {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  /** True when the element is shown in a project that does not own it (read-only there). */
+  shared: boolean;
+  unique_code: string;
+  name: string;
+  description: string;
+  /** The short line drawn inside the element's box on a diagram (the description is never drawn). */
+  display_note: string;
+  element_type_id: string;
+  element_type_name: string;
+  symbol_id: string | null;
+  effective_symbol_id: string | null;
+  parent_id: string | null;
+  /** The folder in the owner's tree; null at the top level, and for a shared element (the owner's tree is not disclosed). */
+  folder_id: string | null;
+  /** The folder's path (`Software/Modules`): only the names on the way to this record, also for a shared element. */
+  folder_path: string | null;
+  owner: Principal | null;
+  status: ArchitectureRecordStatus;
+  /** The states the server lets this record move to, in menu order (one map on the server). */
+  allowed_status_moves: ArchitectureRecordStatus[];
+  version: number;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  child_count: number;
+  connection_count: number;
+  ports: Port[];
+}
+
+/** The fields the element create and edit forms share. */
+export interface ElementFieldValues {
+  name: string;
+  description: string;
+  display_note: string;
+  element_type_id: string;
+  parent_id: string | null;
+  folder_id: string | null;
+  owner: PrincipalRef | null;
+  symbol_id: string | null;
+}
+
+/** Create payload: the shared fields plus what only a new element takes. */
+export interface ElementCreateValues extends ElementFieldValues {
+  activate: boolean;
+  ports: PortValues[];
+}
+
+/** A connection named from another connection's page (what it realises, or what realises it). */
+export interface ConnectionRef {
+  id: string;
+  unique_code: string;
+  name: string;
+  status: ArchitectureRecordStatus;
+}
+
+export interface ArchitectureConnection extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  name: string;
+  connection_type_id: string;
+  connection_type_name: string;
+  directional: boolean;
+  source_element_id: string;
+  source_element_code: string;
+  source_element_name: string;
+  source_port_id: string | null;
+  source_port_name: string | null;
+  source_locked: boolean;
+  source_shared: boolean;
+  target_element_id: string;
+  target_element_code: string;
+  target_element_name: string;
+  target_port_id: string | null;
+  target_port_name: string | null;
+  target_locked: boolean;
+  target_shared: boolean;
+  protocol: string;
+  description: string;
+  folder_id: string | null;
+  folder_path: string | null;
+  status: ArchitectureRecordStatus;
+  /** The states the server lets this record move to, in menu order (one map on the server). */
+  allowed_status_moves: ArchitectureRecordStatus[];
+  version: number;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  /** The outer connections this one realises (it lies inside the interface each declares). */
+  realises: ConnectionRef[];
+  /** The inner connections that realise this one. */
+  realised_by: ConnectionRef[];
+}
+
+/** The fields the connection create and edit forms share. */
+export interface ConnectionFieldValues {
+  name: string;
+  connection_type_id: string;
+  source_element_id: string;
+  source_port_id: string | null;
+  target_element_id: string;
+  target_port_id: string | null;
+  protocol: string;
+  description: string;
+  folder_id: string | null;
+}
+
+export interface ConnectionCreateValues extends ConnectionFieldValues {
+  activate: boolean;
+}
+
+export interface CollectionGrant {
+  id: string;
+  project_id: string | null;
+  project_name: string | null;
+  project_code: string | null;
+  group: Principal | null;
+  include_descendants: boolean;
+  created_at: string;
+}
+
+export interface CollectionMember {
+  element_id: string;
+  unique_code: string;
+  name: string;
+}
+
+export interface ArchitectureCollection {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  name: string;
+  description: string;
+  member_count: number;
+  grant_count: number;
+  grants: CollectionGrant[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Who a grant reaches: a project (optionally with its descendants) or a group. */
+export interface CollectionGrantValues {
+  project_id: string | null;
+  group: PrincipalRef | null;
+  include_descendants: boolean;
+}
+
+// --- Diagrams (mirror the diagram schemas in `backend/app/modules/architecture/schemas.py`) ---
+
+/** A diagram record with its counts. The scope element's name is blank when the viewer cannot read it. */
+export interface ArchitectureDiagram extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  name: string;
+  purpose: string;
+  scope_element_id: string | null;
+  scope_element_code: string | null;
+  scope_element_name: string | null;
+  connection_detail: boolean;
+  /** Whether a line that crosses another is drawn with a small arc over it. */
+  line_hops: boolean;
+  /** Whether a line is labelled with the names of the connections behind it. */
+  show_connection_names: boolean;
+  /** How a line with no shape of its own is drawn. */
+  line_shape: LineShape;
+  folder_id: string | null;
+  folder_path: string | null;
+  status: ArchitectureRecordStatus;
+  /** The states the server lets this record move to, in menu order (one map on the server). */
+  allowed_status_moves: ArchitectureRecordStatus[];
+  version: number;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  placement_count: number;
+  note_count: number;
+  toggle_count: number;
+}
+
+/** A drawing option stored on a block diagram or a state machine diagram and set from the editor's settings (not in the forms). */
+export interface DiagramSettingValues {
+  line_hops: boolean;
+  line_shape: LineShape;
+}
+
+/** A drawing option of the block diagram only (the state machine diagram has no connections), set from the editor's settings. */
+export interface DiagramLabelSettingValues {
+  show_connection_names: boolean;
+}
+
+/** The fields the diagram create and edit forms share. */
+export interface DiagramFieldValues {
+  name: string;
+  purpose: string;
+  scope_element_id: string | null;
+  connection_detail: boolean;
+  folder_id: string | null;
+}
+
+/** Create payload: the shared fields plus what only a new diagram takes. */
+export interface DiagramCreateValues extends DiagramFieldValues {
+  activate: boolean;
+  populate: boolean;
+}
+
+/** What a toggle matches besides its manual members. */
+export interface DiagramToggleRule {
+  element_type_ids: string[];
+  connection_type_ids: string[];
+  domain_ids: string[];
+  tags: string[];
+}
+
+/** A toggle as the view returns it; `on` is its state in this view. */
+export interface DiagramToggle {
+  id: string;
+  name: string;
+  default_on: boolean;
+  on: boolean;
+  rule: DiagramToggleRule;
+  element_ids: string[];
+  connection_ids: string[];
+  sort_order: number;
+}
+
+/** A toggle as saved (`id` keeps an existing one). */
+export interface DiagramToggleValues {
+  id: string | null;
+  name: string;
+  default_on: boolean;
+  rule: DiagramToggleRule;
+  element_ids: string[];
+  connection_ids: string[];
+}
+
+export interface DiagramViewPort {
+  id: string;
+  name: string;
+  direction: PortDirection;
+  connection_type_name: string | null;
+}
+
+/** A placed element as drawn. A `locked` node is one the viewer can no longer read (its code only). */
+export interface DiagramViewNode {
+  placement_id: string;
+  element_id: string;
+  unique_code: string;
+  name: string;
+  display_note: string;
+  locked: boolean;
+  shared: boolean;
+  hidden: boolean;
+  status: ArchitectureRecordStatus;
+  parent_id: string | null;
+  element_type_id: string | null;
+  element_type_name: string;
+  shape: ElementShape;
+  color_light: string | null;
+  color_dark: string | null;
+  symbol_id: string | null;
+  ports: DiagramViewPort[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+  internal_connection_ids: string[];
+}
+
+/** A hidden element a bridged line passes through. */
+export interface DiagramViewHop {
+  element_id: string;
+  unique_code: string;
+  name: string;
+}
+
+/** A line between two placed elements and the connections behind it. */
+export interface DiagramViewEdge {
+  id: string;
+  /** An element id, or a boundary box's id when `source_is_boundary`. */
+  source_element_id: string;
+  target_element_id: string;
+  source_is_boundary: boolean;
+  target_is_boundary: boolean;
+  two_way: boolean;
+  indirect: boolean;
+  rolled_up: boolean;
+  bridged: boolean;
+  count: number;
+  type_name: string | null;
+  line_style: LineStyle | null;
+  color_light: string | null;
+  color_dark: string | null;
+  label: string | null;
+  connections: ArchitectureConnection[];
+  hops: DiagramViewHop[];
+  /** The connections behind the line that can have a route of their own (each stands alone between two boxes). */
+  routable_connection_ids: string[];
+  /** The connection the line is drawn for with its own route, or null for a line that uses its pair's route. */
+  route_connection_id: string | null;
+}
+
+/** How a boundary box is drawn, from the direction of the outer connection it stands for, seen from inside the scope. */
+export type BoundaryShape = "input" | "output" | "bidirectional" | "dot";
+
+/**
+ * A boundary box: a scoped diagram's stand-in for one outer connection (the scope, or an element inside it, to an element
+ * outside). A `locked` box is one whose outside element the viewer cannot read: codes only, drawn as a dot.
+ */
+export interface DiagramViewBoundary {
+  id: string;
+  connection_id: string;
+  connection_code: string;
+  connection_name: string;
+  type_name: string;
+  shape: BoundaryShape;
+  locked: boolean;
+  outside_element_id: string;
+  outside_element_code: string;
+  outside_element_name: string;
+  scope_end_element_id: string;
+  scope_end_port_name: string | null;
+  covered: boolean;
+  realised_by_count: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DiagramNote {
+  id: string;
+  title: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  tone: NoteTone;
+  text_align: NoteTextAlign;
+  size_mode: NoteSizeMode;
+  leaders: DiagramLeader[];
+}
+
+/** A diagram resolved for drawing. */
+export interface DiagramView {
+  diagram: ArchitectureDiagram;
+  toggles: DiagramToggle[];
+  nodes: DiagramViewNode[];
+  edges: DiagramViewEdge[];
+  notes: DiagramNote[];
+  anchors: DiagramAnchor[];
+  boundaries: DiagramViewBoundary[];
+}
+
+/** A vertex of a drawn line, in canvas units. */
+export interface LineWaypoint {
+  x: number;
+  y: number;
+}
+
+/** A change to how a line is routed: each part named is set, the others are kept (`null` makes an attach point automatic). */
+export interface LineRouteChange {
+  sourcePoint?: AttachPoint | null;
+  targetPoint?: AttachPoint | null;
+  points?: LineWaypoint[];
+  /** The line's own shape; null follows the diagram's default. */
+  lineShape?: LineShape | null;
+}
+
+/**
+ * How a drawn line is routed, when a person chose it: where it meets its two boxes (an end that is null is automatic) and
+ * its vertices in order from `source_element_id` to `target_element_id`, drawn in its own shape
+ * (`line_shape`, none follows the diagram's default). With a `connection_id` it is that connection's own route, which draws the connection as a line apart from the one its pair of
+ * boxes shares; without one it is the pair's route.
+ */
+export interface DiagramAnchor {
+  source_element_id: string;
+  target_element_id: string;
+  connection_id: string | null;
+  source_point: AttachPoint | null;
+  target_point: AttachPoint | null;
+  points: LineWaypoint[];
+  line_shape: LineShape | null;
+}
+
+/** A state machine diagram that describes an element, as a block on a block diagram links to it. */
+export interface ModelStateMachine {
+  id: string;
+  unique_code: string;
+  name: string;
+}
+
+/** An element as the editor needs it to draw a box and resolve lines; a `locked` one carries its code only. */
+export interface ModelElement {
+  id: string;
+  unique_code: string;
+  name: string;
+  display_note: string;
+  locked: boolean;
+  shared: boolean;
+  status: ArchitectureRecordStatus;
+  element_type_id: string | null;
+  element_type_name: string;
+  color_light: string | null;
+  color_dark: string | null;
+  symbol_id: string | null;
+  /** The open state machine diagrams describing the element (none for a locked element or when the caller may not read them). */
+  state_machines: ModelStateMachine[];
+}
+
+/** A connection type's drawing attributes. */
+export interface ModelConnectionType {
+  id: string;
+  name: string;
+  directional: boolean;
+  line_style: LineStyle;
+  color_light: string | null;
+  color_dark: string | null;
+}
+
+/** What one view switch hides when it is off: its manual members plus whatever its rule matches. */
+export interface ModelToggleMembers {
+  toggle_id: string;
+  element_ids: string[];
+  connection_ids: string[];
+}
+
+/** The model data a diagram's lines are resolved from in the browser (`GET .../diagrams/{id}/model`). */
+export interface DiagramModel {
+  elements: ModelElement[];
+  /** Every element listed, connection end and ancestor of one, mapped to its parent (a root to null). */
+  parents: Record<string, string | null>;
+  connections: ArchitectureConnection[];
+  connection_types: ModelConnectionType[];
+  toggle_members: ModelToggleMembers[];
+  /** Which connection realises which (both live), so the editor can join a realising connection to its boundary box. */
+  realisations: ModelRealisation[];
+}
+
+/** One inner connection realising one outer connection. */
+export interface ModelRealisation {
+  inner_connection_id: string;
+  outer_connection_id: string;
+}
+
+/** One box as saved. */
+export interface PlacementValues {
+  element_id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+}
+
+/** One note as saved (`id` keeps an existing note; none creates one). */
+export interface NoteValues {
+  id: string | null;
+  title: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  tone: NoteTone;
+  text_align: NoteTextAlign;
+  size_mode: NoteSizeMode;
+  leaders: LeaderValues[];
+}
+
+/** One boundary box as saved: the outer connection it stands for and its box. */
+export interface BoundaryValues {
+  connection_id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// --- Folders (mirror the folder schemas in `backend/app/modules/architecture/schemas.py`) ---
+
+/** Which list a folder organises; each kind has its own tree. */
+export type FolderKind = "element" | "connection" | "diagram";
+
+/** A folder: a name in a tree that organises one list. Navigation only. */
+export interface ArchitectureFolder {
+  id: string;
+  project_id: string | null;
+  organization_id: string | null;
+  kind: FolderKind;
+  name: string;
+  parent_id: string | null;
+  sort_order: number;
+  /** Names from the top, joined by `/`. */
+  path: string;
+  /** Records directly in the folder (not in its sub-folders). */
+  record_count: number;
+}
+
+// --- State machine diagrams (mirror the schemas in `backend/app/modules/architecture/schemas.py`) ---
+
+/** What a state is: an ordinary state, or one of the three markers (the start, an end, a choice). */
+export type StateKind = "initial" | "state" | "final" | "choice";
+
+export const STATE_KIND_LABEL: Record<StateKind, string> = {
+  initial: "Initial state",
+  state: "State",
+  final: "Final state",
+  choice: "Choice",
+};
+
+/** The kinds drawn as a marker (a shape with no text inside) rather than a box. */
+export const STATE_MARKER_KINDS: readonly StateKind[] = ["initial", "final", "choice"];
+
+/** Where a marker's label is drawn: inside the symbol (which grows to hold it) or outside it on one side (the symbol keeps its plain size). */
+export type LabelPosition = "inside" | "left" | "right" | "above" | "below";
+
+/** What a person sees for each label position, in the order they are offered. */
+export const LABEL_POSITION_LABEL: Record<LabelPosition, string> = {
+  inside: "Inside", left: "Left", right: "Right", above: "Above", below: "Below",
+};
+
+/** How serious a validation issue is: an error blocks activation, a warning never does. */
+export type ValidationSeverity = "error" | "warning";
+
+export const VALIDATION_SEVERITY_LABEL: Record<ValidationSeverity, string> = { error: "Error", warning: "Warning" };
+
+/** Which kind of diagram a Diagrams-tab row is. */
+export type DiagramKind = "block" | "state_machine";
+
+export const DIAGRAM_KIND_LABEL: Record<DiagramKind, string> = { block: "Block diagram", state_machine: "State machine diagram" };
+
+/** How a record appears on a diagram its page lists: its own box, inside a drawn ancestor, a line, a rolled-up line, or described by a state machine. */
+export type RecordDiagramUsage = "placed" | "inside" | "drawn" | "rolled_up" | "describes";
+
+export const RECORD_DIAGRAM_USAGE_LABEL: Record<Exclude<RecordDiagramUsage, "inside">, string> = {
+  placed: "Placed", drawn: "Drawn", rolled_up: "Rolled up", describes: "Describes this element",
+};
+
+/** One diagram an element or connection appears on (the Diagrams card). `via_*` names the drawn ancestor for `inside`; its name is blank when the viewer cannot read it. */
+export interface RecordDiagram {
+  id: string;
+  kind: DiagramKind;
+  unique_code: string;
+  name: string;
+  status: ArchitectureRecordStatus;
+  usage: RecordDiagramUsage;
+  via_element_id: string | null;
+  via_element_code: string | null;
+  via_element_name: string | null;
+}
+
+/** A state machine diagram with its counts. The element's name is blank when the viewer cannot read it. */
+export interface StateMachineDiagram extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  name: string;
+  description: string;
+  element_id: string;
+  element_code: string | null;
+  element_name: string | null;
+  /** Whether a transition that crosses another is drawn with a small arc over it. */
+  line_hops: boolean;
+  /** How a transition or leader with no shape of its own is drawn. */
+  line_shape: LineShape;
+  status: ArchitectureRecordStatus;
+  allowed_status_moves: ArchitectureRecordStatus[];
+  version: number;
+  creator_id: string;
+  is_archived: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  state_count: number;
+  transition_count: number;
+  error_count: number;
+  warning_count: number;
+}
+
+/** The fields the state machine diagram create and edit forms share. */
+export interface StateMachineFieldValues {
+  name: string;
+  description: string;
+  element_id: string;
+}
+
+/** Create payload: the shared fields plus Save and activate. */
+export interface StateMachineCreateValues extends StateMachineFieldValues {
+  activate: boolean;
+}
+
+/** A state (or marker) with the diagram and element it belongs to. */
+export interface ArchitectureState extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  state_machine_diagram_id: string;
+  state_machine_diagram_code: string;
+  state_machine_diagram_name: string;
+  state_machine_diagram_version: number;
+  element_id: string;
+  element_code: string | null;
+  element_name: string | null;
+  name: string;
+  description: string;
+  kind: StateKind;
+  parent_state_id: string | null;
+  parent_state_code: string | null;
+  entry_action: string;
+  exit_action: string;
+  activity: string;
+  /** Plain text drawn with an initial, final or choice symbol (up to 256 characters); empty for an ordinary state. */
+  label: string;
+  /** Where the label is drawn relative to the symbol; always `inside` for an ordinary state. */
+  label_position: LabelPosition;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+  status: ArchitectureRecordStatus;
+  is_archived: boolean;
+  creator_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The fields the state form edits (a state's drawing is edited on the canvas). */
+export interface StateFieldValues {
+  name: string;
+  description: string;
+  kind: StateKind;
+  entry_action: string;
+  exit_action: string;
+  activity: string;
+  label: string;
+  label_position: LabelPosition;
+}
+
+/** The longest symbol label the server stores (characters). */
+export const SYMBOL_LABEL_MAX = 256;
+
+/** A transition with the codes of its two states and the diagram's version after the change. */
+export interface StateTransition {
+  id: string;
+  state_machine_diagram_id: string;
+  state_machine_diagram_version: number;
+  source_state_id: string;
+  source_state_code: string;
+  target_state_id: string;
+  target_state_code: string;
+  event: string;
+  guard: string;
+  action: string;
+  description: string;
+  sort_order: number;
+  source_point: AttachPoint | null;
+  target_point: AttachPoint | null;
+  /** Vertices in order from the source state to the target state; empty draws a straight line. */
+  points: LineWaypoint[];
+  /** The transition's own shape, or null to follow the diagram's default. */
+  line_shape: LineShape | null;
+}
+
+/** The fields the transition form edits. */
+export interface TransitionFieldValues {
+  source_state_id: string;
+  target_state_id: string;
+  event: string;
+  guard: string;
+  action: string;
+  description: string;
+}
+
+/** One validation issue; `subject` is the code of the state or transition it concerns (empty for the whole diagram). */
+export interface StateMachineValidationIssue {
+  severity: ValidationSeverity;
+  code: string;
+  subject: string;
+  message: string;
+}
+
+/** A state machine diagram with everything it holds, as the editor and the outline read it. */
+export interface StateMachineModel {
+  diagram: StateMachineDiagram;
+  states: ArchitectureState[];
+  transitions: StateTransition[];
+  /** The diagram's annotation notes with their leaders. */
+  notes: DiagramNote[];
+  validation: StateMachineValidationIssue[];
+}
+
+/** One state's box and nesting as saved. */
+export interface StateLayoutValues {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+  parent_state_id: string | null;
+}
+
+/** One transition's attach points (`null` is automatic) and route as saved. */
+export interface TransitionPointsValues {
+  id: string;
+  source_point: AttachPoint | null;
+  target_point: AttachPoint | null;
+  points: LineWaypoint[];
+  line_shape: LineShape | null;
+}
+
+/** A requirement as the allocation panels name it. */
+export interface AllocationRequirement {
+  id: string;
+  unique_code: string;
+  name: string;
+  status: string;
+}
+
+/** An element as the allocation panels name it; `organization_id` is set for an organisation-owned one. */
+export interface AllocationElement {
+  id: string;
+  unique_code: string;
+  name: string;
+  status: ArchitectureRecordStatus;
+  project_id: string | null;
+  organization_id: string | null;
+}
+
+/** One requirement and one element; `link_id` is the allocation link when the pair is allocated. */
+export interface AllocationPair {
+  requirement: AllocationRequirement;
+  element: AllocationElement;
+  link_id: string | null;
+}
+
+/** What a requirement's Architecture panel or an element's Requirements card shows. */
+export interface AllocationView {
+  allocated: AllocationPair[];
+  suggested: AllocationPair[];
+  dismissed: AllocationPair[];
+  can_manage: boolean;
+}
+
+/** The result of accepting suggestions: how many became links and which pairs did not, with the reason. */
+export interface AllocationAcceptResult {
+  accepted: number;
+  failed: { requirement_id: string; element_id: string; reason: string }[];
+}
+
+/** The project's allocation counts. */
+export interface AllocationCoverage {
+  requirements: number;
+  allocated_requirements: number;
+  elements: number;
+  allocated_elements: number;
+  suggestions: number;
+}
+
+
+/** What an interchange import did, or (a preview) would do: rows added by kind, and what could not be resolved. */
+export interface InterchangeReport {
+  created: Record<string, number>;
+  warnings: string[];
+}
+
+/** The kinds an interchange report counts, in the order they are listed, with their labels. */
+export const INTERCHANGE_KIND_LABEL: Record<string, string> = {
+  element_types: "Element types",
+  connection_types: "Connection types",
+  elements: "Elements",
+  connections: "Connections",
+  diagrams: "Diagrams",
+  state_machine_diagrams: "State machine diagrams",
+  states: "States",
+  transitions: "Transitions",
+};
+
+/** A baseline's kind: written by a stage entering a locked phase, or taken on request. */
+export type BaselineKind = "stage" | "manual";
+
+export const BASELINE_KIND_LABEL: Record<BaselineKind, string> = { stage: "Stage", manual: "Manual" };
+
+/** The record types a baseline holds for this module, in display order, with the plural each section is headed by. */
+export const BASELINE_TYPE_LABEL: Record<string, string> = {
+  architecture_element: "Elements",
+  architecture_connection: "Connections",
+  architecture_diagram: "Diagrams",
+  architecture_state_machine_diagram: "State machine diagrams",
+};
+
+/** One baseline of the project, as the core list returns it (counts only). */
+export interface ProjectBaseline {
+  id: string;
+  kind: BaselineKind;
+  label: string;
+  stage_id: string | null;
+  stage_name: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  item_counts: Record<string, number>;
+}
+
+/** A record a baseline holds, without its content. */
+export interface BaselineRecord {
+  id: string;
+  item_type: string;
+  code: string;
+  name: string;
+  status: ArchitectureRecordStatus | null;
+}
+
+/** The architecture records of one baseline. */
+export interface BaselineView {
+  id: string;
+  label: string;
+  kind: BaselineKind;
+  stage_name: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  records: BaselineRecord[];
+}
+
+/** A baseline record with its content as it stood. */
+export interface BaselineItem extends BaselineRecord {
+  content: Record<string, unknown>;
+}
+
+/** One field that differs; a list field reports the entries `added` and `removed` instead of before and after. */
+export interface BaselineFieldChange {
+  field: string;
+  before: string | null;
+  after: string | null;
+  added: string[];
+  removed: string[];
+}
+
+/** A record named in a comparison. */
+export interface BaselineRecordRef {
+  code: string;
+  name: string;
+  status: ArchitectureRecordStatus | null;
+}
+
+/** A record on both sides whose content differs. */
+export interface BaselineRecordChange extends BaselineRecordRef {
+  fields: BaselineFieldChange[];
+}
+
+/** The comparison of one record type. */
+export interface BaselineTypeComparison {
+  item_type: string;
+  added: BaselineRecordRef[];
+  removed: BaselineRecordRef[];
+  changed: BaselineRecordChange[];
+  unchanged: number;
+}
+
+/** A baseline compared with the live model or with another baseline. */
+export interface BaselineComparison {
+  baseline_id: string;
+  baseline_label: string;
+  against: "live" | "baseline";
+  against_id: string | null;
+  against_label: string;
+  types: BaselineTypeComparison[];
+}

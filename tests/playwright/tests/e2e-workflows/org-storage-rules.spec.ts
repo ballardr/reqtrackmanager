@@ -150,7 +150,7 @@ test("an import that does not fit the storage limit offers Import without files"
 
   await page.goto("/projects");
   await page.getByRole("button", { name: "More options" }).click();
-  await page.getByRole("button", { name: "Import project" }).click();
+  await page.getByRole("menuitem", { name: "Import project" }).click();
   const form = page.getByRole("dialog", { name: "Import project" });
   await form.getByLabel("Name", { exact: true }).fill(`E2E Storage Imported ${seeded.suffix}`);
   // A single-organisation administrator gets no organisation picker.

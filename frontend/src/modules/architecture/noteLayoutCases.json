@@ -1,0 +1,838 @@
+{
+  "cases": [
+    {
+      "name": "one short line",
+      "title": "",
+      "text": "Check with ops",
+      "lines": {
+        "title": [],
+        "text": [
+          "Check with ops"
+        ]
+      },
+      "frame": [
+        117,
+        28
+      ],
+      "frame_with_caption": [
+        117,
+        42
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "Check with",
+            "ops"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "Check with ops"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "Check with ops"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a long line wraps at the maximum width",
+      "title": "",
+      "text": "The flight controller reads the inertial unit and the barometer before it commands the motors at one kilohertz",
+      "lines": {
+        "title": [],
+        "text": [
+          "The flight controller reads the inertial unit",
+          "and the barometer before it commands the",
+          "motors at one kilohertz"
+        ]
+      },
+      "frame": [
+        304,
+        60
+      ],
+      "frame_with_caption": [
+        304,
+        74
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "The flight",
+            "controller",
+            "reads the",
+            "inertial unit",
+            "and the",
+            "barometer",
+            "before it",
+            "commands",
+            "the motors",
+            "at one",
+            "kilohertz"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "The flight controller",
+            "reads the inertial",
+            "unit and the",
+            "barometer before it",
+            "commands the",
+            "motors at one",
+            "kilohertz"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "The flight controller reads the inertial unit",
+            "and the barometer before it commands the",
+            "motors at one kilohertz"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "typed breaks and a blank line are kept",
+      "title": "",
+      "text": "One\n\nTwo\nThree",
+      "lines": {
+        "title": [],
+        "text": [
+          "One",
+          "",
+          "Two",
+          "Three"
+        ]
+      },
+      "frame": [
+        54,
+        76
+      ],
+      "frame_with_caption": [
+        54,
+        90
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "One",
+            "",
+            "Two",
+            "Three"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "One",
+            "",
+            "Two",
+            "Three"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "One",
+            "",
+            "Two",
+            "Three"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a title wider than the text",
+      "title": "A fairly long heading for a note",
+      "text": "Hi",
+      "lines": {
+        "title": [
+          "A fairly long heading for a note"
+        ],
+        "text": [
+          "Hi"
+        ]
+      },
+      "frame": [
+        244,
+        44
+      ],
+      "frame_with_caption": [
+        244,
+        58
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [
+            "A fairly",
+            "long",
+            "heading for",
+            "a note"
+          ],
+          "text": [
+            "Hi"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [
+            "A fairly long",
+            "heading for a note"
+          ],
+          "text": [
+            "Hi"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [
+            "A fairly long heading for a note"
+          ],
+          "text": [
+            "Hi"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a title alone",
+      "title": "Heading",
+      "text": "",
+      "lines": {
+        "title": [
+          "Heading"
+        ],
+        "text": []
+      },
+      "frame": [
+        72,
+        28
+      ],
+      "frame_with_caption": [
+        72,
+        42
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [
+            "Heading"
+          ],
+          "text": []
+        },
+        {
+          "inner": 148,
+          "title": [
+            "Heading"
+          ],
+          "text": []
+        },
+        {
+          "inner": 308,
+          "title": [
+            "Heading"
+          ],
+          "text": []
+        }
+      ]
+    },
+    {
+      "name": "a title that wraps",
+      "title": "A heading so long that it has to wrap onto a second line of the bold text in the note",
+      "text": "x",
+      "lines": {
+        "title": [
+          "A heading so long that it has to wrap",
+          "onto a second line of the bold text in the",
+          "note"
+        ],
+        "text": [
+          "x"
+        ]
+      },
+      "frame": [
+        306,
+        76
+      ],
+      "frame_with_caption": [
+        306,
+        90
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [
+            "A heading",
+            "so long that",
+            "it has to",
+            "wrap onto",
+            "a second",
+            "line of the",
+            "bold text in",
+            "the note"
+          ],
+          "text": [
+            "x"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [
+            "A heading so long",
+            "that it has to wrap",
+            "onto a second line",
+            "of the bold text in",
+            "the note"
+          ],
+          "text": [
+            "x"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [
+            "A heading so long that it has to wrap",
+            "onto a second line of the bold text in the",
+            "note"
+          ],
+          "text": [
+            "x"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty note",
+      "title": "",
+      "text": "",
+      "lines": {
+        "title": [],
+        "text": []
+      },
+      "frame": null,
+      "frame_with_caption": null,
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": []
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": []
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": []
+        }
+      ]
+    },
+    {
+      "name": "only blanks",
+      "title": "   ",
+      "text": "\n\n  ",
+      "lines": {
+        "title": [],
+        "text": []
+      },
+      "frame": null,
+      "frame_with_caption": null,
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": []
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": []
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": []
+        }
+      ]
+    },
+    {
+      "name": "one very long word is kept whole",
+      "title": "",
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "lines": {
+        "title": [],
+        "text": [
+          "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ]
+      },
+      "frame": [
+        657,
+        28
+      ],
+      "frame_with_caption": [
+        657,
+        42
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "title": "",
+      "text": "電源が入っているかどうかを確認する電源が入っているかどうかを確認する電源が入っている",
+      "lines": {
+        "title": [],
+        "text": [
+          "電源が入っているかどうかを確認する電源が入って",
+          "いるかどうかを確認する電源が入っている"
+        ]
+      },
+      "frame": [
+        311,
+        44
+      ],
+      "frame_with_caption": [
+        311,
+        58
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "電源が入って",
+            "いるかどうか",
+            "を確認する電",
+            "源が入ってい",
+            "るかどうかを",
+            "確認する電源",
+            "が入っている"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "電源が入っているかどう",
+            "かを確認する電源が入っ",
+            "ているかどうかを確認す",
+            "る電源が入っている"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "電源が入っているかどうかを確認する電源が入って",
+            "いるかどうかを確認する電源が入っている"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "leading line breaks and trailing space are dropped",
+      "title": "",
+      "text": "\n\nText  \n",
+      "lines": {
+        "title": [],
+        "text": [
+          "Text"
+        ]
+      },
+      "frame": [
+        48,
+        28
+      ],
+      "frame_with_caption": [
+        48,
+        42
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "Text"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "Text"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "Text"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "windows line endings",
+      "title": "",
+      "text": "a\r\nb",
+      "lines": {
+        "title": [],
+        "text": [
+          "a",
+          "b"
+        ]
+      },
+      "frame": [
+        48,
+        44
+      ],
+      "frame_with_caption": [
+        48,
+        58
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "a",
+            "b"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a title with extra spaces",
+      "title": "  A   B ",
+      "text": "t",
+      "lines": {
+        "title": [
+          "A B"
+        ],
+        "text": [
+          "t"
+        ]
+      },
+      "frame": [
+        48,
+        44
+      ],
+      "frame_with_caption": [
+        48,
+        58
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [
+            "A B"
+          ],
+          "text": [
+            "t"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [
+            "A B"
+          ],
+          "text": [
+            "t"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [
+            "A B"
+          ],
+          "text": [
+            "t"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "capitals and signs are wider",
+      "title": "",
+      "text": "ABS MWM @ 100%",
+      "lines": {
+        "title": [],
+        "text": [
+          "ABS MWM @ 100%"
+        ]
+      },
+      "frame": [
+        143,
+        28
+      ],
+      "frame_with_caption": [
+        143,
+        42
+      ],
+      "wrapped": [
+        {
+          "inner": 88,
+          "title": [],
+          "text": [
+            "ABS MWM",
+            "@ 100%"
+          ]
+        },
+        {
+          "inner": 148,
+          "title": [],
+          "text": [
+            "ABS MWM @ 100%"
+          ]
+        },
+        {
+          "inner": 308,
+          "title": [],
+          "text": [
+            "ABS MWM @ 100%"
+          ]
+        }
+      ]
+    }
+  ],
+  "drawn": [
+    {
+      "mode": "automatic",
+      "tone": "none",
+      "name": "one short line",
+      "size": [
+        117.0,
+        28.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "none",
+      "name": "a long line wraps at the maximum width",
+      "size": [
+        304.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "none",
+      "name": "typed breaks and a blank line are kept",
+      "size": [
+        54.0,
+        76.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "none",
+      "name": "a title wider than the text",
+      "size": [
+        244.0,
+        44.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "none",
+      "name": "an empty note",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "warning",
+      "name": "one short line",
+      "size": [
+        117.0,
+        42.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "warning",
+      "name": "a long line wraps at the maximum width",
+      "size": [
+        304.0,
+        74.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "warning",
+      "name": "typed breaks and a blank line are kept",
+      "size": [
+        54.0,
+        90.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "warning",
+      "name": "a title wider than the text",
+      "size": [
+        244.0,
+        58.0
+      ]
+    },
+    {
+      "mode": "automatic",
+      "tone": "warning",
+      "name": "an empty note",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "none",
+      "name": "one short line",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "none",
+      "name": "a long line wraps at the maximum width",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "none",
+      "name": "typed breaks and a blank line are kept",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "none",
+      "name": "a title wider than the text",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "none",
+      "name": "an empty note",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "warning",
+      "name": "one short line",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "warning",
+      "name": "a long line wraps at the maximum width",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "warning",
+      "name": "typed breaks and a blank line are kept",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "warning",
+      "name": "a title wider than the text",
+      "size": [
+        160.0,
+        60.0
+      ]
+    },
+    {
+      "mode": "manual",
+      "tone": "warning",
+      "name": "an empty note",
+      "size": [
+        160.0,
+        60.0
+      ]
+    }
+  ]
+}

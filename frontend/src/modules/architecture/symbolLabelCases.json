@@ -1,0 +1,2782 @@
+{
+  "cases": [
+    {
+      "kind": "initial",
+      "name": "short",
+      "label": "Full?",
+      "size": 52,
+      "lines": [
+        "Full?"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "two words",
+      "label": "Power on",
+      "size": 56,
+      "lines": [
+        "Power",
+        "on"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "size": 124,
+      "lines": [
+        "Is the tank",
+        "level above",
+        "the high-",
+        "level alarm",
+        "threshold",
+        "for more",
+        "than ten",
+        "seconds"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "size": 92,
+      "lines": [
+        "Over-",
+        "temperature",
+        "protection",
+        "trip"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "size": 192,
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "size": 320,
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "fits": false
+    },
+    {
+      "kind": "initial",
+      "name": "a word that just fits the choice at its base size",
+      "label": "Verification",
+      "size": 76,
+      "lines": [
+        "Verification"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "capitals and signs are wider",
+      "label": "ABS MWM @ 100%",
+      "size": 68,
+      "lines": [
+        "ABS",
+        "MWM",
+        "@",
+        "100%"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "narrow glyphs are narrower",
+      "label": "illi jilt fl.",
+      "size": 52,
+      "lines": [
+        "illi",
+        "jilt fl."
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "size": 84,
+      "lines": [
+        "電源が入",
+        "っている",
+        "かどうか",
+        "を確認す",
+        "る"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "size": 72,
+      "lines": [
+        "First",
+        "line",
+        "Second",
+        "line"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "spaces around and between words",
+      "label": "  spaced    out  ",
+      "size": 56,
+      "lines": [
+        "spaced",
+        "out"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "initial",
+      "name": "the longest label",
+      "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
+      "size": 204,
+      "lines": [
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum d"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "short",
+      "label": "Full?",
+      "size": 72,
+      "lines": [
+        "Full?"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "two words",
+      "label": "Power on",
+      "size": 72,
+      "lines": [
+        "Power",
+        "on"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "size": 168,
+      "lines": [
+        "Is the tank",
+        "level above",
+        "the high-",
+        "level alarm",
+        "threshold for",
+        "more than",
+        "ten seconds"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "size": 124,
+      "lines": [
+        "Over-",
+        "temperature",
+        "protection",
+        "trip"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "size": 260,
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "size": 320,
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "fits": false
+    },
+    {
+      "kind": "final",
+      "name": "a word that just fits the choice at its base size",
+      "label": "Verification",
+      "size": 100,
+      "lines": [
+        "Verification"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "capitals and signs are wider",
+      "label": "ABS MWM @ 100%",
+      "size": 92,
+      "lines": [
+        "ABS",
+        "MWM",
+        "@",
+        "100%"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "narrow glyphs are narrower",
+      "label": "illi jilt fl.",
+      "size": 72,
+      "lines": [
+        "illi",
+        "jilt fl."
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "size": 116,
+      "lines": [
+        "電源が入",
+        "っている",
+        "かどうか",
+        "を確認す",
+        "る"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "size": 96,
+      "lines": [
+        "First",
+        "line",
+        "Second",
+        "line"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "spaces around and between words",
+      "label": "  spaced    out  ",
+      "size": 76,
+      "lines": [
+        "spaced",
+        "out"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "final",
+      "name": "the longest label",
+      "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
+      "size": 280,
+      "lines": [
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor sit",
+        "amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum d"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "short",
+      "label": "Full?",
+      "size": 96,
+      "lines": [
+        "Full?"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "two words",
+      "label": "Power on",
+      "size": 96,
+      "lines": [
+        "Power",
+        "on"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "size": 172,
+      "lines": [
+        "Is the tank",
+        "level above",
+        "the high-",
+        "level alarm",
+        "threshold",
+        "for more",
+        "than ten",
+        "seconds"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "size": 132,
+      "lines": [
+        "Over-",
+        "temperature",
+        "protection",
+        "trip"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "size": 208,
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "size": 320,
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "fits": false
+    },
+    {
+      "kind": "choice",
+      "name": "a word that just fits the choice at its base size",
+      "label": "Verification",
+      "size": 96,
+      "lines": [
+        "Verification"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "capitals and signs are wider",
+      "label": "ABS MWM @ 100%",
+      "size": 96,
+      "lines": [
+        "ABS",
+        "MWM",
+        "@",
+        "100%"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "narrow glyphs are narrower",
+      "label": "illi jilt fl.",
+      "size": 96,
+      "lines": [
+        "illi jilt",
+        "fl."
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "size": 116,
+      "lines": [
+        "電源が入",
+        "っている",
+        "かどうか",
+        "を確認す",
+        "る"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "size": 104,
+      "lines": [
+        "First",
+        "line",
+        "Second",
+        "line"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "spaces around and between words",
+      "label": "  spaced    out  ",
+      "size": 96,
+      "lines": [
+        "spaced",
+        "out"
+      ],
+      "fits": true
+    },
+    {
+      "kind": "choice",
+      "name": "the longest label",
+      "label": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum d",
+      "size": 284,
+      "lines": [
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum dolor",
+        "sit amet lorem ipsum",
+        "dolor sit amet lorem",
+        "ipsum dolor sit amet",
+        "lorem ipsum d"
+      ],
+      "fits": true
+    }
+  ],
+  "beside": [
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": -31,
+      "y": 4.0,
+      "width": 27,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": -31,
+      "y": 8.0,
+      "width": 27,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": -31,
+      "y": 12.0,
+      "width": 27,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": -31,
+      "y": 14.0,
+      "width": 27,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 24.0,
+      "y": 4.0,
+      "width": 27,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 32.0,
+      "y": 8.0,
+      "width": 27,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 40.0,
+      "y": 12.0,
+      "width": 27,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 64.0,
+      "y": 14.0,
+      "width": 27,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": -3.5,
+      "y": -16,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 0.5,
+      "y": -16,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 4.5,
+      "y": -16,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 16.5,
+      "y": -16,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": -3.5,
+      "y": 24.0,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 0.5,
+      "y": 32.0,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 4.5,
+      "y": 40.0,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "short",
+      "label": "Full?",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Full?"
+      ],
+      "x": 16.5,
+      "y": 44.0,
+      "width": 27,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -56,
+      "y": 4.0,
+      "width": 52,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -56,
+      "y": 8.0,
+      "width": 52,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -56,
+      "y": 12.0,
+      "width": 52,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -56,
+      "y": 14.0,
+      "width": 52,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": 24.0,
+      "y": 4.0,
+      "width": 52,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": 32.0,
+      "y": 8.0,
+      "width": 52,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": 40.0,
+      "y": 12.0,
+      "width": 52,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": 64.0,
+      "y": 14.0,
+      "width": 52,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -16.0,
+      "y": -16,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -12.0,
+      "y": -16,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -8.0,
+      "y": -16,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": 4.0,
+      "y": -16,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -16.0,
+      "y": 24.0,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -12.0,
+      "y": 32.0,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": -8.0,
+      "y": 40.0,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "two words",
+      "label": "Power on",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Power on"
+      ],
+      "x": 4.0,
+      "y": 44.0,
+      "width": 52,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -147,
+      "y": -8.0,
+      "width": 143,
+      "height": 36,
+      "align": "right"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -147,
+      "y": -4.0,
+      "width": 143,
+      "height": 36,
+      "align": "right"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -147,
+      "y": 0.0,
+      "width": 143,
+      "height": 36,
+      "align": "right"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -147,
+      "y": 2.0,
+      "width": 143,
+      "height": 36,
+      "align": "right"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": 24.0,
+      "y": -8.0,
+      "width": 143,
+      "height": 36,
+      "align": "left"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": 32.0,
+      "y": -4.0,
+      "width": 143,
+      "height": 36,
+      "align": "left"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": 40.0,
+      "y": 0.0,
+      "width": 143,
+      "height": 36,
+      "align": "left"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": 64.0,
+      "y": 2.0,
+      "width": 143,
+      "height": 36,
+      "align": "left"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -61.5,
+      "y": -40,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -57.5,
+      "y": -40,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -53.5,
+      "y": -40,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -41.5,
+      "y": -40,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -61.5,
+      "y": 24.0,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -57.5,
+      "y": 32.0,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -53.5,
+      "y": 40.0,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a long phrase",
+      "label": "Is the tank level above the high-level alarm threshold for more than ten seconds",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Is the tank level above the",
+        "high-level alarm threshold",
+        "for more than ten seconds"
+      ],
+      "x": -41.5,
+      "y": 44.0,
+      "width": 143,
+      "height": 36,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -160,
+      "y": -2.0,
+      "width": 156,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -160,
+      "y": 2.0,
+      "width": 156,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -160,
+      "y": 6.0,
+      "width": 156,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -160,
+      "y": 8.0,
+      "width": 156,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": 24.0,
+      "y": -2.0,
+      "width": 156,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": 32.0,
+      "y": 2.0,
+      "width": 156,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": 40.0,
+      "y": 6.0,
+      "width": 156,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": 64.0,
+      "y": 8.0,
+      "width": 156,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -68.0,
+      "y": -28,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -64.0,
+      "y": -28,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -60.0,
+      "y": -28,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -48.0,
+      "y": -28,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -68.0,
+      "y": 24.0,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -64.0,
+      "y": 32.0,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -60.0,
+      "y": 40.0,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a hyphen is a place to break",
+      "label": "Over-temperature protection trip",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Over-temperature protection",
+        "trip"
+      ],
+      "x": -48.0,
+      "y": 44.0,
+      "width": 156,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -183,
+      "y": 4.0,
+      "width": 179,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -183,
+      "y": 8.0,
+      "width": 179,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -183,
+      "y": 12.0,
+      "width": 179,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -183,
+      "y": 14.0,
+      "width": 179,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": 24.0,
+      "y": 4.0,
+      "width": 179,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": 32.0,
+      "y": 8.0,
+      "width": 179,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": 40.0,
+      "y": 12.0,
+      "width": 179,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": 64.0,
+      "y": 14.0,
+      "width": 179,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -79.5,
+      "y": -16,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -75.5,
+      "y": -16,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -71.5,
+      "y": -16,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -59.5,
+      "y": -16,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -79.5,
+      "y": 24.0,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -75.5,
+      "y": 32.0,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -71.5,
+      "y": 40.0,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "one very long word",
+      "label": "Supercalifragilisticexpialidocious",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "Supercalifragilisticexpialidocious"
+      ],
+      "x": -59.5,
+      "y": 44.0,
+      "width": 179,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -376,
+      "y": 4.0,
+      "width": 372,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -376,
+      "y": 8.0,
+      "width": 372,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -376,
+      "y": 12.0,
+      "width": 372,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -376,
+      "y": 14.0,
+      "width": 372,
+      "height": 12,
+      "align": "right"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": 24.0,
+      "y": 4.0,
+      "width": 372,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": 32.0,
+      "y": 8.0,
+      "width": 372,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": 40.0,
+      "y": 12.0,
+      "width": 372,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": 64.0,
+      "y": 14.0,
+      "width": 372,
+      "height": 12,
+      "align": "left"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -176.0,
+      "y": -16,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -172.0,
+      "y": -16,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -168.0,
+      "y": -16,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -156.0,
+      "y": -16,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -176.0,
+      "y": 24.0,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -172.0,
+      "y": 32.0,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -168.0,
+      "y": 40.0,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "a word longer than any symbol holds",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "x": -156.0,
+      "y": 44.0,
+      "width": 372,
+      "height": 12,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -164,
+      "y": -2.0,
+      "width": 160,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -164,
+      "y": 2.0,
+      "width": 160,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -164,
+      "y": 6.0,
+      "width": 160,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -164,
+      "y": 8.0,
+      "width": 160,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": 24.0,
+      "y": -2.0,
+      "width": 160,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": 32.0,
+      "y": 2.0,
+      "width": 160,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": 40.0,
+      "y": 6.0,
+      "width": 160,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": 64.0,
+      "y": 8.0,
+      "width": 160,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -70.0,
+      "y": -28,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -66.0,
+      "y": -28,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -62.0,
+      "y": -28,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -50.0,
+      "y": -28,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -70.0,
+      "y": 24.0,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -66.0,
+      "y": 32.0,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -62.0,
+      "y": 40.0,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "label": "電源が入っているかどうかを確認する",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "電源が入っているかどうかを確認す",
+        "る"
+      ],
+      "x": -50.0,
+      "y": 44.0,
+      "width": 160,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "left",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -65,
+      "y": -2.0,
+      "width": 61,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "left",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -65,
+      "y": 2.0,
+      "width": 61,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "left",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -65,
+      "y": 6.0,
+      "width": 61,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "left",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -65,
+      "y": 8.0,
+      "width": 61,
+      "height": 24,
+      "align": "right"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "right",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": 24.0,
+      "y": -2.0,
+      "width": 61,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "right",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": 32.0,
+      "y": 2.0,
+      "width": 61,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "right",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": 40.0,
+      "y": 6.0,
+      "width": 61,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "right",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": 64.0,
+      "y": 8.0,
+      "width": 61,
+      "height": 24,
+      "align": "left"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "above",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -20.5,
+      "y": -28,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "above",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -16.5,
+      "y": -28,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "above",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -12.5,
+      "y": -28,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "above",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -0.5,
+      "y": -28,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "below",
+      "symbol": [
+        20.0,
+        20.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -20.5,
+      "y": 24.0,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "below",
+      "symbol": [
+        28.0,
+        28.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -16.5,
+      "y": 32.0,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "below",
+      "symbol": [
+        36.0,
+        36.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -12.5,
+      "y": 40.0,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    },
+    {
+      "name": "a typed line break is kept",
+      "label": "First line\nSecond line",
+      "position": "below",
+      "symbol": [
+        60.0,
+        40.0
+      ],
+      "lines": [
+        "First line",
+        "Second line"
+      ],
+      "x": -0.5,
+      "y": 44.0,
+      "width": 61,
+      "height": 24,
+      "align": "center"
+    }
+  ],
+  "widths": [
+    {
+      "text": "",
+      "width": 0
+    },
+    {
+      "text": "iii",
+      "width": 10200
+    },
+    {
+      "text": "WWW",
+      "width": 30000
+    },
+    {
+      "text": "abc 123",
+      "width": 40400
+    },
+    {
+      "text": "電源",
+      "width": 20000
+    },
+    {
+      "text": "A-b",
+      "width": 19800
+    }
+  ]
+}

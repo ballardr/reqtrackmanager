@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Download, Pencil } from "lucide-react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { contrastRatio } from "../utils/color";
 import { ActionMenu } from "./ActionMenu";
 
 const meta: Meta<typeof ActionMenu> = {
@@ -159,40 +160,32 @@ const submenuItems = () => [
   { label: "Delete", danger: true, onSelect: fn() },
 ];
 
-/** An item with `children` is a parent: `aria-haspopup`/`aria-expanded`, opened by a click, and its own `onSelect` is
- * never called. Choosing a child closes the whole menu and calls the child's `onSelect`. */
-export const ASubmenuOpensOnClickAndItsItemRunsInsteadOfTheParent: Story = {
+/** An item with `children` is a parent row: `aria-expanded`, opened and closed by a click, its rows in a labelled group
+ * beneath it, and its own `onSelect` is never called. The first parent starts open. Choosing a child closes the whole
+ * menu and calls the child's `onSelect`. */
+export const AParentExpandsInPlaceAndItsItemRunsInsteadOfTheParent: Story = {
   args: { items: submenuItems() },
   play: async ({ canvasElement, args }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
-    const parent = within(document.body).getByRole("menuitem", { name: "Download items" });
-    await expect(parent).toHaveAttribute("aria-haspopup", "menu");
-    await expect(parent).toHaveAttribute("aria-expanded", "false");
-    await userEvent.click(parent);
+    const body = within(document.body);
+    const parent = body.getByRole("menuitem", { name: "Download items" });
     await expect(parent).toHaveAttribute("aria-expanded", "true");
-    const submenu = within(await within(document.body).findByRole("menu", { name: "Download items" }));
-    await userEvent.click(submenu.getByRole("menuitem", { name: "ODT" }));
+    await userEvent.click(parent);
+    await expect(parent).toHaveAttribute("aria-expanded", "false");
+    await expect(body.queryByRole("group", { name: "Download items" })).not.toBeInTheDocument();
+    await userEvent.click(parent);
+    const group = within(await body.findByRole("group", { name: "Download items" }));
+    await userEvent.click(group.getByRole("menuitem", { name: "ODT" }));
     const parentItem = args.items[1];
     await expect(parentItem.children?.[1].onSelect).toHaveBeenCalledOnce();
     await expect(parentItem.onSelect).not.toHaveBeenCalled();
-    await expect(within(document.body).queryByRole("menu")).not.toBeInTheDocument();
+    await expect(body.queryByRole("menu")).not.toBeInTheDocument();
   },
 };
 
-/** Resting the pointer on the parent opens the submenu after a short delay; moving to another row closes it again. */
-export const ASubmenuOpensOnHoverAndClosesWhenAnotherRowIsHovered: Story = {
-  args: { items: submenuItems() },
-  play: async ({ canvasElement }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
-    await userEvent.hover(within(document.body).getByRole("menuitem", { name: "Download items" }));
-    await expect(await within(document.body).findByRole("menu", { name: "Download items" })).toBeInTheDocument();
-    await userEvent.hover(within(document.body).getByRole("menuitem", { name: "Delete" }));
-    await waitFor(() => expect(within(document.body).queryByRole("menu", { name: "Download items" })).not.toBeInTheDocument());
-  },
-};
-
-/** Arrow keys move within a level and Home/End jump; Right opens the submenu on its first item, Left returns to the parent. */
-export const ASubmenuIsOperableFromTheKeyboard: Story = {
+/** Arrow keys move through the visible rows and Home/End jump; Right opens a parent on its first row, Left returns to
+ * the parent and closes its level, and Escape closes only that level (the menu stays), then the menu. */
+export const ATreeIsOperableFromTheKeyboard: Story = {
   args: { items: submenuItems() },
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
@@ -200,12 +193,140 @@ export const ASubmenuIsOperableFromTheKeyboard: Story = {
     body.getByRole("menuitem", { name: "Rename" }).focus();
     await userEvent.keyboard("{End}");
     await expect(body.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
-    await userEvent.keyboard("{ArrowUp}{ArrowRight}");
-    await waitFor(() => expect(body.getByRole("menuitem", { name: /^CSV/ })).toHaveFocus());
-    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.keyboard("{ArrowUp}");
     await expect(body.getByRole("menuitem", { name: "ODT" })).toHaveFocus();
     await userEvent.keyboard("{ArrowLeft}");
     await expect(body.getByRole("menuitem", { name: "Download items" })).toHaveFocus();
-    await expect(body.queryByRole("menu", { name: "Download items" })).not.toBeInTheDocument();
+    await expect(body.queryByRole("group", { name: "Download items" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(body.getByRole("menuitem", { name: /^CSV/ })).toHaveFocus());
+    await userEvent.keyboard("{Escape}");
+    await expect(body.getByRole("menuitem", { name: "Download items" })).toHaveFocus();
+    await expect(body.getByRole("menu")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await expect(body.queryByRole("menu")).not.toBeInTheDocument();
   },
+};
+
+/** Tab leaves the menu: it closes and focus returns to the trigger. */
+export const TabClosesTheMenu: Story = {
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Acme Corp actions" });
+    await userEvent.click(trigger);
+    await expect(within(document.body).getByRole("menu")).toBeInTheDocument();
+    await userEvent.keyboard("{Tab}");
+    await expect(within(document.body).queryByRole("menu")).not.toBeInTheDocument();
+    await expect(trigger).toHaveFocus();
+  },
+};
+
+/** Items sharing a `group` become a parent row named for the group (a lone grouped item keeps the name as a heading);
+ * every row is a plain text row, never a `btn`. */
+export const GroupsBecomeParentsAndRowsAreNotButtons: Story = {
+  args: {
+    items: [
+      { label: "Service", group: "New software element", onSelect: fn() },
+      { label: "Module", group: "New software element", onSelect: fn() },
+      { label: "Board", group: "New hardware element", onSelect: fn() },
+      { label: "Chip", group: "New hardware element", onSelect: fn() },
+      { label: "Set up", group: "Settings", onSelect: fn() },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    const body = within(document.body);
+    // The first group starts open, the second is closed, the lone item sits flat under its heading.
+    await expect(body.getByRole("menuitem", { name: "New software element" })).toHaveAttribute("aria-expanded", "true");
+    await expect(body.getByRole("menuitem", { name: "Service" })).toBeInTheDocument();
+    await expect(body.getByRole("menuitem", { name: "New hardware element" })).toHaveAttribute("aria-expanded", "false");
+    await expect(body.queryByRole("menuitem", { name: "Board" })).not.toBeInTheDocument();
+    await expect(body.getByText("Settings")).toBeInTheDocument();
+    await userEvent.click(body.getByRole("menuitem", { name: "New hardware element" }));
+    await expect(await body.findByRole("menuitem", { name: "Board" })).toBeInTheDocument();
+    for (const row of body.getAllByRole("menuitem")) await expect(row).not.toHaveClass("btn");
+  },
+};
+
+/** A tree nests to three levels: a group, an item with children, and the items under it. */
+export const ATreeNestsToThreeLevels: Story = {
+  args: {
+    items: [
+      { label: "Export", onSelect: fn(), children: [{ label: "Documents", onSelect: fn(), children: [{ label: "PDF", onSelect: fn() }] }] },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    const body = within(document.body);
+    await userEvent.click(body.getByRole("menuitem", { name: "Documents" }));
+    await expect(await body.findByRole("menuitem", { name: "PDF" })).toBeInTheDocument();
+  },
+};
+
+/** A click on a surface that stops `mousedown` before it reaches the document (React Flow's pane and boxes do, through
+ * d3) still closes a menu opened over it. The menu once stayed open because it listened on the bubbling `mousedown`. */
+export const AClickOnASurfaceThatStopsMouseDownClosesTheMenu: Story = {
+  decorators: [
+    (Story) => (
+      <div>
+        <Story />
+        <div
+          data-testid="swallows"
+          style={{ width: 200, height: 80 }}
+          ref={(el) => el?.addEventListener("mousedown", (e) => e.stopPropagation())}
+        >
+          Pane
+        </div>
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Acme Corp actions" });
+    await userEvent.click(trigger);
+    await expect(within(document.body).getByRole("menu")).toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByTestId("swallows"));
+    await waitFor(() => expect(within(document.body).queryByRole("menu")).not.toBeInTheDocument());
+    await expect(trigger).toHaveFocus();
+  },
+};
+
+/** A computed `rgb(r, g, b)` colour as `#rrggbb`, for `contrastRatio`. */
+function rgbToHex(rgb: string): string {
+  const parts = rgb.match(/\d+/g)?.slice(0, 3).map(Number) ?? [0, 0, 0];
+  return `#${parts.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** The colour a token resolves to on the page, as `#rrggbb`. */
+function tokenHex(name: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${name})`;
+  document.body.appendChild(probe);
+  const hex = rgbToHex(getComputedStyle(probe).color);
+  probe.remove();
+  return hex;
+}
+
+/** The open entry of a tree takes the product's selected-state colour (the primary slate, in a heavier weight), never
+ * the green accent, and is readable on the menu's surface in the active theme. */
+async function expectOpenEntryUsesPrimary(canvasElement: HTMLElement): Promise<void> {
+  await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+  const parent = within(document.body).getByRole("menuitem", { name: "Download items" });
+  await expect(parent).toHaveAttribute("aria-expanded", "true");
+  const colour = rgbToHex(getComputedStyle(parent).color);
+  await expect(colour).toBe(tokenHex("--color-primary"));
+  await expect(colour).not.toBe(tokenHex("--color-accent"));
+  await expect(Number(getComputedStyle(parent).fontWeight)).toBeGreaterThanOrEqual(600);
+  const surface = rgbToHex(getComputedStyle(parent.closest(".popover-menu") ?? document.body).backgroundColor);
+  await expect(contrastRatio(colour, surface)).toBeGreaterThanOrEqual(4.5);
+}
+
+export const TheOpenEntryTakesTheProductColourInLightTheme: Story = {
+  args: { items: submenuItems() },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => expectOpenEntryUsesPrimary(canvasElement),
+};
+
+export const TheOpenEntryTakesTheProductColourInDarkTheme: Story = {
+  args: { items: submenuItems() },
+  globals: { theme: "dark" },
+  play: async ({ canvasElement }) => expectOpenEntryUsesPrimary(canvasElement),
 };

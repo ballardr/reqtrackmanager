@@ -133,12 +133,12 @@ export function ProjectEngagementsPage() {
         typeLabel="Channel"
         searchText={(e) => `${e.unique_code} ${e.title} ${e.summary}`}
         columnsBeforeType={[
-          { key: "date", label: "Date", render: (e) => e.engagement_date },
+          { key: "date", label: "Date", sortable: true, sortValue: (e) => e.engagement_date, render: (e) => e.engagement_date },
         ]}
         columnsAfterScope={[
-          { key: "participants", label: "Participants", render: (e) => e.participant_count + e.anonymous_participant_count },
+          { key: "participants", label: "Participants", sortable: true, sortValue: (e) => e.participant_count + e.anonymous_participant_count, render: (e) => e.participant_count + e.anonymous_participant_count },
           {
-            key: "retention", label: "Retention",
+            key: "retention", label: "Retention", sortable: true, sortValue: (e) => e.retain_until,
             render: (e) => (e.retention_due ? <Badge tone="warning">Review due</Badge> : e.retain_until ? `Until ${e.retain_until}` : "—"),
           },
         ]}

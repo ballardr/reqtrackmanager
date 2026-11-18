@@ -34,7 +34,7 @@ from app.schemas.project import (
 )
 from app.services import engagement, invites
 from app.services.audit import log_event
-from app.services.lookups import get_or_404, present
+from app.services.lookups import affected_rows, get_or_404, present
 from app.services.membership_notifications import (
     actor_bypasses_project_managers,
     notify_managers_of_member_change,
@@ -495,7 +495,7 @@ def revoke_group_project_role(
     db.flush()
     if role == ProjectRole.PROJECT_MANAGER and not get_effective_project_managers(db, project.id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
-    if not removed.rowcount:
+    if not affected_rows(removed):
         db.commit()
         return
     log_event(

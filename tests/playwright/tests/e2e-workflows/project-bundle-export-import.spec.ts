@@ -44,7 +44,7 @@ test.describe("project bundle export/import", () => {
       // filter rows behind the backdrop have their own <select>s, and the organisation picker mounts
       // asynchronously, so its option content (a retrying assertion) is awaited before choosing.
       await page.getByRole("button", { name: "More options" }).click();
-      await page.getByRole("button", { name: "Import project" }).click();
+      await page.getByRole("menuitem", { name: "Import project" }).click();
       const form = page.getByRole("dialog", { name: "Import project" });
       await form.getByLabel("Name", { exact: true }).fill(newName);
       const orgSelect = form.locator("select").first();

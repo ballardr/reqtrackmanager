@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
+import { openMenuParent } from "../menuTree";
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
@@ -52,6 +53,8 @@ test.describe("Add block menu", () => {
     await openBlocks(page, request);
     await page.getByRole("button", { name: "Add block" }).click();
     const menu = page.getByRole("menu", { name: "Add block" });
+    // The second group is a closed row; open it so the list is its full length.
+    await openMenuParent(page, "Other blocks", menu);
     const items = menu.getByRole("menuitem");
     const last = items.last();
 
@@ -81,13 +84,14 @@ test.describe("Add block menu", () => {
     await page.setViewportSize({ width: 1280, height: 600 });
     await openBlocks(page, request);
     await page.getByRole("button", { name: "Add block" }).click();
+    await openMenuParent(page, "Other blocks", page.getByRole("menu", { name: "Add block" }));
     const items = page.getByRole("menu", { name: "Add block" }).getByRole("menuitem");
     const count = await items.count();
     expect(count).toBeGreaterThan(5);
 
-    for (let i = 0; i < count + 2; i++) await page.keyboard.press("Tab");
-    // Tab leaves the menu only if it is not trapped; either way the last entry must be focusable and visible.
-    await items.last().focus();
+    // Down walks the visible rows from the first (End would jump; the walk proves each focused row is scrolled into view).
+    await items.first().focus();
+    for (let i = 0; i < count - 1; i++) await page.keyboard.press("ArrowDown");
     await expect(items.last()).toBeFocused();
     await expect(items.last()).toBeInViewport();
   });

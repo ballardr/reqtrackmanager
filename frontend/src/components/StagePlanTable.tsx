@@ -18,6 +18,7 @@ import { CalendarRange } from "lucide-react";
 import type { PhasePlan, ProjectStage, StageWorkflow } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { usePhaseMove } from "../hooks/usePhaseMove";
+import { useTableSort } from "../hooks/useTableSort";
 import { formatDay, stageRows, type DeliveryRow } from "../utils/deliveryPlan";
 import { Badge } from "./Badge";
 import { DeliveryTimeline } from "./DeliveryTimeline";
@@ -56,6 +57,13 @@ export function StagePlanTable({
   );
   const rows = new Map<string, DeliveryRow>(stageRows(stages, workflows, plans, canManage).map((row) => [row.key, row]));
   const scheduleLabel = (stage: ProjectStage) => t.scheduleAria(stage.name, "");
+  const table = useTableSort(stages, {
+    stage: (stage) => stage.name,
+    phase: (stage) => stage.phase_name,
+    owner: (stage) => stage.owner?.label ?? null,
+    progress: (stage) => rows.get(stage.id)?.progress ?? null,
+    expected: (stage) => rows.get(stage.id)?.expectedFrom ?? null,
+  });
 
   if (view === "timeline") {
     return (
@@ -73,9 +81,9 @@ export function StagePlanTable({
   }
 
   const columns: DirectoryColumn<ProjectStage>[] = [
-    { key: "stage", label: strings.componentPhases.stageColumn, render: (stage) => <strong>{stage.name}</strong> },
+    { key: "stage", label: strings.componentPhases.stageColumn, sortable: true, render: (stage) => <strong>{stage.name}</strong> },
     {
-      key: "phase", label: t.currentPhaseColumn,
+      key: "phase", label: t.currentPhaseColumn, sortable: true,
       render: (stage) => {
         const phases = workflows.find((w) => w.id === stage.workflow_id)?.phases ?? [{ id: stage.phase_id, name: stage.phase_name, kind: stage.phase_kind }];
         return (
@@ -97,16 +105,16 @@ export function StagePlanTable({
         );
       },
     },
-    { key: "owner", label: strings.componentPhases.owner, render: (stage) => <PrincipalBadge principal={stage.owner} placeholder="" /> },
+    { key: "owner", label: strings.componentPhases.owner, sortable: true, render: (stage) => <PrincipalBadge principal={stage.owner} placeholder="" /> },
     {
-      key: "progress", label: t.progressColumn,
+      key: "progress", label: t.progressColumn, sortable: true,
       render: (stage) => {
         const row = rows.get(stage.id);
         return row ? <ProgressMeter value={row.completedPhases} max={row.totalPhases} label={t.progress(row.completedPhases, row.totalPhases)} /> : "";
       },
     },
     {
-      key: "expected", label: t.expectedColumn,
+      key: "expected", label: t.expectedColumn, sortable: true,
       render: (stage) => {
         const row = rows.get(stage.id);
         if (!row) return "";
@@ -128,7 +136,8 @@ export function StagePlanTable({
   return (
     <>
       <DirectoryTable
-        ariaLabel={t.stagesTable} columns={columns} rows={stages} rowKey={(stage) => stage.id}
+        ariaLabel={t.stagesTable} columns={columns} rows={table.rows} rowKey={(stage) => stage.id}
+        sort={table.sort} onSort={table.onSort}
         emptyState={<div className="text-muted">{strings.stagePhases.noStages}</div>}
       />
       {phaseMove.dialog}

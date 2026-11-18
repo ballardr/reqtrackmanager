@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { expectHeaderOrdersText } from "../testing/sortHelpers";
 import {
   buildComponent, buildComponentPhases, buildComponentTrack, buildPhasePlan, buildStage, buildStageWorkflow, withToast,
 } from "../testing/storybook-helpers";
@@ -127,5 +128,13 @@ export const TimelineView: Story = {
     await expect(canvas.getAllByRole("listitem")).toHaveLength(4);
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Stage" }), "Release 2");
     await waitFor(() => expect(canvas.getAllByRole("listitem")).toHaveLength(2));
+  },
+};
+
+/** The Component header orders the tracks by component name, ascending then descending (the default is the project's component order). */
+export const ComponentHeaderSortsTheTracks: Story = {
+  play: async ({ canvasElement }) => {
+    const table = within(canvasElement).getByRole("table");
+    await expectHeaderOrdersText(table, "Component");
   },
 };

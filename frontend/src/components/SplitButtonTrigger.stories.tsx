@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Plus } from "lucide-react";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { expectTextRows } from "../testing/menuRows";
 import { SplitButtonTrigger } from "./SplitButtonTrigger";
 
 const meta: Meta<typeof SplitButtonTrigger> = {
@@ -47,8 +48,9 @@ export const ChevronRevealsAlternativesWithoutFiringDefault: Story = {
     await expect(args.onDefaultAction).not.toHaveBeenCalled();
 
     const menu = within(document.body).getByRole("dialog", { name: "New requirement" });
-    const csvOption = within(menu).getByRole("button", { name: "Import from CSV" });
+    const csvOption = within(menu).getByRole("menuitem", { name: "Import from CSV" });
     await expect(csvOption).toBeInTheDocument();
+    await expectTextRows(menu);
 
     await userEvent.click(csvOption);
     await expect(args.alternatives[0].onSelect).toHaveBeenCalledOnce();

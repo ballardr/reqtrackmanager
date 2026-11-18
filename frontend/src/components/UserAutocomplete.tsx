@@ -300,11 +300,7 @@ export function UserAutocomplete({
               role="option"
               aria-selected={highlightedIndex === i}
               type="button"
-              className="btn"
-              style={{
-                border: "none", justifyContent: "flex-start", textAlign: "left",
-                background: highlightedIndex === i ? "var(--color-surface-alt)" : undefined,
-              }}
+              className="menu-item"
               onMouseEnter={() => setHighlightedIndex(i)}
               onClick={() => pick(u)}
             >
@@ -320,11 +316,7 @@ export function UserAutocomplete({
                 role="option"
                 aria-selected={highlightedIndex === index}
                 type="button"
-                className="btn"
-                style={{
-                  border: "none", justifyContent: "flex-start", textAlign: "left", alignItems: "center", gap: "var(--space-2)",
-                  background: highlightedIndex === index ? "var(--color-surface-alt)" : undefined,
-                }}
+                className="menu-item"
                 onMouseEnter={() => setHighlightedIndex(index)}
                 onClick={() => pickGroup(g)}
               >
@@ -342,11 +334,7 @@ export function UserAutocomplete({
                 role="option"
                 aria-selected={highlightedIndex === index}
                 type="button"
-                className="btn"
-                style={{
-                  border: "none", justifyContent: "flex-start", textAlign: "left", alignItems: "center", gap: "var(--space-2)",
-                  background: highlightedIndex === index ? "var(--color-surface-alt)" : undefined,
-                }}
+                className="menu-item"
                 onMouseEnter={() => setHighlightedIndex(index)}
                 onClick={() => pickProjectGroup(g)}
               >
@@ -361,14 +349,7 @@ export function UserAutocomplete({
               role="option"
               aria-selected={highlightedIndex === matches.length + groupMatches.length + projectGroupMatches.length}
               type="button"
-              className="btn"
-              style={{
-                border: "none", justifyContent: "flex-start", textAlign: "left",
-                background:
-                  highlightedIndex === matches.length + groupMatches.length + projectGroupMatches.length
-                    ? "var(--color-surface-alt)"
-                    : undefined,
-              }}
+              className="menu-item"
               onMouseEnter={() => setHighlightedIndex(matches.length + groupMatches.length + projectGroupMatches.length)}
               onClick={() => pickExternal(external!)}
             >

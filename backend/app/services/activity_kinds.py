@@ -86,7 +86,8 @@ CORE_ACTION_KINDS: dict[str, str] = {
     **dict.fromkeys(("granted", "revoked", "role_granted", "role_revoked", "role_assigned", "member_added",
                      "member_removed", "nested_group_added", "holder_added", "holder_removed", "watcher_added",
                      "watcher_removed", "inherited_access_materialized"), ACCESS),
-    **dict.fromkeys(("comment_added", "comment_edited"), COMMENTS),
+    **dict.fromkeys(("comment_added", "comment_edited", "comment_deleted", "comment_pinned", "comment_pin_moved",
+                     "comment_thread_resolved", "comment_thread_reopened", "comment_thread_deleted"), COMMENTS),
     **dict.fromkeys(("deleted", "delete", "removed", "erased"), DELETED),
 }
 
@@ -132,7 +133,7 @@ CORE_METADATA_TYPES: dict[str, str] = {
         "scoring_enabled_models", "scoring_cell_rating_set", "scoring_band_set", "report_layout", "report_pack",
         "report_pack_set", "report_snippet", "report_folder", "report_placement", "report_run", "generated_report",
         "request_channel", "request_channel_definition", "external_system", "artefact_type_link_rule", "restore",
-        "change_request_task", "change_request_vote", "organization_module", "organization_module_subcomponent",
+        "change_request_task", "change_request_vote", "baseline", "organization_module", "organization_module_subcomponent",
         "organization", "organization_dashboard", "announcement", "policy", "report_font", "server_module_default", "system",
     ), "structure"),
 }

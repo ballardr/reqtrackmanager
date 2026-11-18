@@ -77,6 +77,7 @@ from app.services import custom_report_run, report_layout_scope, report_layouts,
 from app.services.audit import log_event
 from app.services.client_date import effective_today, reset_client_date, set_client_date
 from app.services.files import get_storage_backend
+from app.services.lookups import affected_rows
 from app.services.notifications import notify
 from app.services.rbac import get_effective_org_roles, get_effective_project_roles, session_may_reach_project
 from app.services.report_layout_eval import ASYNC_TIMEOUT_SECONDS, LayoutLimitError, LayoutTimeoutError
@@ -553,11 +554,11 @@ def expire(db: Session, *, now: datetime | None = None) -> dict[str, int]:
         row.status, row.finished_at, row.error = STATUS_FAILED, now, FAILURE_LOST
         lost += 1
     cutoff = now - timedelta(days=get_settings().report_run_record_retention_days)
-    purged = db.execute(
+    purged = affected_rows(db.execute(
         delete(GeneratedReport).where(
             GeneratedReport.created_at < cutoff, GeneratedReport.status.notin_([*_ACTIVE, STATUS_READY])
         )
-    ).rowcount
+    ))
     db.commit()
     return {"expired": expired, "lost": lost, "purged": purged or 0}
 

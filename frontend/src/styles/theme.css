@@ -154,6 +154,9 @@ textarea {
   color: var(--color-text);
   border-radius: var(--radius-md);
   padding: var(--space-3) 0.9rem;
+  /* Medium is 36px whatever the font's line height is (a Linux fallback font gave 35px), so a text button
+     and a `.btn-icon` of the same size are one height. */
+  min-height: 2.25rem;
   cursor: pointer;
 }
 
@@ -196,6 +199,7 @@ textarea {
    next to each other share a size. */
 .btn-sm {
   height: 1.75rem;
+  min-height: 0;
   padding: 0 0.6rem;
   gap: 0.3rem;
   font-size: 0.85rem;
@@ -1085,6 +1089,49 @@ a.figure-projects-link:hover {
   margin-left: auto;
 }
 
+/* A row whose text is itself one button that chooses the row (`ConnectionSummaryRow`): it looks like the row's text, with
+   a hover edge and the product focus ring, so the row's own actions beside it stay separate controls. */
+.item-row__choose {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.item-row__choose:hover {
+  text-decoration: underline;
+}
+
+.item-row__choose:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Actions revealed on hover or focus (style guide "Pattern: actions revealed on hover"). Opacity, not `display`, so the
+   actions keep their space and stay in the tab order; focus inside the row reveals them, and a device with no hover
+   shows them always. */
+.item-row--reveal .item-row__actions {
+  opacity: 0;
+}
+
+.item-row--reveal:hover .item-row__actions,
+.item-row--reveal:focus-within .item-row__actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .item-row--reveal .item-row__actions {
+    opacity: 1;
+  }
+}
+
 .text-muted {
   color: var(--color-text-muted);
 }
@@ -1340,6 +1387,60 @@ a.figure-projects-link:hover {
 .comment-row {
   padding: var(--space-3) 0;
   border-top: 1px solid var(--color-border);
+}
+
+/* The round pin a comment thread leaves on a canvas (components/CommentMarker): the accent colour with the author's initials. */
+.comment-marker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.comment-marker:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+/* A resolved thread is outlined and muted; a detached one is dashed (its box or line has left the drawing). */
+.comment-marker-resolved {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+.comment-marker-detached {
+  border-style: dashed;
+}
+
+.comment-marker-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: var(--radius-lg);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 0.65rem;
+  line-height: 16px;
+  text-align: center;
 }
 
 .detail-card__title,
@@ -2112,6 +2213,127 @@ given to the entity quick-switch chevron itself since it
   padding-top: var(--space-2);
 }
 
+/* A list with a per-row control (`renderExtra`) measures its own width, not the window's, because the same list sits in
+   a wide page and in a narrow card: below 34rem the columns give way to one flowing row per item, the fields and the
+   actions on the first line and the extra controls on the line below. */
+.definition-list--extra {
+  container-type: inline-size;
+}
+
+.definition-grid__extra {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.definition-grid__extra span,
+.definition-grid__extra select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.definition-grid__extra:empty {
+  display: none;
+}
+
+@container (max-width: 34rem) {
+  .definition-list--extra .definition-grid {
+    display: flex;
+    flex-direction: column;
+    /* The grid's own `start` would size a row to its widest control, so a long select option widened the whole row. */
+    align-items: stretch;
+  }
+
+  .definition-list--extra .definition-grid__head {
+    display: none;
+  }
+
+  .definition-list--extra .definition-grid__row {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .definition-list--extra .definition-grid__cell {
+    flex: 1 1 8rem;
+    padding-right: 0;
+  }
+
+  .definition-list--extra .definition-grid__row > .definition-grid__actions {
+    order: 2;
+    margin-left: auto;
+    padding-top: 0;
+  }
+
+  .definition-list--extra .definition-grid__row > .definition-grid__extra {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .definition-list--extra .definition-grid__add {
+    padding-top: 0;
+  }
+}
+
+/* A card with a height cap (`DetailCard maxHeight`): the heading stays, the content scrolls inside and does not carry
+   the page's scroll with it; the actions row stays at the top of the scrolling content. */
+/* The heading's line: the title takes the room and wraps, the actions (a Save button) keep their size beside it. */
+.detail-card__head {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+
+.detail-card__head > .detail-card__title,
+.detail-card__head > .field-caption {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-card__actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detail-card__actions:empty {
+  display: none;
+}
+
+.detail-card--scrolls {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.detail-card__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The padding keeps a focused control's ring and the scrollbar inside the card, not cut at the scroll edge. */
+  padding: 2px var(--space-1) 2px 2px;
+  margin: -2px 0;
+}
+
+.detail-card__scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+.detail-card__scroll .selection-actions {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  padding-block: var(--space-1);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -2638,16 +2860,93 @@ td:has(> .disclosure-toggle) {
   max-width: calc(100vw - 1rem);
 }
 
-/* A menu item (`ActionMenuList`) is a button whose label may be long: it wraps onto a second line
-   rather than clipping, once the menu has grown to the viewport's width. */
-.menu-item {
-  justify-content: flex-start;
-  text-align: left;
-  white-space: normal;
+/* An action menu's panel (`Popover menu`): tighter than a form popover, with a caret toward the trigger. The caret
+   is a rotated square on the panel's edge; it is clipped away when a tall menu scrolls inside its capped height. */
+.popover-menu {
+  position: fixed;
+  padding: var(--space-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
 }
 
-/* A heading over a run of related menu items (`ActionMenuItem.group`), e.g. the record kind in a list's
-   export and import menu. */
+.popover-menu[data-side="below"]::before,
+.popover-menu[data-side="above"]::before {
+  content: "";
+  position: absolute;
+  left: var(--popover-caret-x, 1rem);
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.popover-menu[data-side="below"]::before {
+  top: -6px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.popover-menu[data-side="above"]::before {
+  bottom: -6px;
+  border-left: 0;
+  border-top: 0;
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 180px;
+}
+
+/* A menu row (`ActionMenuList`) is a plain text row, not a button: nothing drawn at rest, a tint on hover and
+   focus. Its label may be long, so it wraps onto a second line rather than clipping once the menu has grown to
+   the viewport's width. */
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  justify-content: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  white-space: normal;
+  cursor: pointer;
+}
+
+/* The same row serves a link in a list of destinations (`EntitySwitcher`) and an option of a listbox
+   (`UserAutocomplete`, `TagInput`, `QuickLinkField`), whose highlighted option is `aria-selected`. */
+.menu-item:hover,
+.menu-item:focus-visible,
+.menu-item[aria-selected="true"] {
+  background: var(--color-surface-alt);
+}
+
+.menu-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.menu-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+  background: transparent;
+}
+
+.menu-item-danger {
+  color: var(--color-danger);
+}
+
+/* A heading over a run of related menu items (`ActionMenuItem.group`) that holds only one item, e.g. the record
+   kind in a list's export and import menu. */
 .menu-group-label {
   padding: var(--space-2) var(--space-3) 0;
   color: var(--color-text-muted);
@@ -2655,40 +2954,36 @@ td:has(> .disclosure-toggle) {
   font-weight: 600;
 }
 
-/* A menu row that opens a second list (`ActionMenuItem.children`). The list is placed beside its parent by
-   `ActionMenu` (position: fixed, so the popover's own scrolling never clips it); on a narrow screen it is
-   inline beneath the parent, indented. */
-.menu-submenu-host {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+/* A parent row (an item with `children`, or a group of several items): a chevron that turns down while it is
+   open, and the product's selected-state colour (the primary slate, with a heavier weight) on the open entry; the
+   accent colour is for focus and selection outlines, never a menu's text. Its rows follow in `.menu-tree-group`,
+   indented under a thin guide line. */
+.menu-parent[aria-expanded="true"] {
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
-.menu-submenu-parent {
-  width: 100%;
+.menu-parent-chevron {
+  margin-left: auto;
+  flex: none;
+  transition: transform 0.12s ease;
+}
+
+.menu-parent[aria-expanded="true"] .menu-parent-chevron {
+  transform: rotate(90deg);
+}
+
+.menu-tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: var(--space-4);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border);
 }
 
 .menu-item-hint {
   font-size: 0.8rem;
-}
-
-.menu-submenu-chevron {
-  margin-left: auto;
-  flex: none;
-}
-
-.menu-submenu {
-  z-index: 1160;
-  min-width: 160px;
-  padding: var(--space-1);
-}
-
-/* Same width as NARROW_VIEWPORT_PX in ActionMenu.tsx (which also sets position: static). */
-@media (max-width: 639px) {
-  .menu-submenu {
-    margin: 0.15rem 0 0 var(--space-3);
-    box-shadow: none;
-  }
 }
 
 .menu-footer {

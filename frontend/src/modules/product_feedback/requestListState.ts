@@ -42,7 +42,7 @@ const SCORED_FILTERS = ["unscored", "scored"] as const;
 export const ANY_CRITERION = "any";
 /** The Status dropdown's two non-status choices. */
 export type StatusChoice = RequestStatus | "open" | "all";
-export const REQUEST_SORT_KEYS = ["demand", "score", "created", "updated", "pain_points"] as const;
+export const REQUEST_SORT_KEYS = ["code", "title", "status", "owner", "demand", "score", "created", "updated", "pain_points"] as const;
 const PAIN_POINT_FILTERS = ["none", "some"] as const;
 
 /** The models a list shows until the person chooses: the scheme's enabled models, else its default. */
@@ -138,11 +138,15 @@ export function useRequestListFilters(
 
 export type RequestListFilters = ReturnType<typeof useRequestListFilters>;
 
-/** The score a request sorts by: the primary model's normalised score; unscored sorts last either way. */
+/** The score a request sorts by: the primary model's normalised score; a request with no value (unscored, no owner) sorts last either way. */
 export function sortRequests(rows: EnhancementRequest[], filters: RequestListFilters): EnhancementRequest[] {
   const { sort, primary } = filters;
   if (!sort) return rows;
-  const value = (r: EnhancementRequest): number | null => {
+  const value = (r: EnhancementRequest): number | string | null => {
+    if (sort.key === "code") return r.unique_code;
+    if (sort.key === "title") return r.title;
+    if (sort.key === "status") return REQUEST_STATUS_LABEL[r.status];
+    if (sort.key === "owner") return r.owner?.label ?? null;
     if (sort.key === "demand") return r.weighted_demand;
     if (sort.key === "created") return Date.parse(r.created_at);
     if (sort.key === "updated") return Date.parse(r.updated_at);
@@ -152,7 +156,10 @@ export function sortRequests(rows: EnhancementRequest[], filters: RequestListFil
   return [...rows].sort((a, b) => {
     const [x, y] = [value(a), value(b)];
     if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-    return sort.direction === "asc" ? x - y : y - x;
+    const order = typeof x === "number" && typeof y === "number"
+      ? x - y
+      : String(x).localeCompare(String(y), undefined, { sensitivity: "base", numeric: true });
+    return sort.direction === "asc" ? order : -order;
   });
 }
 

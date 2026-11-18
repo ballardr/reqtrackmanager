@@ -23,6 +23,8 @@ import { ApiError } from "../api/client";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useTableSort } from "../hooks/useTableSort";
+import type { SortValue } from "../utils/sortRows";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -43,6 +45,14 @@ function carriedText(row: SavedSnippet, empty: string): string {
   const parts = [...row.page_styles.map((n) => `style ${n}`), ...row.variables.map((n) => `variable ${n}`)];
   return parts.length > 0 ? parts.join(", ") : empty;
 }
+
+/** Sortable value of each sortable column of the snippet table. */
+const SNIPPET_SORT_VALUES: Record<string, (row: SavedSnippet) => SortValue> = {
+  name: (row) => row.name,
+  category: (row) => row.category || null,
+  source: (row) => LAYOUT_ORIGIN_LABEL[row.origin],
+  blocks: (row) => row.blocks,
+};
 
 /**
  * @param api The saved-snippet calls, bound to an organisation or a project; the live ones for `scope` when omitted.
@@ -87,6 +97,7 @@ export function ReportSnippetsPanel({
     const needle = search.trim().toLowerCase();
     return (rows ?? []).filter((r) => needle === "" || `${r.name} ${r.description} ${r.category}`.toLowerCase().includes(needle));
   }, [rows, search]);
+  const table = useTableSort(shown, SNIPPET_SORT_VALUES);
   const categories = useMemo(() => [...new Set((rows ?? []).map((r) => r.category))], [rows]);
   const hidden = useMemo(() => (rows ?? []).filter((r) => r.hidden), [rows]);
 
@@ -131,7 +142,7 @@ export function ReportSnippetsPanel({
 
   const columns: DirectoryColumn<SavedSnippet>[] = [
     {
-      key: "name", label: text.nameHeader,
+      key: "name", label: text.nameHeader, sortable: true,
       render: (row) => (
         <span className="stack" style={{ gap: 0 }}>
           <strong>{row.name}</strong>
@@ -139,16 +150,16 @@ export function ReportSnippetsPanel({
         </span>
       ),
     },
-    { key: "category", label: text.categoryHeader, render: (row) => row.category },
+    { key: "category", label: text.categoryHeader, sortable: true, render: (row) => row.category },
     {
-      key: "source", label: text.sourceHeader,
+      key: "source", label: text.sourceHeader, sortable: true,
       render: (row) => (
         <>
           {LAYOUT_ORIGIN_LABEL[row.origin]} {row.hidden && <Badge>{text.hiddenBadge}</Badge>}
         </>
       ),
     },
-    { key: "blocks", label: text.blocksHeader, render: (row) => row.blocks },
+    { key: "blocks", label: text.blocksHeader, sortable: true, render: (row) => row.blocks },
     { key: "carries", label: text.carriesHeader, render: (row) => carriedText(row, text.carriesNothing) },
     {
       key: "actions", label: <span className="sr-only">{text.actionsHeader}</span>,
@@ -190,7 +201,8 @@ export function ReportSnippetsPanel({
         </div>
       )}
       <DirectoryTable
-        ariaLabel={text.listLabel} columns={columns} rows={shown} rowKey={(row) => row.id}
+        ariaLabel={text.listLabel} columns={columns} rows={table.rows} rowKey={(row) => row.id}
+        sort={table.sort} onSort={table.onSort}
         emptyState={<p className="text-muted" style={{ margin: 0 }}>{rows.length > 0 ? text.noMatch : text.empty}</p>}
       />
       {dialog?.kind === "new" && (

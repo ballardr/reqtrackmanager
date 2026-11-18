@@ -1,0 +1,802 @@
+{
+  "cases": [
+    {
+      "name": "no symbol, a short name",
+      "has_symbol": false,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Gateway",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 47,
+          "lines": [
+            "Gateway"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 47,
+          "lines": [
+            "Gateway"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 47,
+          "lines": [
+            "Gateway"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a symbol, a short name",
+      "has_symbol": true,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Gateway",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 91,
+          "lines": [
+            "Gateway"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 91,
+          "lines": [
+            "Gateway"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 91,
+          "lines": [
+            "Gateway"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a symbol, a long name",
+      "has_symbol": true,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Flight controller and motor driver board",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 123,
+          "lines": [
+            "Flight controller",
+            "and motor driver",
+            "board"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 123,
+          "lines": [
+            "Flight controller",
+            "and motor driver",
+            "board"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 91,
+          "lines": [
+            "Flight controller and motor driver board"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no symbol, a long name",
+      "has_symbol": false,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Flight controller and motor driver board",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 79,
+          "lines": [
+            "Flight controller",
+            "and motor driver",
+            "board"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 79,
+          "lines": [
+            "Flight controller",
+            "and motor driver",
+            "board"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 47,
+          "lines": [
+            "Flight controller and motor driver board"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "one very long word",
+      "has_symbol": true,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Supercalifragilisticexpialidocious",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 273,
+          "min_height": 91,
+          "lines": [
+            "Supercalifragilisticexpialidocious"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 273,
+          "min_height": 91,
+          "lines": [
+            "Supercalifragilisticexpialidocious"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 273,
+          "min_height": 91,
+          "lines": [
+            "Supercalifragilisticexpialidocious"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two long words",
+      "has_symbol": false,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Telecommunications Infrastructure",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 174,
+          "min_height": 63,
+          "lines": [
+            "Telecommunications",
+            "Infrastructure"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 174,
+          "min_height": 63,
+          "lines": [
+            "Telecommunications",
+            "Infrastructure"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 174,
+          "min_height": 47,
+          "lines": [
+            "Telecommunications Infrastructure"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a long type name in the caption",
+      "has_symbol": false,
+      "caption": "ELM-001 · Hardware-in-the-loop simulation rig",
+      "element_name": "Rig",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 303,
+          "min_height": 47,
+          "lines": [
+            "Rig"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 303,
+          "min_height": 47,
+          "lines": [
+            "Rig"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 303,
+          "min_height": 47,
+          "lines": [
+            "Rig"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hyphenated words break after the hyphen",
+      "has_symbol": false,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "Command-and-control-segment-gateway",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 95,
+          "lines": [
+            "Command-and-",
+            "control-",
+            "segment-",
+            "gateway"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 79,
+          "lines": [
+            "Command-and-",
+            "control-segment-",
+            "gateway"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 47,
+          "lines": [
+            "Command-and-control-segment-gateway"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "has_symbol": true,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "電源が入っているかどうかを確認する電源制御ユニット",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 123,
+          "lines": [
+            "電源が入っているか",
+            "どうかを確認する電",
+            "源制御ユニット"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 123,
+          "lines": [
+            "電源が入っているかど",
+            "うかを確認する電源制",
+            "御ユニット"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 91,
+          "lines": [
+            "電源が入っているかどうかを確認する電源制御ユニット"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty name",
+      "has_symbol": true,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 75,
+          "lines": []
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 75,
+          "lines": []
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 75,
+          "lines": []
+        }
+      ]
+    },
+    {
+      "name": "a locked box measures its code",
+      "has_symbol": false,
+      "caption": "",
+      "element_name": "ELM-001",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 80,
+          "min_height": 46,
+          "lines": [
+            "ELM-",
+            "001"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 80,
+          "min_height": 40,
+          "lines": [
+            "ELM-001"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 80,
+          "min_height": 40,
+          "lines": [
+            "ELM-001"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "capitals and signs are wider",
+      "has_symbol": false,
+      "caption": "ELM-001 · Subsystem",
+      "element_name": "ABS MWM @ 100% WWW",
+      "fits": [
+        {
+          "width": 80.0,
+          "min_width": 150,
+          "min_height": 63,
+          "lines": [
+            "ABS MWM @",
+            "100% WWW"
+          ]
+        },
+        {
+          "width": 160.0,
+          "min_width": 150,
+          "min_height": 63,
+          "lines": [
+            "ABS MWM @",
+            "100% WWW"
+          ]
+        },
+        {
+          "width": 400.0,
+          "min_width": 150,
+          "min_height": 47,
+          "lines": [
+            "ABS MWM @ 100% WWW"
+          ]
+        }
+      ]
+    }
+  ],
+  "drawn": [
+    {
+      "name": "no symbol, a short name",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        80.0
+      ]
+    },
+    {
+      "name": "no symbol, a short name",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        47.0
+      ]
+    },
+    {
+      "name": "no symbol, a short name",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "a symbol, a short name",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        91.0
+      ]
+    },
+    {
+      "name": "a symbol, a short name",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        91.0
+      ]
+    },
+    {
+      "name": "a symbol, a short name",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "a symbol, a long name",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        123.0
+      ]
+    },
+    {
+      "name": "a symbol, a long name",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        123.0
+      ]
+    },
+    {
+      "name": "a symbol, a long name",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "no symbol, a long name",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        80.0
+      ]
+    },
+    {
+      "name": "no symbol, a long name",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        79.0
+      ]
+    },
+    {
+      "name": "no symbol, a long name",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "one very long word",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        273.0,
+        91.0
+      ]
+    },
+    {
+      "name": "one very long word",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        273.0,
+        91.0
+      ]
+    },
+    {
+      "name": "one very long word",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "two long words",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        174.0,
+        80.0
+      ]
+    },
+    {
+      "name": "two long words",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        174.0,
+        63.0
+      ]
+    },
+    {
+      "name": "two long words",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "a long type name in the caption",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        303.0,
+        80.0
+      ]
+    },
+    {
+      "name": "a long type name in the caption",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        303.0,
+        47.0
+      ]
+    },
+    {
+      "name": "a long type name in the caption",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        303.0,
+        200.0
+      ]
+    },
+    {
+      "name": "hyphenated words break after the hyphen",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        80.0
+      ]
+    },
+    {
+      "name": "hyphenated words break after the hyphen",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        95.0
+      ]
+    },
+    {
+      "name": "hyphenated words break after the hyphen",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        123.0
+      ]
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        123.0
+      ]
+    },
+    {
+      "name": "non-Latin text breaks between characters",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "an empty name",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        80.0
+      ]
+    },
+    {
+      "name": "an empty name",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        75.0
+      ]
+    },
+    {
+      "name": "an empty name",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "a locked box measures its code",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        80.0
+      ]
+    },
+    {
+      "name": "a locked box measures its code",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        80.0,
+        46.0
+      ]
+    },
+    {
+      "name": "a locked box measures its code",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    },
+    {
+      "name": "capitals and signs are wider",
+      "stored": [
+        160.0,
+        80.0
+      ],
+      "size": [
+        160.0,
+        80.0
+      ]
+    },
+    {
+      "name": "capitals and signs are wider",
+      "stored": [
+        60.0,
+        30.0
+      ],
+      "size": [
+        150.0,
+        63.0
+      ]
+    },
+    {
+      "name": "capitals and signs are wider",
+      "stored": [
+        300.0,
+        200.0
+      ],
+      "size": [
+        300.0,
+        200.0
+      ]
+    }
+  ]
+}

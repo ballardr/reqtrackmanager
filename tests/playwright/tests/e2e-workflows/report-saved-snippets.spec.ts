@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -41,7 +42,7 @@ test.describe("Saved report snippets", () => {
     await page.goto(`/projects/${projectId}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -70,7 +71,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("Save as snippet needs a selected block", async () => {
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Heading 1" }).click();
+      await clickMenuRow(page, "Heading 1");
       await page.getByLabel("Block details").getByRole("textbox", { name: "Heading", exact: true }).fill("House style heading");
       await page.getByRole("button", { name: "Snippets" }).click();
       await expect(page.getByRole("menuitem", { name: "Save as snippet" })).toBeEnabled();
@@ -79,7 +80,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("the dialog saves it for the project", async () => {
       await page.getByRole("button", { name: "Snippets" }).click();
-      await page.getByRole("menuitem", { name: "Save as snippet" }).click();
+      await clickMenuRow(page, "Save as snippet");
       const dialog = saveDialog(page);
       await expect(dialog.getByText("Saves 1 block.")).toBeVisible();
       await expect(dialog.getByRole("button", { name: "Save snippet" })).toBeDisabled();
@@ -95,7 +96,7 @@ test.describe("Saved report snippets", () => {
       await newLayout(page, project.id, `E2E saved target ${suffix}`);
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.getByRole("button", { name: "Snippets" }).click();
-      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
+      await clickMenuRow(page, "Insert snippet");
       const dialog = picker(page);
       const row = dialog.getByRole("button", { name: `Select ${snippetName}` });
       await expect(row).toContainText("Saved · This project");
@@ -127,7 +128,7 @@ test.describe("Saved report snippets", () => {
     await test.step("a caret on the layout line is in no block", async () => {
       await editor.evaluate((el: HTMLTextAreaElement) => { el.focus(); el.setSelectionRange(2, 2); });
       await page.getByRole("button", { name: "Snippets" }).click();
-      await page.getByRole("menuitem", { name: "Save as snippet" }).click();
+      await clickMenuRow(page, "Save as snippet");
       await expect(page.getByText("Put the caret in a block, or select blocks, to save them as a snippet.")).toBeVisible();
       await expect(saveDialog(page)).toHaveCount(0);
     });
@@ -135,7 +136,7 @@ test.describe("Saved report snippets", () => {
     await test.step("a selection across both blocks saves both", async () => {
       await editor.evaluate((el: HTMLTextAreaElement) => { el.focus(); el.setSelectionRange(el.value.indexOf("First"), el.value.length - 2); });
       await page.getByRole("button", { name: "Snippets" }).click();
-      await page.getByRole("menuitem", { name: "Save as snippet" }).click();
+      await clickMenuRow(page, "Save as snippet");
       const dialog = saveDialog(page);
       await expect(dialog.getByText("Saving 2 blocks (and everything inside them).")).toBeVisible();
       await expect(dialog.getByText("Saves 2 blocks.")).toBeVisible();
@@ -161,7 +162,7 @@ test.describe("Saved report snippets", () => {
     });
 
     await test.step("hiding it asks first and removes it from Insert snippet in this project", async () => {
-      await page.getByRole("menuitem", { name: "Hide in this project" }).click();
+      await clickMenuRow(page, "Hide in this project");
       const confirm = page.getByRole("dialog");
       await expect(confirm).toContainText("no longer offered when inserting a snippet in this project");
       await confirm.getByRole("button", { name: "Hide", exact: true }).click();
@@ -184,7 +185,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("a copy of it is the project's own and a taken name is refused when saving", async () => {
       await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Make a copy" }).click();
+      await clickMenuRow(page, "Make a copy");
       await expect(page.getByText(`Copied as ${name} (copy).`)).toBeVisible();
       const copy = snippetsTable(page).getByRole("row", { name: new RegExp(`${name} \\(copy\\)`) });
       await expect(copy).toContainText("This project");
@@ -207,7 +208,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("Edit renames it", async () => {
       await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+      await clickMenuRow(page, "Edit");
       const dialog = page.getByRole("dialog", { name: `Edit ${name}` });
       await dialog.getByRole("textbox", { name: "Name" }).fill(`Renamed ${suffix}`);
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
@@ -217,7 +218,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("Delete needs the name typed", async () => {
       await page.getByRole("button", { name: `Actions for Renamed ${suffix}` }).click();
-      await page.getByRole("menuitem", { name: "Delete" }).click();
+      await clickMenuRow(page, "Delete");
       const confirm = page.getByRole("dialog");
       await expect(confirm.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
       await confirm.getByRole("textbox").fill(`Renamed ${suffix}`);
@@ -240,7 +241,7 @@ test.describe("Saved report snippets", () => {
       await dialog.getByRole("textbox", { name: "Name" }).fill(name);
       await expect(dialog.getByText("Add at least one block to save the snippet.")).toBeVisible();
       await dialog.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Heading 1" }).click();
+      await clickMenuRow(page, "Heading 1");
       await dialog.getByLabel("Block details").getByRole("textbox", { name: "Heading", exact: true }).fill("Made in setup");
       await expect(dialog.getByText("Saves 1 block.")).toBeVisible();
       await expect(dialog.getByRole("combobox", { name: /Kind/ })).toBeDisabled();
@@ -251,7 +252,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("Edit changes its blocks, through the Text view", async () => {
       await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+      await clickMenuRow(page, "Edit");
       const dialog = page.getByRole("dialog", { name: `Edit ${name}` });
       await dialog.getByRole("tab", { name: "Text" }).click();
       const text = dialog.getByRole("textbox", { name: "Snippet text" });
@@ -267,7 +268,7 @@ test.describe("Saved report snippets", () => {
       await newLayout(page, project.id, `E2E panel target ${suffix}`);
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.getByRole("button", { name: "Snippets" }).click();
-      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
+      await clickMenuRow(page, "Insert snippet");
       const dialog = picker(page);
       await dialog.getByRole("button", { name: `Select ${name}` }).click();
       await expect(dialog.getByRole("list", { name: `Blocks in ${name}` })).toContainText("Edited in setup");

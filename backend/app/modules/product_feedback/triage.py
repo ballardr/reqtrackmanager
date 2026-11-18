@@ -56,6 +56,7 @@ from app.modules.product_feedback.service import (
     get_current_version,
 )
 from app.services import tags as tag_service
+from app.services.lookups import affected_rows
 from app.services.sequences import generate_unique_code
 
 
@@ -132,10 +133,10 @@ def move_to_project(db: Session, request: EnhancementRequest, project: Project, 
         .join(EnhancementRequestComment, EnhancementRequestComment.id == EnhancementRequestCommentFile.comment_id)
         .where(EnhancementRequestComment.request_id == request.id)
     )
-    files = db.execute(
+    files = affected_rows(db.execute(
         update(FileAsset).where(FileAsset.id.in_(direct.union(on_comments)), FileAsset.is_org_resource.is_(True))
         .values(is_org_resource=False)
-    ).rowcount
+    ))
 
     references = convert_to_project(db, request, project)
     apply_new_version(

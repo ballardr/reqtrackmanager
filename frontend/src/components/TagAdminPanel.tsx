@@ -19,10 +19,12 @@
  */
 import { useCallback, useMemo, useState } from "react";
 
-import type { ReclassifyResult, Tag, TagAdminApi, TagMode, TagUsage, TagVocabulary } from "../api/tags";
+import type { ReclassifyResult, Tag, TagAdminApi, TagMode, TagUsage, TagUsageRow, TagVocabulary } from "../api/tags";
 import { TAG_NAME_MAX_LENGTH, tagNameProblem } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useTableSort } from "../hooks/useTableSort";
+import { sortRows, type SortValue } from "../utils/sortRows";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { ActionMenu } from "./ActionMenu";
 import { Badge } from "./Badge";
@@ -36,6 +38,7 @@ import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
 import { TagChip } from "./TagChip";
+import { cycleSort, type SortState } from "./sortState";
 import { TAG_COLOURS } from "./tagColours";
 
 type Dialog =
@@ -44,6 +47,22 @@ type Dialog =
   | { kind: "merge"; tag: Tag }
   | { kind: "delete"; tag: Tag }
   | { kind: "reclassify"; tag: Tag; artefactType?: string };
+
+const NO_TAGS: Tag[] = [];
+
+/** Sortable value of each sortable column of the tag table. */
+const TAG_SORT_VALUES: Record<string, (tag: Tag) => SortValue> = {
+  name: (tag) => tag.name,
+  colour: (tag) => tag.colour,
+  used: (tag) => tag.usage_count,
+};
+
+/** Sortable value of each sortable column of a usage table. */
+const USAGE_SORT_VALUES: Record<string, (row: TagUsageRow) => SortValue> = {
+  tag: (row) => row.name,
+  count: (row) => row.count,
+  last: (row) => row.last_used,
+};
 
 /**
  * @param api The calls, bound to a project or to the organisation.
@@ -84,6 +103,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
     }
   }
 
+  const table = useTableSort(vocabulary?.tags ?? NO_TAGS, TAG_SORT_VALUES);
   if (failed && !vocabulary) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
   if (!vocabulary || !usage) return <Spinner />;
 
@@ -107,10 +127,11 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
   const modeValue = scope === "project" && vocabulary.has_parent ? (vocabulary.own_mode ?? "inherit") : vocabulary.mode;
 
   const columns: DirectoryColumn<Tag>[] = [
-    { key: "name", label: text.nameHeading, render: (tag) => <TagChip tag={tag} /> },
+    { key: "name", label: text.nameHeading, sortable: true, render: (tag) => <TagChip tag={tag} /> },
     {
       key: "colour",
       label: text.colourHeading,
+      sortable: true,
       render: (tag) => tag.colour ? (
         <span className="row" style={{ gap: "var(--space-2)" }}>
           <span className="colour-swatch" aria-hidden="true" style={{ background: tag.colour, cursor: "default" }} />
@@ -118,7 +139,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
         </span>
       ) : <span className="text-muted">{text.noColour}</span>,
     },
-    { key: "used", label: text.usedHeading, render: (tag) => text.recordsCount(tag.usage_count) },
+    { key: "used", label: text.usedHeading, sortable: true, render: (tag) => text.recordsCount(tag.usage_count) },
     {
       key: "actions",
       label: <span className="sr-only">{strings.common.moreOptions}</span>,
@@ -200,7 +221,9 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
       <DirectoryTable
         ariaLabel={text.title}
         columns={columns}
-        rows={vocabulary.tags}
+        rows={table.rows}
+        sort={table.sort}
+        onSort={table.onSort}
         rowKey={(tag) => tag.id}
         emptyState={<p className="text-muted">{strings.tags.filter.none}</p>}
       />
@@ -294,6 +317,7 @@ function UsageTables({
   const text = strings.tags.admin;
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [sorts, setSorts] = useState<Record<string, SortState | null>>({});
 
   return (
     <div className="stack">
@@ -308,7 +332,8 @@ function UsageTables({
       {usage.tables.length === 0 && <p className="text-muted">{text.usageEmpty}</p>}
       {usage.tables.map((table) => {
         const needle = (filters[table.artefact_type] ?? "").trim().toLowerCase();
-        const rows = table.rows.filter((r) => !hidden.has(r.tag_id) && r.name.toLowerCase().includes(needle));
+        const sort = sorts[table.artefact_type] ?? null;
+        const rows = sortRows(table.rows.filter((r) => !hidden.has(r.tag_id) && r.name.toLowerCase().includes(needle)), sort, USAGE_SORT_VALUES);
         const columns: DirectoryColumn<(typeof table.rows)[number]>[] = [
           {
             key: "hide",
@@ -327,11 +352,12 @@ function UsageTables({
               />
             ),
           },
-          { key: "tag", label: text.nameHeading, render: (row) => <TagChip tag={{ name: row.name, colour: row.colour }} /> },
-          { key: "count", label: text.usedHeading, render: (row) => text.recordsCount(row.count) },
+          { key: "tag", label: text.nameHeading, sortable: true, render: (row) => <TagChip tag={{ name: row.name, colour: row.colour }} /> },
+          { key: "count", label: text.usedHeading, sortable: true, render: (row) => text.recordsCount(row.count) },
           {
             key: "last",
             label: text.lastUsedHeading,
+            sortable: true,
             render: (row) => (row.last_used ? new Date(row.last_used).toLocaleDateString() : ""),
           },
           {
@@ -366,6 +392,8 @@ function UsageTables({
               ariaLabel={`${text.usageHeading}: ${table.label}`}
               columns={columns}
               rows={rows}
+              sort={sort}
+              onSort={(key) => setSorts({ ...sorts, [table.artefact_type]: cycleSort(sort, key) })}
               rowKey={(row) => row.tag_id}
               emptyState={<p className="text-muted">{text.usageEmpty}</p>}
             />

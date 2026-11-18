@@ -68,7 +68,7 @@ Term-to-term relations are the ontology (section 3.3). Term-to-anything-else rel
 - **Three overlapping classifications.** Category, tag and broader/narrower all group terms. Guidance, shown in the help text and docs site: *category* = named shelves (several allowed); *tag* = free, cross-cutting labels; *broader/narrower* = meaning (a hierarchy of concepts).
 - **Shadowing.** A project may restate an organisation term. Allowed, with a "restates organisation term" badge and report G5, never blocked (Q3).
 - **Approval is on the wording, not the structure.** Gating categories, tags and relations behind approval would make filing a term as slow as defining it. Only the wording is versioned and approved; the rest edits immediately under the editor permission. **Decided by: Agent** (revisit freely).
-- **React Flow would be the frontend's first graph dependency** (Module 16 plans it but is unbuilt). The graph is therefore built as a generic, lazy-loaded wrapper so Module 16 reuses it (section 3.6).
+- **React Flow is already a frontend dependency, behind the shared `GraphCanvas`** (`frontend/src/components`, built by Module 18 Phase 6 and lazy-loaded; only `GraphCanvasView.tsx` imports `@xyflow/react`, enforced by `scripts/check_graph_canvas_imports.py`). The graph here is a consumer of it and adds no dependency (section 3.7).
 
 ## 3. Design
 
@@ -229,7 +229,7 @@ FGAC atoms let a custom role take a subset. Steward is a **principal reference**
 
 ### 3.7 Graph
 
-A relations graph (**Decided by: User**, React Flow) shows a term's neighbourhood (depth 1–3, limited node count) and, in hierarchical kinds, the tree. Built as a generic lazy-loaded wrapper component (not glossary-specific) with an accessible list fallback beside it; the package is added through `frontend/scripts/sync-lockfile.sh`. Edges are coloured and labelled per kind with a legend; all text comes from the kind's phrases. Deprecated terms are drawn dashed with their `replaced_by` edges, and the graph honours the as-at date (relations and terms open at that instant).
+A relations graph (**Decided by: User**, React Flow) shows a term's neighbourhood (depth 1–3, limited node count) and, in hierarchical kinds, the tree. Drawn through the existing shared `GraphCanvas` (not a glossary-specific wrapper) with an accessible list fallback beside it; no package is added. A capability it lacks (for example a depth-limited neighbourhood layout) is added to `GraphCanvas` generically. Edges are coloured and labelled per kind with a legend; all text comes from the kind's phrases. Deprecated terms are drawn dashed with their `replaced_by` edges, and the graph honours the as-at date (relations and terms open at that instant).
 
 ## 4. Phases
 
@@ -257,7 +257,7 @@ A relations graph (**Decided by: User**, React Flow) shows a term's neighbourhoo
 - **Tests:** Storybook for every new component; Playwright: propose, submit, approve as a different person, self-approval blocked, deprecate with a comment and two replacements (split) and see the badge, reinstate, view the glossary as at an earlier date and see the older wording and status with writes disabled, propose a change to an active term (old stays active until approval), categories and tags, hide an organisation term in a project, export / import.
 
 ### Phase 5 — Frontend: ontology
-- **Why:** relations and the graph are the point of the ontology. **Risk:** an unreadable graph and a dependency added without a fallback. **Outcome:** relation-kind admin panels (organisation and project, using the shared vocabulary UI), Relations panel on the term, hierarchy tree view on the list, relations graph (section 3.7) with list fallback, both honouring the as-at date; React Flow added via `sync-lockfile.sh`, lazy loaded.
+- **Why:** relations and the graph are the point of the ontology. **Risk:** an unreadable graph and a dependency added without a fallback. **Outcome:** relation-kind admin panels (organisation and project, using the shared vocabulary UI), Relations panel on the term, hierarchy tree view on the list, relations graph (section 3.7) with list fallback, both honouring the as-at date; the graph draws through the shared `GraphCanvas` (already lazy loaded), so no package is added.
 - **Tests:** Storybook (graph with large and empty data), Playwright for add / remove relation, cycle error, custom kind creation, graph renders and falls back to the list.
 
 ### Phase 6 — Bundles and reports
@@ -330,7 +330,7 @@ Details I added that the user did not specify, all **Decided by: Agent**: gating
 | A replacement is itself deprecated later | Re-checked at approval; G4 and the graph show chains so owners can follow them |
 | Draft wording leaks via search, summary or MCP | Everything reads the active version only; a test per surface |
 | Dynamic CSV columns break import round trips when kinds change | Columns resolved per project at export and import; unknown column rejected with the kind list |
-| First React Flow dependency adds weight and a11y gaps | Lazy-loaded, list fallback, size noted in `docs/decisions.md` |
+| The graph needs a capability `GraphCanvas` lacks, or is unreadable at size | Add it to `GraphCanvas` generically; list fallback beside the graph |
 | Module boundary drift (a core `Record` / enum gains a glossary entry) | Boundary checklist in section 5; registry tests |
 | Confusion with Module 15's System Ontology | Different name in the UI ("Relations"); noted in both plans |
 

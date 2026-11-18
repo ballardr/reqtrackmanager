@@ -1,0 +1,1067 @@
+[
+  {
+    "name": "one line takes the facing sides",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a line each way between two boxes takes two paths",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "l2": {
+        "source": "bottom_left",
+        "target": "bottom_right",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "three lines between one pair take three paths",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l3",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "l2": {
+        "source": "bottom_left",
+        "target": "bottom_right",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "l3": {
+        "source": "top_right",
+        "target": "top_left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a transition into a choice and the loop back out of it",
+    "boxes": {
+      "block": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "choice": {
+        "box": [
+          300,
+          20,
+          40,
+          40
+        ],
+        "offers": [
+          "top",
+          "right",
+          "bottom",
+          "left"
+        ]
+      },
+      "outcome": {
+        "box": [
+          500,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "in",
+        "source": "block",
+        "target": "choice",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "out",
+        "source": "choice",
+        "target": "outcome",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "back",
+        "source": "choice",
+        "target": "block",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "in": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "out": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "back": {
+        "source": "top",
+        "target": "top_right",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a box with more lines than points shares points and then spreads into lanes",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          40,
+          40
+        ],
+        "offers": [
+          "top",
+          "right",
+          "bottom",
+          "left"
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          40,
+          40
+        ],
+        "offers": [
+          "top",
+          "right",
+          "bottom",
+          "left"
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l3",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l4",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l5",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l6",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          -8.0
+        ]
+      },
+      "l5": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          8.0
+        ]
+      },
+      "l2": {
+        "source": "top",
+        "target": "top",
+        "shift": [
+          0.0,
+          -8.0
+        ]
+      },
+      "l6": {
+        "source": "top",
+        "target": "top",
+        "shift": [
+          0.0,
+          8.0
+        ]
+      },
+      "l3": {
+        "source": "bottom",
+        "target": "bottom",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "l4": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a point a person fixed is never moved and an earlier automatic line gives way",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "auto",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "fixed",
+        "source": "a",
+        "target": "b",
+        "source_point": "right",
+        "target_point": "left",
+        "via": []
+      }
+    ],
+    "expected": {
+      "auto": {
+        "source": "top_right",
+        "target": "top_left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "fixed": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "one fixed end leaves the other to the nearest free point",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": "bottom",
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": "top",
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "bottom",
+        "target": "bottom_left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "l2": {
+        "source": "top_left",
+        "target": "top",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "two lines fixed to the same two points are laned",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": "right",
+        "target_point": "left",
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "a",
+        "target": "b",
+        "source_point": "right",
+        "target_point": "left",
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          -8.0
+        ]
+      },
+      "l2": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          8.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a line with vertices keeps its own ends and is never laned",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "bent",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": [
+          [
+            150,
+            -80
+          ]
+        ]
+      },
+      {
+        "id": "auto",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "auto": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "bent": {
+        "source": "top_right",
+        "target": "top_left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a self loop beside a pair takes the first corner and the pair is unchanged",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "loop",
+        "source": "a",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "loop": {
+        "loop_slot": 0
+      },
+      "l1": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "several loops on one box take different slots",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "x",
+        "source": "a",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "y",
+        "source": "a",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "z",
+        "source": "b",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "w",
+        "source": "a",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "x": {
+        "loop_slot": 0
+      },
+      "y": {
+        "loop_slot": 1
+      },
+      "z": {
+        "loop_slot": 0
+      },
+      "w": {
+        "loop_slot": 2
+      }
+    }
+  },
+  {
+    "name": "boxes up and to the right meet corner to corner and a second line takes the next corners",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          -200,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "top_right",
+        "target": "bottom_left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "l2": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a hub spreads its lines over its free points",
+    "boxes": {
+      "hub": {
+        "box": [
+          200,
+          200,
+          160,
+          80
+        ]
+      },
+      "n": {
+        "box": [
+          200,
+          0,
+          160,
+          80
+        ]
+      },
+      "e": {
+        "box": [
+          500,
+          200,
+          160,
+          80
+        ]
+      },
+      "s": {
+        "box": [
+          200,
+          400,
+          160,
+          80
+        ]
+      },
+      "w": {
+        "box": [
+          -100,
+          200,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "ln",
+        "source": "hub",
+        "target": "n",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "le",
+        "source": "hub",
+        "target": "e",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "ls",
+        "source": "hub",
+        "target": "s",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "lw",
+        "source": "hub",
+        "target": "w",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "ln2",
+        "source": "hub",
+        "target": "n",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "ln": {
+        "source": "top",
+        "target": "bottom",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "le": {
+        "source": "right",
+        "target": "left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "ls": {
+        "source": "bottom",
+        "target": "top",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "lw": {
+        "source": "left",
+        "target": "right",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "ln2": {
+        "source": "top_right",
+        "target": "bottom_right",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "a line whose box is missing is left out",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "gone",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "l2",
+        "source": "a",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l2": {
+        "loop_slot": 0
+      }
+    }
+  },
+  {
+    "name": "identical boxes choose the first pair in the fixed order",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "l1",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "l1": {
+        "source": "top",
+        "target": "top",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  {
+    "name": "the order of the lines decides a tie",
+    "boxes": {
+      "a": {
+        "box": [
+          0,
+          0,
+          160,
+          80
+        ]
+      },
+      "b": {
+        "box": [
+          300,
+          0,
+          160,
+          80
+        ]
+      }
+    },
+    "lines": [
+      {
+        "id": "second",
+        "source": "b",
+        "target": "a",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      },
+      {
+        "id": "first",
+        "source": "a",
+        "target": "b",
+        "source_point": null,
+        "target_point": null,
+        "via": []
+      }
+    ],
+    "expected": {
+      "second": {
+        "source": "left",
+        "target": "right",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      },
+      "first": {
+        "source": "top_right",
+        "target": "top_left",
+        "shift": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  }
+]

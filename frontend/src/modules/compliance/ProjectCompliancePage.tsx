@@ -58,6 +58,8 @@ import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useCurrentNavLabelOverride } from "../../context/NavLabelValue";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useSortState } from "../../hooks/useTableSort";
+import { sortRows, type SortValue } from "../../utils/sortRows";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
 import { EvidencePanel } from "./EvidencePanel";
@@ -84,6 +86,15 @@ interface AssignmentRow {
   assignment: ProjectCompliance;
   status: ProjectComplianceStatus | null;
 }
+
+/** Sortable value of each sortable column of the standards table. */
+const ASSIGNMENT_SORT_VALUES: Record<string, (row: AssignmentRow) => SortValue> = {
+  standard: (row) => (row.status ? `${row.status.standard_reference} ${row.status.standard_name}` : null),
+  version: (row) => row.status?.version_label ?? null,
+  compliance: (row) => (row.assignment.is_archived || !row.status ? null : row.status.compliance_percentage),
+  outstanding: (row) => (row.status ? complianceRiskLabel(row.status) : null),
+  target_date: (row) => row.assignment.target_compliance_date ?? null,
+};
 
 export function ProjectCompliancePage() {
   const navName = useCurrentNavLabelOverride();
@@ -136,6 +147,7 @@ export function ProjectCompliancePage() {
     void reload();
   }, [projectId]);
 
+  const sorting = useSortState();
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (assignments === null || project === null) return <Spinner />;
@@ -167,12 +179,12 @@ export function ProjectCompliancePage() {
 
   const columns: DirectoryColumn<AssignmentRow>[] = [
     {
-      key: "standard", label: "Standard",
+      key: "standard", label: "Standard", sortable: true,
       render: (row) => (row.status ? `${row.status.standard_reference} — ${row.status.standard_name}` : "—"),
     },
-    { key: "version", label: "Version", render: (row) => row.status?.version_label ?? "—" },
+    { key: "version", label: "Version", sortable: true, render: (row) => row.status?.version_label ?? "—" },
     {
-      key: "compliance", label: "Compliance",
+      key: "compliance", label: "Compliance", sortable: true,
       render: (row) =>
         row.assignment.is_archived
           ? "Archived"
@@ -181,10 +193,10 @@ export function ProjectCompliancePage() {
             : "—",
     },
     {
-      key: "outstanding", label: "Non-compliant",
+      key: "outstanding", label: "Non-compliant", sortable: true,
       render: (row) => (row.status ? complianceRiskLabel(row.status) : "—"),
     },
-    { key: "target_date", label: "Target date", render: (row) => row.assignment.target_compliance_date ?? "—" },
+    { key: "target_date", label: "Target date", sortable: true, render: (row) => row.assignment.target_compliance_date ?? "—" },
   ];
 
   return (
@@ -211,7 +223,9 @@ export function ProjectCompliancePage() {
           <DirectoryTable
             ariaLabel="Compliance standards assigned to this project"
             columns={columns}
-            rows={rows}
+            rows={sortRows(rows, sorting.sort, ASSIGNMENT_SORT_VALUES)}
+            sort={sorting.sort}
+            onSort={sorting.onSort}
             rowKey={(row) => row.assignment.id}
             onRowClick={(row) => setSelected(row.assignment)}
             emptyState={<p className="text-muted">No compliance standards assigned to this project yet.</p>}

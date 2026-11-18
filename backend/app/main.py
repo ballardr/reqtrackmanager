@@ -54,6 +54,7 @@ from app.routers import (
     policies,
     project_link_types,
     projects,
+    record_comments,
     record_list_report,
     record_tables,
     report_catalogue,
@@ -284,6 +285,9 @@ async def security_headers_middleware(request: Request, call_next):
     hardcoded, and defaults to `'none'` (no origin allowlisted) exactly
     like every other module-system opt-in in this codebase (`ALLOW_
     EXTERNAL_MODULES`, `MCP_WRITES_ENABLED`).
+
+    A route that serves user-supplied markup (a symbol's SVG) sets its own, stricter
+    `Content-Security-Policy`, which is kept; it must carry `frame-ancestors 'none'` itself.
     """
     response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
@@ -291,7 +295,8 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "same-origin"
     frame_src_origins = get_settings().module_frame_allowed_origin_list
     frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
-    response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
+    if "content-security-policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
     # An answer for a signed-in person is not kept by a shared cache or the browser's disk cache. Only JSON, and only
     # when the route set no policy of its own: file downloads and health probes choose theirs.
     if "cache-control" not in response.headers and response.headers.get("content-type", "").startswith("application/json"):
@@ -382,6 +387,7 @@ app.include_router(custom_reports.project_router)
 app.include_router(custom_reports.runs_router)
 app.include_router(search.router)
 app.include_router(record_tables.router)
+app.include_router(record_comments.router)
 app.include_router(org_record_tables.router)
 app.include_router(record_list_report.router)
 app.include_router(files.router)

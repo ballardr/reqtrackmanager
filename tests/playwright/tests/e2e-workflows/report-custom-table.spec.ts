@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, test } from "@playwright/test";
 
 import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
+import { clickMenuRow, menuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -48,7 +49,7 @@ test.describe("Report layout custom table", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -57,8 +58,8 @@ test.describe("Report layout custom table", () => {
     await test.step("the Add block menu offers Table (custom) beside Table (records)", async () => {
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.getByRole("button", { name: "Add block" }).click();
-      await expect(page.getByRole("menuitem", { name: "Table (records)", exact: true })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: "Table (custom)", exact: true })).toBeVisible();
+      await expect(await menuRow(page, "Table (records)")).toBeVisible();
+      await expect(await menuRow(page, "Table (custom)")).toBeVisible();
       await page.keyboard.press("Escape");
     });
 

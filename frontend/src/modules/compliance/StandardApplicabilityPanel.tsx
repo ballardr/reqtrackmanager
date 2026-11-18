@@ -42,7 +42,10 @@ import { TextAreaField } from "../../components/FormFields";
 import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useTableSort } from "../../hooks/useTableSort";
 import { useStrings } from "../../context/TerminologyContext";
+
+const NO_EXCLUSIONS: ComplianceStandardDefaultExclusion[] = [];
 
 export function StandardApplicabilityPanel({
   standard,
@@ -105,11 +108,16 @@ export function StandardApplicabilityPanel({
 
   const excludedProjectIds = new Set((exclusions ?? []).map((e) => e.project_id));
   const projectName = (projectId: string) => projects?.find((p) => p.id === projectId)?.name ?? projectId;
+  const table = useTableSort(exclusions ?? NO_EXCLUSIONS, {
+    project: (row) => projectName(row.project_id),
+    reason: (row) => row.reason,
+    excluded_by: (row) => userDisplayName(orgUsers, row.excluded_by),
+  });
 
   const columns: DirectoryColumn<ComplianceStandardDefaultExclusion>[] = [
-    { key: "project", label: "Project", render: (row) => projectName(row.project_id) },
-    { key: "reason", label: "Reason", render: (row) => row.reason },
-    { key: "excluded_by", label: "Excluded by", render: (row) => userDisplayName(orgUsers, row.excluded_by) },
+    { key: "project", label: "Project", sortable: true, render: (row) => projectName(row.project_id) },
+    { key: "reason", label: "Reason", sortable: true, render: (row) => row.reason },
+    { key: "excluded_by", label: "Excluded by", sortable: true, render: (row) => userDisplayName(orgUsers, row.excluded_by) },
     {
       key: "actions",
       label: "",
@@ -149,7 +157,9 @@ export function StandardApplicabilityPanel({
             <DirectoryTable
               ariaLabel="Projects excluded from this standard's default"
               columns={columns}
-              rows={exclusions}
+              rows={table.rows}
+              sort={table.sort}
+              onSort={table.onSort}
               rowKey={(row) => row.id}
               emptyState={<p className="text-muted">No projects are excluded — every project in this organisation is in scope.</p>}
             />

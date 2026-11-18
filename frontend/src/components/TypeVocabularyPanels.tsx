@@ -37,7 +37,7 @@
  */
 import { type ReactNode, useEffect, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { blockedError } from "../utils/blockedError";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { DefinitionList, type DefinitionListField } from "./DefinitionList";
 import { RestoreOrgDefaultsButton, type HiddenDefinition } from "./RestoreOrgDefaultsButton";
@@ -111,17 +111,6 @@ const SOURCE_LABEL: Record<EffectiveTypeRow["source"], string> = {
 /** True for a row backed by an organisation default (shown as-is or overridden here), whose delete only hides it. */
 function isOrgBacked(item: EffectiveTypeRow | undefined): boolean {
   return item !== undefined && item.source !== "project_local";
-}
-
-/** Re-throws a 409 as a plain `Error` carrying `message`, keeping the cause
- * as a property (`{ cause }` predates this project's `lib` target). */
-function blockedError(err: unknown, message: string): unknown {
-  if (err instanceof ApiError && err.status === 409) {
-    const wrapped = new Error(message) as Error & { cause?: unknown };
-    wrapped.cause = err;
-    return wrapped;
-  }
-  return err;
 }
 
 export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({

@@ -121,7 +121,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await selectOrgOverviewGroup(page, "Compliance by standard");
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF report" }).click();
+    await page.getByRole("menuitem", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toContain("compliance-by-standard-report.pdf");
 
@@ -140,7 +140,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
       (req) => req.url().includes("/modules/compliance/reports") && req.url().includes("format=csv") && req.url().includes("standard_id=")
     );
     await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("menuitem", { name: "Download CSV report" }).click();
     await standardsReportRequestPromise;
     await selectFilterOption(page, "Standard", "All standards");
 
@@ -369,7 +369,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
         req.url().includes("requirement_id=")
     );
     await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("menuitem", { name: "Download CSV report" }).click();
     await reportRequestPromise;
   });
 

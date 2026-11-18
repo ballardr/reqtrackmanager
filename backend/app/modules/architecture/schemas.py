@@ -1,0 +1,1427 @@
+"""
+Module: modules.architecture.schemas
+
+Request and response bodies of the module's APIs: the vocabularies (an element type
+and a connection type share the name, colour and `domain_ids` fields; each adds its own
+`shape` and `symbol_id`, or `line_style` and `directional`), the symbol library, and the
+records (elements with their ports, connections, and diagrams with their placements, notes, toggles and the resolved
+view a diagram draws).
+
+A save of an element or a connection quotes the `version` it was based on; the API
+answers 409 when the record has moved on. A nullable field the body may clear
+(`parent_id`, `owner`, a port's connection type) is told apart from one it did not
+mention by `model_fields_set`.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated
+from uuid import UUID
+
+from pydantic import BaseModel, Field, model_validator
+
+from app.modules.architecture.diagram_line_path import MAX_WAYPOINTS
+from app.modules.architecture.enums import (
+    DISPLAY_NOTE_MAX,
+    NOTE_TITLE_MAX,
+    SYMBOL_LABEL_LENGTH,
+    AttachPoint,
+    ElementShape,
+    FolderKind,
+    LabelPosition,
+    LeaderKind,
+    LineEnd,
+    LineShape,
+    LineStyle,
+    NoteAlign,
+    NoteSizeMode,
+    NoteTone,
+    PortDirection,
+    RecordStatus,
+    StateKind,
+    ValidationSeverity,
+)
+from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
+
+#: `#RRGGBB`.
+_HEX_COLOR = r"^#[0-9A-Fa-f]{6}$"
+
+
+class CapabilitiesOut(BaseModel):
+    """What the caller may do in a project or an organisation beyond reading, so a screen offers only the actions that
+    will be accepted.
+
+    Attributes:
+        manage_types: May change the project's (`architecture_admin`) or the organisation's (`architecture_org_admin`)
+            element and connection types and symbols.
+    """
+
+    manage_types: bool
+
+
+class _VocabularyCreate(BaseModel):
+    """Fields every vocabulary row is created with."""
+
+    name: str = Field(min_length=1, max_length=100)
+    color_light: str | None = Field(default=None, pattern=_HEX_COLOR)
+    color_dark: str | None = Field(default=None, pattern=_HEX_COLOR)
+    domain_ids: list[UUID] = Field(default_factory=list, max_length=50)
+
+
+class _VocabularyUpdate(BaseModel):
+    """Fields every vocabulary row may change; `None` leaves a field as it is. `domain_ids` replaces the domains the type
+    is in (an empty list puts it in none, so it fits every domain)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color_light: str | None = Field(default=None, pattern=_HEX_COLOR)
+    color_dark: str | None = Field(default=None, pattern=_HEX_COLOR)
+    domain_ids: list[UUID] | None = Field(default=None, max_length=50)
+
+
+class DomainCreate(BaseModel):
+    """Create payload for a domain: a name."""
+
+    name: str = Field(min_length=1, max_length=100)
+
+
+class DomainUpdate(BaseModel):
+    """Rename of a domain; `None` leaves the name as it is."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class DomainOut(BaseModel):
+    """A domain. Exactly one of `project_id` and `organization_id` is set (the owner)."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    sort_order: int
+
+
+class ElementTypeCreate(_VocabularyCreate):
+    """Create payload for an element type. `symbol_id` is a symbol the owner may use; `suggested_connection_type_ids` are
+    the connection types a connection picker lists first for it (guidance only)."""
+
+    shape: ElementShape = ElementShape.RECTANGLE
+    symbol_id: UUID | None = None
+    suggested_connection_type_ids: list[UUID] = Field(default_factory=list, max_length=50)
+
+
+class ElementTypeUpdate(_VocabularyUpdate):
+    """Partial update of an element type. `symbol_id: null` clears the symbol (the shape is drawn);
+    `suggested_connection_type_ids` replaces the suggestions (an empty list clears them)."""
+
+    shape: ElementShape | None = None
+    symbol_id: UUID | None = None
+    suggested_connection_type_ids: list[UUID] | None = Field(default=None, max_length=50)
+
+
+class ConnectionTypeCreate(_VocabularyCreate):
+    """Create payload for a connection type. `parent_ids` are the types it sits under (see `connection_tree`)."""
+
+    line_style: LineStyle = LineStyle.SOLID
+    directional: bool = True
+    default_protocol: str = Field(default="", max_length=200)
+    parent_ids: list[UUID] = Field(default_factory=list, max_length=20)
+
+
+class ConnectionTypeUpdate(_VocabularyUpdate):
+    """Partial update of a connection type. `parent_ids` replaces the parents (an empty list makes it a root)."""
+
+    line_style: LineStyle | None = None
+    directional: bool | None = None
+    default_protocol: str | None = Field(default=None, max_length=200)
+    parent_ids: list[UUID] | None = Field(default=None, max_length=20)
+
+
+class _VocabularyOut(BaseModel):
+    """A vocabulary row. Exactly one of `project_id` and `organization_id` is set (the owner)."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    color_light: str | None
+    color_dark: str | None
+    sort_order: int
+    domain_ids: list[UUID]
+
+
+class ElementTypeOut(_VocabularyOut):
+    """An element type."""
+
+    shape: str
+    symbol_id: UUID | None
+    suggested_connection_type_ids: list[UUID]
+
+
+class ConnectionTypeOut(_VocabularyOut):
+    """A connection type."""
+
+    line_style: str
+    directional: bool
+    default_protocol: str
+    parent_ids: list[UUID]
+
+
+# --- Symbols -----------------------------------------------------------------
+
+
+class SymbolUpdate(BaseModel):
+    """Rename of a symbol (a built-in cannot be renamed, and the drawing of an upload is replaced by uploading anew)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class SymbolOut(BaseModel):
+    """A symbol library entry. Exactly one of `project_id` and `organization_id` is set (the owner); `builtin_key` is
+    set for a built-in drawing. Its SVG is read from `.../symbols/{id}/content`."""
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    builtin_key: str | None
+    is_builtin: bool
+    sort_order: int
+
+
+# --- Elements, ports and connections ---------------------------------------
+
+
+class PortCreate(BaseModel):
+    """Create payload for a port (also the entries of an element's initial `ports`)."""
+
+    name: str = Field(min_length=1, max_length=100)
+    direction: PortDirection = PortDirection.BOTH
+    connection_type_id: UUID | None = None
+
+
+class PortUpdate(BaseModel):
+    """Partial update of a port; `connection_type_id: null` clears the type."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    direction: PortDirection | None = None
+    connection_type_id: UUID | None = None
+
+
+class PortOut(BaseModel):
+    """A port with its connection type's name."""
+
+    id: UUID
+    element_id: UUID
+    name: str
+    direction: str
+    connection_type_id: UUID | None
+    connection_type_name: str | None
+    sort_order: int
+
+
+class ElementCreate(BaseModel):
+    """Create payload for an element.
+
+    Attributes:
+        activate: Create the element `active` instead of `draft` (Save and activate). Needs nothing beyond the
+            permission to create, since an element has no approval gate.
+        symbol_id: A symbol drawn instead of the type's, from the owner's library.
+        ports: Ports created with the element.
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+    display_note: str = Field(default="", max_length=DISPLAY_NOTE_MAX)
+    element_type_id: UUID
+    parent_id: UUID | None = None
+    owner: PrincipalRef | None = None
+    symbol_id: UUID | None = None
+    folder_id: UUID | None = None
+    activate: bool = False
+    ports: list[PortCreate] = Field(default_factory=list, max_length=200)
+
+
+class ElementUpdate(BaseModel):
+    """Edit of an element. `version` is required (the optimistic lock); a field left out is kept, and
+    `parent_id` / `owner` / `symbol_id` / `folder_id` set to `null` clear the field."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+    display_note: str | None = Field(default=None, max_length=DISPLAY_NOTE_MAX)
+    element_type_id: UUID | None = None
+    parent_id: UUID | None = None
+    owner: PrincipalRef | None = None
+    symbol_id: UUID | None = None
+    folder_id: UUID | None = None
+
+
+class StatusChange(BaseModel):
+    """A move to another status (`version` is the optimistic lock)."""
+
+    version: int
+    status: RecordStatus
+
+
+class ElementOut(ProjectScopedRow):
+    """An element with its type name, resolved owner, ports and tree counts. `symbol_id` is the element's own symbol and
+    `effective_symbol_id` the one drawn (its own, else its type's, else `None` for the type's shape).
+
+    `project_id` / `organization_id` say who owns it (exactly one is set); `shared` is true when it is shown in a
+    project that does not own it, in which case its connection count covers only that project's connections."""
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None = None
+    shared: bool = False
+    unique_code: str
+    name: str
+    description: str
+    display_note: str
+    element_type_id: UUID
+    element_type_name: str
+    symbol_id: UUID | None
+    effective_symbol_id: UUID | None
+    parent_id: UUID | None
+    folder_id: UUID | None = None
+    folder_path: str | None = None
+    owner: PrincipalOut | None
+    status: str
+    allowed_status_moves: list[str]
+    version: int
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    child_count: int
+    connection_count: int
+    ports: list[PortOut]
+
+
+class ConnectionCreate(BaseModel):
+    """Create payload for a connection between two elements (a port on each end is optional).
+
+    `protocol` left out takes the connection type's default protocol; an explicit empty string means none.
+    """
+
+    name: str = Field(default="", max_length=200)
+    connection_type_id: UUID
+    source_element_id: UUID
+    source_port_id: UUID | None = None
+    target_element_id: UUID
+    target_port_id: UUID | None = None
+    protocol: str | None = Field(default=None, max_length=200)
+    description: str = Field(default="", max_length=20000)
+    folder_id: UUID | None = None
+    activate: bool = False
+
+
+class ConnectionUpdate(BaseModel):
+    """Edit of a connection. `version` is required; a field left out is kept, and a port set to `null` clears it."""
+
+    version: int
+    name: str | None = Field(default=None, max_length=200)
+    connection_type_id: UUID | None = None
+    source_element_id: UUID | None = None
+    source_port_id: UUID | None = None
+    target_element_id: UUID | None = None
+    target_port_id: UUID | None = None
+    protocol: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+    folder_id: UUID | None = None
+
+
+class RealisationsSet(BaseModel):
+    """Sets the outer connections an inner connection realises (`version` is the connection's optimistic lock)."""
+
+    version: int
+    outer_connection_ids: list[UUID] = Field(default_factory=list, max_length=50)
+
+
+class ConnectionRef(BaseModel):
+    """A connection named from another connection's page: its code, name and the type it is."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    status: str
+
+
+class ConnectionOut(ProjectScopedRow):
+    """A connection with its type and end names.
+
+    An end is `locked` when the viewer can no longer read it (only its code is shown) and `shared` when another
+    owner shares it with the project."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    name: str
+    connection_type_id: UUID
+    connection_type_name: str
+    directional: bool
+    source_element_id: UUID
+    source_element_code: str
+    source_element_name: str
+    source_port_id: UUID | None
+    source_port_name: str | None
+    source_locked: bool = False
+    source_shared: bool = False
+    target_element_id: UUID
+    target_element_code: str
+    target_element_name: str
+    target_port_id: UUID | None
+    target_port_name: str | None
+    target_locked: bool = False
+    target_shared: bool = False
+    protocol: str
+    description: str
+    folder_id: UUID | None = None
+    folder_path: str | None = None
+    status: str
+    allowed_status_moves: list[str]
+    version: int
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    realises: list[ConnectionRef] = Field(default_factory=list)
+    realised_by: list[ConnectionRef] = Field(default_factory=list)
+
+
+# --- Folders ---------------------------------------------------------------
+
+
+class FolderCreate(BaseModel):
+    """Create payload for a folder: a name in the tree of the kind the route names, under `parent_id` or at the top level."""
+
+    name: str = Field(min_length=1, max_length=100)
+    parent_id: UUID | None = None
+
+
+class FolderUpdate(BaseModel):
+    """Rename or move a folder. A field left out is kept; `parent_id` set to `null` moves it to the top level."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    parent_id: UUID | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class FolderOut(BaseModel):
+    """A folder with its path (names from the top, joined by `/`) and the number of records directly in it."""
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    kind: FolderKind
+    name: str
+    parent_id: UUID | None
+    sort_order: int
+    path: str
+    record_count: int
+
+
+class FolderMove(BaseModel):
+    """Moves records of the kind the route names into `folder_id` (`null` is the top level)."""
+
+    record_ids: list[UUID] = Field(min_length=1, max_length=500)
+    folder_id: UUID | None = None
+
+
+class FolderMoveOut(BaseModel):
+    """How many records a move changed (a record already in the folder is not counted)."""
+
+    moved: int
+
+
+# --- Collections and sharing -----------------------------------------------
+
+
+class CollectionCreate(BaseModel):
+    """Create payload for a collection."""
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+
+
+class CollectionUpdate(BaseModel):
+    """Partial update of a collection."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+
+
+class CollectionMembersAdd(BaseModel):
+    """The owner's elements to put in a collection (the tops of the subtrees to share)."""
+
+    element_ids: list[UUID] = Field(min_length=1, max_length=500)
+
+
+class CollectionMemberOut(BaseModel):
+    """An element in a collection."""
+
+    element_id: UUID
+    unique_code: str
+    name: str
+
+
+class CollectionGrantCreate(BaseModel):
+    """Access for one project (optionally with its descendants) or one group; name exactly one target."""
+
+    project_id: UUID | None = None
+    group: PrincipalRef | None = None
+    include_descendants: bool = False
+
+
+class CollectionGrantOut(BaseModel):
+    """A grant with the name of what it reaches (`group` for a group grant, the project's name and code otherwise)."""
+
+    id: UUID
+    project_id: UUID | None
+    project_name: str | None
+    project_code: str | None
+    group: PrincipalOut | None
+    include_descendants: bool
+    created_at: datetime
+
+
+class CollectionOut(BaseModel):
+    """A collection with its counts; `grants` is filled for a reader who may see who has access."""
+
+    id: UUID
+    project_id: UUID | None
+    organization_id: UUID | None
+    name: str
+    description: str
+    member_count: int
+    grant_count: int
+    grants: list[CollectionGrantOut]
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- Diagrams ----------------------------------------------------------------
+
+#: A coordinate or size on the diagram canvas: finite and bounded, so a stored box cannot be used to break a renderer.
+Coordinate = Annotated[float, Field(ge=-1_000_000, le=1_000_000, allow_inf_nan=False)]
+Extent = Annotated[float, Field(ge=1, le=100_000, allow_inf_nan=False)]
+
+
+class DiagramCreate(BaseModel):
+    """Create payload for a diagram.
+
+    Attributes:
+        scope_element_id: The element whose inside the diagram shows, or `None` for the system context.
+        connection_detail: Draw typed, labelled connections (otherwise plain lines).
+        line_hops: Draw a small arc where a line crosses another.
+        show_connection_names: Label each line with the names of its connections.
+        line_shape: How a line with no shape of its own is drawn.
+        activate: Create the diagram `active` instead of `draft` (Save and activate).
+        populate: Place the scope element's children (the root elements for the system context) in a grid.
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    purpose: str = Field(default="", max_length=20000)
+    scope_element_id: UUID | None = None
+    connection_detail: bool = False
+    line_hops: bool = False
+    show_connection_names: bool = False
+    line_shape: LineShape = LineShape.STRAIGHT
+    folder_id: UUID | None = None
+    activate: bool = False
+    populate: bool = False
+
+
+class DiagramUpdate(BaseModel):
+    """Edit of a diagram's own fields. `version` is required; a field left out is kept, and `scope_element_id`
+    set to `null` returns the diagram to the system context."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    purpose: str | None = Field(default=None, max_length=20000)
+    scope_element_id: UUID | None = None
+    connection_detail: bool | None = None
+    line_hops: bool | None = None
+    show_connection_names: bool | None = None
+    line_shape: LineShape | None = None
+    folder_id: UUID | None = None
+
+
+class DiagramOut(ProjectScopedRow):
+    """A diagram with its counts. `scope_element_code` / `scope_element_name` are filled for a scope the viewer may read
+    (the name is blank for one they may not)."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    name: str
+    purpose: str
+    scope_element_id: UUID | None
+    scope_element_code: str | None = None
+    scope_element_name: str | None = None
+    connection_detail: bool
+    line_hops: bool
+    show_connection_names: bool
+    line_shape: LineShape
+    folder_id: UUID | None = None
+    folder_path: str | None = None
+    status: str
+    allowed_status_moves: list[str]
+    version: int
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    placement_count: int
+    note_count: int
+    toggle_count: int
+
+
+class PlacementIn(BaseModel):
+    """An element's box on a diagram."""
+
+    element_id: UUID
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 80.0
+    collapsed: bool = False
+
+
+class WaypointIn(BaseModel):
+    """A vertex of a drawn line, in canvas units (absolute, whatever box it passes)."""
+
+    x: Coordinate
+    y: Coordinate
+
+
+#: The vertices of a line, in order from its source to its target (at most `diagram_line_path.MAX_WAYPOINTS`).
+Waypoints = Annotated[list[WaypointIn], Field(max_length=MAX_WAYPOINTS)]
+
+#: The most leader lines one note may have.
+MAX_NOTE_LEADERS = 10
+
+
+class LeaderIn(BaseModel):
+    """A line from a note to what it describes (`id` keeps an existing leader of the note; none creates one).
+
+    `kind` says what the line ends at and exactly the matching target is given: `element_id` for `element`,
+    `connection_id` for `connection`, `state_id` for `state`, `transition_id` for `transition`, `x` and `y` together for
+    `point`. A block diagram's notes use the first two, a state machine diagram's the next two; the owner's rules refuse the
+    other pair. `start_point` is the attach point of the note's block
+    it leaves from (none: the nearest); `points` are its vertices in order from the note, `line_shape` its shape (none: the diagram's default),
+    and the two styles draw an arrowhead or a dot at an end.
+    """
+
+    id: UUID | None = None
+    kind: LeaderKind
+    element_id: UUID | None = None
+    connection_id: UUID | None = None
+    state_id: UUID | None = None
+    transition_id: UUID | None = None
+    x: Coordinate | None = None
+    y: Coordinate | None = None
+    start_point: AttachPoint | None = None
+    points: Waypoints = Field(default_factory=list)
+    line_shape: LineShape | None = None
+    start_style: LineEnd = LineEnd.NONE
+    end_style: LineEnd = LineEnd.ARROW
+
+    @model_validator(mode="after")
+    def _target_matches_its_kind(self) -> LeaderIn:
+        """Rejects a leader whose target does not match its kind (a missing target, or a second one)."""
+        if self.kind == LeaderKind.NONE:
+            raise ValueError("A leader points at an element, a connection, a state, a transition or a point.")
+        given = {
+            LeaderKind.ELEMENT: self.element_id is not None,
+            LeaderKind.CONNECTION: self.connection_id is not None,
+            LeaderKind.STATE: self.state_id is not None,
+            LeaderKind.TRANSITION: self.transition_id is not None,
+            LeaderKind.POINT: self.x is not None or self.y is not None,
+        }
+        for kind, present in given.items():
+            if present and self.kind != kind:
+                raise ValueError("A leader names only the target of its own kind.")
+        if self.kind == LeaderKind.ELEMENT and self.element_id is None:
+            raise ValueError("A leader to an element names the element.")
+        if self.kind == LeaderKind.CONNECTION and self.connection_id is None:
+            raise ValueError("A leader to a connection names the connection.")
+        if self.kind == LeaderKind.STATE and self.state_id is None:
+            raise ValueError("A leader to a state names the state.")
+        if self.kind == LeaderKind.TRANSITION and self.transition_id is None:
+            raise ValueError("A leader to a transition names the transition.")
+        if self.kind == LeaderKind.POINT and (self.x is None or self.y is None):
+            raise ValueError("A leader to a point gives both coordinates.")
+        return self
+
+
+class LeaderOut(BaseModel):
+    """A stored leader, as `LeaderIn` describes it (it always has an `id`)."""
+
+    id: UUID
+    kind: LeaderKind
+    element_id: UUID | None
+    connection_id: UUID | None
+    state_id: UUID | None = None
+    transition_id: UUID | None = None
+    x: float | None
+    y: float | None
+    start_point: AttachPoint | None
+    points: list[WaypointIn]
+    line_shape: LineShape | None = None
+    start_style: LineEnd
+    end_style: LineEnd
+
+
+class NoteIn(BaseModel):
+    """An annotation on a diagram: plain text in a block with a tone, an optional title (drawn in bold above the text),
+    the alignment of both, whether it is sized to its content (`size_mode`; the stored width and height apply when it is Manual,
+    the default, so a caller that sends a size keeps it) and its leader lines (`id` keeps an existing note; none creates one).
+    Line breaks in the text are kept."""
+
+    id: UUID | None = None
+    title: str = Field(default="", max_length=NOTE_TITLE_MAX)
+    text: str = Field(default="", max_length=2000)
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 60.0
+    tone: NoteTone = NoteTone.NEUTRAL
+    text_align: NoteAlign = NoteAlign.LEFT
+    size_mode: NoteSizeMode = NoteSizeMode.MANUAL
+    leaders: list[LeaderIn] = Field(default_factory=list, max_length=MAX_NOTE_LEADERS)
+
+
+class AnchorIn(BaseModel):
+    """How a drawn line is routed, chosen by a person. Without `connection_id` the route is the pair's: the line joining the
+    two placed elements (a merged or rolled-up line has one anchor for all it stands for); an end left `None` is automatic and
+    at least one end, or a vertex point, is given. With `connection_id` it is that connection's own route, which draws the
+    connection as a line apart from the pair's and may set nothing (a line of its own, placed automatically). `points` run
+    from `source_element_id` to `target_element_id`; `line_shape` is the line's shape, or none to follow the diagram's default."""
+
+    source_element_id: UUID
+    target_element_id: UUID
+    connection_id: UUID | None = None
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+    points: Waypoints = Field(default_factory=list)
+    line_shape: LineShape | None = None
+
+
+class AnchorOut(AnchorIn):
+    """A stored anchor."""
+
+
+class BoundaryIn(BaseModel):
+    """A boundary box: the outer connection it stands for and its box on the diagram."""
+
+    connection_id: UUID
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 120.0
+    height: Extent = 48.0
+
+
+class LayoutSave(BaseModel):
+    """Replaces a diagram's placements, notes, line anchors and boundary boxes (what the editor saves). `version` is the
+    optimistic lock; an element left out of `placements` is removed from the diagram (never from the model), with its
+    anchors. `anchors` and `boundaries` left out (`None`) keep the stored ones; an empty list clears them."""
+
+    version: int
+    placements: list[PlacementIn] = Field(default_factory=list, max_length=2000)
+    notes: list[NoteIn] = Field(default_factory=list, max_length=200)
+    anchors: list[AnchorIn] | None = Field(default=None, max_length=5000)
+    boundaries: list[BoundaryIn] | None = Field(default=None, max_length=2000)
+
+
+class PlacementAdd(PlacementIn):
+    """Places one more element on a diagram (`version` is the optimistic lock)."""
+
+    version: int
+
+
+class ToggleRule(BaseModel):
+    """What a toggle matches besides its manual members: elements of the given types or in the given domains, connections of
+    the given types or in the given domains, and records tagged with any of the tags. All lists are optional."""
+
+    element_type_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    connection_type_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    domain_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    tags: list[str] = Field(default_factory=list, max_length=50)
+
+
+class ToggleIn(BaseModel):
+    """One toggle: a name, its default state, its rule and its manual members (`id` keeps an existing toggle)."""
+
+    id: UUID | None = None
+    name: str = Field(min_length=1, max_length=100)
+    default_on: bool = True
+    rule: ToggleRule = Field(default_factory=ToggleRule)
+    element_ids: list[UUID] = Field(default_factory=list, max_length=2000)
+    connection_ids: list[UUID] = Field(default_factory=list, max_length=2000)
+
+
+class TogglesSave(BaseModel):
+    """Replaces a diagram's toggles (`version` is the optimistic lock)."""
+
+    version: int
+    toggles: list[ToggleIn] = Field(default_factory=list, max_length=50)
+
+
+class ToggleOut(BaseModel):
+    """A toggle with its current state in the view (`on`)."""
+
+    id: UUID
+    name: str
+    default_on: bool
+    on: bool
+    rule: ToggleRule
+    element_ids: list[UUID]
+    connection_ids: list[UUID]
+    sort_order: int
+
+
+class NoteOut(BaseModel):
+    """An annotation on a diagram with its leaders."""
+
+    id: UUID
+    title: str
+    text: str
+    x: float
+    y: float
+    width: float
+    height: float
+    tone: NoteTone
+    text_align: NoteAlign
+    size_mode: NoteSizeMode
+    leaders: list[LeaderOut]
+
+
+class ViewPort(BaseModel):
+    """A port of a placed element, as drawn."""
+
+    id: UUID
+    name: str
+    direction: str
+    connection_type_name: str | None
+
+
+class ViewNode(BaseModel):
+    """A placed element as the diagram draws it.
+
+    A `locked` node is an element the viewer can no longer read: only its code is shown. `hidden` is a node a toggle
+    switches off (kept in the placements, drawn on no export). `internal_connection_ids` are the connections wholly
+    inside the element (drawn on no line)."""
+
+    placement_id: UUID
+    element_id: UUID
+    unique_code: str
+    name: str
+    display_note: str = ""
+    locked: bool
+    shared: bool
+    hidden: bool
+    status: str
+    parent_id: UUID | None
+    element_type_id: UUID | None
+    element_type_name: str
+    shape: str
+    color_light: str | None
+    color_dark: str | None
+    symbol_id: UUID | None
+    ports: list[ViewPort]
+    x: float
+    y: float
+    width: float
+    height: float
+    collapsed: bool
+    internal_connection_ids: list[UUID]
+
+
+class ViewBoundary(BaseModel):
+    """A boundary box as the diagram draws it: the outer connection it stands for and the element outside.
+
+    `shape` is a `BoundaryShape` value. A `locked` box is one whose outside element the viewer cannot read: only the
+    connection's and the element's codes are given. `scope_end_element_id` is the element inside the scope the outer
+    connection attaches to; `covered` is whether any connection realises the outer connection."""
+
+    id: UUID
+    connection_id: UUID
+    connection_code: str
+    connection_name: str
+    type_name: str
+    shape: str
+    locked: bool
+    outside_element_id: UUID
+    outside_element_code: str
+    outside_element_name: str
+    scope_end_element_id: UUID
+    scope_end_port_name: str | None
+    covered: bool
+    realised_by_count: int
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class ViewHop(BaseModel):
+    """A hidden element a bridged line passes through."""
+
+    element_id: UUID
+    unique_code: str
+    name: str
+
+
+class ViewEdge(BaseModel):
+    """A line between two placed elements and the connections behind it.
+
+    With connection detail off, `type_name`, `line_style`, `color_light`, `color_dark` and `label` are `None` (a plain
+    line); with it on they describe the connections' shared type and protocol (`type_name` is `None` for mixed types).
+    `connections` lists the underlying connections, which a selection shows either way. `routable_connection_ids` are the ones
+    that can have a route of their own (each stands alone between two boxes); `route_connection_id` is the connection the line
+    is drawn for with its own route, when it is."""
+
+    id: str
+    source_element_id: UUID
+    target_element_id: UUID
+    source_is_boundary: bool = False
+    target_is_boundary: bool = False
+    two_way: bool
+    indirect: bool
+    rolled_up: bool
+    bridged: bool
+    count: int
+    type_name: str | None
+    line_style: str | None
+    color_light: str | None
+    color_dark: str | None
+    label: str | None
+    connections: list[ConnectionOut]
+    hops: list[ViewHop]
+    routable_connection_ids: list[UUID] = Field(default_factory=list)
+    route_connection_id: UUID | None = None
+
+
+class DiagramView(BaseModel):
+    """A diagram resolved for drawing: its record, toggles with their state, nodes, lines, notes and the line anchors a
+    person chose (a line with none uses the nearest points)."""
+
+    diagram: DiagramOut
+    toggles: list[ToggleOut]
+    nodes: list[ViewNode]
+    edges: list[ViewEdge]
+    notes: list[NoteOut]
+    anchors: list[AnchorOut] = Field(default_factory=list)
+    boundaries: list[ViewBoundary] = Field(default_factory=list)
+
+
+class ModelStateMachine(BaseModel):
+    """A state machine diagram that describes an element, as a block on a diagram links to it."""
+
+    id: UUID
+    unique_code: str
+    name: str
+
+
+class ModelElement(BaseModel):
+    """An element as the editor needs it to draw a box and to resolve lines in the browser.
+
+    A `locked` element is one the viewer cannot read: only its code is given, and its type, name and symbol are blank.
+    `state_machines` lists the open state machine diagrams describing a readable element (empty when the caller may not
+    read state machine diagrams)."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    display_note: str = ""
+    locked: bool
+    shared: bool
+    status: str
+    element_type_id: UUID | None
+    element_type_name: str
+    color_light: str | None
+    color_dark: str | None
+    symbol_id: UUID | None
+    state_machines: list[ModelStateMachine] = Field(default_factory=list)
+
+
+class ModelConnectionType(BaseModel):
+    """A connection type's drawing attributes."""
+
+    id: UUID
+    name: str
+    directional: bool
+    line_style: str
+    color_light: str | None
+    color_dark: str | None
+
+
+class ModelToggleMembers(BaseModel):
+    """What one toggle switches off when it is off: its manual members plus whatever its rule matches."""
+
+    toggle_id: UUID
+    element_ids: list[UUID]
+    connection_ids: list[UUID]
+
+
+class ModelRealisation(BaseModel):
+    """One inner connection realising one outer connection."""
+
+    inner_connection_id: UUID
+    outer_connection_id: UUID
+
+
+class DiagramModel(BaseModel):
+    """The model data a diagram's lines are resolved from, so the browser can redraw them while a layout is edited.
+
+    `parents` maps every element listed, every connection end and every ancestor of one to its parent (a root to
+    `None`). `connections` are the project's live connections as the viewer may read them."""
+
+    elements: list[ModelElement]
+    parents: dict[UUID, UUID | None]
+    connections: list[ConnectionOut]
+    connection_types: list[ModelConnectionType]
+    toggle_members: list[ModelToggleMembers]
+    realisations: list[ModelRealisation] = Field(default_factory=list)
+
+
+# --- State machine diagrams ---------------------------------------------------------------
+
+
+class StateMachineDiagramCreate(BaseModel):
+    """Create payload for a state machine diagram.
+
+    Attributes:
+        element_id: The element whose behaviour is drawn (one the person may read).
+        activate: Create it `active` instead of `draft` (Save and activate); refused, and nothing stored, while the
+            checks find an error (a new diagram has no initial state, so it is refused).
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+    element_id: UUID
+    activate: bool = False
+
+
+class StateMachineDiagramUpdate(BaseModel):
+    """Edit of a state machine diagram's own fields. `version` is required; a field left out is kept."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+    element_id: UUID | None = None
+    line_hops: bool | None = None
+    line_shape: LineShape | None = None
+
+
+class ValidationIssueOut(BaseModel):
+    """One validation issue (`state_machine_checks`): `code` is a stable key, `subject` the code of the state or
+    transition it concerns (empty for the diagram as a whole), and `message` the sentence shown."""
+
+    severity: ValidationSeverity
+    code: str
+    subject: str
+    message: str
+
+
+class StateMachineDiagramOut(ProjectScopedRow):
+    """A state machine diagram with its counts and validation counts. `element_code` / `element_name` are filled for an
+    element the viewer may read (the name is blank for one they may not)."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    name: str
+    description: str
+    element_id: UUID
+    element_code: str | None = None
+    element_name: str | None = None
+    line_hops: bool
+    line_shape: LineShape
+    status: str
+    allowed_status_moves: list[str]
+    version: int
+    creator_id: UUID
+    is_archived: bool
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    state_count: int
+    transition_count: int
+    error_count: int
+    warning_count: int
+
+
+class StateCreate(BaseModel):
+    """A new state in a state machine diagram. `version` is the diagram's (the optimistic lock)."""
+
+    version: int
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=20000)
+    kind: StateKind = StateKind.STATE
+    parent_state_id: UUID | None = None
+    entry_action: str = Field(default="", max_length=2000)
+    exit_action: str = Field(default="", max_length=2000)
+    activity: str = Field(default="", max_length=2000)
+    label: str = Field(default="", max_length=SYMBOL_LABEL_LENGTH)
+    label_position: LabelPosition = LabelPosition.INSIDE
+    x: Coordinate = 0.0
+    y: Coordinate = 0.0
+    width: Extent = 160.0
+    height: Extent = 64.0
+    collapsed: bool = False
+
+
+class StateUpdate(BaseModel):
+    """Edit of a state. `version` is the diagram's; a field left out is kept, and `parent_state_id` set to `null` moves
+    the state to the top level."""
+
+    version: int
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20000)
+    kind: StateKind | None = None
+    parent_state_id: UUID | None = None
+    entry_action: str | None = Field(default=None, max_length=2000)
+    exit_action: str | None = Field(default=None, max_length=2000)
+    activity: str | None = Field(default=None, max_length=2000)
+    label: str | None = Field(default=None, max_length=SYMBOL_LABEL_LENGTH)
+    label_position: LabelPosition | None = None
+    x: Coordinate | None = None
+    y: Coordinate | None = None
+    width: Extent | None = None
+    height: Extent | None = None
+    collapsed: bool | None = None
+
+
+class StateOut(ProjectScopedRow):
+    """A state with the state machine diagram and element it belongs to. `element_name` is blank for an element the
+    viewer may not read."""
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    state_machine_diagram_id: UUID
+    state_machine_diagram_code: str
+    state_machine_diagram_name: str
+    state_machine_diagram_version: int
+    element_id: UUID
+    element_code: str | None = None
+    element_name: str | None = None
+    name: str
+    description: str
+    kind: str
+    parent_state_id: UUID | None
+    parent_state_code: str | None = None
+    entry_action: str
+    exit_action: str
+    activity: str
+    label: str
+    label_position: str = "inside"
+    x: float
+    y: float
+    width: float
+    height: float
+    collapsed: bool
+    status: str
+    is_archived: bool
+    creator_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransitionIn(BaseModel):
+    """A transition. `version` is the diagram's (the optimistic lock); on an update a field left out is kept."""
+
+    version: int
+    source_state_id: UUID | None = None
+    target_state_id: UUID | None = None
+    event: str | None = Field(default=None, max_length=200)
+    guard: str | None = Field(default=None, max_length=500)
+    action: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=20000)
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+    points: Waypoints | None = None
+    line_shape: LineShape | None = None
+
+
+class TransitionOut(BaseModel):
+    """A transition with the codes of its two states and the diagram's version after the change."""
+
+    id: UUID
+    state_machine_diagram_id: UUID
+    state_machine_diagram_version: int
+    source_state_id: UUID
+    source_state_code: str
+    target_state_id: UUID
+    target_state_code: str
+    event: str
+    guard: str
+    action: str
+    description: str
+    sort_order: int
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+    points: list[WaypointIn] = Field(default_factory=list)
+    line_shape: LineShape | None = None
+
+
+class StateLayoutIn(BaseModel):
+    """One state's box and nesting in a layout save."""
+
+    id: UUID
+    x: Coordinate
+    y: Coordinate
+    width: Extent
+    height: Extent
+    collapsed: bool = False
+    parent_state_id: UUID | None = None
+
+
+class TransitionPointsIn(BaseModel):
+    """One transition's attach points (`null` is automatic) and route in a layout save; `points` and `line_shape` left out keep
+    the stored route (`line_shape` given as `null` follows the diagram's default)."""
+
+    id: UUID
+    source_point: AttachPoint | None = None
+    target_point: AttachPoint | None = None
+    points: Waypoints | None = None
+    line_shape: LineShape | None = None
+
+
+class StateMachineLayoutSave(BaseModel):
+    """The editor's save of the drawing: every state's box and nesting, and the attach points of the transitions named.
+    A state or transition left out is kept as it is; one that does not belong to the diagram is refused. `notes`, when given,
+    is the complete list of the diagram's notes (an annotation left out is deleted; an id that is not this diagram's is
+    refused); left out (`None`) it keeps the stored notes. 409 when the `version` is stale."""
+
+    version: int
+    states: list[StateLayoutIn] = Field(default_factory=list, max_length=2000)
+    transitions: list[TransitionPointsIn] = Field(default_factory=list, max_length=5000)
+    notes: list[NoteIn] | None = Field(default=None, max_length=200)
+
+
+class StateMachineModel(BaseModel):
+    """A state machine diagram with everything it holds, as the editor and the outline read it."""
+
+    diagram: StateMachineDiagramOut
+    states: list[StateOut]
+    transitions: list[TransitionOut]
+    notes: list[NoteOut] = Field(default_factory=list)
+    validation: list[ValidationIssueOut]
+
+
+class AllocationRequirementOut(BaseModel):
+    """A requirement as the allocation panels name it."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    status: str
+
+
+class AllocationElementOut(BaseModel):
+    """An element as the allocation panels name it; `organization_id` is set for an organisation-owned one."""
+
+    id: UUID
+    unique_code: str
+    name: str
+    status: str
+    project_id: UUID | None
+    organization_id: UUID | None
+
+
+class AllocationPairOut(BaseModel):
+    """One requirement and one element; `link_id` is the allocation link when the pair is allocated."""
+
+    requirement: AllocationRequirementOut
+    element: AllocationElementOut
+    link_id: UUID | None = None
+
+
+class AllocationViewOut(BaseModel):
+    """What a requirement's Architecture panel or an element's Requirements tab shows: the allocations, the
+    suggestions awaiting a decision, the dismissed suggestions, and whether the caller may act on them."""
+
+    allocated: list[AllocationPairOut]
+    suggested: list[AllocationPairOut]
+    dismissed: list[AllocationPairOut]
+    can_manage: bool
+
+
+class AllocationPairIn(BaseModel):
+    """A requirement and an element of the request project."""
+
+    requirement_id: UUID
+    element_id: UUID
+
+
+class AllocationAcceptIn(BaseModel):
+    """The suggested pairs to turn into allocation links."""
+
+    pairs: list[AllocationPairIn] = Field(min_length=1, max_length=500)
+
+
+class AllocationFailureOut(BaseModel):
+    """A pair that was not accepted and why."""
+
+    requirement_id: UUID
+    element_id: UUID
+    reason: str
+
+
+class AllocationAcceptOut(BaseModel):
+    """How many pairs became links, and the pairs that did not."""
+
+    accepted: int
+    failed: list[AllocationFailureOut]
+
+
+class AllocationCoverageOut(BaseModel):
+    """The project's allocation counts (live records only)."""
+
+    requirements: int
+    allocated_requirements: int
+    elements: int
+    allocated_elements: int
+    suggestions: int
+
+
+class BaselineRecordOut(BaseModel):
+    """One record of a baseline, without its content (`BaselineItemOut` carries that).
+
+    Attributes:
+        id: The baseline item's id.
+        item_type: The artefact type (`architecture_element` and so on).
+        code: The record's code when the baseline was taken.
+        name: Its name then (the code when it had none).
+        status: Its status then, if the type has one.
+    """
+
+    id: UUID
+    item_type: str
+    code: str
+    name: str
+    status: str | None
+
+
+class BaselineViewOut(BaseModel):
+    """The architecture records a baseline holds, for the baseline screen.
+
+    Attributes:
+        id: The baseline.
+        label: Its name.
+        kind: `stage` or `manual`.
+        stage_name: The stage, for a stage baseline.
+        created_at: When it was taken (UTC).
+        created_by_name: Who took it.
+        records: Its records, by type then code (only the types the project has switched on).
+    """
+
+    id: UUID
+    label: str
+    kind: str
+    stage_name: str | None
+    created_at: datetime
+    created_by_name: str | None
+    records: list[BaselineRecordOut]
+
+
+class BaselineItemOut(BaselineRecordOut):
+    """A baseline record with its full content as it stood (the scrubbed bundle entry)."""
+
+    content: dict[str, object]
+
+
+class BaselineFieldChangeOut(BaseModel):
+    """One field that differs between the two sides; a list field reports `added` and `removed` entries instead."""
+
+    field: str
+    before: str | None
+    after: str | None
+    added: list[str]
+    removed: list[str]
+
+
+class BaselineRecordChangeOut(BaseModel):
+    """A record present on both sides whose content differs (named as it is on the second side)."""
+
+    code: str
+    name: str
+    status: str | None
+    fields: list[BaselineFieldChangeOut]
+
+
+class BaselineRecordRefOut(BaseModel):
+    """A record named in a comparison."""
+
+    code: str
+    name: str
+    status: str | None
+
+
+class BaselineTypeComparisonOut(BaseModel):
+    """The comparison of one record type."""
+
+    item_type: str
+    added: list[BaselineRecordRefOut]
+    removed: list[BaselineRecordRefOut]
+    changed: list[BaselineRecordChangeOut]
+    unchanged: int
+
+
+class BaselineComparisonOut(BaseModel):
+    """A baseline compared with the live model or with another baseline.
+
+    Attributes:
+        baseline_id: The first (base) side.
+        baseline_label: Its name.
+        against: `live` or `baseline`.
+        against_id: The other baseline's id, for `baseline`.
+        against_label: The other side's name (`Live model` for `live`).
+        types: One comparison per record type the project has switched on.
+    """
+
+    baseline_id: UUID
+    baseline_label: str
+    against: str
+    against_id: UUID | None
+    against_label: str
+    types: list[BaselineTypeComparisonOut]
+
+
+class RecordDiagramOut(BaseModel):
+    """One diagram a record appears on, for the Diagrams card of an element or connection page.
+
+    Attributes:
+        id / unique_code / name / status: The diagram.
+        kind: `block` (a block diagram) or `state_machine` (a state machine diagram).
+        usage: How the record appears: `placed` (the element has its own box), `inside` (only an ancestor, `via_*`, is
+            drawn), `drawn` (a line between the connection's own ends), `rolled_up` (a line between ancestors of its
+            ends) or `describes` (a state machine diagram of the element).
+        via_element_id / via_element_code / via_element_name: The drawn ancestor for `inside`; the name is blank for an
+            ancestor the viewer may not read.
+    """
+
+    id: UUID
+    kind: str
+    unique_code: str
+    name: str
+    status: str
+    usage: str
+    via_element_id: UUID | None = None
+    via_element_code: str | None = None
+    via_element_name: str | None = None
+

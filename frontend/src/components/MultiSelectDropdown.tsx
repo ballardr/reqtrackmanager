@@ -189,7 +189,7 @@ export function MultiSelectDropdown({
                     title={opt.disabled ? opt.title : undefined}
                     onChange={opt.onToggle}
                   />
-                  <span>
+                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                     {opt.label}
                     {opt.hint && (
                       <span className="text-muted" style={{ fontSize: "0.75rem" }}>
@@ -202,7 +202,7 @@ export function MultiSelectDropdown({
                 </Fragment>
               ))}
               {canAdd && addFromFilter && (
-                <button type="button" className="btn" style={{ justifyContent: "flex-start" }} onClick={addTyped}>
+                <button type="button" className="menu-item" onClick={addTyped}>
                   {addFromFilter.label(typed)}
                 </button>
               )}

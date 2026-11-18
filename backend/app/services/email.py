@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from email.message import EmailMessage
 
@@ -147,9 +148,25 @@ def send_email(
     Safe to call from a FastAPI sync route handler, which FastAPI runs in a
     worker thread with no event loop of its own, so starting a fresh one
     here via `asyncio.run` cannot collide with the app's main event loop.
+    Called from code that runs on an event loop (an `async` route), `asyncio.run` would refuse
+    and the message would be dropped, so the send runs on a worker thread and this waits for it.
+
+    Raises:
+        EmailDeliveryDisabled: Delivery is switched off for the deployment.
+        Exception: Whatever the SMTP exchange raises, unchanged.
     """
-    asyncio.run(
-        send_email_async(
-            to, subject, body, html_body=html_body, inline_images=inline_images, smtp_override=smtp_override
+
+    def deliver() -> None:
+        asyncio.run(
+            send_email_async(
+                to, subject, body, html_body=html_body, inline_images=inline_images, smtp_override=smtp_override
+            )
         )
-    )
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        deliver()
+        return
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        worker.submit(deliver).result()

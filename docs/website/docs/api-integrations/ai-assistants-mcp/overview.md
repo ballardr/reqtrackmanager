@@ -86,7 +86,7 @@ Two optional HTTP headers on the MCP connection — `X-Default-Organization-Id` 
 
 ## Module-contributed tools
 
-Module tools are numerous (over 200 across Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, Risk Management and Product Feedback), so this page does not itemise them. The [Agent skill](./agent-skill.mdx) includes a generated, always-current list with usage guidance for each module.
+Module tools are numerous (over 300 across Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, Risk Management, Product Feedback and System Architecture), so this page does not itemise them. The [Agent skill](./agent-skill.mdx) includes a generated, always-current list with usage guidance for each module.
 
 Beyond the tools above, a backend module can declare its own tools that this server registers automatically, without any module-specific code living in the MCP server itself — see [Modules → Building your own module](../../modules/building-your-own-module.md#module-contributed-mcp-tools) for the mechanism.
 

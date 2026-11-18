@@ -43,7 +43,8 @@ SMALL = {
             "change_request": 0.3, "risk": 0.4, "decision": 0.3, "pain_point": 0.4, "strategy": 0.2, "future_state": 0.2,
             "guiding_principle": 0.2, "open_question": 0.2, "persona": 0.2, "stakeholder": 0.3, "stakeholder_need": 0.3,
             "stakeholder_group": 0.2, "engagement": 0.3, "research_finding": 0.4, "compliance_evidence": 0.2,
-            "enhancement_request": 0.3,
+            "enhancement_request": 0.3, "architecture_element": 0.3, "architecture_connection": 0.4,
+            "architecture_diagram": 0.3, "architecture_state_machine_diagram": 0.3, "architecture_state": 0.9,
         },
     },
     "compliance": {"standards_per_org": 2, "requirements_per_standard": 6, "required_action_fraction": 0.5, "standards_per_project": 1},
@@ -220,6 +221,8 @@ def test_every_generated_type_is_written_and_every_link_end_exists(client):
         "change_requests", "risks", "decisions", "pain_points", "strategies", "future_states", "guiding_principles", "open_questions",
         "personas", "stakeholders", "stakeholder_needs", "stakeholder_groups", "engagements", "research_findings",
         "compliance_evidence", "compliance_standards", "compliance_requirements", "project_compliance_requirements",
+        "architecture_elements", "architecture_ports", "architecture_connections", "architecture_diagrams",
+        "architecture_diagram_placements",
     }
     assert {t for t in written if rows.get(t, 0) == 0} == set()
     assert manifest["link_degree_histogram"]["cross_type_links"] > 0
@@ -612,6 +615,11 @@ def test_every_generated_type_populates_the_columns_its_api_create_path_populate
         def post(self, path, body=None):
             resp = client.post(f"/api/v1{path}", json=body or {}, headers=auth_headers(token))
             assert resp.status_code in (200, 201), f"POST {path}: {resp.text}"
+            return resp.json()
+
+        def put(self, path, body=None):
+            resp = client.put(f"/api/v1{path}", json=body or {}, headers=auth_headers(token))
+            assert resp.status_code in (200, 201), f"PUT {path}: {resp.text}"
             return resp.json()
 
         def get(self, path):

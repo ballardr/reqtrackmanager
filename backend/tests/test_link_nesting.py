@@ -771,6 +771,25 @@ _REVIEWED_LINK_READERS = {
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "services/templates.py": "copies same-project requirement-to-requirement links only (source_project_id is null)",
+    "modules/architecture/records.py": (
+        "deliberately includes cross-level links: an element another project's record links to cannot be deleted"
+    ),
+    "modules/architecture/allocation.py": (
+        "`_candidates` reads same-project requirement -> element links only (source_project_id is null) and shows an element "
+        "only when the visibility rules allow it; `_linked` deliberately includes cross-level links, since a requirement and an "
+        "element linked in any way are allocated and must not be suggested again (it names no far-end data)"
+    ),
+    "modules/architecture/reports_allocation.py": (
+        "deliberately includes cross-level links: whether the reported project's own connection has any requirement linked "
+        "(only a yes or no per connection; no far-end record is named)"
+    ),
+    "modules/architecture/reports_structure.py": (
+        "deliberately includes cross-level links for the reported project's own connections; a requirement of another project "
+        "is named only when `ReportContext.can_view` says the reader may view requirements there, else left out"
+    ),
+    "modules/architecture/state_machines.py": (
+        "deliberately includes cross-level links: it counts the links a deleted state takes with it, as `records._forget` removes them"
+    ),
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
     "modules/product_feedback/demand.py": "same-project requester links only (source_project_id is null)",
     "modules/product_feedback/export.py": "same-project links only (source_project_id is null); a cross-level link is not exported",

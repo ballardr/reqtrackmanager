@@ -4,6 +4,7 @@ import { expect, type APIRequestContext, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 import { wordXml } from "./wordXml";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -47,7 +48,7 @@ test.describe("Report layout custom table editor", () => {
 
     await test.step("Table (custom) is added; the panel shows a summary and an Edit table button, not the cells", async () => {
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Table (custom)", exact: true }).click();
+      await clickMenuRow(page, "Table (custom)");
       const inspector = page.getByLabel("Block details");
       await expect(inspector.getByTestId("grid-summary")).toHaveText("2 columns · 1 row");
       await expect(inspector.getByRole("grid")).toHaveCount(0);

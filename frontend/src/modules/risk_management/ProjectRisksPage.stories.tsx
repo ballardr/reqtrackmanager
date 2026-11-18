@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildRisk, buildRiskScheme, ORG_USERS, PROJECT_ID, RISK_TYPES } from "./riskFixtures";
 import { ProjectRisksPage } from "./ProjectRisksPage";
@@ -260,3 +261,12 @@ export const ExportCarriesTheRegistersFilters: Story = {
 };
 
 export const DarkTheme: Story = { ...RegisterShowsRatingsStatusOwnerAndOverdue, globals: { theme: "dark" } };
+
+/** The Title header orders the risks, ascending then descending. */
+export const TitleHeaderSortsTheRisks: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Risks" });
+    await expectHeaderOrdersText(table, "Title");
+  },
+};

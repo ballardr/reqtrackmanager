@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
+import { expectHeaderSorts } from "../testing/sortHelpers";
 import { withRouter } from "../testing/storybook-helpers";
 import { OrgListPage } from "./OrgListPage";
 
@@ -193,3 +194,18 @@ export const SearchFiltersTheTable: Story = {
 
 export const LightTheme: Story = { ...MultipleOrganisations, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...MultipleOrganisations, globals: { theme: "dark" } };
+
+/** The Name header orders the organisations, ascending then descending. */
+export const NameHeaderSortsTheOrganisations: Story = {
+  decorators: [withRouter("/orgs")],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") return [org({ id: "org-2", name: "Beta Inc" }), org({ id: "org-1", name: "Acme Corp" })];
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Org Management" });
+    await expectHeaderSorts(table, "Name", ["Acme Corp", "Beta Inc"]);
+  },
+};

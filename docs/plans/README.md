@@ -25,7 +25,7 @@ Source files (code, comments, tests, migrations, config) never name a plan, phas
 N / M phases complete. | # | Phase | Notes | Status | table with `[ ]` / `[x]`
 
 ## Decisions
-## Phase specs  (Why / Risk addressed / Outcome / Tests per phase)
+## Phase specs  (Why / Risk addressed / Outcome / Tests per phase; the last phase is always a security review: Dependabot, code-scanning and scan findings fixed, dependencies upgraded, outcome in `docs/decisions.md`)
 ## Standing checklist per phase
 ## Risks
 

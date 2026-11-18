@@ -26,6 +26,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.routers.projects import (
+    baselines,
     component_stages,
     core,
     groups,
@@ -51,6 +52,7 @@ router.include_router(core.router, prefix=_PREFIX)
 router.include_router(hierarchy.router, prefix=_PREFIX)
 router.include_router(lifecycle.router, prefix=_PREFIX)
 router.include_router(stages.router, prefix=_PREFIX)
+router.include_router(baselines.router, prefix=_PREFIX)
 router.include_router(component_stages.router, prefix=_PREFIX)
 router.include_router(stage_phase_plans.router, prefix=_PREFIX)
 router.include_router(taxonomy.router, prefix=_PREFIX)

@@ -3,7 +3,9 @@
  *
  * The header of every record detail page: back link, title (with the record's
  * code as a muted suffix), status pills, the Edit icon button and the object-action
- * menu, with the record's visible workflow buttons beneath.
+ * menu, with the record's visible workflow buttons beneath. Tags go on their own line, or with `tagsInline` on the
+ * badge line beside the version. A `stateMenu` (a record's "Change status" control) sits beside Edit. A `returnTo` control
+ * sits beside the back link when the person arrived from another record's page (docs/ux-style-guide.md, "Pattern: return to where you came from").
  *
  * Design decisions (style guide "Pattern: record header and object actions"):
  * - Edit and the menu sit at the right edge of the title row, in an `ItemRow`, so they
@@ -40,8 +42,11 @@ const BACK_ARROW = "← ";
  * @param badges Status and scope pills, shown on the line under the title.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
  * @param tags The record's tags (`RecordTags`), shown under the badges.
+ * @param tagsInline Draw `tags` on the badge line after the version instead of on a line of its own. The page passes `<RecordTags inline />`, which draws nothing for a record with no tags or components, so the header carries no empty line.
  * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); a name the project or organisation gave the destination's navigation entry replaces it. The header draws the leading arrow, so pages never type it.
+ * @param returnTo A control beside the back link that leads to where the person came from (`ReturnLink`, or a menu of the places the record is used). Its page decides what it shows and whether it is trustworthy; the header only places it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
+ * @param stateMenu A "Change status" control drawn before Edit in the title row, for a record whose state moves along several paths; omit when the user cannot change it.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
  * @param transitions Visible workflow buttons (Submit, Approve, Retire...).
  * @param actions Object actions for the menu; falsy entries are dropped.
@@ -56,8 +61,11 @@ export function RecordHeader({
   badges,
   version,
   tags,
+  tagsInline = false,
   back,
+  returnTo,
   headingLevel = "h1",
+  stateMenu,
   onEdit,
   transitions,
   actions = [],
@@ -71,8 +79,11 @@ export function RecordHeader({
   badges?: ReactNode;
   version?: number;
   tags?: ReactNode;
+  tagsInline?: boolean;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
+  returnTo?: ReactNode;
   headingLevel?: "h1" | "h2";
+  stateMenu?: ReactNode;
   onEdit?: () => void;
   transitions?: ReactNode;
   actions?: Array<ActionMenuItem | null | false | undefined>;
@@ -80,18 +91,24 @@ export function RecordHeader({
   const backName = useNavLabelOverride(back && "to" in back ? back.to : undefined);
   const items = actions.filter((a): a is ActionMenuItem => !!a);
   const Heading = headingLevel;
-  const hasControls = onEdit || items.length > 0;
+  const hasControls = stateMenu || onEdit || items.length > 0;
   return (
     <header className="stack record-header" style={{ gap: "var(--space-3)" }}>
-      {back && ("to" in back ? (
-        <Link {...listBackTarget(back.to)}>{BACK_ARROW}{backName ?? back.label}</Link>
-      ) : (
-        <div><button type="button" className="btn" onClick={back.onClick}>{BACK_ARROW}{back.label}</button></div>
-      ))}
+      {(back || returnTo) && (
+        <div className={returnTo ? "row" : undefined} style={returnTo ? { gap: "var(--space-4)", alignItems: "center" } : undefined}>
+          {back && ("to" in back ? (
+            <Link {...listBackTarget(back.to)}>{BACK_ARROW}{backName ?? back.label}</Link>
+          ) : (
+            <button type="button" className="btn" onClick={back.onClick}>{BACK_ARROW}{back.label}</button>
+          ))}
+          {returnTo}
+        </div>
+      )}
       <ItemRow
         actions={
           hasControls ? (
             <>
+              {stateMenu}
               {onEdit && (
                 <button type="button" className="btn btn-icon" title="Edit" aria-label="Edit" onClick={onEdit}>
                   <Pencil />
@@ -110,7 +127,7 @@ export function RecordHeader({
           {titleAddon}
         </span>
       </ItemRow>
-      {(badges || version !== undefined) && (
+      {(badges || version !== undefined || (tagsInline && tags)) && (
         <div className="row">
           {badges}
           {version !== undefined && (
@@ -118,9 +135,10 @@ export function RecordHeader({
               Version {version}
             </span>
           )}
+          {tagsInline && tags}
         </div>
       )}
-      {tags && <div>{tags}</div>}
+      {tags && !tagsInline && <div>{tags}</div>}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
       {transitions && <div className="row">{transitions}</div>}
     </header>

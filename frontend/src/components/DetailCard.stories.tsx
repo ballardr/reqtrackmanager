@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import { DetailCard } from "./DetailCard";
 import { RecordField } from "./RecordDetailParts";
@@ -58,5 +58,16 @@ export const LongHeadingNarrow: Story = {
   decorators: [(Story) => <div style={{ width: 280 }}><Story /></div>],
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole("button", { name: "Add" })).toBeVisible();
+  },
+};
+
+/** A heading that names a domain term carries `help`: a `(?)` after the heading that shows its text on hover. */
+export const HeadingHelp: Story = {
+  args: { heading: "Ports", help: "A named point where a connection meets the element, for example \"CAN bus\"." },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { level: 2, name: "Ports" })).toBeInTheDocument();
+    await userEvent.hover(canvas.getByRole("button", { name: "Help: Ports" }));
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("CAN bus");
   },
 };

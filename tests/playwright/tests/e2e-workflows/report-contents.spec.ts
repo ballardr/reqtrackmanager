@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   createDocumentLayoutWorld, designerPreviewPanel, installCleanupHook, loginAs, openDesignerPreview, openDesignerTextView, PASSWORD, saveNewVersion,
 } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -22,7 +23,7 @@ test.describe("Report table of contents", () => {
 
     await test.step("Add block offers a table of contents, with its levels setting in the inspector", async () => {
       await page.getByRole("button", { name: "Add block" }).first().click();
-      await page.getByRole("menuitem", { name: "Table of contents" }).click();
+      await clickMenuRow(page, "Table of contents");
       await expect(page.getByTestId("block-inspector")).toContainText("Table of contents block");
       await expect(page.getByRole("spinbutton", { name: "Levels" })).toBeVisible();
     });

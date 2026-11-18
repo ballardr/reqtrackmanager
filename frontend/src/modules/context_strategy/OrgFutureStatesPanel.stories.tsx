@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
 import type { FutureState } from "./types";
@@ -66,3 +67,12 @@ export const OpenCreateModal: Story = {
 
 export const LightTheme: Story = { ...ListsOrgFutureStates };
 export const DarkTheme: Story = { ...ListsOrgFutureStates, globals: { theme: "dark" } };
+
+/** The Title header orders the future states, ascending then descending. */
+export const TitleHeaderSortsTheFutureStates: Story = {
+  beforeEach: () => mockPanelApis([futureState(), futureState({ id: "future-state-2", title: "Diversified supply base", status: "draft" })]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Title");
+  },
+};

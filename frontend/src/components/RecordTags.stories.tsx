@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { buildPlace, buildPlacementsApi, buildRecordPlacements } from "../testing/placementsFixtures";
 import { buildChip, buildRecordTags, buildRecordTagsApi, openTagPicker, TAGS_PROJECT_ID } from "../testing/tagsFixtures";
 import { withToast } from "../testing/storybook-helpers";
 import { RecordTags } from "./RecordTags";
@@ -99,5 +100,89 @@ export const ChangedCallbackFiresAfterASave: Story = {
   play: async ({ canvasElement, args }) => {
     await userEvent.click(await within(canvasElement).findByRole("button", { name: "Remove tag Safety" }));
     await waitFor(() => expect(args.onChanged).toHaveBeenCalled());
+  },
+};
+
+/** A fake whose `get` returns what `set` last saved, as the server does. */
+function statefulTagsApi() {
+  let current = buildRecordTags();
+  const base = buildRecordTagsApi();
+  return buildRecordTagsApi(current, {
+    get: fn(async () => current),
+    set: fn(async (p: string, t: string, i: string, names: string[]) => {
+      current = await base.set(p, t, i, names);
+      return current;
+    }),
+  });
+}
+
+/** The compact form: read-only chips for the tags and the components on the badge line, and one edit button. */
+export const InlineShowsChipsAndOneEditButton: Story = {
+  args: { inline: true, api: buildRecordTagsApi(), placementsApi: buildPlacementsApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Safety")).toBeInTheDocument();
+    await expect(await canvas.findByText("Hardware / Cooling")).toBeInTheDocument();
+    // The chips carry no remove control and no picker is on the line: editing is behind the one button.
+    await expect(canvas.queryByRole("button", { name: "Remove tag Safety" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Tags and components" })).toBeInTheDocument();
+  },
+};
+
+/** Changes are made in the dialog, saved at once, and the chips on the line follow. */
+export const InlineEditsInADialogAndTheChipsFollow: Story = {
+  args: { inline: true, api: statefulTagsApi(), placementsApi: buildPlacementsApi(), onChanged: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Tags and components" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Tags and components" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Remove tag Safety" }));
+    await waitFor(() => expect(args.api!.set).toHaveBeenCalledWith(TAGS_PROJECT_ID, "requirement", "req-1", []));
+    await expect(args.onChanged).toHaveBeenCalled();
+    await waitFor(() => expect(canvas.queryByText("Safety")).not.toBeInTheDocument());
+  },
+};
+
+/** A record with no tags or components shows no line and no empty text; someone who may edit still has the button. */
+export const InlineWithNothingSetShowsOnlyTheButton: Story = {
+  args: {
+    inline: true,
+    api: buildRecordTagsApi(buildRecordTags({ tags: [] })),
+    placementsApi: buildPlacementsApi(buildRecordPlacements({ placements: [] })),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Tags and components" })).toBeInTheDocument();
+    await expect(canvas.queryByText("Not placed in a component")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("No tags")).not.toBeInTheDocument();
+  },
+};
+
+/** With nothing set and no right to change it, nothing is drawn at all. */
+export const InlineDrawsNothingWithNothingSetAndNoRightToChange: Story = {
+  args: {
+    inline: true,
+    api: buildRecordTagsApi(buildRecordTags({ tags: [], can_edit: false })),
+    placementsApi: buildPlacementsApi(buildRecordPlacements({ placements: [], can_edit: false })),
+  },
+  play: async ({ canvasElement, args }) => {
+    await waitFor(() => expect(args.api!.get).toHaveBeenCalled());
+    await waitFor(() => expect(args.placementsApi!.get).toHaveBeenCalled());
+    await expect(canvasElement.textContent).toBe("");
+  },
+};
+
+/** Read-only chips for someone who cannot change them, with no button. */
+export const InlineReadOnlyHasNoButton: Story = {
+  args: {
+    inline: true,
+    api: buildRecordTagsApi(buildRecordTags({ can_edit: false })),
+    placementsApi: buildPlacementsApi(buildRecordPlacements({ can_edit: false, placements: [buildPlace("c-sw")] })),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Safety")).toBeInTheDocument();
+    await expect(await canvas.findByText("Software")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button")).not.toBeInTheDocument();
   },
 };

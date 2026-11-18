@@ -43,8 +43,9 @@ ORG_TYPES = (STRATEGY, FUTURE_STATE, GUIDING_PRINCIPLE, PERSONA, STAKEHOLDER, GR
 #: Organisation-owned types whose organisation list only exports (they give a reason in `not_importable`).
 EXPORT_ONLY_ORG_TYPES = ("compliance_requirement",)
 #: Types with an organisation tier whose export/import is exercised by their own module's tests (the inbox of Product
-#: Feedback: `app/modules/product_feedback/tests/test_feedback_record_tables.py`).
-OWN_MODULE_ORG_TYPES = ("enhancement_request",)
+#: Feedback: `app/modules/product_feedback/tests/test_feedback_record_tables.py`; System Architecture's elements:
+#: `app/modules/architecture/tests/test_architecture_org_tables.py`).
+OWN_MODULE_ORG_TYPES = ("enhancement_request", "architecture_element")
 CS = "/api/v1/orgs/{oid}/modules/context_strategy"
 SH = "/api/v1/orgs/{oid}/modules/stakeholders"
 

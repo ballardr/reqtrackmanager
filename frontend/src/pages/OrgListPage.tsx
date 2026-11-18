@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { useUrlText } from "../hooks/useUrlFilter";
+import { useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { sortRows } from "../utils/sortRows";
+import { cycleSort } from "../components/sortState";
 import { Navigate } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -47,6 +49,7 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   // The search lives in the URL so the list comes back as it was left after a visit to a record.
   const [search, setSearch] = useUrlText("q");
+  const [sort, setSort] = useUrlSort<string>(["name"]);
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
 
@@ -70,7 +73,7 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
   const needle = search.trim().toLowerCase();
   const filteredOrgs = needle ? orgs.filter((o) => o.name.toLowerCase().includes(needle)) : orgs;
 
-  const columns: DirectoryColumn<Organization>[] = [{ key: "name", label: "Name", render: (o) => o.name }];
+  const columns: DirectoryColumn<Organization>[] = [{ key: "name", label: "Name", sortable: true, render: (o) => o.name }];
 
   return (
     <div className="stack">
@@ -93,7 +96,9 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
           <DirectoryTable
             ariaLabel={heading}
             columns={columns}
-            rows={filteredOrgs}
+            rows={sortRows(filteredOrgs, sort, { name: (o) => o.name })}
+            sort={sort}
+            onSort={(key) => setSort((current) => cycleSort(current, key))}
             rowKey={(o) => o.id}
             rowHref={(o) => `/orgs/${o.id}/${target}`}
             emptyState={

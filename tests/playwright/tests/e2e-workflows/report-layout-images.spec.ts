@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { closeDesignerPreview, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
+import { clickMenuRow } from "../menuTree";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -40,7 +41,7 @@ test.describe("Report layout images", () => {
 
   async function newLayout(page: Page, name: string) {
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -51,7 +52,7 @@ test.describe("Report layout images", () => {
   async function addPicture(page: Page, fileName: string) {
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+    await clickMenuRow(page, "Image");
     const inspector = page.getByLabel("Block details");
     await inspector.getByRole("button", { name: "Choose image…" }).click();
     const library = page.getByRole("dialog", { name: "Image library" });
@@ -212,13 +213,13 @@ test.describe("Report layout images", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New layout" }).click();
+    await clickMenuRow(page, "New layout");
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(`Designer ${suffix}`);
     await dialog.getByRole("button", { name: "Create" }).click();
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+    await clickMenuRow(page, "Image");
     await page.getByLabel("Block details").getByRole("button", { name: "Choose image…" }).click();
     const library = page.getByRole("dialog", { name: "Image library" });
 
@@ -250,7 +251,7 @@ test.describe("Report layout images", () => {
     await newLayout(page, `EPS ${suffix}`);
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.getByRole("button", { name: "Add block" }).click();
-    await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+    await clickMenuRow(page, "Image");
     await page.getByLabel("Block details").getByRole("button", { name: "Choose image…" }).click();
     const library = page.getByRole("dialog", { name: "Image library" });
     await expect(library.locator('input[type="file"]')).toHaveAttribute("accept", /\.eps.*\.pdf/);
@@ -391,7 +392,7 @@ test.describe("Report layout images", () => {
       await newLayout(page, `E2E project picture ${suffix}`);
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+      await clickMenuRow(page, "Image");
       await page.getByLabel("Block details").getByRole("button", { name: "Choose image…" }).click();
       const library = page.getByRole("dialog", { name: "Image library" });
       await expect(library.getByText(fileName)).toBeVisible();

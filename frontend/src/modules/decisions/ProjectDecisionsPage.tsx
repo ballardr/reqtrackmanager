@@ -42,6 +42,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { cycleSort } from "../../components/sortState";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -55,7 +56,8 @@ import { Badge } from "../../components/Badge";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
-import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
+import { sortRows } from "../../utils/sortRows";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -67,6 +69,8 @@ import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
+
+const DECISION_SORT_KEYS = ["unique_code", "title", "type", "status", "owner"] as const;
 
 export function ProjectDecisionsPage() {
   const strings = useStrings();
@@ -90,6 +94,7 @@ export function ProjectDecisionsPage() {
   const [decisionTypeFilter, setDecisionTypeFilter] = useUrlText("type");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [ownedByMe, setOwnedByMe] = useUrlFlag("mine");
+  const [sort, setSort] = useUrlSort<string>(DECISION_SORT_KEYS);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -147,20 +152,28 @@ export function ProjectDecisionsPage() {
   const rows = openOnly ? decisions.filter((d) => DECISION_OPEN_STATUSES.includes(d.status)) : decisions;
   // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
   const emptyBecauseOfOpenOnly = openOnly && rows.length === 0 && decisions.length > 0;
+  const typeName = (d: Decision) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? null;
+  const sorted = sortRows(rows, sort, {
+    unique_code: (d) => d.unique_code,
+    title: (d) => d.title,
+    type: typeName,
+    status: (d) => DECISION_STATUS_LABEL[d.status],
+    owner: (d) => d.owner?.label ?? null,
+  });
 
   const columns: DirectoryColumn<Decision>[] = [
-    { key: "unique_code", label: "Code", render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
-    { key: "title", label: "Title", render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
+    { key: "unique_code", label: "Code", sortable: true, render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
+    { key: "title", label: "Title", sortable: true, render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
     {
-      key: "type", label: "Type",
+      key: "type", label: "Type", sortable: true,
       render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
     },
     {
-      key: "status", label: "Status",
+      key: "status", label: "Status", sortable: true,
       render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
     },
     {
-      key: "owner", label: "Owner",
+      key: "owner", label: "Owner", sortable: true,
       render: (d) => <PrincipalBadge principal={d.owner} />,
     },
   ];
@@ -205,7 +218,9 @@ export function ProjectDecisionsPage() {
         <DirectoryTable
           ariaLabel="Decisions"
           columns={columns}
-          rows={rows}
+          rows={sorted}
+          sort={sort}
+          onSort={(key) => setSort((current) => cycleSort(current, key))}
           rowKey={(d) => d.id}
           placements={{ projectId, artefactType: "decision", rowId: (d) => d.id }}
           onRowClick={setSelected}

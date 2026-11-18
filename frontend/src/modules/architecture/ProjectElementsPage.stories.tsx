@@ -1,0 +1,198 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+
+import { api } from "../../api/client";
+import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildElement, buildFolder, mockArchitectureReads, PROJECT_ID } from "./architectureFixtures";
+import { ProjectElementsPage } from "./ProjectElementsPage";
+
+const ELEMENTS = [
+  buildElement(),
+  buildElement({ id: "el-2", unique_code: "ELM-002", name: "Orders", element_type_id: "et-1", parent_id: "el-1", ports: [] }),
+  buildElement({ id: "el-3", unique_code: "ELM-003", name: "Legacy bus", status: "retired", ports: [] }),
+];
+
+const meta: Meta<typeof ProjectElementsPage> = {
+  title: "Modules/Architecture/ProjectElementsPage",
+  component: ProjectElementsPage,
+  decorators: [
+    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    (Story, context) =>
+      withRouter(
+        `/projects/${PROJECT_ID}/modules/architecture/elements${context.parameters.query ?? ""}`,
+        "/projects/:projectId/modules/architecture/elements",
+      )(Story, context),
+    withToast(),
+  ],
+};
+export default meta;
+
+type Story = StoryObj<typeof ProjectElementsPage>;
+
+export const ListShowsTypeParentAndStatusAndHidesRetiredByDefault: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    const row = within(within(table).getByRole("link", { name: "ELM-002" }).closest("tr")!);
+    await expect(row.getByText("Orders")).toBeInTheDocument();
+    await expect(row.getByText("Service")).toBeInTheDocument();
+    await expect(row.getByText("Gateway")).toBeInTheDocument();
+    await expect(within(table).getByRole("link", { name: "ELM-001" })).toHaveAttribute(
+      "href", `/projects/${PROJECT_ID}/modules/architecture/elements/el-1`,
+    );
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(canvas.queryByRole("link", { name: "ELM-003" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Open only" }));
+    await expect(await canvas.findByRole("link", { name: "ELM-003" })).toBeInTheDocument();
+  },
+};
+
+/** An element shared by another owner is listed, marked Shared. */
+export const SharedElementsAreMarked: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: [buildElement()],
+      shared: [buildElement({ id: "el-9", project_id: "project-2", shared: true, unique_code: "ELM-009", name: "Identity provider" })],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const row = within((await canvas.findByRole("link", { name: "ELM-009" })).closest("tr")!);
+    await expect(row.getByText("Shared")).toBeInTheDocument();
+  },
+};
+
+/** The tree arranges elements under their parents. */
+export const TreeNestsChildrenUnderTheirParent: Story = {
+  parameters: { query: "?view=tree" },
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tree = await canvas.findByRole("tree").catch(() => null);
+    const parent = await canvas.findByRole("link", { name: /ELM-001 Gateway/ });
+    await expect(parent).toBeInTheDocument();
+    const child = await canvas.findByRole("link", { name: /ELM-002 Orders/ });
+    await expect(parent.closest("li")!.contains(child)).toBe(true);
+    await expect(tree === null || tree.contains(child)).toBe(true);
+  },
+};
+
+export const EmptyProjectSaysSo: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: [] }); },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("No elements recorded for this project yet.")).toBeInTheDocument();
+  },
+};
+
+/** New element opens the shared form; saving posts it with the chosen type. */
+export const NewElementPostsTheForm: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: ELEMENTS });
+    spyOn(api, "post").mockResolvedValue(buildElement({ id: "el-new" }) as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "New element" }));
+    const dialog = within(within(document.body).getByRole("dialog"));
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.type(dialog.getByLabelText("Name"), "Scheduler");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/architecture/elements`,
+      expect.objectContaining({ name: "Scheduler", element_type_id: "et-1", activate: false, ports: [] }),
+    ));
+  },
+};
+
+/** The Name header sorts the open elements ascending, then descending, then back to the default order. */
+export const NameHeaderSortsTheList: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: ELEMENTS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    const codes = () => within(table).getAllByRole("link").map((link) => link.textContent);
+    await expect(codes()).toEqual(["ELM-001", "ELM-002"]);
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["ELM-001", "ELM-002"]));
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["ELM-002", "ELM-001"]));
+    await expect(within(table).getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => expect(codes()).toEqual(["ELM-001", "ELM-002"]));
+  },
+};
+
+/** Connections sort by number, not text: a column of counts is ordered by value. */
+export const ConnectionCountSortsNumerically: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({ elements: [
+      buildElement({ connection_count: 10 }),
+      buildElement({ id: "el-2", unique_code: "ELM-002", name: "Orders", connection_count: 9, ports: [] }),
+    ] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    await userEvent.click(within(table).getByRole("button", { name: "Connections" }));
+    await waitFor(() => expect(within(table).getAllByRole("link").map((link) => link.textContent)).toEqual(["ELM-002", "ELM-001"]));
+  },
+};
+
+const FOLDERED = [
+  buildElement({ folder_id: "f-sw", folder_path: "Software" }),
+  buildElement({ id: "el-2", unique_code: "ELM-002", name: "Orders", folder_id: "f-mod", folder_path: "Software/Modules", ports: [] }),
+  buildElement({ id: "el-4", unique_code: "ELM-004", name: "Main board", folder_id: "f-hw", folder_path: "Hardware", ports: [] }),
+  buildElement({ id: "el-5", unique_code: "ELM-005", name: "Loose end", ports: [] }),
+];
+const FOLDER_ROWS = [
+  buildFolder({ id: "f-sw", name: "Software", path: "Software", record_count: 1 }),
+  buildFolder({ id: "f-mod", name: "Modules", path: "Software/Modules", parent_id: "f-sw", record_count: 1 }),
+  buildFolder({ id: "f-hw", name: "Hardware", path: "Hardware", sort_order: 1, record_count: 1 }),
+];
+
+/** The Folder column shows each element's path; choosing a folder shows it and (by default) the folders below it. */
+export const FolderColumnAndFilterNarrowTheList: Story = {
+  beforeEach: () => { mockArchitectureReads({ elements: FOLDERED, folders: FOLDER_ROWS }); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Elements" });
+    await expect(within(within(table).getByRole("link", { name: "ELM-002" }).closest("tr")!).getByText("Software/Modules")).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Folder Software" }));
+    await waitFor(() => expect(within(table).queryByRole("link", { name: "ELM-004" })).not.toBeInTheDocument());
+    await expect(within(table).getByRole("link", { name: "ELM-001" })).toBeInTheDocument();
+    await expect(within(table).getByRole("link", { name: "ELM-002" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("checkbox", { name: /Include sub-folders/ }));
+    await waitFor(() => expect(within(table).queryByRole("link", { name: "ELM-002" })).not.toBeInTheDocument());
+    await expect(within(table).getByRole("link", { name: "ELM-001" })).toBeInTheDocument();
+  },
+};
+
+/** Selected rows are moved to a folder in one request; a shared element has no box to select. */
+export const SelectedElementsMoveToAFolder: Story = {
+  beforeEach: () => {
+    mockArchitectureReads({
+      elements: FOLDERED,
+      folders: FOLDER_ROWS,
+      shared: [buildElement({ id: "el-9", project_id: "project-2", shared: true, unique_code: "ELM-009", name: "Identity provider" })],
+    });
+    spyOn(api, "post").mockResolvedValue({ moved: 2 } as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "ELM-009" });
+    await expect(canvas.queryByRole("checkbox", { name: "Select ELM-009" })).toBeNull();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Select ELM-001" }));
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Select ELM-005" }));
+    await expect(canvas.getByText("2 selected")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Move to folder" }));
+    const dialog = within(within(document.body).getByRole("dialog"));
+    await userEvent.click(dialog.getByRole("button", { name: "Folder" }));
+    await userEvent.click(await within(document.body).findByRole("radio", { name: "Hardware" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/architecture/element-folders/move-records`, { record_ids: ["el-1", "el-5"], folder_id: "f-hw" },
+    ));
+    await waitFor(() => expect(canvas.queryByText("2 selected")).toBeNull());
+  },
+};

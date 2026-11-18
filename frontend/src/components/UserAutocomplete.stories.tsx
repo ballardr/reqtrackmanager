@@ -3,6 +3,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { OrgGroup, OrgUser, ProjectGroup } from "../api/types";
+import { expectTextRows } from "../testing/menuRows";
 import { UserAutocomplete } from "./UserAutocomplete";
 
 const localUsers: OrgUser[] = [
@@ -55,6 +56,8 @@ export const LocalFilterMode: Story = {
     await userEvent.type(input, "jamie");
     await expect(canvas.getByText("Jamie Lee")).toBeInTheDocument();
     await expect(canvas.queryByText("Alex Morgan")).not.toBeInTheDocument();
+    // Options are plain text rows like every menu, never standard buttons.
+    await expectTextRows(canvas.getByRole("listbox"));
     await userEvent.click(canvas.getByText("Jamie Lee"));
     await expect(args.onSelect).toHaveBeenCalledWith("u2");
   },

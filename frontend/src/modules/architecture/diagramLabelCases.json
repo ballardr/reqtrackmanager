@@ -1,0 +1,252 @@
+[
+  {
+    "name": "nothing to write",
+    "count": 1,
+    "type_name": null,
+    "protocol": "",
+    "detail": false,
+    "names": [],
+    "label": null
+  },
+  {
+    "name": "one named connection, no detail",
+    "count": 1,
+    "type_name": "REST API",
+    "protocol": "HTTPS",
+    "detail": false,
+    "names": [
+      "Telemetry"
+    ],
+    "label": "Telemetry"
+  },
+  {
+    "name": "one named connection with detail",
+    "count": 1,
+    "type_name": "REST API",
+    "protocol": "HTTPS",
+    "detail": true,
+    "names": [
+      "Telemetry"
+    ],
+    "label": "Telemetry\nREST API · HTTPS"
+  },
+  {
+    "name": "one named connection with a type and no protocol",
+    "count": 1,
+    "type_name": "REST API",
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "Telemetry"
+    ],
+    "label": "Telemetry\nREST API"
+  },
+  {
+    "name": "one unnamed connection with detail is today's label",
+    "count": 1,
+    "type_name": "REST API",
+    "protocol": "HTTPS",
+    "detail": true,
+    "names": [],
+    "label": "REST API · HTTPS"
+  },
+  {
+    "name": "one unnamed connection with no detail has no label",
+    "count": 1,
+    "type_name": "REST API",
+    "protocol": "HTTPS",
+    "detail": false,
+    "names": [
+      ""
+    ],
+    "label": null
+  },
+  {
+    "name": "a connection with no type, protocol or detail but a name",
+    "count": 1,
+    "type_name": null,
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "Telemetry"
+    ],
+    "label": "Telemetry"
+  },
+  {
+    "name": "a merged line of two names with no detail keeps its count",
+    "count": 2,
+    "type_name": "REST API",
+    "protocol": "",
+    "detail": false,
+    "names": [
+      "Telemetry",
+      "Commands"
+    ],
+    "label": "Telemetry\nCommands\n×2"
+  },
+  {
+    "name": "a merged line of two names with detail",
+    "count": 2,
+    "type_name": "REST API",
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "Telemetry",
+      "Commands"
+    ],
+    "label": "Telemetry\nCommands\nREST API ×2"
+  },
+  {
+    "name": "a merged line of mixed types with detail",
+    "count": 2,
+    "type_name": null,
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "Telemetry",
+      "Commands"
+    ],
+    "label": "Telemetry\nCommands\n2 connections"
+  },
+  {
+    "name": "a merged line with a shared protocol and detail",
+    "count": 2,
+    "type_name": "SPI",
+    "protocol": "SPI mode 0",
+    "detail": true,
+    "names": [],
+    "label": "SPI ×2 · SPI mode 0"
+  },
+  {
+    "name": "a merged line of mixed types with a shared protocol",
+    "count": 2,
+    "type_name": null,
+    "protocol": "UART 115200",
+    "detail": true,
+    "names": [],
+    "label": "2 connections · UART 115200"
+  },
+  {
+    "name": "a merged line with a shared protocol and no detail shows no protocol",
+    "count": 2,
+    "type_name": "SPI",
+    "protocol": "SPI mode 0",
+    "detail": false,
+    "names": [
+      "A"
+    ],
+    "label": "A\n×2"
+  },
+  {
+    "name": "a merged line with a shared protocol, names and detail",
+    "count": 3,
+    "type_name": "SPI",
+    "protocol": "SPI mode 0",
+    "detail": true,
+    "names": [
+      "A",
+      "B"
+    ],
+    "label": "A\nB\nSPI ×3 · SPI mode 0"
+  },
+  {
+    "name": "three names fit",
+    "count": 3,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "A",
+      "B",
+      "C"
+    ],
+    "label": "A\nB\nC\nSPI ×3"
+  },
+  {
+    "name": "five names show three and count the rest",
+    "count": 5,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+    ],
+    "label": "A\nB\nC\n+2 more\nSPI ×5"
+  },
+  {
+    "name": "four names with no detail",
+    "count": 4,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": false,
+    "names": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "label": "A\nB\nC\n+1 more\n×4"
+  },
+  {
+    "name": "a merged line where only one connection has a name",
+    "count": 3,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "",
+      "Telemetry",
+      ""
+    ],
+    "label": "Telemetry\nSPI ×3"
+  },
+  {
+    "name": "a merged line where none has a name is today's label",
+    "count": 3,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": true,
+    "names": [
+      "",
+      ""
+    ],
+    "label": "SPI ×3"
+  },
+  {
+    "name": "a name's whitespace and line breaks are collapsed",
+    "count": 1,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": false,
+    "names": [
+      "  Sensor \n  read\tout  "
+    ],
+    "label": "Sensor read out"
+  },
+  {
+    "name": "a long name is cut with an ellipsis",
+    "count": 1,
+    "type_name": "SPI",
+    "protocol": "",
+    "detail": false,
+    "names": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+  },
+  {
+    "name": "a name at the limit is kept",
+    "count": 1,
+    "type_name": null,
+    "protocol": "",
+    "detail": false,
+    "names": [
+      "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    ],
+    "label": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+  }
+]

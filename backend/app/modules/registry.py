@@ -354,12 +354,21 @@ class ModuleSubComponentDefinition:
             rejects a write for it, no project row is ever created for it,
             and `is_module_subcomponent_enabled` returns the
             organisation's state, ignoring any stored project row.
+        artefact_types: The artefact types this sub-component serves when its
+            key is not itself the type's name (one sub-component can serve
+            several types, e.g. a diagram and its states). A sub-component
+            whose key equals an artefact type serves it without listing it.
+            Every core read of a record (link graph, tags, search, record
+            tables, the overview) treats a type as switched off when the
+            serving sub-component is, so a switched-off type is not named
+            by a route the module does not own.
     """
 
     key: str
     name: str
     default_enabled: bool = True
     organization_only: bool = False
+    artefact_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -827,6 +836,14 @@ class ModuleOrgBundleHooks:
             into `merge_org_bundle`'s own returned/audit-logged summary
             dict. `None` for a module with nothing worth summarising
             separately from its raw import.
+        export_files: Optional `(db, org, assets) -> dict` for a module whose organisation
+            content includes files (the Architecture symbol library): returns more
+            `org.json` sections, like `export`, and adds each `FileAsset` it references to
+            `assets` (by id) so the bundle embeds its bytes. `export` is still called as well.
+        import_files: Optional `(db, org, data, file_bytes_by_ref, acting_user, warnings) -> None`,
+            called just *before* `import_` with the bundle's embedded bytes (keyed by `file_ref`),
+            so the content `import_` writes can refer to the files it creates. It owns checking
+            every file it stores as untrusted input.
     """
 
     export: Callable[[Session, Organization], dict[str, Any]]
@@ -836,6 +853,8 @@ class ModuleOrgBundleHooks:
     compute_merge_conflicts: Callable[[Session, Organization, dict[str, Any]], list[dict[str, Any]]] | None = None
     merge_resolution_choices: Mapping[str, frozenset[str]] = field(default_factory=dict)
     summarize_merge: Callable[[dict[str, Any], list[dict[str, Any]], dict[str, str]], dict[str, int]] | None = None
+    export_files: Callable[[Session, Organization, dict[uuid.UUID, FileAsset]], dict[str, Any]] | None = None
+    import_files: Callable[[Session, Organization, dict[str, Any], dict[str, bytes], User, BundleImportWarnings], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -2044,11 +2063,86 @@ class ScalingProbe:
     has_detail: bool = True
 
 
+@dataclass(frozen=True)
+class RecordCommentProvider:
+    """How a module opts one of its `artefact_types` into the generic record comments (`services.record_comments`).
+
+    Reading and commenting follow the record's own visibility (`ArtefactResolver`, as the Links panel does) and the
+    project view right, so a provider declares only where a comment may be pinned on the record's drawing. A type
+    with an empty `anchor_kinds` takes ordinary comments and no pins.
+
+    Attributes:
+        anchor_kinds: The pin anchors the record's drawing offers: `node` (a box), `edge` (a line); a free spot
+            (`none`) is always allowed where the type allows any pin.
+        validate_anchor: `validate_anchor(db, project_id, record_id, kind, key)` is true when `key` names a box or
+            line that exists for the record in that project; called for every new or moved pin with a `node` or
+            `edge` anchor. Required when `anchor_kinds` is not empty.
+    """
+
+    anchor_kinds: tuple[str, ...] = ()
+    validate_anchor: Callable[[Session, uuid.UUID, uuid.UUID, str, str], bool] | None = None
+
+
+@dataclass(frozen=True)
+class BaselineSnapshotRecord:
+    """One record a `BaselineSnapshotProvider` captured.
+
+    Attributes:
+        item_id: The live record's id when the snapshot was taken.
+        content: A self-contained JSON object describing the record as it stood (never a reference that needs the live
+            record to read, and never a Restricted-classified or personal-data value, since the baseline outlives the
+            record and travels in the project bundle).
+    """
+
+    item_id: uuid.UUID
+    content: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class BaselineSnapshotContext:
+    """What a snapshot provider is told about the baseline being written.
+
+    Attributes:
+        kind: `stage` (a stage entered a locked phase) or `manual` (taken on request).
+        stage_id: The stage being baselined, for a `stage` baseline.
+        component_id: Set when the baseline is one component's own (component phases); a provider whose records do not
+            belong to a component returns nothing then, so the project-wide baseline is the only one that holds them.
+        actor_id: The person who triggered it.
+    """
+
+    kind: str
+    stage_id: uuid.UUID | None
+    component_id: uuid.UUID | None
+    actor_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
+class BaselineSnapshotProvider:
+    """How a module's records enter a baseline (`services.baseline`), for one of its own `artefact_types`.
+
+    Attributes:
+        snapshot: `snapshot(db, project, context)` returns the project's records of this type as they stand, one
+            `BaselineSnapshotRecord` each, in a stable order. It reads through the module's own visibility rules and
+            never flushes or commits; it runs inside the caller's transaction, so a failure stores no baseline.
+        permission: The permission atom (`services.permissions.encode_permission`) a person needs to put this type in a
+            manual baseline. An automatic stage baseline is written for the person who moved the stage and is not
+            subject to it.
+    """
+
+    snapshot: Callable[[Session, Any, BaselineSnapshotContext], list[BaselineSnapshotRecord]]
+    permission: str
+
+
 class ScalingProbeApi:
-    """The calls a `ScalingProbe.create` makes: `post(path, body)` and `get(path)` return the decoded JSON and
-    raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation."""
+    """The calls a `ScalingProbe.create` makes: `post(path, body)`, `put(path, body)` and `get(path)` return the decoded
+    JSON and raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation. A
+    probe's last `post` must be the request that creates the record under test, because the creation-permission check
+    runs that one as another person; a `put` never takes that role."""
 
     def post(self, path: str, body: dict[str, Any] | None = None) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def put(self, path: str, body: dict[str, Any] | None = None) -> Any:  # pragma: no cover - interface
         raise NotImplementedError
 
     def get(self, path: str) -> Any:  # pragma: no cover - interface
@@ -2966,6 +3060,14 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        record_comments: Maps one of this module's own `artefact_types` to a `RecordCommentProvider`, giving its records
+            the generic comments (ordinary and, where the provider allows anchors, pinned threads on a drawing) with
+            no table or route of its own. Read via `get_record_comment_providers`. Existing module-local comment
+            tables are unchanged.
+        baseline_snapshots: Maps one of this module's own `artefact_types` to a `BaselineSnapshotProvider`, so the
+            records of that type are captured in every baseline of a project where the module is on: a stage baseline
+            when a stage enters a locked phase, and a manual one taken on request. Read via
+            `get_baseline_snapshot_providers`. A type with none is not part of baselines.
         not_placeable: `{artefact type: reason}` for a type that cannot be placed in the project's component/category
             tree (a record that exists only as part of a structure of its own). Every other registered type is placed
             through the shared `artefact_placements` table with no module code. Read via `get_not_placeable_types`.
@@ -3104,6 +3206,8 @@ class ModuleDefinition:
     not_importable: dict[str, str] = field(default_factory=dict)
     not_creatable_from_links: dict[str, str] = field(default_factory=dict)
     not_placeable: dict[str, str] = field(default_factory=dict)
+    record_comments: dict[str, RecordCommentProvider] = field(default_factory=dict)
+    baseline_snapshots: dict[str, BaselineSnapshotProvider] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
@@ -3967,7 +4071,7 @@ def configure_alembic_version_locations(cfg: Config) -> None:
       by every registered module's own `migrations_dir` (skipping `None`),
       each an absolute path so this works regardless of the caller's own
       current working directory.
-    - `version_path_separator`: `"os"` — required by Alembic whenever more
+    - `path_separator`: `"os"` — required by Alembic whenever more
       than one location is configured (its own default separator, `" "`,
       cannot disambiguate a path containing a space; `"os"` uses `os.
       pathsep`, this project's own operating convention, matching Alembic's
@@ -3993,7 +4097,7 @@ def configure_alembic_version_locations(cfg: Config) -> None:
             continue
         locations.append(str(_BACKEND_DIR / definition.migrations_dir))
     cfg.set_main_option("version_locations", os.pathsep.join(locations))
-    cfg.set_main_option("version_path_separator", "os")
+    cfg.set_main_option("path_separator", "os")
 
 
 def apply_external_module_migrations(engine: Engine) -> None:
@@ -4802,9 +4906,8 @@ def list_organization_artefact_summaries(
         return []
     if not is_module_enabled(db, organization_id, definition.key):
         return []
-    if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
-        db, organization_id, definition.key, artefact_type
-    ):
+    serving = subcomponent_serving(definition, artefact_type)
+    if serving is not None and not is_org_module_subcomponent_enabled(db, organization_id, definition.key, serving.key):
         return []
     return list_for_organization(db, organization_id)
 
@@ -4955,6 +5058,26 @@ def get_not_placeable_types() -> dict[str, str]:
     for definition in get_module_registry().values():
         reasons.update(definition.not_placeable)
     return reasons
+
+
+def get_record_comment_providers() -> dict[str, RecordCommentProvider]:
+    """`{artefact type: RecordCommentProvider}` for every type a module opted into the generic record comments
+    (no core type is among them: their comments are their own tables)."""
+    providers: dict[str, RecordCommentProvider] = {}
+    for definition in get_module_registry().values():
+        providers.update(definition.record_comments)
+    return providers
+
+
+def get_baseline_snapshot_providers() -> dict[str, tuple[str, BaselineSnapshotProvider]]:
+    """`{artefact type: (module key, BaselineSnapshotProvider)}` for every type a module opted into baselines (no
+    core type is among them: requirements are captured by `services.baseline` itself). A type claimed twice keeps the
+    first registration."""
+    providers: dict[str, tuple[str, BaselineSnapshotProvider]] = {}
+    for key, definition in get_module_registry().items():
+        for artefact_type, provider in definition.baseline_snapshots.items():
+            providers.setdefault(artefact_type, (key, provider))
+    return providers
 
 
 def get_not_creatable_from_links_types() -> dict[str, str]:
@@ -5177,6 +5300,15 @@ def get_link_type_seed_owners() -> dict[str, frozenset[str]]:
     return {name: frozenset(keys) for name, keys in owners.items()}
 
 
+def subcomponent_serving(definition: ModuleDefinition, artefact_type: str) -> ModuleSubComponentDefinition | None:
+    """The sub-component of `definition` that serves `artefact_type`: the one keyed by the type's own name, else the one that
+    lists it in `artefact_types`; `None` when the type is served by the whole module."""
+    for sub in definition.sub_components:
+        if sub.key == artefact_type or artefact_type in sub.artefact_types:
+            return sub
+    return None
+
+
 def _artefact_type_enabled_for_project(
     db: Session, definition: ModuleDefinition, artefact_type: str, project_id: uuid.UUID
 ) -> bool:
@@ -5184,8 +5316,9 @@ def _artefact_type_enabled_for_project(
     and, where the module declares a sub-component keyed by the artefact type
     itself (Context & Strategy's `"pain_point"`, Stakeholders' `"persona"`),
     whether that sub-component is too."""
-    if any(sub.key == artefact_type for sub in definition.sub_components):
-        return is_module_subcomponent_enabled(db, project_id, definition.key, artefact_type)
+    sub = subcomponent_serving(definition, artefact_type)
+    if sub is not None:
+        return is_module_subcomponent_enabled(db, project_id, definition.key, sub.key)
     return is_module_enabled_for_project(db, project_id, definition.key)
 
 

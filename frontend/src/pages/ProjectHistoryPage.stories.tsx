@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { ChangeEntry, Principal } from "../api/types";
 import { buildChangeEntry, withRouter } from "../testing/storybook-helpers";
 import { ProjectHistoryPage } from "./ProjectHistoryPage";
+import { chooseMenuRow } from "../testing/menuTree";
 
 const meta: Meta<typeof ProjectHistoryPage> = {
   title: "Pages/ProjectHistoryPage",
@@ -351,10 +352,7 @@ export const ExportMenuSendsTheFilters: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "List actions" }));
-    const body = within(document.body);
-    await userEvent.click(await body.findByRole("menuitem", { name: "Download shown items" }));
-    const submenu = within(await body.findByRole("menu", { name: "Download shown items" }));
-    await userEvent.click(submenu.getByRole("menuitem", { name: /CSV/ }));
+    await chooseMenuRow(/CSV/);
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/changes\/export\?.*kind=status.*format=csv|changes\/export\?.*format=csv.*kind=status/)));
   },
 };

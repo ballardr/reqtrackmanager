@@ -80,10 +80,11 @@ export function PersonaListView({
       typeName={(p) => p.persona_type_name}
       nameIcon={() => <PeopleKindIcon kind="persona" />}
       searchText={(p) => `${p.unique_code} ${p.name} ${p.role_title}`}
-      columnsBeforeType={[{ key: "role", label: "Role", render: (p) => p.role_title || "—" }]}
+      columnsBeforeType={[{ key: "role", label: "Role", sortable: true, sortValue: (p) => p.role_title || null, render: (p) => p.role_title || "—" }]}
       columnsAfterScope={[
         {
-          key: "weight", label: "Weight",
+          key: "weight", label: "Weight", sortable: true,
+          sortValue: (p) => (showEffectiveWeight ? p.effective_weight : p.weight),
           render: (p) => {
             const value = showEffectiveWeight ? p.effective_weight : p.weight;
             return value === null ? "—" : String(value);

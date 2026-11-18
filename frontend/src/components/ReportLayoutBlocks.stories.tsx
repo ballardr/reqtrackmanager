@@ -8,6 +8,7 @@ import {
   buildBlockCatalogue, buildFieldCatalogue, buildImageLibrary, buildLayoutApi, buildOutlineTree, buildWidgets,
 } from "../testing/reportLayoutFixtures";
 import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
+import { chooseMenuRow } from "../testing/menuTree";
 import { chooseSnippetMenuItem, snippetMenuItem } from "../testing/reportSnippetMenuHelpers";
 import { treeToWorkspaceState, workspaceStateToTree } from "../utils/reportLayoutBlockly";
 import type { Tree } from "../utils/reportLayoutTree";
@@ -232,7 +233,7 @@ export const AnAtPageBottomBlockHoldsItsContents: Story = {
 /** Adds a block of `name` from the Add block menu. */
 async function addFromMenu(canvas: ReturnType<typeof within>, name: string) {
   await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
-  await userEvent.click(await screen.findByRole("menuitem", { name }));
+  await chooseMenuRow(name);
 }
 
 export const AddBlockWithNothingSelectedAppendsToTheLayoutAndSaysSo: Story = {
@@ -354,9 +355,9 @@ export const TheMostUsedBlocksAreListedFirst: Story = {
     await workspaceOf();
     await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
     const names = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
-    await expect(names.slice(0, 5).map((n) => n?.trim())).toEqual(["Heading 1", "Heading 2", "Heading 3", "Text", "Table (records)"]);
-    await expect(screen.getByText("Most used")).toBeInTheDocument();
-    await expect(screen.getByText("Other blocks")).toBeInTheDocument();
+    // The first group ("Most used") starts open under its own row; "Other blocks" is a closed row after it.
+    await expect(names.slice(0, 6).map((n) => n?.trim())).toEqual(["Most used", "Heading 1", "Heading 2", "Heading 3", "Text", "Table (records)"]);
+    await expect(screen.getByRole("menuitem", { name: "Other blocks" })).toHaveAttribute("aria-expanded", "false");
   },
 };
 
@@ -367,7 +368,7 @@ export const AddingInsideAContainerUsesTheInspector: Story = {
     Blockly.common.setSelected(blocksOf(ws, "each")[0]);
     const inspector = await canvas.findByTestId("block-inspector");
     await userEvent.click(within(inspector).getByRole("button", { name: "Add to Contents" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Equation" }));
+    await chooseMenuRow("Equation");
     await waitFor(() => expect((treeOf(canvasElement).nodes[1].children as { type: string }[]).map((n) => n.type)).toEqual(["heading", "table", "equation"]));
     // The structure changed, so the workspace was redrawn from the tree.
     await waitFor(() => expect(blocksOf(ws, "equation")).toHaveLength(1));

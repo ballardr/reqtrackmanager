@@ -27,6 +27,7 @@ submodule some other piece of code imports first.
 """
 
 from app.modules import registry as _registry
+from app.modules.architecture.module import MODULE_DEFINITION as _ARCHITECTURE_MODULE
 from app.modules.compliance.module import MODULE_DEFINITION as _COMPLIANCE_MODULE
 from app.modules.context_strategy.module import MODULE_DEFINITION as _CONTEXT_STRATEGY_MODULE
 from app.modules.decisions.module import MODULE_DEFINITION as _DECISIONS_MODULE
@@ -40,3 +41,4 @@ _registry.INSTALLED_MODULES.append(_CONTEXT_STRATEGY_MODULE)
 _registry.INSTALLED_MODULES.append(_STAKEHOLDERS_MODULE)
 _registry.INSTALLED_MODULES.append(_RISK_MANAGEMENT_MODULE)
 _registry.INSTALLED_MODULES.append(_PRODUCT_FEEDBACK_MODULE)
+_registry.INSTALLED_MODULES.append(_ARCHITECTURE_MODULE)

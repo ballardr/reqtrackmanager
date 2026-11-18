@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectGuidingPrinciplesPage } from "./ProjectGuidingPrinciplesPage";
 import type { GuidingPrinciple } from "./types";
@@ -86,5 +87,14 @@ export const ExportCarriesThePageFilters: Story = {
     await userEvent.keyboard("{Escape}");
     await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/guiding_principle/export"));
+  },
+};
+
+/** The Name header orders the guiding principles, ascending then descending. */
+export const NameHeaderSortsTheGuidingPrinciples: Story = {
+  beforeEach: () => mockPageApis([guidingPrinciple(), guidingPrinciple({ id: "gp-2", name: "Operate safely under degraded connectivity", status: "draft" })]),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table");
+    await expectHeaderOrdersText(table, "Name");
   },
 };

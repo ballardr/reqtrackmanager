@@ -20,7 +20,7 @@ test.describe("project import: people in the bundle", () => {
 
     await page.goto("/projects");
     await page.getByRole("button", { name: "More options" }).click();
-    await page.getByRole("button", { name: "Import project" }).click();
+    await page.getByRole("menuitem", { name: "Import project" }).click();
     const dialog = page.getByRole("dialog", { name: "Import project" });
     await dialog.getByLabel("Name", { exact: true }).fill(`E2E People Import (${Date.now()})`);
     const orgSelect = dialog.locator("select").first();

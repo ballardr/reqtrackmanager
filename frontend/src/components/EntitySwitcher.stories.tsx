@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { expectTextRows } from "../testing/menuRows";
 import { withRouter } from "../testing/storybook-helpers";
 import { EntitySwitcher, type EntitySwitcherOption } from "./EntitySwitcher";
 
@@ -100,6 +101,8 @@ export const SelectingASiblingClosesThePopover: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Switch organisation" }));
+    // The destinations are plain text rows like every menu, never standard buttons.
+    await expectTextRows(within(document.body).getByRole("dialog", { name: "Switch organisation" }));
     await userEvent.click(within(document.body).getByRole("link", { name: "Globex Corporation" }));
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
   },

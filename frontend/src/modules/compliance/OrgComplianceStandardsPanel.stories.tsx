@@ -182,7 +182,7 @@ export const ExportPassesActiveFiltersAsQueryParams: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download CSV report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/reports?format=csv&project_id=proj-2&standard_id=std-1`
     ));

@@ -28,7 +28,6 @@ import { ColourChoiceField } from "./ColourChoiceField";
 import { FileNameField } from "./FileNameField";
 import { FontChoiceField } from "./FontChoiceField";
 import { ChoiceButtons } from "./ChoiceButtons";
-import { FieldHelp } from "./FieldHelp";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { ToggleButton } from "./ToggleButton";
 import { ReportImageField } from "./ReportImageField";
@@ -160,18 +159,15 @@ export function ReportLayoutBlockField({
     }
     case "toggle":
       control = (
-        <span className="row" style={{ gap: "var(--space-2)", flexWrap: "nowrap" }}>
-          <ToggleButton
-            label={field.label} iconOnly={false} disabled={disabled} pressed={value === undefined ? field.default === true : value === true}
-            onClick={() => {
-              const on = !(value === undefined ? field.default === true : value === true);
-              set(field.default === true ? (on ? undefined : false) : on ? true : undefined);
-            }}
-          >
-            {field.label}
-          </ToggleButton>
-          {help && <FieldHelp label={field.label} help={help} />}
-        </span>
+        <ToggleButton
+          label={field.label} iconOnly={false} disabled={disabled} help={help} pressed={value === undefined ? field.default === true : value === true}
+          onClick={() => {
+            const on = !(value === undefined ? field.default === true : value === true);
+            set(field.default === true ? (on ? undefined : false) : on ? true : undefined);
+          }}
+        >
+          {field.label}
+        </ToggleButton>
       );
       break;
     case "text":

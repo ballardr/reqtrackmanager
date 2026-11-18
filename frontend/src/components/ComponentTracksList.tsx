@@ -21,6 +21,7 @@ import { useMemo, useState } from "react";
 import type { Component, ComponentPhases, ComponentTrack, PhasePlan, ProjectStage, StageWorkflow } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { usePhaseMove } from "../hooks/usePhaseMove";
+import { useTableSort } from "../hooks/useTableSort";
 import { formatDay, trackRows, type DeliveryRow } from "../utils/deliveryPlan";
 import { Badge } from "./Badge";
 import { DeliveryTimeline } from "./DeliveryTimeline";
@@ -91,11 +92,21 @@ export function ComponentTracksList({
   }
 
   const nameOf = (list: { id: string; name: string }[], id: string) => list.find((item) => item.id === id)?.name ?? "";
+  const planRowOf = (track: ComponentTrack) => planRows.get(`${track.component_id}:${track.stage_id}`);
+  const table = useTableSort(rows, {
+    component: (track) => nameOf(components, track.component_id),
+    stage: (track) => nameOf(stages, track.stage_id),
+    phase: (track) => (track.not_applicable ? null : track.phase_name),
+    progress: (track) => (track.not_applicable ? null : planRowOf(track)?.progress ?? null),
+    expected: (track) => (track.not_applicable ? null : planRowOf(track)?.expectedFrom ?? null),
+    workflow: (track) => track.workflow_name,
+    owner: (track) => track.owner?.label ?? null,
+  });
   const columns: DirectoryColumn<ComponentTrack>[] = [
-    { key: "component", label: t.component, render: (track) => <strong>{nameOf(components, track.component_id)}</strong> },
-    { key: "stage", label: strings.componentPhases.stageColumn, render: (track) => nameOf(stages, track.stage_id) },
+    { key: "component", label: t.component, sortable: true, render: (track) => <strong>{nameOf(components, track.component_id)}</strong> },
+    { key: "stage", label: strings.componentPhases.stageColumn, sortable: true, render: (track) => nameOf(stages, track.stage_id) },
     {
-      key: "phase", label: plans ? strings.deliveryPlan.currentPhaseColumn : t.phaseColumn,
+      key: "phase", label: plans ? strings.deliveryPlan.currentPhaseColumn : t.phaseColumn, sortable: true,
       render: (track) => {
         if (track.not_applicable) return <span className="text-muted">{t.noPhase}</span>;
         const phases = workflows.find((w) => w.id === track.workflow_id)?.phases ?? [{ id: track.phase_id, name: track.phase_name, kind: track.phase_kind }];
@@ -109,8 +120,8 @@ export function ComponentTracksList({
       },
     },
     ...(plans ? planColumns(planRows, strings.deliveryPlan, (track) => [nameOf(components, track.component_id), nameOf(stages, track.stage_id)], onSchedule) : []),
-    ...(plans ? [] : [{ key: "workflow", label: t.workflow, render: (track: ComponentTrack) => track.workflow_name }]),
-    { key: "owner", label: t.owner, render: (track) => <PrincipalBadge principal={track.owner} placeholder="" /> },
+    ...(plans ? [] : [{ key: "workflow", label: t.workflow, sortable: true, render: (track: ComponentTrack) => track.workflow_name }]),
+    { key: "owner", label: t.owner, sortable: true, render: (track) => <PrincipalBadge principal={track.owner} placeholder="" /> },
     {
       key: "state", label: t.stateColumn,
       render: (track) => (
@@ -158,7 +169,8 @@ export function ComponentTracksList({
         )
       ) : (
         <DirectoryTable
-          ariaLabel={plans ? strings.deliveryPlan.tracksTable : t.tracksTable} columns={columns} rows={rows}
+          ariaLabel={plans ? strings.deliveryPlan.tracksTable : t.tracksTable} columns={columns} rows={table.rows}
+          sort={table.sort} onSort={table.onSort}
           rowKey={(track) => `${track.component_id}:${track.stage_id}`}
           emptyState={<div className="text-muted">{movableOnly ? t.noMovable : t.noTracks}</div>}
         />
@@ -181,7 +193,7 @@ function planColumns(
   const rowOf = (track: ComponentTrack) => rows.get(`${track.component_id}:${track.stage_id}`);
   return [
     {
-      key: "progress", label: t.progressColumn,
+      key: "progress", label: t.progressColumn, sortable: true,
       render: (track) => {
         const row = rowOf(track);
         return row && !track.not_applicable
@@ -190,7 +202,7 @@ function planColumns(
       },
     },
     {
-      key: "expected", label: t.expectedColumn,
+      key: "expected", label: t.expectedColumn, sortable: true,
       render: (track) => {
         const row = rowOf(track);
         if (!row || track.not_applicable) return "";

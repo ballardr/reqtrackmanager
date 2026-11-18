@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { expectHeaderSorts } from "../../testing/sortHelpers";
 import type { OrgUser, Project } from "../../api/types";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
@@ -169,7 +170,7 @@ export const DownloadReport: Story = {
     await waitFor(() => expect(canvas.getByText(/ISO-27001/)).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download PDF report" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Download PDF report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports?format=pdf`
     ));
@@ -178,3 +179,20 @@ export const DownloadReport: Story = {
 
 export const LightTheme: Story = { ...ListsAssignedStandards };
 export const DarkTheme: Story = { ...ListsAssignedStandards, globals: { theme: "dark" } };
+
+/** The Standard and Compliance headers order the assigned standards; a standard with no status sorts last. */
+export const HeadersSortTheAssignedStandards: Story = {
+  beforeEach: () =>
+    mockApis({
+      assignments: [assignment(), assignment({ id: "pc-2" })],
+      statuses: [
+        status(),
+        status({ project_compliance_id: "pc-2", standard_reference: "SOC-2", standard_name: "SOC 2", compliance_percentage: 40, applicable_count: 5 }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Compliance standards assigned to this project" });
+    await expectHeaderSorts(table, "Standard", ["ISO-27001 — ISO 27001", "SOC-2 — SOC 2"]);
+    await expectHeaderSorts(table, "Compliance", ["40.0% (5 applicable)", "77.8% (9 applicable)"]);
+  },
+};

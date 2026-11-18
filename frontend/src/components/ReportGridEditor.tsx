@@ -37,7 +37,7 @@ import type { TableHeadings } from "../utils/reportPageSetup";
 import { ColourChoiceField } from "./ColourChoiceField";
 import { FontChoiceField } from "./FontChoiceField";
 import { TextField } from "./FormFields";
-import { FieldHelp } from "./FieldHelp";
+import { FieldCaption } from "./FieldHelp";
 import { LabeledSelect } from "./LabeledSelect";
 import { ToggleButton } from "./ToggleButton";
 
@@ -234,6 +234,7 @@ export function ReportGridEditor({
             />
           </div>
           <div className="row grid-editor__toolbar" role="toolbar" aria-label={text.structure}>
+            <FieldCaption label={text.selectionHelpLabel} help={text.selectionHint} muted />
             <button type="button" className="btn btn-sm" onClick={() => run(addRow(shape, rect.r0), text.changed.rowAdded)}>{text.addRowAbove}</button>
             <button type="button" className="btn btn-sm" onClick={() => run(addRow(shape, rect.r1 + 1), text.changed.rowAdded, () => setAnchor({ r: rect.r1 + 1, c: column }))}>{text.addRowBelow}</button>
             <button
@@ -251,7 +252,6 @@ export function ReportGridEditor({
             >
               {text.removeColumn}
             </button>
-            <FieldHelp label={text.selectionHelpLabel} help={text.selectionHint} />
           </div>
         </>
       )}

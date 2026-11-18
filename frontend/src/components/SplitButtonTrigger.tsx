@@ -11,7 +11,8 @@
  * (including the common "add one" case) stop at a menu first.
  *
  * Design/implementation notes:
- * - The alternatives menu shares `Popover`'s existing positioning and
+ * - The alternatives are the shared `ActionMenuList` (text rows, never buttons) in a `Popover`, which supplies the
+ *   positioning and
  *   outside-click/Escape-close logic (anchored to the chevron, not the main
  *   button, so the menu opens beside the control that revealed it) — per
  *   the style guide's own instruction to build this "sharing `Popover`'s
@@ -35,6 +36,7 @@
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
+import { ActionMenuList } from "./ActionMenu";
 import { Popover } from "./Popover";
 
 export interface SplitButtonAlternative {
@@ -92,23 +94,12 @@ export function SplitButtonTrigger({
         <ChevronDown size={14} />
       </button>
       {menuOpen && (
-        <Popover anchorRef={chevronRef} title={menuTitle} onClose={() => setMenuOpen(false)}>
-          <div className="stack" style={{ gap: "var(--space-1)", minWidth: 180 }}>
-            {alternatives.map((alt, i) => (
-              <button
-                key={i}
-                type="button"
-                className="btn"
-                style={{ justifyContent: "flex-start" }}
-                onClick={() => {
-                  setMenuOpen(false);
-                  alt.onSelect();
-                }}
-              >
-                {alt.label}
-              </button>
-            ))}
-          </div>
+        <Popover anchorRef={chevronRef} fit menu title={menuTitle} onClose={() => setMenuOpen(false)}>
+          <ActionMenuList
+            label={menuTitle}
+            items={alternatives.map((alt, i) => ({ key: String(i), label: alt.label, onSelect: alt.onSelect }))}
+            onSelect={() => setMenuOpen(false)}
+          />
         </Popover>
       )}
     </div>

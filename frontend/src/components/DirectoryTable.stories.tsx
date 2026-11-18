@@ -281,3 +281,36 @@ export const LongCellsKeepPillsAndControlsTidy: Story = {
     await expect(orphanedControlViolations(canvasElement)).toEqual([]);
   },
 };
+
+/** The selection demo: the caller owns the chosen keys; one row cannot be selected and shows no box. */
+function SelectionDemo({ onChange }: { onChange: (next: Set<string>) => void }) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  return (
+    <DirectoryTable
+      ariaLabel="Demo directory" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id}
+      emptyState={<p className="text-muted">No rows yet.</p>}
+      selection={{
+        selected, label: (row) => `Select ${row.name}`, selectable: (row) => row.id !== "u-jordan",
+        onChange: (next) => { setSelected(next); onChange(next); },
+      }}
+    />
+  );
+}
+
+export const SelectionColumnSelectsRowsAndTheHeaderSelectsAllThatCanBe: Story = {
+  render: () => <SelectionDemo onChange={selectionChanged} />,
+  play: async ({ canvasElement }) => {
+    selectionChanged.mockClear();
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("checkbox", { name: "Select Jordan Lee" })).toBeNull();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Select Alex Morgan" }));
+    await expect(selectionChanged).toHaveBeenLastCalledWith(new Set(["u-alex"]));
+    await expect((canvas.getByRole("checkbox", { name: "Select all rows" }) as HTMLInputElement).indeterminate).toBe(true);
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Select all rows" }));
+    await expect(selectionChanged).toHaveBeenLastCalledWith(new Set(["u-alex", "u-priya"]));
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Select all rows" }));
+    await expect(selectionChanged).toHaveBeenLastCalledWith(new Set());
+  },
+};
+
+const selectionChanged = fn();

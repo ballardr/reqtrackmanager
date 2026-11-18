@@ -21,12 +21,23 @@ import type { ReportLayoutApi, ReportLayoutDraftSummary, ReportLayoutVersionSumm
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useTableSort } from "../hooks/useTableSort";
 import { diffLines, type DiffLine } from "../utils/reportLayoutText";
+import type { SortValue } from "../utils/sortRows";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { LabeledSelect } from "./LabeledSelect";
 import { LayoutDiff } from "./LayoutDiff";
 import { LayoutDraftNotice } from "./LayoutDraftNotice";
 import { Spinner } from "./Spinner";
+
+const NO_VERSIONS: ReportLayoutVersionSummary[] = [];
+
+/** Sortable value of each sortable column of the version table. */
+const VERSION_SORT_VALUES: Record<string, (version: ReportLayoutVersionSummary) => SortValue> = {
+  version: (v) => v.version,
+  note: (v) => v.comment || null,
+  when: (v) => v.created_at,
+};
 
 /**
  * @param api The calls, bound to the layout's scope.
@@ -86,6 +97,7 @@ export function ReportLayoutHistory({
   }, [api, layoutId, compare, text.historyLoadFailed]);
 
   useLoadOnChange(load, [layoutId, currentVersion]);
+  const table = useTableSort(versions ?? NO_VERSIONS, VERSION_SORT_VALUES);
 
   if (failed && !versions) return <p className="text-muted" role="alert">{failed}</p>;
   if (!versions) return <Spinner />;
@@ -104,10 +116,11 @@ export function ReportLayoutHistory({
     {
       key: "version",
       label: text.historyListLabel,
+      sortable: true,
       render: (v) => `${text.historyVersion(v.version)}${v.version === currentVersion ? ` (${text.historyCurrent})` : ""}`,
     },
-    { key: "note", label: text.changeNoteLabel, render: (v) => v.comment || <span className="text-muted">{text.historyNoNote}</span> },
-    { key: "when", label: text.updatedHeading, render: (v) => new Date(v.created_at).toLocaleString() },
+    { key: "note", label: text.changeNoteLabel, sortable: true, render: (v) => v.comment || <span className="text-muted">{text.historyNoNote}</span> },
+    { key: "when", label: text.updatedHeading, sortable: true, render: (v) => new Date(v.created_at).toLocaleString() },
     ...(onUseVersion
       ? [{
         key: "use",
@@ -127,7 +140,7 @@ export function ReportLayoutHistory({
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{text.historyHint}</p>
       {draft && <LayoutDraftNotice summary={draft.summary} currentVersion={currentVersion} onDiscard={draft.onDiscard} />}
-      <DirectoryTable ariaLabel={text.historyListLabel} columns={columns} rows={versions} rowKey={(v) => String(v.version)} emptyState={null} />
+      <DirectoryTable ariaLabel={text.historyListLabel} columns={columns} rows={table.rows} rowKey={(v) => String(v.version)} sort={table.sort} onSort={table.onSort} emptyState={null} />
       {versions.length > 1 && from !== null && to !== null && (
         <div className="row" style={{ alignItems: "flex-end" }}>
           <LabeledSelect helpNotNeeded label={text.compareFrom} value={String(from)} placeholder={null} options={options}

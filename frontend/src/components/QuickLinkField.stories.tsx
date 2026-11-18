@@ -4,6 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { DRAFT_ARTEFACT_ID, type CollectedLink } from "../api/artefactLinks";
 import { buildCandidate, buildLinksApi, buildOption, LINKS_PROJECT_ID } from "../testing/artefactLinksFixtures";
+import { expectTextRows } from "../testing/menuRows";
 import { withRouter } from "../testing/storybook-helpers";
 import { QuickLinkField } from "./QuickLinkField";
 
@@ -119,7 +120,10 @@ export const ThePreferredTypeIsListedOnFocus: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("combobox", { name: "Link to" }));
-    await expect(await canvas.findByRole("option", { name: /PER-001 Field engineer/ })).toBeInTheDocument();
+    const option = await canvas.findByRole("option", { name: /PER-001 Field engineer/ });
+    await expect(option).toBeInTheDocument();
+    // Options are plain text rows like every menu, never standard buttons.
+    await expectTextRows(option.closest<HTMLElement>('[role="listbox"]') as HTMLElement);
     await expect(args.api!.candidates).toHaveBeenCalledWith(
       LINKS_PROJECT_ID, "pain_point", DRAFT_ARTEFACT_ID, expect.objectContaining({ otherType: "persona" }),
     );
