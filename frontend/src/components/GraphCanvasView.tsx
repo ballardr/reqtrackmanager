@@ -453,7 +453,10 @@ const NO_SHIFT: LinePoint = { x: 0, y: 0 };
 
 const EDGE_TYPES = { multiline: GraphLineEdge, loop: GraphLoopEdge, routed: GraphRoutedEdge };
 
-type Box = BoxGeometry;
+type Box = BoxGeometry & { marker?: boolean };
+
+/** The sides a loop on this box may use: a marker's offered points (its drawing is only there), none for a box. */
+const loopSides = (box: Box) => (box.marker ? box.points ?? SIDE_POINTS : undefined);
 
 /** Where a line's two ends are and its lane's shift: its attach points joined (`graphLineAnchors`), moved sideways by its lane. */
 function lineRun(from: Box, to: Box, anchor: LineAnchor): { start: LoopPoint; end: LoopPoint } {
@@ -478,7 +481,7 @@ function edgeMiddles(boxes: Map<string, Box>, edges: GraphCanvasProps["edges"], 
     const anchor = anchors.get(e.id);
     if (!from || !to || !anchor) continue;
     if (anchor.loopSlot !== undefined) {
-      middles.set(e.id, selfLoop(from, anchor.loopSlot).label);
+      middles.set(e.id, selfLoop(from, anchor.loopSlot, loopSides(from)).label);
       continue;
     }
     const run = lineRun(from, to, anchor);
@@ -743,7 +746,7 @@ export function GraphCanvasView({
       const keep = z && z.baseWidth === baseWidth && z.baseHeight === baseHeight;
       map.set(n.id, {
         ...position, width: keep ? z.width : baseWidth, height: keep ? z.height : baseHeight,
-        points: n.attachPoints ?? (n.marker ? SIDE_POINTS : undefined),
+        points: n.attachPoints ?? (n.marker ? SIDE_POINTS : undefined), marker: n.marker === true,
       });
     }
     return map;
@@ -923,7 +926,7 @@ export function GraphCanvasView({
       // Every line of an editable canvas is drawn by the routed edge, so its label looks the same selected or not and a drag can add a vertex.
       const editable = !readOnly && !commenting && pointsEditable && e.routable !== false;
       const routed = !loop && (via.length > 0 || laned || (e.lineShape ?? "straight") !== "straight" || (!readOnly && pointsEditable && e.routable !== false));
-      const loopShape = loop ? selfLoop(from, anchor.loopSlot) : null;
+      const loopShape = loop ? selfLoop(from, anchor.loopSlot, loopSides(from)) : null;
       const shape = loopShape
         ? { type: "loop", data: { path: selfLoopPath(loopShape), label: e.label, at: loopShape.label, align: loopShape.align } }
         : routed

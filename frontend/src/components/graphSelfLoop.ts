@@ -14,12 +14,21 @@
  *   outward past the top right corner by `SELF_LOOP_REACH` and returns to the right side a quarter of the way down, so its
  *   arrowhead points into the box. A consumer cannot fix its attach points (a loop has no choice to make); several loops on
  *   one box take the other corners in turn (`slot`, given by `graphLineAnchors`), so none draws over another.
+ * - A marker (a dot, a ring, a diamond) has no box outline at its corners, so its loop leaves the middle of a top or bottom side
+ *   and returns to the middle of a left or right side, which are the points on its drawing (`sides`, the points the marker offers:
+ *   a corner of the loop is used only when both of its sides are offered, so a label on one side is not crossed).
  * - The server draws the same loop with a Python copy (`state_shapes.py`); `graphSelfLoopCases.json` holds the cases both are
  *   tested against, so a change to the rule is made in both.
  */
 
 /** How far the curve reaches beyond the box, in canvas units. */
 export const SELF_LOOP_REACH = 36;
+
+/** The four sides a loop on a marker may use. */
+export type LoopSide = "top" | "right" | "bottom" | "left";
+
+/** The two sides each corner slot of a marker's loop uses: the top right first, then the bottom right, bottom left and top left. */
+const CORNER_SIDES: readonly (readonly [LoopSide, LoopSide])[] = [["top", "right"], ["bottom", "right"], ["bottom", "left"], ["top", "left"]];
 
 /** A position in canvas units. */
 export interface LoopPoint {
@@ -47,17 +56,21 @@ export interface SelfLoop {
  * @param box The box's top-left corner and size.
  * @param slot Which corner the loop takes: 0 the top right (the default), then 1 the bottom right, 2 the bottom left and 3 the
  *   top left; from 4 the loops go round again, reaching further out each time.
+ * @param sides For a marker: the sides it offers. The loop then runs between the middles of two of them (the slot picks among the
+ *   corners whose two sides are both offered, or among all four when none is), instead of between points of the bounding box.
  * @returns The curve leaving the top (or bottom) side and returning to the right (or left) side, with the label position at the
  *   curve's middle.
  */
-export function selfLoop(box: { x: number; y: number; width: number; height: number }, slot = 0): SelfLoop {
+export function selfLoop(box: { x: number; y: number; width: number; height: number }, slot = 0, sides?: readonly string[]): SelfLoop {
   const { x, y, width: w, height: h } = box;
-  const corner = slot % 4;
-  const reach = SELF_LOOP_REACH * (1 + Math.floor(slot / 4));
+  const usable = sides ? CORNER_SIDES.map((pair, index) => ({ pair, index })).filter(({ pair }) => pair.every((side) => sides.includes(side))) : [];
+  const corners = usable.length > 0 ? usable.map(({ index }) => index) : [0, 1, 2, 3];
+  const corner = corners[slot % corners.length];
+  const reach = SELF_LOOP_REACH * (1 + Math.floor(slot / corners.length));
   const right = corner === 0 || corner === 1;
   const bottom = corner === 1 || corner === 2;
-  const across = right ? 0.75 : 0.25;
-  const down = bottom ? 0.75 : 0.25;
+  const across = sides ? 0.5 : right ? 0.75 : 0.25;
+  const down = sides ? 0.5 : bottom ? 0.75 : 0.25;
   const sideY = bottom ? y + h : y;
   const sideX = right ? x + w : x;
   const start = { x: x + across * w, y: sideY };

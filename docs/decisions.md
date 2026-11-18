@@ -18814,3 +18814,12 @@ The User reported that the symbol picker's panel ran off the screen in the Selec
 - **Rule (stated in the style guide's canvas pattern).** The opening view fits what is drawn, labels included, and is never made smaller by a fixed reserve; a reserve in pixels for content on one side is a defect.
 - **Tests.** Story `ASmallDrawingWithALongOutsideLabelOpensAtFullSizeWithTheLabelInView` (the symbol is drawn near its own size and the label lies inside the view); the label position Playwright spec now asserts the symbol is drawn at about its size after the label moves outside it.
 - **Review table.** No migration, bundle, search, MCP or access change; the canvas is generic (no module is named); SOC 2 not involved.
+
+## Module 18 (System Architecture) review round 13: Phase 24g, a loop on a symbol runs on the symbol (2026-11-18)
+
+**Defect (User):** the loop back line on a choice was far too far from the choice (screenshot: it floated beside the top right of the diamond).
+
+- **Cause (Decided by: Agent).** A self loop leaves the top side three quarters across and returns to the right side a quarter down, of the node's frame. A marker is only its drawing; a diamond has no outline at those points (its vertices are the middles of its sides), so both ends hung in the air, the further the larger the symbol (a label inside makes it larger, Phase 20a).
+- **Fix (Decided by: Agent).** `selfLoop(box, slot, sides)` / `self_loop`: for a marker the loop runs between the middles of two of its offered sides, bulging out past the corner by the usual reach. The slot picks the corner among those whose two sides are both offered (a label on the right moves the first loop to the top left, as lines avoid that side), then goes round again further out. A box is unchanged. `graphSelfLoopCases.json` gains marker cases (three marker boxes, nine slots each); the canvas marks a box a marker (`loopSides`) and the server's SVG passes the marker's offered sides.
+- **Rule.** A line that ends on a symbol ends on its drawing, never on its frame (connections already use the side middles for markers).
+- **Review table.** No migration, bundle, search, MCP or access change; the canvas stays generic; SOC 2 not involved.

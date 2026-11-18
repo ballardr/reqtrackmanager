@@ -272,6 +272,23 @@ export const ASmallDrawingWithALongOutsideLabelOpensAtFullSizeWithTheLabelInView
   },
 };
 
+/** A loop on a marker starts and ends on the marker's drawing (the top and right vertices of a diamond), not on the corners of its frame. */
+export const ALoopOnAMarkerRunsBetweenItsSideMiddles: Story = {
+  render: () => (
+    <GraphCanvas
+      ariaLabel="Order processing" showViewToggle={false}
+      nodes={[{ id: "check", label: "Payment check", x: 100, y: 100, width: 96, height: 96, marker: true, symbolSvg: DIAMOND }]}
+      edges={[{ id: "again", source: "check", target: "check", label: "retry" }]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const [x1, y1, , , , , x2, y2] = pathNumbers(canvasElement.querySelector(".react-flow__edge-path")?.getAttribute("d"));
+      expect([x1, y1, x2, y2]).toEqual([148, 100, 196, 148]);
+    });
+  },
+};
+
 /** A node's `attachPoints` narrow where an open line end may meet it: a diamond that does not offer its left side is met at another. */
 export const AnOpenLineEndAvoidsASideTheNodeDoesNotOffer: Story = {
   render: () => (

@@ -243,8 +243,11 @@ def _transition_entries(transitions: list[TransitionOut], boxes: dict[uuid.UUID,
         lines = [part for part in transition_label(t.event, t.guard, t.action).split("\n") if part]
         if anchor.loop_slot is not None:
             box = _box(source)
-            loop = self_loop(box, anchor.loop_slot)
-            entries.append((t, lines, self_loop_path(box, anchor.loop_slot), (0, 0), [], (0, 0), loop["label"], loop["align"], NO_DIRECTIONS))
+            # A marker is drawn only at the middle of its sides, so its loop runs between those (and off the side its label is on).
+            is_marker = StateKind(source.kind) is not StateKind.STATE
+            sides = marker_attach_points(source.label, LabelPosition(source.label_position)) if is_marker else None
+            loop = self_loop(box, anchor.loop_slot, sides)
+            entries.append((t, lines, self_loop_path(box, anchor.loop_slot, sides), (0, 0), [], (0, 0), loop["label"], loop["align"], NO_DIRECTIONS))
             continue
         vertices: list[Point] = [(p.x, p.y) for p in t.points]
         (x1, y1), (x2, y2) = point_xy(_box(source), anchor.source), point_xy(_box(target), anchor.target)

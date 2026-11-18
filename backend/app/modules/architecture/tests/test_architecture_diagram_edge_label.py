@@ -195,7 +195,7 @@ def test_the_svg_writes_each_label_line_as_its_own_escaped_text_and_mermaid_brea
     ys = {t.text: float(t.get("y") or 0) for t in root.iter(f"{SVG}text") if t.text in ('Gate <script> & "co"', "REST API · HTTPS")}
     assert ys['Gate <script> & "co"'] < ys["REST API · HTTPS"]  # the name is above the type and protocol
     mermaid = client.get(f"{base}/mermaid", headers=auth_headers(token)).text
-    (line,) = [x for x in mermaid.splitlines() if "-->" in x]
+    (line,) = (x for x in mermaid.splitlines() if "-->" in x)
     assert 'Gate #lt;script#gt; #amp; #quot;co#quot;<br/>REST API · HTTPS"' in line and "<script" not in mermaid
 
 

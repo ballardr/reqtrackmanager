@@ -565,6 +565,27 @@ test.describe("System Architecture: state machine diagrams", () => {
     expect(ids.Branch).toBeTruthy();
   });
 
+  test("a loop on a choice leaves its top vertex and returns to its right vertex, on the diamond itself, on the screen and in the server drawing", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdLoop", true, "System Architecture");
+    const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;
+    const elementId = await createElement(page.request, base, adminHeaders, `Gauge ${suffix}`);
+    const { diagram } = await createMachine(page.request, base, adminHeaders, elementId, `Gauge modes ${suffix}`, [
+      { name: "Start", kind: "initial", x: 40, y: 60 }, { name: "Branch", kind: "choice", x: 300, y: 100 },
+    ], [["Start", "Branch"], ["Branch", "Branch", "retry"]]);
+    await page.goto(`/projects/${project.id}/modules/architecture/state-machine-diagrams/${diagram.id}`);
+    await expect(page.getByLabel("Choice, node", { exact: true })).toBeVisible();
+    // The choice is stored as a 20 by 20 box at (300, 100): its top vertex is (310, 100) and its right vertex (320, 110).
+    const numbers = (d: string) => (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    await expect.poll(async () => {
+      const paths = await page.locator(".react-flow__edge-path").evaluateAll((els) => els.map((el) => el.getAttribute("d") ?? ""));
+      const loop = paths.map(numbers).find((n) => n.length === 8 && n[0] === 310 && n[1] === 100);
+      return loop ? [loop[6], loop[7]] : null;
+    }).toEqual([320, 110]);
+    const svg = await (await page.request.get(`${base}/state-machine-diagrams/${diagram.id}/svg`, { headers: adminHeaders })).text();
+    expect(svg).toContain('d="M 310 100 C ');
+    expect(svg).toMatch(/d="M 310 100 C [^"]* 320 110"/);
+  });
+
   test("moving a symbol with a label inside it leaves it where it is dropped, not shifted by the growth the label gave it", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "ArchSmdDrop", true, "System Architecture");
     const base = `${API}/api/v1/projects/${project.id}/modules/architecture`;

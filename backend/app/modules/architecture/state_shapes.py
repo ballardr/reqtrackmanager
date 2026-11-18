@@ -28,6 +28,7 @@ Dependencies: `enums` (the state kinds), `diagram_symbol_label` (the label's siz
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, TypedDict
 
 from app.modules.architecture.diagram_points import SIDE_POINTS
@@ -200,13 +201,25 @@ class SelfLoopShape(TypedDict):
     align: str
 
 
-def self_loop(box: tuple[float, float, float, float], slot: int = 0) -> SelfLoopShape:
+#: The two sides each corner slot of a marker's loop uses: the top right first, then the bottom right, bottom left and top left.
+_CORNER_SIDES: tuple[tuple[AttachPoint, AttachPoint], ...] = (
+    (AttachPoint.TOP, AttachPoint.RIGHT), (AttachPoint.BOTTOM, AttachPoint.RIGHT),
+    (AttachPoint.BOTTOM, AttachPoint.LEFT), (AttachPoint.TOP, AttachPoint.LEFT),
+)
+
+
+def self_loop(
+    box: tuple[float, float, float, float], slot: int = 0, sides: Sequence[AttachPoint] | None = None,
+) -> SelfLoopShape:
     """The loop of a box: a cubic curve leaving the top side three quarters across and returning to the right side.
 
     Args:
         box: `(x, y, width, height)` of the box.
         slot: Which corner the loop takes: 0 the top right (the default), then 1 the bottom right, 2 the bottom left and 3
             the top left; from 4 the loops go round again, reaching further out each time.
+        sides: For a marker (a dot, a ring, a diamond, which has no outline at its corners): the sides it offers. The loop then
+            runs between the middles of two of them, the slot choosing among the corners whose two sides are both offered
+            (all four when none is), so a label on one side is not crossed.
 
     Returns:
         `start`, `control1`, `control2`, `end` (the cubic's points), `label` (the curve's middle: the bottom-left corner of
@@ -214,12 +227,14 @@ def self_loop(box: tuple[float, float, float, float], slot: int = 0) -> SelfLoop
         point, `end` when it ends there, for a loop on a left corner).
     """
     x, y, w, h = box
-    corner = slot % 4
-    reach = SELF_LOOP_REACH * (1 + slot // 4)
+    usable = [i for i, pair in enumerate(_CORNER_SIDES) if sides is not None and all(side in sides for side in pair)]
+    corners = usable or [0, 1, 2, 3]
+    corner = corners[slot % len(corners)]
+    reach = SELF_LOOP_REACH * (1 + slot // len(corners))
     right = corner in (0, 1)
     bottom = corner in (1, 2)
-    across = 0.75 if right else 0.25
-    down = 0.75 if bottom else 0.25
+    across = 0.5 if sides is not None else (0.75 if right else 0.25)
+    down = 0.5 if sides is not None else (0.75 if bottom else 0.25)
     side_y = y + h if bottom else y
     side_x = x + w if right else x
     start = (x + across * w, side_y)
@@ -237,9 +252,9 @@ def self_loop(box: tuple[float, float, float, float], slot: int = 0) -> SelfLoop
     }
 
 
-def self_loop_path(box: tuple[float, float, float, float], slot: int = 0) -> str:
-    """The SVG path (`M … C …`) of a box's self loop in `slot`, numbers rounded to two decimals."""
-    loop = self_loop(box, slot)
+def self_loop_path(box: tuple[float, float, float, float], slot: int = 0, sides: Sequence[AttachPoint] | None = None) -> str:
+    """The SVG path (`M … C …`) of a box's self loop in `slot` (see `self_loop` for `sides`), numbers rounded to two decimals."""
+    loop = self_loop(box, slot, sides)
 
     def n(value: float) -> str:
         return f"{round(value, 2):.2f}".rstrip("0").rstrip(".")

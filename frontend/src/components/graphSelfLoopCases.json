@@ -453,5 +453,1094 @@
     },
     "align": "start",
     "path": "M 120 0 C 120 -108 268 16 160 16"
+  },
+  {
+    "name": "a choice offering every side, slot 0",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 0,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        0
+      ],
+      "control1": [
+        48.0,
+        -36.0
+      ],
+      "control2": [
+        132.0,
+        48.0
+      ],
+      "end": [
+        96,
+        48.0
+      ],
+      "label": [
+        85.5,
+        10.5
+      ]
+    },
+    "align": "start",
+    "path": "M 48 0 C 48 -36 132 48 96 48"
+  },
+  {
+    "name": "a choice offering every side, slot 1",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 1,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        96
+      ],
+      "control1": [
+        48.0,
+        132.0
+      ],
+      "control2": [
+        132.0,
+        48.0
+      ],
+      "end": [
+        96,
+        48.0
+      ],
+      "label": [
+        85.5,
+        85.5
+      ]
+    },
+    "align": "start",
+    "path": "M 48 96 C 48 132 132 48 96 48"
+  },
+  {
+    "name": "a choice offering every side, slot 2",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 2,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        96
+      ],
+      "control1": [
+        48.0,
+        132.0
+      ],
+      "control2": [
+        -36.0,
+        48.0
+      ],
+      "end": [
+        0,
+        48.0
+      ],
+      "label": [
+        10.5,
+        85.5
+      ]
+    },
+    "align": "end",
+    "path": "M 48 96 C 48 132 -36 48 0 48"
+  },
+  {
+    "name": "a choice offering every side, slot 3",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 3,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        0
+      ],
+      "control1": [
+        48.0,
+        -36.0
+      ],
+      "control2": [
+        -36.0,
+        48.0
+      ],
+      "end": [
+        0,
+        48.0
+      ],
+      "label": [
+        10.5,
+        10.5
+      ]
+    },
+    "align": "end",
+    "path": "M 48 0 C 48 -36 -36 48 0 48"
+  },
+  {
+    "name": "a choice offering every side, slot 4",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 4,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        0
+      ],
+      "control1": [
+        48.0,
+        -72.0
+      ],
+      "control2": [
+        168.0,
+        48.0
+      ],
+      "end": [
+        96,
+        48.0
+      ],
+      "label": [
+        99.0,
+        -3.0
+      ]
+    },
+    "align": "start",
+    "path": "M 48 0 C 48 -72 168 48 96 48"
+  },
+  {
+    "name": "a choice offering every side, slot 5",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 5,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        96
+      ],
+      "control1": [
+        48.0,
+        168.0
+      ],
+      "control2": [
+        168.0,
+        48.0
+      ],
+      "end": [
+        96,
+        48.0
+      ],
+      "label": [
+        99.0,
+        99.0
+      ]
+    },
+    "align": "start",
+    "path": "M 48 96 C 48 168 168 48 96 48"
+  },
+  {
+    "name": "a choice offering every side, slot 6",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 6,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        96
+      ],
+      "control1": [
+        48.0,
+        168.0
+      ],
+      "control2": [
+        -72.0,
+        48.0
+      ],
+      "end": [
+        0,
+        48.0
+      ],
+      "label": [
+        -3.0,
+        99.0
+      ]
+    },
+    "align": "end",
+    "path": "M 48 96 C 48 168 -72 48 0 48"
+  },
+  {
+    "name": "a choice offering every side, slot 7",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 7,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        0
+      ],
+      "control1": [
+        48.0,
+        -72.0
+      ],
+      "control2": [
+        -72.0,
+        48.0
+      ],
+      "end": [
+        0,
+        48.0
+      ],
+      "label": [
+        -3.0,
+        -3.0
+      ]
+    },
+    "align": "end",
+    "path": "M 48 0 C 48 -72 -72 48 0 48"
+  },
+  {
+    "name": "a choice offering every side, slot 8",
+    "box": [
+      0,
+      0,
+      96,
+      96
+    ],
+    "slot": 8,
+    "sides": [
+      "top",
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        48.0,
+        0
+      ],
+      "control1": [
+        48.0,
+        -108.0
+      ],
+      "control2": [
+        204.0,
+        48.0
+      ],
+      "end": [
+        96,
+        48.0
+      ],
+      "label": [
+        112.5,
+        -16.5
+      ]
+    },
+    "align": "start",
+    "path": "M 48 0 C 48 -108 204 48 96 48"
+  },
+  {
+    "name": "a dot with its label on the right, slot 0",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 0,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        60
+      ],
+      "control1": [
+        110.0,
+        96.0
+      ],
+      "control2": [
+        64.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        91.5,
+        68.5
+      ]
+    },
+    "align": "end",
+    "path": "M 110 60 C 110 96 64 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 1",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 1,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        40
+      ],
+      "control1": [
+        110.0,
+        4.0
+      ],
+      "control2": [
+        64.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        91.5,
+        31.5
+      ]
+    },
+    "align": "end",
+    "path": "M 110 40 C 110 4 64 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 2",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 2,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        60
+      ],
+      "control1": [
+        110.0,
+        132.0
+      ],
+      "control2": [
+        28.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        78.0,
+        82.0
+      ]
+    },
+    "align": "end",
+    "path": "M 110 60 C 110 132 28 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 3",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 3,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        40
+      ],
+      "control1": [
+        110.0,
+        -32.0
+      ],
+      "control2": [
+        28.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        78.0,
+        18.0
+      ]
+    },
+    "align": "end",
+    "path": "M 110 40 C 110 -32 28 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 4",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 4,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        60
+      ],
+      "control1": [
+        110.0,
+        168.0
+      ],
+      "control2": [
+        -8.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        64.5,
+        95.5
+      ]
+    },
+    "align": "end",
+    "path": "M 110 60 C 110 168 -8 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 5",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 5,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        40
+      ],
+      "control1": [
+        110.0,
+        -68.0
+      ],
+      "control2": [
+        -8.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        64.5,
+        4.5
+      ]
+    },
+    "align": "end",
+    "path": "M 110 40 C 110 -68 -8 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 6",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 6,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        60
+      ],
+      "control1": [
+        110.0,
+        204.0
+      ],
+      "control2": [
+        -44.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        51.0,
+        109.0
+      ]
+    },
+    "align": "end",
+    "path": "M 110 60 C 110 204 -44 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 7",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 7,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        40
+      ],
+      "control1": [
+        110.0,
+        -104.0
+      ],
+      "control2": [
+        -44.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        51.0,
+        -9.0
+      ]
+    },
+    "align": "end",
+    "path": "M 110 40 C 110 -104 -44 50 100 50"
+  },
+  {
+    "name": "a dot with its label on the right, slot 8",
+    "box": [
+      100,
+      40,
+      20,
+      20
+    ],
+    "slot": 8,
+    "sides": [
+      "top",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        110.0,
+        60
+      ],
+      "control1": [
+        110.0,
+        240.0
+      ],
+      "control2": [
+        -80.0,
+        50.0
+      ],
+      "end": [
+        100,
+        50.0
+      ],
+      "label": [
+        37.5,
+        122.5
+      ]
+    },
+    "align": "end",
+    "path": "M 110 60 C 110 240 -80 50 100 50"
+  },
+  {
+    "name": "a diamond with its label above, slot 0",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 0,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        82.0
+      ],
+      "control2": [
+        82.0,
+        28.0
+      ],
+      "end": [
+        46,
+        28.0
+      ],
+      "label": [
+        50.5,
+        50.5
+      ]
+    },
+    "align": "start",
+    "path": "M 28 46 C 28 82 82 28 46 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 1",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 1,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        82.0
+      ],
+      "control2": [
+        -26.0,
+        28.0
+      ],
+      "end": [
+        10,
+        28.0
+      ],
+      "label": [
+        5.5,
+        50.5
+      ]
+    },
+    "align": "end",
+    "path": "M 28 46 C 28 82 -26 28 10 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 2",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 2,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        118.0
+      ],
+      "control2": [
+        118.0,
+        28.0
+      ],
+      "end": [
+        46,
+        28.0
+      ],
+      "label": [
+        64.0,
+        64.0
+      ]
+    },
+    "align": "start",
+    "path": "M 28 46 C 28 118 118 28 46 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 3",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 3,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        118.0
+      ],
+      "control2": [
+        -62.0,
+        28.0
+      ],
+      "end": [
+        10,
+        28.0
+      ],
+      "label": [
+        -8.0,
+        64.0
+      ]
+    },
+    "align": "end",
+    "path": "M 28 46 C 28 118 -62 28 10 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 4",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 4,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        154.0
+      ],
+      "control2": [
+        154.0,
+        28.0
+      ],
+      "end": [
+        46,
+        28.0
+      ],
+      "label": [
+        77.5,
+        77.5
+      ]
+    },
+    "align": "start",
+    "path": "M 28 46 C 28 154 154 28 46 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 5",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 5,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        154.0
+      ],
+      "control2": [
+        -98.0,
+        28.0
+      ],
+      "end": [
+        10,
+        28.0
+      ],
+      "label": [
+        -21.5,
+        77.5
+      ]
+    },
+    "align": "end",
+    "path": "M 28 46 C 28 154 -98 28 10 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 6",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 6,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        190.0
+      ],
+      "control2": [
+        190.0,
+        28.0
+      ],
+      "end": [
+        46,
+        28.0
+      ],
+      "label": [
+        91.0,
+        91.0
+      ]
+    },
+    "align": "start",
+    "path": "M 28 46 C 28 190 190 28 46 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 7",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 7,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        190.0
+      ],
+      "control2": [
+        -134.0,
+        28.0
+      ],
+      "end": [
+        10,
+        28.0
+      ],
+      "label": [
+        -35.0,
+        91.0
+      ]
+    },
+    "align": "end",
+    "path": "M 28 46 C 28 190 -134 28 10 28"
+  },
+  {
+    "name": "a diamond with its label above, slot 8",
+    "box": [
+      10,
+      10,
+      36,
+      36
+    ],
+    "slot": 8,
+    "sides": [
+      "right",
+      "bottom",
+      "left"
+    ],
+    "reach": 36.0,
+    "loop": {
+      "start": [
+        28.0,
+        46
+      ],
+      "control1": [
+        28.0,
+        226.0
+      ],
+      "control2": [
+        226.0,
+        28.0
+      ],
+      "end": [
+        46,
+        28.0
+      ],
+      "label": [
+        104.5,
+        104.5
+      ]
+    },
+    "align": "start",
+    "path": "M 28 46 C 28 226 226 28 46 28"
   }
 ]
