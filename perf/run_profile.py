@@ -73,8 +73,11 @@ QUERY_FLUSH_SECONDS = 2.5
 CPU_SAMPLE_HZ = 100
 HEAP_STOP_SECONDS = 180
 SOURCE_PATH_REPLACEMENTS = (
-    ("/usr/local/lib/python3.15/site-packages/", "site-packages/"), ("/usr/local/lib/python3.15/", "stdlib/"), ("/app/", ""),
+    (re.compile(r"/usr/local/lib/python3\.\d+/site-packages/"), "site-packages/"),
+    (re.compile(r"/usr/local/lib/python3\.\d+/"), "stdlib/"),
+    (re.compile(r"/app/"), ""),
 )
+"""Shortens source paths in a flamegraph; the interpreter's minor version is matched, so a base-image bump needs no edit here."""
 PROFILES_FILE = REPO_ROOT / "perf" / "datasets" / "profiles.yaml"
 RESULTS_ROOT = REPO_ROOT / "perf" / "results"
 DEFAULT_CACHE = Path.home() / ".cache" / "reqtrack-perf"
@@ -833,8 +836,8 @@ class ProfileRun:
             self.notes.append(f"no CPU profile for {name}: py-spy produced nothing (see the plan output for the ptrace requirement)")
             return
         text = destination.read_text(errors="replace")
-        for old, new in SOURCE_PATH_REPLACEMENTS:
-            text = text.replace(old, new)
+        for pattern, replacement in SOURCE_PATH_REPLACEMENTS:
+            text = pattern.sub(replacement, text)
         self.profile_files[name] = text
 
     def finish_heap(self) -> None:

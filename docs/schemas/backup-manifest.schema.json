@@ -111,6 +111,17 @@
       "title": "ComponentEntry",
       "type": "object"
     },
+    "ComponentKind": {
+      "description": "The parts a set can hold; `local_files` only when `STORAGE_BACKEND=local`, `config` only in `config` mode.",
+      "enum": [
+        "database",
+        "objects",
+        "local_files",
+        "config"
+      ],
+      "title": "ComponentKind",
+      "type": "string"
+    },
     "DrStats": {
       "description": "The complete statistics document (see the module docstring).",
       "properties": {
@@ -386,6 +397,9 @@
     "components": {
       "additionalProperties": {
         "$ref": "#/$defs/ComponentEntry"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/ComponentKind"
       },
       "title": "Components",
       "type": "object"

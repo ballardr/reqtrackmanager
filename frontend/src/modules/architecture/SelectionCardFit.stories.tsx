@@ -51,13 +51,19 @@ async function selectBox(canvas: ReturnType<typeof within>, name: string): Promi
 
 /** Selects the line between Gateway and Orders and returns the card. */
 async function selectLine(canvas: ReturnType<typeof within>): Promise<HTMLElement> {
-  const edge = await canvas.findByLabelText("Connection from Gateway to Orders");
-  edge.focus();
-  await userEvent.keyboard("{Enter}");
-  const card = await canvas.findByRole("region", { name: "Selection" });
-  // The previous selection's card is already a "Selection" region, so wait until it shows the line.
-  await waitFor(() => expect(within(card).getByRole("heading", { level: 2 })).not.toHaveTextContent("ELM-001"));
-  return card;
+  // The edge is looked up and focused afresh on each attempt: the diagram re-renders after an edit in the card, which
+  // can replace the element or leave the focus in the field, so Enter would not reach the line. Focus is asserted so a
+  // failure says which step did not happen.
+  await waitFor(async () => {
+    const edge = await canvas.findByLabelText("Connection from Gateway to Orders");
+    edge.focus();
+    expect(document.activeElement, "the line took the focus").toBe(edge);
+    await userEvent.keyboard("{Enter}");
+    // The previous selection's card is already a "Selection" region, so check that it now shows the line.
+    const heading = within(await canvas.findByRole("region", { name: "Selection" })).getByRole("heading", { level: 2 });
+    expect(heading, "the card shows the line").not.toHaveTextContent("ELM-001");
+  }, { timeout: 5000 });
+  return canvas.findByRole("region", { name: "Selection" });
 }
 
 /** Adds a note from the Add menu; the new note is the selection. */
