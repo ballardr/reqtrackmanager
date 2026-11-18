@@ -12,11 +12,11 @@ from __future__ import annotations
 import json
 import os
 import time
-from pathlib import Path
 
 from app.modules.architecture.diagram_line_hops import HOP_RADIUS, HopLine, line_hops
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "components" / "graphLineHopCases.json"
+CASES_FILE = FRONTEND_SRC / "components" / "graphLineHopCases.json"
 
 Point = tuple[float, float]
 
@@ -104,6 +104,7 @@ def hop_cases() -> list[dict]:
     return out
 
 
+@needs_repository
 def test_the_shared_line_hop_cases_are_current():
     produced = json.dumps(hop_cases(), indent=2) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":

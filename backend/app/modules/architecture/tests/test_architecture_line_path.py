@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 from app.modules.architecture.diagram_line_path import line_middle, line_path
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "components" / "graphLinePathCases.json"
+CASES_FILE = FRONTEND_SRC / "components" / "graphLinePathCases.json"
 
 Point = tuple[float, float]
 Directions = tuple[Point | None, Point | None]
@@ -69,6 +69,7 @@ def line_cases() -> list[dict]:
     return out
 
 
+@needs_repository
 def test_the_shared_line_path_cases_are_current():
     produced = json.dumps(line_cases(), indent=2) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":

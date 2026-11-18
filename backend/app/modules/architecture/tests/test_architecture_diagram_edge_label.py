@@ -10,7 +10,6 @@ import json
 import os
 import xml.etree.ElementTree as ET
 import zipfile
-from pathlib import Path
 
 from sqlalchemy import text
 
@@ -26,9 +25,10 @@ from app.modules.architecture.tests._helpers import (
     setup,
     view,
 )
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 from tests.conftest import auth_headers, build_alembic_config
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "diagramLabelCases.json"
+CASES_FILE = FRONTEND_SRC / "modules" / "architecture" / "diagramLabelCases.json"
 SVG = "{http://www.w3.org/2000/svg}"
 
 #: `(name, count, type_name, protocol, detail, names)`.
@@ -69,6 +69,7 @@ def label_cases() -> list[dict]:
     ]
 
 
+@needs_repository
 def test_the_shared_label_cases_are_current():
     produced = json.dumps(label_cases(), indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":

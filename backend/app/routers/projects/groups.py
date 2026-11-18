@@ -27,7 +27,7 @@ from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.schemas.project import ProjectGroupCreate, ProjectGroupMemberAdd, ProjectGroupOut, ProjectGroupRoleAssign
 from app.services import engagement
 from app.services.audit import log_event
-from app.services.lookups import present
+from app.services.lookups import affected_rows, present
 from app.services.membership_notifications import (
     actor_bypasses_project_managers,
     notify_managers_of_member_change,
@@ -230,7 +230,7 @@ def revoke_project_group_role(
     db.flush()
     if role == ProjectRole.PROJECT_MANAGER and not get_effective_project_managers(db, project.id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
-    if removed.rowcount:
+    if affected_rows(removed):
         log_event(
             db, entity_type="project_group", entity_id=group_id, action="role_revoked", actor_id=current_user.id,
             project_id=project.id, detail={"role": role.value},

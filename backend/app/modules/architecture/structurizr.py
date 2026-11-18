@@ -78,6 +78,7 @@ def _levels(elements: dict[uuid.UUID, ArchitectureElement]) -> dict[uuid.UUID, i
 def render_workspace(
     db: Session, project: Project, viewer: Viewer, *, diagram_id: uuid.UUID | None = None,
     toggle_on: frozenset[uuid.UUID] = frozenset(), toggle_off: frozenset[uuid.UUID] = frozenset(),
+    with_connections: bool = True, with_diagrams: bool = True,
 ) -> str:
     """The project as a Structurizr DSL workspace.
 
@@ -88,6 +89,8 @@ def render_workspace(
         diagram_id: Only this diagram's view; `None` writes a view for every diagram that is neither archived nor retired.
         toggle_on: Diagram toggle ids forced on for the views.
         toggle_off: Diagram toggle ids forced off (wins over `toggle_on`); with neither, each toggle's saved state applies.
+        with_connections: Write the relationships; `False` when the project has switched connections off.
+        with_diagrams: Write the views; `False` when the project has switched diagrams off.
 
     Returns:
         The DSL text, ending in a newline.
@@ -105,7 +108,7 @@ def render_workspace(
             .order_by(ArchitecturePort.sort_order, ArchitecturePort.name)
         ):
             ports[port.element_id].append(port)
-    connections = live_connections(db, project.id)
+    connections = live_connections(db, project.id) if with_connections else []
     connection_types = {t.id: t for t in db.scalars(select(ArchitectureConnectionType).where(
         ArchitectureConnectionType.id.in_({c.connection_type_id for c in connections})
     ))} if connections else {}
@@ -174,7 +177,7 @@ def render_workspace(
     lines += ["    }", "", "    views {"]
 
     state = ToggleState(toggle_on, toggle_off)
-    for diagram in diagrams.list_diagrams(db, project.id):
+    for diagram in diagrams.list_diagrams(db, project.id) if with_diagrams else []:
         if diagram.status in INACTIVE_STATUSES or (diagram_id is not None and diagram.id != diagram_id):
             continue
         view = build_view(db, project.id, viewer, diagram, state=state)

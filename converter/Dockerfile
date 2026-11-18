@@ -1,7 +1,7 @@
 # Picture converter: runs Ghostscript and poppler on uploaded EPS and PDF logos, away from the backend.
 # Nothing here but the two tools and converter.py; Compose runs it with no network beyond an internal one shared
 # with the backend, no secrets, a read-only filesystem and no Linux capabilities (see docs/solution-architecture.md).
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 # fonts-urw-base35: the standard PostScript fonts (Helvetica, Times) an EPS often names without embedding them.
 # zlib1g is named so the patched release replaces the one the base image ships (CVE-2026-76844, CVE-2026-85091).

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import pytest
 
@@ -29,8 +28,9 @@ from app.modules.architecture.diagram_note_layout import (
 )
 from app.modules.architecture.diagram_symbol_label import text_width
 from app.modules.architecture.enums import NoteSizeMode, NoteTone
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "noteLayoutCases.json"
+CASES_FILE = FRONTEND_SRC / "modules" / "architecture" / "noteLayoutCases.json"
 
 LONG = "The flight controller reads the inertial unit and the barometer before it commands the motors at one kilohertz"
 
@@ -79,6 +79,7 @@ def note_cases() -> dict:
     return {"cases": cases, "drawn": drawn}
 
 
+@needs_repository
 def test_the_shared_note_layout_cases_are_current():
     produced = json.dumps(note_cases(), indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":

@@ -12,7 +12,6 @@ import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
 import pytest
 from sqlalchemy import event
@@ -30,9 +29,10 @@ from app.modules.architecture.tests._helpers import (
     setup,
     sound_machine,
 )
+from app.modules.architecture.tests._repository import FRONTEND_SRC, REPO_ROOT, needs_repository
 from tests.conftest import auth_headers
 
-LABEL_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "stateLabelCases.json"
+LABEL_FILE = FRONTEND_SRC / "modules" / "architecture" / "stateLabelCases.json"
 SVG = "{http://www.w3.org/2000/svg}"
 
 #: The statements the Mermaid export writes after its header: a comment, a declaration, a description, a block's opening or
@@ -102,6 +102,7 @@ def label_cases() -> dict:
     }
 
 
+@needs_repository
 def test_the_shared_label_cases_are_current():
     produced = json.dumps(label_cases(), indent=2) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":
@@ -287,6 +288,7 @@ def test_every_user_text_is_made_safe_in_the_mermaid_text(client, admin_token):
     assert not any(ch in "\n".join(body) for ch in "{}")  # no block opens or closes from user text
 
 
+@needs_repository
 def test_the_mermaid_text_is_read_by_the_real_parser(client, admin_token, tmp_path):
     """A nested diagram with a start mark, a choice, a loop, a final state and hostile text parses with Mermaid itself.
     Skipped where `node` or the parser's packages (`scripts/mermaid_parse.mjs`) are not installed."""
@@ -312,7 +314,7 @@ def test_the_mermaid_text_is_read_by_the_real_parser(client, admin_token, tmp_pa
         add_transition(client, token, p, m, source["id"], target["id"], **fields)
     file = tmp_path / "machine.mmd"
     file.write_text(_mermaid(client, token, p, m), encoding="utf-8")
-    script = Path(__file__).resolve().parents[5] / "scripts" / "mermaid_parse.mjs"
+    script = REPO_ROOT / "scripts" / "mermaid_parse.mjs"
     done = subprocess.run(["node", str(script), str(file)], capture_output=True, text=True, timeout=120, check=False)
     if done.returncode == 2:
         pytest.skip("the Mermaid parser is not installed (npm ci in frontend and docs/website)")

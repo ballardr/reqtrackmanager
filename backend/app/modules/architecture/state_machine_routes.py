@@ -29,6 +29,7 @@ from app.models.user import User
 from app.modules.architecture import state_machines as machines
 from app.modules.architecture._shared import STATE_MACHINE_MANAGE_PERMISSION, require_architect
 from app.modules.architecture.enums import RecordStatus, StateKind
+from app.modules.architecture.export_audit import audit_export
 from app.modules.architecture.models import ArchitectureState, ArchitectureStateMachineDiagram
 from app.modules.architecture.record_routes import _matches, as_http
 from app.modules.architecture.schemas import (
@@ -155,11 +156,13 @@ def add_state_machine_routes(router: APIRouter) -> None:
     def get_svg(
         project_id: uuid.UUID, diagram_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db),
     ):
-        """The diagram as an SVG document (UML state machine notation), the file the editor's Export downloads."""
+        """The diagram as an SVG document (UML state machine notation), the file the editor's Export downloads (audited as an export)."""
         viewer = viewer_of(db, current_user, project_id)
         diagram = as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id))
+        content = render_state_machine(machines.model_of(db, diagram, viewer))
+        audit_export(db, current_user, project_or_404(db, project_id), record_type=STATE_MACHINE_ARTEFACT_TYPE, fmt="svg", rows=1)
         return Response(
-            content=render_state_machine(machines.model_of(db, diagram, viewer)), media_type=report_images.SVG_TYPE,
+            content=content, media_type=report_images.SVG_TYPE,
             headers={**SVG_HEADERS, "Cache-Control": "private, no-store"},
         )
 
@@ -167,11 +170,13 @@ def add_state_machine_routes(router: APIRouter) -> None:
     def get_mermaid(
         project_id: uuid.UUID, diagram_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db),
     ):
-        """The diagram as Mermaid `stateDiagram-v2` text (plain text, for pasting into documentation)."""
+        """The diagram as Mermaid `stateDiagram-v2` text (plain text, for pasting into documentation); audited as an export."""
         viewer = viewer_of(db, current_user, project_id)
         diagram = as_http(lambda: machines.get_state_machine(db, viewer, project_id, diagram_id))
+        content = render_state_machine_mermaid(machines.model_of(db, diagram, viewer))
+        audit_export(db, current_user, project_or_404(db, project_id), record_type=STATE_MACHINE_ARTEFACT_TYPE, fmt="mermaid", rows=1)
         return Response(
-            content=render_state_machine_mermaid(machines.model_of(db, diagram, viewer)), media_type="text/plain; charset=utf-8",
+            content=content, media_type="text/plain; charset=utf-8",
             headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
         )
 

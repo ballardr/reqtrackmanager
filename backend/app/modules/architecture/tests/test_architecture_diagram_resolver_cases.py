@@ -14,12 +14,12 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from pathlib import Path
 
 from app.modules.architecture.diagram_resolver import MAX_HOPS, Boundary, ModelConnection, outer_side, resolve
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
 CASES_FILE = (
-    Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "diagramResolverCases.json"
+    FRONTEND_SRC / "modules" / "architecture" / "diagramResolverCases.json"
 )
 
 
@@ -266,6 +266,7 @@ def cases() -> list[dict]:
     ]
 
 
+@needs_repository
 def test_the_shared_resolver_cases_are_current():
     produced = json.dumps(cases(), indent=2, sort_keys=False) + "\n"
     if os.environ.get("UPDATE_RESOLVER_CASES") == "1":

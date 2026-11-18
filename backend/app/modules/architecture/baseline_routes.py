@@ -37,34 +37,16 @@ from app.modules.architecture.schemas import (
     BaselineTypeComparisonOut,
     BaselineViewOut,
 )
-from app.modules.architecture.service import (
-    ARCHITECTURE_MODULE_KEY,
-    CONNECTION_ARTEFACT_TYPE,
-    CONNECTION_SUBCOMPONENT_KEY,
-    DIAGRAM_ARTEFACT_TYPE,
-    DIAGRAM_SUBCOMPONENT_KEY,
-    ELEMENT_ARTEFACT_TYPE,
-    ELEMENT_SUBCOMPONENT_KEY,
-    STATE_MACHINE_ARTEFACT_TYPE,
-    STATE_MACHINE_SUBCOMPONENT_KEY,
-)
-from app.modules.registry import is_module_subcomponent_enabled
+from app.modules.architecture.service import ARCHITECTURE_MODULE_KEY, ELEMENT_SUBCOMPONENT_KEY, enabled_record_types
 from app.services.lookups import project_or_404
 from app.services.rbac import require_project_subcomponent_enabled
 
-#: The baseline types and the sub-component that shows each, in display order.
-_TYPES: tuple[tuple[str, str], ...] = (
-    (ELEMENT_ARTEFACT_TYPE, ELEMENT_SUBCOMPONENT_KEY),
-    (CONNECTION_ARTEFACT_TYPE, CONNECTION_SUBCOMPONENT_KEY),
-    (DIAGRAM_ARTEFACT_TYPE, DIAGRAM_SUBCOMPONENT_KEY),
-    (STATE_MACHINE_ARTEFACT_TYPE, STATE_MACHINE_SUBCOMPONENT_KEY),
-)
 LIVE = "live"
 
 
 def visible_types(db: Session, project_id: uuid.UUID) -> list[str]:
     """The baseline types whose sub-component is on for the project, in display order."""
-    return [t for t, key in _TYPES if is_module_subcomponent_enabled(db, project_id, ARCHITECTURE_MODULE_KEY, key)]
+    return enabled_record_types(db, project_id)
 
 
 def _baseline_or_404(db: Session, project_id: uuid.UUID, baseline_id: uuid.UUID) -> Baseline:

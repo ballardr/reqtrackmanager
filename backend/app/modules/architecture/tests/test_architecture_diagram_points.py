@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import pytest
 
@@ -30,8 +29,9 @@ from app.modules.architecture.diagram_points import (
     route_points,
 )
 from app.modules.architecture.enums import AttachPoint
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "components" / "graphAttachPointCases.json"
+CASES_FILE = FRONTEND_SRC / "components" / "graphAttachPointCases.json"
 
 
 def _case(
@@ -130,6 +130,7 @@ def cases() -> list[dict]:
     ]
 
 
+@needs_repository
 def test_the_shared_attach_point_cases_are_current():
     produced = json.dumps(cases(), indent=2) + "\n"
     if os.environ.get("UPDATE_POINT_CASES") == "1":

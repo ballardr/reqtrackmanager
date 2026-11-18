@@ -44,6 +44,7 @@ from app.modules.architecture.models import (
 from app.modules.architecture.records import ElementOwner, RuleError
 from app.modules.architecture.schemas import FolderCreate, FolderOut, FolderUpdate
 from app.services.audit import log_event
+from app.services.lookups import affected_rows
 
 FOLDER_ENTITY_TYPE = "architecture_folder"
 #: The deepest a folder tree goes (the same cap as an element tree).
@@ -285,10 +286,10 @@ def delete_folder(db: Session, owner: ElementOwner, actor: User, folder_id: uuid
                 f"A folder named '{child.name}' already exists in the parent folder; rename one of them first.", 400,
             )
     model = RECORD_MODELS[folder.kind]
-    moved = db.execute(
+    moved = affected_rows(db.execute(
         update(model).where(model.folder_id == folder.id).values(folder_id=folder.parent_id, version=model.version + 1)
         .execution_options(synchronize_session="fetch")
-    ).rowcount
+    ))
     for child in subfolders:
         child.parent_id = folder.parent_id
     db.flush()

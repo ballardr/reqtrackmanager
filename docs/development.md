@@ -56,7 +56,7 @@ cd tests/container
 docker compose up -d db   # needs the dev/test Postgres running (reqtrack_test)
 
 cd ../../backend
-python3.12 -m venv .venv && source .venv/bin/activate   # Python 3.12 or newer: the code uses 3.12 syntax and a 3.11 venv fails on import (SyntaxError)
+python3.12 -m venv .venv && source .venv/bin/activate   # Python 3.12 or newer: the code uses 3.12 syntax and a 3.11 venv fails on import (SyntaxError); the backend and converter images run Python 3.15, which CI and the compose stack test
 pip install -r requirements.txt
 export DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test
 uvicorn app.main:app --reload --port 8000
@@ -106,7 +106,7 @@ Coverage today only reflects the files actually exercised by a story (`*.stories
 
 ### Changing frontend dependencies
 
-CI (`ci.yml`) and `frontend/Dockerfile` both install with Node 24; `frontend/.nvmrc` pins the same major version for local use (`nvm use` from `frontend/`, or let `nvm`'s shell integration auto-switch on `cd`). Keep all three in lockstep if Node is bumped again in future — a locally-installed Node on a different major version bundles a different npm major version, which can resolve transitive optional dependencies differently and write a `package-lock.json` that *looks* complete but that a different npm version's `npm ci` rejects with "Missing: `<pkg>` from lock file" — the lockfile is valid, just for a different npm version. See [decisions.md](decisions.md) for a real instance of this.
+CI (`ci.yml`) and `frontend/Dockerfile` both install with Node 26; `frontend/.nvmrc` pins the same major version for local use (`nvm use` from `frontend/`, or let `nvm`'s shell integration auto-switch on `cd`). Keep all three in lockstep if Node is bumped again in future — a locally-installed Node on a different major version bundles a different npm major version, which can resolve transitive optional dependencies differently and write a `package-lock.json` that *looks* complete but that a different npm version's `npm ci` rejects with "Missing: `<pkg>` from lock file" — the lockfile is valid, just for a different npm version. See [decisions.md](decisions.md) for a real instance of this.
 
 Playwright is the exception to "caret ranges are fine": `playwright` (`frontend/`) and `@playwright/test` (`tests/playwright/`) are pinned to exact versions, and the matching `mcr.microsoft.com/playwright:vX.Y.Z-noble` image tags in `ci.yml` must be bumped in the same change (the npm package and browser build must be the same release, or the browser fails to launch and the run executes zero tests). `scripts/check-playwright-image-sync.py` enforces this: it runs as the first step of the `frontend` and `e2e-tests` CI jobs and in the pre-commit hook when `ci.yml` or either lockfile is staged.
 
@@ -215,7 +215,7 @@ docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 git /repo --co
 docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 dir /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
 ```
 
-Fix a finding in the code. The only exceptions are a documented false positive (a `# nosemgrep: <rule>` comment with the reason on the line above, as in `backend/app/services/dr_restore.py`) and the seven earlier commits `.gitleaks.toml` names, which hold fake test credentials that history cannot change. `.github/workflows/dynamic-scan.yml` runs the OWASP ZAP baseline weekly (or on demand) against the Compose test stack only, never a shared or public environment, and fails on a high-risk alert. Third-party GitHub Actions are pinned to a commit SHA with the tag in a comment; Dependabot (`.github/dependabot.yml`) proposes the updates. To publish images the repository needs a `release` environment limited to the `main` branch (Settings → Environments), so a branch that edits the workflow cannot reach the registry.
+Fix a finding in the code. The only exceptions are a documented false positive (a `# nosemgrep: <rule>` comment with the reason on the line above, as in `backend/app/services/dr_restore.py`) and the seven earlier commits `.gitleaks.toml` names, which hold fake test credentials that history cannot change. `.github/workflows/dynamic-scan.yml` runs the OWASP ZAP baseline weekly (or on demand) against the Compose test stack only, never a shared or public environment, and fails on a high-risk alert. Third-party GitHub Actions are pinned to a commit SHA with the tag in a comment; Dependabot (`.github/dependabot.yml`) opens no pull requests (`open-pull-requests-limit: 0`); updates are made in a reviewed change instead. To publish images the repository needs a `release` environment limited to the `main` branch (Settings → Environments), so a branch that edits the workflow cannot reach the registry.
 
 See the [README's Code Quality Rules](../README.md#code-quality-rules) for the conventions all of the above is expected to follow.
 

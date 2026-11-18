@@ -32,6 +32,7 @@ from app.modules.architecture.diagram_model import build_model
 from app.modules.architecture.diagram_svg import render_diagram
 from app.modules.architecture.diagram_view import ToggleState, build_view
 from app.modules.architecture.enums import RecordStatus
+from app.modules.architecture.export_audit import audit_export
 from app.modules.architecture.labels import INACTIVE_STATUSES
 from app.modules.architecture.models import ArchitectureDiagram
 from app.modules.architecture.record_routes import _matches, as_http
@@ -166,10 +167,12 @@ def add_diagram_routes(router: APIRouter) -> None:
         toggle_off: list[uuid.UUID] = Query(default=[]), include_retired: bool = False,
         current_user: User = Depends(view_diagrams), db: Session = Depends(get_db),
     ):
-        """The same resolved diagram as an SVG document, the drawing a report shows."""
+        """The same resolved diagram as an SVG document, the drawing a report shows. A download is audited as an export."""
         view = resolved(db, current_user, project_id, diagram_id, toggle_on, toggle_off, include_retired)
+        content = render_diagram(db, view)
+        audit_export(db, current_user, project_or_404(db, project_id), record_type=DIAGRAM_ARTEFACT_TYPE, fmt="svg", rows=1)
         return Response(
-            content=render_diagram(db, view), media_type=report_images.SVG_TYPE,
+            content=content, media_type=report_images.SVG_TYPE,
             headers={**SVG_HEADERS, "Cache-Control": "private, no-store"},
         )
 
@@ -179,10 +182,13 @@ def add_diagram_routes(router: APIRouter) -> None:
         toggle_off: list[uuid.UUID] = Query(default=[]), include_retired: bool = False,
         current_user: User = Depends(view_diagrams), db: Session = Depends(get_db),
     ):
-        """The same resolved diagram as Mermaid flowchart text (plain text, for pasting into documentation)."""
+        """The same resolved diagram as Mermaid flowchart text (plain text, for pasting into documentation). A download is
+        audited as an export."""
         view = resolved(db, current_user, project_id, diagram_id, toggle_on, toggle_off, include_retired)
+        content = render_mermaid(view)
+        audit_export(db, current_user, project_or_404(db, project_id), record_type=DIAGRAM_ARTEFACT_TYPE, fmt="mermaid", rows=1)
         return Response(
-            content=render_mermaid(view), media_type="text/plain; charset=utf-8",
+            content=content, media_type="text/plain; charset=utf-8",
             headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
         )
 

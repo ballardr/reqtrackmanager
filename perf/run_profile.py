@@ -73,7 +73,7 @@ QUERY_FLUSH_SECONDS = 2.5
 CPU_SAMPLE_HZ = 100
 HEAP_STOP_SECONDS = 180
 SOURCE_PATH_REPLACEMENTS = (
-    ("/usr/local/lib/python3.12/site-packages/", "site-packages/"), ("/usr/local/lib/python3.12/", "stdlib/"), ("/app/", ""),
+    ("/usr/local/lib/python3.15/site-packages/", "site-packages/"), ("/usr/local/lib/python3.15/", "stdlib/"), ("/app/", ""),
 )
 PROFILES_FILE = REPO_ROOT / "perf" / "datasets" / "profiles.yaml"
 RESULTS_ROOT = REPO_ROOT / "perf" / "results"

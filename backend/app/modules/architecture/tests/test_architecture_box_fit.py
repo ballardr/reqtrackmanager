@@ -13,7 +13,6 @@ import json
 import os
 import re
 import uuid
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -35,8 +34,9 @@ from app.modules.architecture.diagram_box_fit import (
 from app.modules.architecture.diagram_svg import _framed_nodes, _node, render_diagram
 from app.modules.architecture.diagram_symbol_label import text_width
 from app.modules.architecture.schemas import ViewNode
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "elementBoxFitCases.json"
+CASES_FILE = FRONTEND_SRC / "modules" / "architecture" / "elementBoxFitCases.json"
 
 LONG = "Flight controller and motor driver board"
 CAPTION = "ELM-001 · Subsystem"
@@ -76,6 +76,7 @@ def box_cases() -> dict:
     return {"cases": cases, "drawn": drawn}
 
 
+@needs_repository
 def test_the_shared_box_fit_cases_are_current():
     produced = json.dumps(box_cases(), indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":

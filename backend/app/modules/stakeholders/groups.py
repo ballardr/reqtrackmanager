@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.stakeholders.enums import StakeholderScope
 from app.modules.stakeholders.models import Stakeholder, StakeholderGroup, StakeholderGroupMember, StakeholderVersion
+from app.services.lookups import affected_rows
 from app.services.relationships import delete_link, get_all_links
 from app.services.sequences import code_owner, generate_unique_code
 
@@ -418,7 +419,7 @@ def remove_member(db: Session, group: StakeholderGroup, stakeholder_id: uuid.UUI
     result = db.execute(delete(StakeholderGroupMember).where(
         StakeholderGroupMember.group_id == group.id, StakeholderGroupMember.stakeholder_id == stakeholder_id
     ))
-    return bool(result.rowcount)
+    return bool(affected_rows(result))
 
 
 def _branch_in(subtree: dict[uuid.UUID, StakeholderGroup], node_id: uuid.UUID, group: StakeholderGroup) -> uuid.UUID | None:

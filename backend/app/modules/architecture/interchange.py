@@ -25,6 +25,9 @@ Design decisions (all Decided by: Agent unless stated):
 - **Visibility is applied on export.** A connection end or state machine element another owner shares is written as an
   external reference only when the caller may read it; otherwise the reference is emptied, so the file does not disclose a
   code the caller cannot see. An import drops a connection whose end cannot be resolved and reports it.
+- **A record type that is switched off is not written or read.** A project that switches Connections, Diagrams or State
+  machine diagrams off (`service.enabled_record_types`) gets a file without those sections, and an import leaves them out
+  with a warning, the same as the routes of those types answer "not found".
 - **Import writes through the bundle path** inside one transaction, so a failure leaves nothing behind; it creates
   vocabulary rows when a type is missing, so it needs the Architect and the Architecture Admin roles (the router checks).
 - **Preview is the import, rolled back.** It shows what an apply would do from the same code, so the two cannot differ.
@@ -59,6 +62,13 @@ from app.modules.architecture.models import (
     ArchitectureStateMachineDiagram,
     ArchitectureTransition,
 )
+from app.modules.architecture.service import (
+    CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
+    ELEMENT_ARTEFACT_TYPE,
+    STATE_MACHINE_ARTEFACT_TYPE,
+    enabled_record_types,
+)
 from app.modules.architecture.visibility import Viewer, visible_element_ids
 from app.services.bundle_common import BundleImportWarnings, UserResolver
 
@@ -80,6 +90,19 @@ _NAMED = frozenset(SECTIONS) - {bundle.HIDDEN_ELEMENT_TYPES_KEY, bundle.HIDDEN_C
                                 bundle.FOLDERS_KEY, bundle.CONNECTIONS_KEY}
 _NAME_LISTS = frozenset({bundle.HIDDEN_ELEMENT_TYPES_KEY, bundle.HIDDEN_CONNECTION_TYPES_KEY, bundle.HIDDEN_SYMBOLS_KEY})
 _DROPPED_KEYS = frozenset({"comments", "comment_pins"})
+#: The section of each record type; a type the project has switched off has its section left out of the file.
+_TYPE_SECTIONS: dict[str, str] = {
+    ELEMENT_ARTEFACT_TYPE: bundle.ELEMENTS_KEY,
+    CONNECTION_ARTEFACT_TYPE: bundle.CONNECTIONS_KEY,
+    DIAGRAM_ARTEFACT_TYPE: bundle.DIAGRAMS_KEY,
+    STATE_MACHINE_ARTEFACT_TYPE: bundle.STATE_MACHINES_KEY,
+}
+
+
+def _switched_off_sections(db: Session, project: Project) -> set[str]:
+    """The record sections of the types the project has switched off."""
+    enabled = set(enabled_record_types(db, project.id))
+    return {section for artefact_type, section in _TYPE_SECTIONS.items() if artefact_type not in enabled}
 
 
 class InterchangeError(Exception):
@@ -163,7 +186,8 @@ def export_document(db: Session, project: Project, user: User) -> dict[str, Any]
         and `data` (the sections of `SECTIONS`).
     """
     exported, _assets = bundle.export_project_data(db, project)
-    data = scrub({key: exported.get(key, []) for key in SECTIONS})
+    off = _switched_off_sections(db, project)
+    data = scrub({key: [] if key in off else exported.get(key, []) for key in SECTIONS})
     data = empty_hidden_refs(db, Viewer.of_user(user, project), project, data)
     organization = db.get(Organization, project.organization_id)
     return {
@@ -261,9 +285,15 @@ def _run_import(db: Session, project: Project, document: dict[str, Any], user: U
     """Imports `document` into `project` (nothing committed) and reports the rows added."""
     warnings = BundleImportWarnings()
     before = _counts(db, project)
-    users = UserResolver(db, user, warnings, organization_id=project.organization_id, data=document["data"])
+    off = _switched_off_sections(db, project)
+    data = {key: [] if key in off else entries for key, entries in document["data"].items()}
+    for section in sorted(off):
+        if document["data"].get(section):
+            count = len(document["data"][section])
+            warnings.add(f"{count} entries of {section} were not imported: that record type is switched off for this project.")
+    users = UserResolver(db, user, warnings, organization_id=project.organization_id, data=data)
     try:
-        bundle.import_project_data(db, project, document["data"], {}, user, users, warnings)
+        bundle.import_project_data(db, project, data, {}, user, users, warnings)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError) as exc:
         raise InterchangeError("The file is not a well-formed architecture file; nothing was imported.") from exc
     after = _counts(db, project)

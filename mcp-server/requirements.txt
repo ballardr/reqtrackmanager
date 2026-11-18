@@ -1,8 +1,8 @@
-fastmcp==3.4.11
+fastmcp==4.2.0
 # fastmcp requires httpx>=0.28.1 (newer than the backend's own pin of
 # 0.27.2 — this is a separate service/container, so the two don't need to
 # match).
 httpx==0.28.1
-pytest==9.1.1
-pytest-asyncio==1.4.0
-ruff==0.7.4
+pytest==9.2.0
+pytest-asyncio==1.5.0
+ruff==0.17.5

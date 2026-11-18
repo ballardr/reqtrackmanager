@@ -52,6 +52,7 @@ from app.models.requirement import Requirement
 from app.modules.registry import RecordCellError, RecordColumn, RecordImportContext, get_not_placeable_types
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
+from app.services.lookups import affected_rows
 
 #: Types that keep their own component and category columns instead of rows in `artefact_placements`.
 COLUMN_PLACED_TYPES = frozenset({"requirement"})
@@ -325,15 +326,15 @@ def reassign_category(db: Session, category_id: uuid.UUID, target: ProjectCatego
         )
         .exists()
     )
-    dropped = db.execute(
+    dropped = affected_rows(db.execute(
         delete(ArtefactPlacement).where(ArtefactPlacement.category_id == category_id, already_there)
-    ).rowcount
-    moved = db.execute(
+    ))
+    moved = affected_rows(db.execute(
         update(ArtefactPlacement)
         .where(ArtefactPlacement.category_id == category_id)
         .values(category_id=target.id, component_id=target.component_id)
-    ).rowcount
-    return (dropped or 0) + (moved or 0)
+    ))
+    return dropped + moved
 
 
 def component_placement_count(db: Session, component_id: uuid.UUID) -> int:

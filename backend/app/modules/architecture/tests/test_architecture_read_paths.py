@@ -1,7 +1,11 @@
 """The read-path enumeration for shared elements: for a person with no access an element appears on no read path (detail,
 the shared list, a connection's end, the global search, the summary hook, the organisation list), for a person with access
 it appears on each, and the statements behind the shared reads do not grow with the number of elements. Later phases add
-their own paths (link candidates, diagram, report, interchange, MCP) here. Every test builds its own organisation."""
+their own paths (link candidates, diagram, report, interchange, MCP) here. Every test builds its own organisation.
+
+The sweeps that drive every route of the module (a person with no role, one who may use another project, a plain member, an
+Architect, a revoked grant, a switched-off record type) are `test_architecture_access_review*.py`; this file keeps the
+per-path assertions about a shared element."""
 
 from __future__ import annotations
 

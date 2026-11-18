@@ -47,6 +47,7 @@ from app.modules.registry import (
     get_report_field_providers,
     is_module_enabled,
     is_org_module_subcomponent_enabled,
+    subcomponent_serving,
 )
 from app.services import custom_report_run, report_render
 from app.services.downloads import filename_safe
@@ -148,9 +149,8 @@ def catalogue_for_organization(db: Session, organization_id: uuid.UUID) -> Field
         if definition is not None:
             if not is_module_enabled(db, organization_id, definition.key):
                 continue
-            if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
-                db, organization_id, definition.key, artefact_type,
-            ):
+            serving = subcomponent_serving(definition, artefact_type)
+            if serving is not None and not is_org_module_subcomponent_enabled(db, organization_id, definition.key, serving.key):
                 continue
         usable.append(artefact_type)
     return _catalogue(usable)

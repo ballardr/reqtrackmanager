@@ -61,7 +61,7 @@ def _due_versions_query(project_id: UUID | None = None):
 
 def get_due_reviews_for_project(db: Session, project_id: UUID) -> list[tuple[RequirementVersion, Requirement]]:
     """Returns (version, requirement) pairs due/overdue for review in a project (C-R-09)."""
-    return list(db.execute(_due_versions_query(project_id=project_id)).all())
+    return [(version, requirement) for version, requirement in db.execute(_due_versions_query(project_id=project_id)).all()]
 
 
 def reviewer_labels(
@@ -106,7 +106,7 @@ def get_due_reviews_for_user(db: Session, user_id: UUID) -> list[tuple[Requireme
         .join(Organization, Organization.id == Project.organization_id)
         .where(Organization.is_active.is_(True))
     )
-    return list(db.execute(query).all())
+    return [(version, requirement) for version, requirement in db.execute(query).all()]
 
 
 def _project_group_ids_with_due_reviews(db: Session, user_id: UUID) -> set[UUID]:

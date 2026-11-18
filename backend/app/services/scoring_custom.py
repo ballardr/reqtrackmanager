@@ -69,6 +69,7 @@ from app.modules.registry import (
 )
 from app.services import definition_suppression as suppression
 from app.services.audit import log_event
+from app.services.lookups import affected_rows
 from app.services.scoring import _flush_or_conflict, _positive_weight, list_levels  # shared level rules
 from app.services.scoring import _project_lookup_chain as project_chain
 
@@ -680,7 +681,7 @@ def restore_criterion(
         result = db.execute(delete(ScoringHiddenCriterion).where(
             ScoringHiddenCriterion.organization_id == organization_id, ScoringHiddenCriterion.scheme_key == scheme.key,
             ScoringHiddenCriterion.kind == kind, ScoringHiddenCriterion.key == key))
-        restored = bool(result.rowcount)
+        restored = bool(affected_rows(result))
     else:
         restored = bool(suppression.restore_definitions(
             db, project_id, definition_kind(scheme.key, kind), {_row_id(db, organization_id, scheme.key, kind, key)},

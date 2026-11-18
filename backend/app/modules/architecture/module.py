@@ -205,6 +205,7 @@ MODULE_DEFINITION = ModuleDefinition(
         "architecture_collection": "structure",
         "architecture_folder": "structure",
         "architecture_symbol": "structure",
+        "architecture_domain": "structure",
     },
     artefact_types=_ALL,
     artefact_type_labels={
@@ -277,6 +278,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key=DIAGRAM_SUBCOMPONENT_KEY, name="Diagrams", default_enabled=True),
         ModuleSubComponentDefinition(
             key=STATE_MACHINE_SUBCOMPONENT_KEY, name="State machine diagrams", default_enabled=True,
+            artefact_types=(STATE_MACHINE_ARTEFACT_TYPE, STATE_ARTEFACT_TYPE),
         ),
     ),
     overview_metrics=OVERVIEW_METRICS,

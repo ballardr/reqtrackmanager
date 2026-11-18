@@ -85,6 +85,14 @@ CONNECTION_ARTEFACT_TYPE = "architecture_connection"
 DIAGRAM_ARTEFACT_TYPE = "architecture_diagram"
 STATE_MACHINE_ARTEFACT_TYPE = "architecture_state_machine_diagram"
 STATE_ARTEFACT_TYPE = "architecture_state"
+#: The sub-component that switches each record type on for a project, in display order (a state belongs to its state
+#: machine diagram).
+RECORD_SUBCOMPONENTS: tuple[tuple[str, str], ...] = (
+    (ELEMENT_ARTEFACT_TYPE, ELEMENT_SUBCOMPONENT_KEY),
+    (CONNECTION_ARTEFACT_TYPE, CONNECTION_SUBCOMPONENT_KEY),
+    (DIAGRAM_ARTEFACT_TYPE, DIAGRAM_SUBCOMPONENT_KEY),
+    (STATE_MACHINE_ARTEFACT_TYPE, STATE_MACHINE_SUBCOMPONENT_KEY),
+)
 ELEMENT_CODE_PREFIX = "ELM"
 CONNECTION_CODE_PREFIX = "CON"
 DIAGRAM_CODE_PREFIX = "DGM"
@@ -98,6 +106,16 @@ DOMAIN_KIND = "architecture_domain"
 
 #: How many ancestors `configuration_source` walks (a guard against a corrupt tree).
 _ANCESTOR_CAP = 50
+
+
+def enabled_record_types(db: Session, project_id: uuid.UUID) -> list[str]:
+    """The record types (`RECORD_SUBCOMPONENTS`) whose sub-component is effectively on for the project, in display order.
+
+    A file, a report or a read that spans several record types leaves out the ones this does not list, as their own routes do.
+    """
+    from app.modules.registry import is_module_subcomponent_enabled
+
+    return [t for t, key in RECORD_SUBCOMPONENTS if is_module_subcomponent_enabled(db, project_id, ARCHITECTURE_MODULE_KEY, key)]
 
 #: Accent colour pair `(light, dark)` a seeded type gets, by domain.
 DOMAIN_COLORS: dict[str, tuple[str, str]] = {

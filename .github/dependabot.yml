@@ -1,28 +1,40 @@
-# Dependency updates arrive as pull requests that the normal CI run (tests, dependency scan, image scan) must pass.
-# GitHub Actions are pinned to a commit SHA (with the tag in a comment), so this is how a pinned action moves.
+# Dependabot opens no pull requests: a limit of 0 turns version-update PRs off for every ecosystem, and
+# dependency and GitHub Action updates are made in a reviewed change by Claude Code, so each upgrade is fixed
+# properly (code, lockfile, tests) rather than merged as a bare version bump. The entries stay so the
+# ecosystems remain declared. Security-update PRs are a repository setting (Settings -> Code security ->
+# Dependabot security updates), not this file; alerts still appear.
+# GitHub Actions are pinned to a commit SHA (with the tag in a comment) and are moved the same way.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: pip
     directory: /backend
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: pip
     directory: /mcp-server
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: npm
     directory: /frontend
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: npm
     directory: /tests/playwright
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: docker
     directory: /backend
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: docker
     directory: /frontend
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0
   - package-ecosystem: docker
     directory: /converter
     schedule: { interval: weekly }
+    open-pull-requests-limit: 0

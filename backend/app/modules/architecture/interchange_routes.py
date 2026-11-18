@@ -5,9 +5,9 @@ The interchange endpoints, added to the module's project router by `add_intercha
 import preview, import) and the Structurizr DSL export.
 
 RBAC: reading needs project membership and the Elements sub-component (what a caller may not read is not written, see
-`interchange`). The import and its preview change data and create type rows, so they need the Architect role for
-elements, connections and diagrams and the Architecture Admin role. An import is one audit event with counts, never
-names or cell values.
+`interchange`; a record type the project has switched off is left out of both files). The import and its preview change
+data and create type rows, so they need the Architect role for elements, connections and diagrams and the Architecture
+Admin role. An import and a download are each one audit event with counts, never names or cell values.
 """
 
 from __future__ import annotations
@@ -24,7 +24,14 @@ from app.database import get_db
 from app.models.user import User
 from app.modules.architecture import _shared as sh
 from app.modules.architecture import interchange, structurizr
-from app.modules.architecture.service import ARCHITECTURE_MODULE_KEY, ELEMENT_SUBCOMPONENT_KEY
+from app.modules.architecture.export_audit import PROJECT_FILE_TYPE, audit_export
+from app.modules.architecture.service import (
+    ARCHITECTURE_MODULE_KEY,
+    CONNECTION_ARTEFACT_TYPE,
+    DIAGRAM_ARTEFACT_TYPE,
+    ELEMENT_SUBCOMPONENT_KEY,
+    enabled_record_types,
+)
 from app.modules.architecture.visibility import Viewer
 from app.services.audit import log_event
 from app.services.lookups import project_or_404
@@ -64,9 +71,13 @@ def add_interchange_routes(router: APIRouter) -> None:
 
     @router.get("/interchange/json")
     def download_json(project_id: uuid.UUID, current_user: User = Depends(view), db: Session = Depends(get_db)):
-        """The project's architecture as a versioned JSON file."""
+        """The project's architecture as a versioned JSON file. A download is audited as an export (counts only)."""
         project = project_or_404(db, project_id)
         document = interchange.export_document(db, project, current_user)
+        audit_export(
+            db, current_user, project, record_type=PROJECT_FILE_TYPE, fmt="json",
+            rows=sum(len(entries) for entries in document["data"].values() if isinstance(entries, list)),
+        )
         return Response(
             content=json.dumps(document, indent=2, ensure_ascii=False), media_type="application/json",
             headers={**_HEADERS, "Content-Disposition": f'attachment; filename="{project.code.lower()}-architecture.json"'},
@@ -115,10 +126,13 @@ def add_interchange_routes(router: APIRouter) -> None:
         """The project as a Structurizr DSL workspace (export only). `diagram_id` limits the views to one diagram;
         `toggle_on` / `toggle_off` override the saved state of a toggle, as for the diagram's own exports."""
         project = project_or_404(db, project_id)
+        enabled = set(enabled_record_types(db, project.id))
         text = structurizr.render_workspace(
             db, project, Viewer.of_user(current_user, project), diagram_id=diagram_id,
             toggle_on=frozenset(toggle_on), toggle_off=frozenset(toggle_off),
+            with_connections=CONNECTION_ARTEFACT_TYPE in enabled, with_diagrams=DIAGRAM_ARTEFACT_TYPE in enabled,
         )
+        audit_export(db, current_user, project, record_type=PROJECT_FILE_TYPE, fmt="structurizr", rows=text.count("\n") + 1)
         return Response(
             content=text, media_type="text/plain; charset=utf-8",
             headers={**_HEADERS, "Content-Disposition": f'attachment; filename="{project.code.lower()}-architecture.dsl"'},

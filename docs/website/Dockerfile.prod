@@ -7,7 +7,7 @@
 # build argument: `/` for an own host (the published image), `/docs/` to serve
 # behind a reverse proxy under a sub-path (build the image yourself with
 # `--build-arg DOCS_BASE_URL=/docs/`; see docs/deployment.md).
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 
 ARG DOCS_URL=http://localhost:8080
 ARG DOCS_BASE_URL=/

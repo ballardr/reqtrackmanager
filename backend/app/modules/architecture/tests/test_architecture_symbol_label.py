@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import math
 import os
-from pathlib import Path
 
 import pytest
 
@@ -30,8 +29,9 @@ from app.modules.architecture.diagram_symbol_label import (
     wrap_label,
 )
 from app.modules.architecture.enums import LabelPosition, StateKind
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-CASES_FILE = Path(__file__).resolve().parents[5] / "frontend" / "src" / "modules" / "architecture" / "symbolLabelCases.json"
+CASES_FILE = FRONTEND_SRC / "modules" / "architecture" / "symbolLabelCases.json"
 
 LABELS = [
     ("short", "Full?"),
@@ -81,6 +81,7 @@ def label_cases() -> dict:
     }
 
 
+@needs_repository
 def test_the_shared_label_cases_are_current():
     produced = json.dumps(label_cases(), indent=2, ensure_ascii=False) + "\n"
     if os.environ.get("UPDATE_SHAPE_CASES") == "1":

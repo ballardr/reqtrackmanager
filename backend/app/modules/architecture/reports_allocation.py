@@ -33,6 +33,7 @@ from app.modules.architecture.report_support import live_connections, project_el
 from app.modules.architecture.service import (
     ARCHITECTURE_MODULE_KEY,
     CONNECTION_ARTEFACT_TYPE,
+    CONNECTION_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
     ELEMENT_SUBCOMPONENT_KEY,
 )
@@ -72,6 +73,7 @@ def collect_allocation_coverage(db: Session, req: ReportContext) -> ReportResult
         `connections`, `unlinked_connections`, `unowned_leaf_elements` and `suggestions`.
     """
     projects = req.eligible(db, ELEMENT_SUBCOMPONENT_KEY)
+    with_connections = {p.id for p in req.eligible(db, CONNECTION_SUBCOMPONENT_KEY)}
     requirement_rows: list[list[str]] = []
     element_rows: list[list[str]] = []
     connection_rows: list[list[str]] = []
@@ -106,7 +108,7 @@ def collect_allocation_coverage(db: Session, req: ReportContext) -> ReportResult
                     req.code(e.unique_code, project.id), e.name, type_names.get(e.element_type_id, ""),
                     record_status_label(e.status), project.name,
                 ])
-        connections: list[ArchitectureConnection] = live_connections(db, project.id)
+        connections: list[ArchitectureConnection] = live_connections(db, project.id) if project.id in with_connections else []
         totals["connections"] += len(connections)
         linked = _requirement_linked_connections(db, {c.id for c in connections})
         connection_rows += [

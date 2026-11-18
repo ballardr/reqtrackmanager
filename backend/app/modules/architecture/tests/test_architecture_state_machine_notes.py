@@ -15,7 +15,6 @@ import re
 import shutil
 import subprocess
 import zipfile
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -37,6 +36,7 @@ from app.modules.architecture.tests._helpers import (
     setup,
     sound_machine,
 )
+from app.modules.architecture.tests._repository import REPO_ROOT, needs_repository
 from tests.conftest import auth_headers, build_alembic_config
 
 
@@ -308,6 +308,7 @@ def test_a_note_line_that_would_close_the_block_cannot_do_so(client, admin_token
     assert lines[opened + 1: lines.index("end note")] == ["first", "\u2012 end note", "state hacked (", "second"]
 
 
+@needs_repository
 def test_the_mermaid_text_with_notes_is_read_by_the_real_parser(client, admin_token, tmp_path):
     """Notes on a state in a block, on a choice and several on one state parse with Mermaid itself. Skipped where `node` or the
     parser's packages (`scripts/mermaid_parse.mjs`) are not installed."""
@@ -326,7 +327,7 @@ def test_the_mermaid_text_with_notes_is_read_by_the_real_parser(client, admin_to
     ])
     file = tmp_path / "machine.mmd"
     file.write_text(_mermaid(client, token, p, m), encoding="utf-8")
-    script = Path(__file__).resolve().parents[5] / "scripts" / "mermaid_parse.mjs"
+    script = REPO_ROOT / "scripts" / "mermaid_parse.mjs"
     done = subprocess.run(["node", str(script), str(file)], capture_output=True, text=True, timeout=120, check=False)
     if done.returncode == 2:
         pytest.skip("the Mermaid parser is not installed (npm ci in frontend and docs/website)")

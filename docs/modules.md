@@ -238,6 +238,14 @@ it, so the project list omits it, the project `PUT` answers 404, creation and
 template copies write no project row, and `is_module_subcomponent_enabled`
 returns the organisation's state, ignoring any stored row. No core file names the key.
 
+**Which artefact types a sub-component serves.** A sub-component whose key is an artefact type's own name serves that type.
+One that serves several types, or types under other names, lists them in `ModuleSubComponentDefinition.artefact_types`
+(System Architecture's `architecture_state_machine` serves the state machine diagram and the state). The core's per-type
+gate (`artefact_type_enabled_for_project`, `registry.subcomponent_serving`) follows it, so a record route the module does
+not own (link graph, tags, comments, History, search, record lists) answers "not found" for a switched-off type, as the
+module's own routes do. A file or report that spans several types reads `service.enabled_record_types` and leaves the
+switched-off ones out.
+
 ```mermaid
 flowchart TD
     WM{"Whole module enabled?"}

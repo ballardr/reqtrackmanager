@@ -46,6 +46,8 @@ The file holds the project's element and connection types, folders, elements (po
 - **Preview.** Choosing a file shows the rows it would add by kind and anything it could not resolve (for example a connection whose end belongs to another owner that is not available). **Import** applies the same import.
 - **Who can import.** An import creates records and type rows, so it needs the Architect role and the Architecture Admin role. Any project member who can see the elements can export.
 - **What is exported.** An end another owner shares is written as a reference only while the person exporting may read it; otherwise it is left empty and the import reports the connection as skipped.
+- **Record types switched off.** A project that has switched Connections, Diagrams or State machine diagrams off exports no entries of that type, and an import leaves them out with a warning. The Structurizr file leaves out the relationships and the views in the same way.
+- **Audit.** Each download of the JSON file, the Structurizr file or a diagram's SVG or Mermaid text is recorded as one export event (the record type, the format and a count), never the names or the drawing.
 - **Limits.** The file is refused whole when it is over 10 MB, nested more than 40 levels, in another format, or of another major version. A newer minor version of the same major version is read.
 
 ## Structurizr DSL

@@ -27,8 +27,9 @@ from app.modules.architecture.state_shapes import (
     self_loop_path,
     shape_table,
 )
+from app.modules.architecture.tests._repository import FRONTEND_SRC, needs_repository
 
-FRONTEND = Path(__file__).resolve().parents[5] / "frontend" / "src"
+FRONTEND = FRONTEND_SRC
 TABLE_FILE = FRONTEND / "modules" / "architecture" / "stateShapeCases.json"
 LOOP_FILE = FRONTEND / "components" / "graphSelfLoopCases.json"
 
@@ -81,10 +82,12 @@ def _check_file(path: Path, produced: str) -> None:
     )
 
 
+@needs_repository
 def test_the_shared_shape_table_is_current():
     _check_file(TABLE_FILE, json.dumps(shape_table(), indent=2) + "\n")
 
 
+@needs_repository
 def test_the_shared_self_loop_cases_are_current():
     _check_file(LOOP_FILE, json.dumps(loop_cases(), indent=2) + "\n")
 

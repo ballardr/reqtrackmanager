@@ -5,7 +5,7 @@
 # nginx-based one: `docusaurus serve` (Node, not nginx) serves the exact
 # static production build GitHub Pages will, which `npm start`'s dev server
 # would not.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -13,7 +13,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 COPY --from=build /app /app

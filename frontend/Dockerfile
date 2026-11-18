@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 
 # Build identity, baked into the bundle at build time (Vite substitutes
 # `import.meta.env.VITE_*` when the build runs, unlike VITE_API_BASE_URL
@@ -24,7 +24,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.30-alpine
+FROM nginx:1.31-alpine
 
 # Pull in Alpine security fixes released after the base image was built, so the
 # CI vulnerability gate (HIGH/CRITICAL with a fix available) does not fail on a

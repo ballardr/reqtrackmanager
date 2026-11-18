@@ -57,6 +57,7 @@ from app.services.audit import log_event
 from app.services.email import EmailDeliveryDisabled, send_email
 from app.services.email_branding import EmailBranding, resolve_email_branding
 from app.services.email_templates import render_email
+from app.services.lookups import affected_rows
 from app.services.pats import revoke_all_for_user, revoke_matching
 from app.services.rate_limit import RateLimiter
 
@@ -350,7 +351,7 @@ def purge_spent_tokens(db: Session) -> int:
         )
     )
     db.commit()
-    return result.rowcount
+    return affected_rows(result)
 
 
 # --- rate limits ----------------------------------------------------------------------------------------

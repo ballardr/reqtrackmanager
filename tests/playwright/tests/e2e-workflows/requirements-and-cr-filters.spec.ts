@@ -76,10 +76,10 @@ test.describe("requirements list filters and view-mode persistence", () => {
     });
 
     await test.step("status filter narrows the list", async () => {
-      await page.getByLabel("Status").selectOption("approved");
+      await page.getByLabel("Status", { exact: true }).selectOption("approved");
       await expect(page.getByText("HW-FN-001")).toBeVisible();
       await expect(page.getByText(draftReqName)).toHaveCount(0);
-      await page.getByLabel("Status").selectOption("");
+      await page.getByLabel("Status", { exact: true }).selectOption("");
       await settled();
     });
 
@@ -87,7 +87,7 @@ test.describe("requirements list filters and view-mode persistence", () => {
       // "Completed" is no longer a status <select> option (it's the
       // separate `Requirement.is_completed` overlay) — a dedicated filter
       // checkbox alongside Status instead.
-      const statusOptionLabels = await page.getByLabel("Status").locator("option").allTextContents();
+      const statusOptionLabels = await page.getByLabel("Status", { exact: true }).locator("option").allTextContents();
       expect(statusOptionLabels).not.toContain("Completed");
 
       // exact: true — getByLabel does substring matching by default, and a
@@ -312,15 +312,15 @@ test.describe("change requests default to an active-only status filter", () => {
     // Back on the list: default view ("Active") hides it.
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await searchChangeRequests(page, name);
-    await expect(page.getByLabel("Status")).toHaveValue("active");
+    await expect(page.getByLabel("Status", { exact: true })).toHaveValue("active");
     await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
 
     // Widening to "All statuses" reveals it again.
-    await page.getByLabel("Status").selectOption("");
+    await page.getByLabel("Status", { exact: true }).selectOption("");
     await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
 
     // Narrowing to the specific "Withdrawn" status also finds it.
-    await page.getByLabel("Status").selectOption("withdrawn");
+    await page.getByLabel("Status", { exact: true }).selectOption("withdrawn");
     await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
   });
 });

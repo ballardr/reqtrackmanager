@@ -48,6 +48,7 @@ from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.relationship import ArtefactLink
+from app.services.lookups import affected_rows
 
 
 def create_link(
@@ -341,4 +342,4 @@ def delete_links_for_artefacts(db: Session, artefact_type: str, artefact_ids: Se
             )
         )
     )
-    return result.rowcount or 0
+    return affected_rows(result)

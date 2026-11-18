@@ -48,6 +48,7 @@ from app.modules.architecture.realisations import project_realisations, reaches,
 from app.modules.architecture.records import RuleError, _audit_connection, get_connection
 from app.modules.architecture.schemas import BoundaryIn
 from app.modules.architecture.visibility import ancestor_parents
+from app.services.lookups import affected_rows
 
 #: The most connections one connection may realise (a bound on the request, not a modelling limit).
 MAX_REALISATIONS = 50
@@ -227,4 +228,4 @@ def sync_boundaries(db: Session, diagram_id: uuid.UUID, wanted: Sequence[Boundar
 def clear_boundaries(db: Session, diagram_id: uuid.UUID) -> int:
     """Removes every box of a diagram (its scope changed, so the outer connections are different). Returns the count."""
     result = db.execute(delete(ArchitectureDiagramBoundary).where(ArchitectureDiagramBoundary.diagram_id == diagram_id))
-    return int(result.rowcount or 0)
+    return affected_rows(result)

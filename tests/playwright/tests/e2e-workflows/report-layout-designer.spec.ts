@@ -610,7 +610,8 @@ test.describe("Report layout designer", () => {
       const [row, left, right] = await Promise.all([band.boundingBox(), band.locator(".cell.left").boundingBox(), band.locator(".cell.right").boundingBox()]);
       expect(left!.width / row!.width).toBeGreaterThan(0.2);
       expect(left!.width / row!.width).toBeLessThan(0.3);
-      await expect(band.locator(".cell.right")).toHaveCSS("align-items", "flex-end");
+      // Newer Chromium reports the computed value of `flex-end` as `flow-end`; both mean the same end alignment.
+      await expect(band.locator(".cell.right")).toHaveCSS("align-items", /^(flex|flow)-end$/);
       await expect(band.locator(".cell.left")).toHaveCSS("align-items", "center");
       expect(right!.x + right!.width).toBeLessThanOrEqual(row!.x + row!.width + 1);
     });

@@ -354,12 +354,21 @@ class ModuleSubComponentDefinition:
             rejects a write for it, no project row is ever created for it,
             and `is_module_subcomponent_enabled` returns the
             organisation's state, ignoring any stored project row.
+        artefact_types: The artefact types this sub-component serves when its
+            key is not itself the type's name (one sub-component can serve
+            several types, e.g. a diagram and its states). A sub-component
+            whose key equals an artefact type serves it without listing it.
+            Every core read of a record (link graph, tags, search, record
+            tables, the overview) treats a type as switched off when the
+            serving sub-component is, so a switched-off type is not named
+            by a route the module does not own.
     """
 
     key: str
     name: str
     default_enabled: bool = True
     organization_only: bool = False
+    artefact_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -4062,7 +4071,7 @@ def configure_alembic_version_locations(cfg: Config) -> None:
       by every registered module's own `migrations_dir` (skipping `None`),
       each an absolute path so this works regardless of the caller's own
       current working directory.
-    - `version_path_separator`: `"os"` — required by Alembic whenever more
+    - `path_separator`: `"os"` — required by Alembic whenever more
       than one location is configured (its own default separator, `" "`,
       cannot disambiguate a path containing a space; `"os"` uses `os.
       pathsep`, this project's own operating convention, matching Alembic's
@@ -4088,7 +4097,7 @@ def configure_alembic_version_locations(cfg: Config) -> None:
             continue
         locations.append(str(_BACKEND_DIR / definition.migrations_dir))
     cfg.set_main_option("version_locations", os.pathsep.join(locations))
-    cfg.set_main_option("version_path_separator", "os")
+    cfg.set_main_option("path_separator", "os")
 
 
 def apply_external_module_migrations(engine: Engine) -> None:
@@ -4897,9 +4906,8 @@ def list_organization_artefact_summaries(
         return []
     if not is_module_enabled(db, organization_id, definition.key):
         return []
-    if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
-        db, organization_id, definition.key, artefact_type
-    ):
+    serving = subcomponent_serving(definition, artefact_type)
+    if serving is not None and not is_org_module_subcomponent_enabled(db, organization_id, definition.key, serving.key):
         return []
     return list_for_organization(db, organization_id)
 
@@ -5292,6 +5300,15 @@ def get_link_type_seed_owners() -> dict[str, frozenset[str]]:
     return {name: frozenset(keys) for name, keys in owners.items()}
 
 
+def subcomponent_serving(definition: ModuleDefinition, artefact_type: str) -> ModuleSubComponentDefinition | None:
+    """The sub-component of `definition` that serves `artefact_type`: the one keyed by the type's own name, else the one that
+    lists it in `artefact_types`; `None` when the type is served by the whole module."""
+    for sub in definition.sub_components:
+        if sub.key == artefact_type or artefact_type in sub.artefact_types:
+            return sub
+    return None
+
+
 def _artefact_type_enabled_for_project(
     db: Session, definition: ModuleDefinition, artefact_type: str, project_id: uuid.UUID
 ) -> bool:
@@ -5299,8 +5316,9 @@ def _artefact_type_enabled_for_project(
     and, where the module declares a sub-component keyed by the artefact type
     itself (Context & Strategy's `"pain_point"`, Stakeholders' `"persona"`),
     whether that sub-component is too."""
-    if any(sub.key == artefact_type for sub in definition.sub_components):
-        return is_module_subcomponent_enabled(db, project_id, definition.key, artefact_type)
+    sub = subcomponent_serving(definition, artefact_type)
+    if sub is not None:
+        return is_module_subcomponent_enabled(db, project_id, definition.key, sub.key)
     return is_module_enabled_for_project(db, project_id, definition.key)
 
 
