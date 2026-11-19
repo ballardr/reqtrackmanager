@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import enum
 
+from app.models.external_reference import ExternalReferenceRole
+
 
 class EnhancementRequestStatus(str, enum.Enum):
     """Lifecycle states of an `EnhancementRequest`.
@@ -40,8 +42,6 @@ class SubmissionPolicy(str, enum.Enum):
     TRIAGERS = "triagers"
 
 
-class ExternalRefRole(str, enum.Enum):
-    """What a request's external reference is: the ticket it came from, or the one where it is delivered."""
-
-    ORIGIN = "origin"
-    DELIVERY = "delivery"
+#: What a request's external reference is: the ticket it came from (`ORIGIN`), or the one where it is delivered
+#: (`DELIVERY`). The enum is the shared one, so the role a request chooses is the role every record type has.
+ExternalRefRole = ExternalReferenceRole

@@ -53,7 +53,7 @@ READ_ONLY_TOOLS = {
     # Fine-Grained Access Control — read-only permission-vocabulary and
     # custom-role-definition tools; no grant-roster tool exists (see docs/decisions.md).
     "list_permissions", "list_custom_roles", "get_custom_role",
-    "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "get_record_by_code", "search_records",
+    "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "list_external_systems", "list_organization_external_systems", "get_record_by_code", "search_records",
     "get_record_list_report",
     # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).
     "list_report_layouts", "get_report_layout", "run_custom_report", "get_report_layout_variables",

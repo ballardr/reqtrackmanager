@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 10 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 11 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-10 / 25 phases complete.
+11 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -20,7 +20,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 8 | Org Resources: page and extension point | `/orgs/:orgId/resources`, registry-driven sections, redirects, navigation entry | [x] |
 | 9 | Org Resources: move sections | Move what the review approved; Organisation Settings keeps configuration only | [x] |
 | 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [x] |
-| 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [ ] |
+| 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [x] |
 | 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [ ] |
 | 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [ ] |
 | 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [ ] |
@@ -197,6 +197,8 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Migrate `EnhancementRequestExternalRef` and its systems (data migration with a reversible test); the module then calls the core service; its old fields stay accepted by the API.
 - Security: URLs http or https only; keys are text, never HTML; the URL template is substituted with the key URL-encoded.
 - Tests: service and endpoint behaviour, access (record edit permission), cross-organisation rejection, migration of existing Product Feedback data, bundle round trip.
+
+- As built: `models/external_reference.py` (the systems models moved from Product Feedback and gained `url_template`; the new `ExternalReference` with an optional `role`, `note`, owner columns and no record foreign key), migrations 0203 (core) and 0204 (Product Feedback's data, reversible), `services/external_references.py` (vocabulary, validation, `link_for`, add/update/remove, conversion, bundle halves, `references_enabled`), `routers/external_references.py` and `routers/external_systems.py` (built on `services/vocabulary_endpoints.py`, `TypeVocabulary` extra columns), core bundle sections and template copy for the systems, `ExternalSystemsPanels` in Organisation Settings and Project Admin, core MCP tools `list_external_systems` and `list_organization_external_systems`. Decided with the user: generic optional role, one route set under organisation administrator and project settings authority, the panel in this phase. See `docs/decisions.md`.
 
 ### Phase 12 — External references: every surface
 

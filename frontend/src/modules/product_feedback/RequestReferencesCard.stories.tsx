@@ -44,6 +44,15 @@ export const ANonWebLinkIsNeverClickable: Story = {
   },
 };
 
+/** A key with no link of its own opens the item through its system's link template (the server sends it as `link`). */
+export const AKeyOpensItsItemThroughTheSystemsTemplate: Story = {
+  args: { references: [buildExternalRef({ key: "ABC-7", url: null, link: "https://tracker.example/browse/ABC-7" })] },
+  play: async ({ canvasElement }) => {
+    const link = within(canvasElement).getByRole("link", { name: "ABC-7" });
+    await expect(link).toHaveAttribute("href", "https://tracker.example/browse/ABC-7");
+  },
+};
+
 /** A triager adds, changes and removes; the buttons call back with the reference concerned. */
 export const ATriagerCanAddEditAndRemove: Story = {
   play: async ({ canvasElement, args }) => {

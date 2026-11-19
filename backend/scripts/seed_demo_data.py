@@ -4402,8 +4402,16 @@ def main() -> None:
             {"axis_key": "c_safety_relevance", "role": "sum", "importance": 40}],
     }, headers=h_pm, timeout=30).raise_for_status()
     request_levels = get_request_levels(h_pm, drone["id"])
+    # The shared external systems: Jira gets a link template, so a reference with only a key still opens its ticket.
+    org_systems = {
+        e["name"]: e["id"] for e in httpx.get(f"{BASE}/orgs/{org['id']}/external-systems", headers=h_pm, timeout=30).json()
+    }
+    httpx.patch(
+        f"{BASE}/orgs/{org['id']}/external-systems/{org_systems['Jira']}",
+        json={"url_template": "https://tracker.example.com/browse/{key}"}, headers=h_pm, timeout=30,
+    ).raise_for_status()
     external_systems = {
-        e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/external-systems", headers=h_pm, timeout=30).json()
+        e["name"]: e["id"] for e in httpx.get(f"{BASE}/projects/{drone['id']}/external-systems", headers=h_pm, timeout=30).json()
     }
     request_channels = {
         e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/request-channels", headers=h_pm, timeout=30).json()
@@ -4414,7 +4422,7 @@ def main() -> None:
         description="Inspectors want to pull a day's inspection log into a spreadsheet for the weekly review.",
         owner={"type": "user", "id": demo_engineer["user_id"]},
         references=[
-            {"system_id": external_systems["Jira"], "key": "FAL-214", "url": "https://tracker.example.com/browse/FAL-214"},
+            {"system_id": external_systems["Jira"], "key": "FAL-214"},
             {"system_id": external_systems["ServiceNow"], "key": "INC0012345", "role": "origin"},
         ],
     )

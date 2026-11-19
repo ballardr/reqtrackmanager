@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated
-from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
@@ -45,21 +44,7 @@ from app.modules.product_feedback.enums import (
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
-
-
-def check_web_url(value: str | None) -> str | None:
-    """Accepts only an absolute `http` or `https` URL (or nothing). The reference is rendered as a link, and a
-    `javascript:` or `data:` URL stored there would run in the viewer's browser or in an export.
-
-    Raises:
-        ValueError: If a non-empty value is not an http(s) URL with a host.
-    """
-    if not value:
-        return value
-    parts = urlsplit(value.strip())
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise ValueError("A link must be an http or https URL.")
-    return value.strip()
+from app.services.external_references import check_web_url
 
 
 class ExternalRefIn(BaseModel):
@@ -92,7 +77,8 @@ class ExternalRefUpdate(BaseModel):
 
 
 class ExternalRefOut(BaseModel):
-    """A reference with its system's name. `system_id` is accepted back by the request's tier's system picker."""
+    """A reference with its system's name. `system_id` is accepted back by the request's tier's system picker; `link` is
+    `url` or, without one, the system's link template with the key in it."""
 
     id: UUID
     request_id: UUID
@@ -100,6 +86,7 @@ class ExternalRefOut(BaseModel):
     system_name: str
     key: str
     url: str | None = None
+    link: str | None = None
     role: ExternalRefRole
     created_by: UUID
     created_at: datetime

@@ -49,7 +49,7 @@ from app.modules.product_feedback.enums import EnhancementRequestScope, Enhancem
 from app.modules.product_feedback.labels import REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE
 from app.modules.product_feedback.models import EnhancementRequest, EnhancementRequestVersion
 from app.modules.product_feedback.ratings import derived_levels, load_rating_context, parse_model_keys, score_levels
-from app.modules.product_feedback.schemas import ExternalRefIn, RequestCreate, RequestUpdate, check_web_url
+from app.modules.product_feedback.schemas import ExternalRefIn, RequestCreate, RequestUpdate
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.scoring_filter import ScoredFilter
 from app.modules.product_feedback.service import (
@@ -64,7 +64,6 @@ from app.modules.product_feedback.service import (
     list_project_requests,
     version_levels,
 )
-from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS
 from app.modules.registry import (
     OrganizationRecordTable,
     RecordCellError,
@@ -74,6 +73,7 @@ from app.modules.registry import (
     RecordTableProvider,
 )
 from app.services import tags as tag_service
+from app.services.external_references import EXTERNAL_SYSTEMS, check_web_url
 from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells, find_many_by_code

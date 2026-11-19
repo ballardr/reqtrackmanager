@@ -907,7 +907,7 @@ def add_reference_from_payload(
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    audit_request(db, holder, request, "reference_added", actor, {"reference_id": str(row.id), "role": row.role.value})
+    audit_request(db, holder, request, "reference_added", actor, {"reference_id": str(row.id), "role": row.role.value if row.role else None})
     db.commit()
     return next(r for r in refs.references_by_request(db, [request.id])[request.id] if r.id == row.id)
 

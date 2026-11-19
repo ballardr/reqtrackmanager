@@ -4454,7 +4454,8 @@ def run_on_org_created_hooks(
     of these"), otherwise `default_org_creation_choice_keys()`.
 
     Also seeds the organisation's default levels for every registered
-    scoring scheme (`services.scoring.seed_missing_scoring_levels`) — generic core behaviour, not a per-module hook.
+    scoring scheme (`services.scoring.seed_missing_scoring_levels`) and its default external systems
+    (`services.external_references.seed_org_defaults`) — generic core behaviour, not a per-module hook.
 
     A module with neither hook (the default `None` for both) is simply
     skipped. Does not commit — each hook only adds rows, the same
@@ -4472,12 +4473,14 @@ def run_on_org_created_hooks(
             keys`'s own docstring for why `None`, not an empty set, is the
             "caller didn't specify" sentinel).
     """
+    from app.services.external_references import seed_org_defaults as seed_external_systems
     from app.services.scoring import seed_missing_scoring_levels
 
     resolved_keys = (
         default_org_creation_choice_keys() if selected_choice_keys is None else selected_choice_keys
     )
     seed_missing_scoring_levels(db, organization_id)
+    seed_external_systems(db, organization_id)
     for definition in get_module_registry().values():
         if definition.on_org_created is not None:
             definition.on_org_created(db, organization_id)

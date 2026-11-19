@@ -22,9 +22,10 @@ references to it (each in one of the organisation's external systems).
 - Merging: a duplicate is merged into a canonical request, reversibly (`merge.py`); demand is the union.
 - Scoring: the `enhancement_request` scheme (`scoring.py`) scores a request on Reach, Impact, Confidence and
   Effort (a divisor); ICE or RICE is chosen when viewing and the score is derived on every read (`ratings.py`).
-- External references and channels: a request lists the items it points to in outside tools (`references.py`), and each
-  requester says how they asked (`channels.py`); both are chosen from organisation lists a project can extend and
-  hide entries of (`vocabularies.py`, administered with the `feedback_list_admin` role).
+- External references and channels: a request lists the items it points to in outside tools (`references.py`, rows of
+  the shared external references table; the systems are the organisation's shared list), and each requester says how
+  they asked (`channels.py`, chosen from an organisation list a project can extend and hide entries of,
+  `vocabularies.py`, administered with the `feedback_list_admin` role).
 - Reports F1-F5 (`reports.py`): demand ranking, unlinked requests, close the loop, triage ageing and problem demand, for a
   project and (with the `org_feedback_triager` role) the organisation.
 - MCP tools: write-enabled (`mcp_tools.py`), plus a read tool per report.
@@ -174,7 +175,7 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
         import_late=bundle_export.import_late_project_data,
-        template_configuration_keys=frozenset({"feedback_settings", "scoring_definitions", "external_systems", "request_channels"}),
+        template_configuration_keys=frozenset({"feedback_settings", "scoring_definitions", "request_channels"}),
         template_record_keys=frozenset({"enhancement_requests", "enhancement_request_links"}),
         template_reset=bundle_export.reset_for_template,
     ),
@@ -199,7 +200,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
         ModuleRoleDefinition(
             role_key=LIST_ADMIN_ROLE_KEY, name="Feedback List Admin",
-            description="Edits the organisation's external system and request channel lists.",
+            description="Edits the organisation's request channel list.",
             scope="org",
         ),
         ModuleRoleDefinition(

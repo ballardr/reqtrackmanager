@@ -4,13 +4,12 @@ import { ProjectScoringSettings } from "../../components/ProjectScoringSettings"
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
 import {
-  OrgExternalSystemsPanel, OrgRequestChannelsPanel, ProjectExternalSystemsPanel, ProjectRequestChannelsPanel,
+  OrgRequestChannelsPanel, ProjectRequestChannelsPanel,
 } from "./FeedbackListPanels";
 import { CreateRequestDialog } from "./CreateRequestDialog";
 import { OrgRequestsPanel } from "./OrgRequestsPanel";
 import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import { RequestDetailPage } from "./RequestDetailPage";
-import { EXTERNAL_REFERENCES_KEY } from "./useExternalReferences";
 import { SubmissionPolicyPanel } from "./SubmissionPolicyPanel";
 import { ORG_REQUEST_INBOX_SECTION_KEY } from "./orgResourceKeys";
 import { REQUEST_STATUS_LABEL } from "./types";
@@ -82,13 +81,6 @@ export const moduleDefinition: TierAModuleDefinition = {
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: REQUEST_SCORING_SCHEME }),
     },
     {
-      key: "product-feedback-external-systems",
-      label: "External Systems",
-      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
-      subComponent: EXTERNAL_REFERENCES_KEY,
-      render: ({ orgId }) => createElement(OrgExternalSystemsPanel, { orgId }),
-    },
-    {
       key: "product-feedback-request-channels",
       label: "Request Channels",
       group: PRODUCT_FEEDBACK_ADMIN_GROUP,
@@ -107,13 +99,6 @@ export const moduleDefinition: TierAModuleDefinition = {
       label: "Request Scoring",
       group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectScoringSettings, { projectId, schemeKey: REQUEST_SCORING_SCHEME }),
-    },
-    {
-      key: "product-feedback-external-systems",
-      label: "External Systems",
-      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
-      subComponent: EXTERNAL_REFERENCES_KEY,
-      render: ({ projectId }) => createElement(ProjectExternalSystemsPanel, { projectId }),
     },
     {
       key: "product-feedback-request-channels",

@@ -34,7 +34,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,6 +58,7 @@ class EffectiveType:
         is_enabled: Disabled types stay listed (so they can be re-enabled)
             but are rejected when selected.
         source: `"org"`, `"project_override"` or `"project_local"`.
+        extras: The vocabulary's `extra_columns` as effective here (an override's value, else the organisation's).
     """
 
     id: uuid.UUID
@@ -64,6 +66,7 @@ class EffectiveType:
     display_order: int
     is_enabled: bool
     source: str
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 class TypeVocabulary:
@@ -79,6 +82,11 @@ class TypeVocabulary:
         default_names: Names seeded for each new organisation.
         inherit_from_ancestors: Whether a project with no configuration of its own shows its nearest
             ancestor's effective list (see the module docstring).
+        extra_columns: Names of further nullable columns both models carry (an external system's `url_template`).
+            An override's null means "follow the organisation entry"; they are copied with an inherited list and
+            reported in `EffectiveType.extras`.
+        clean_extra: `(column, value) -> cleaned value`, raising `ValueError` for one that is not acceptable; applied
+            to an `extra_columns` value arriving from a bundle (an API payload is validated by its schema).
         org_type_in_use: `(db, org_type_id) -> bool`, whether any artefact
             row references the org type directly.
         project_type_in_use: `(db, project_type_id) -> bool`, whether any
@@ -89,9 +97,12 @@ class TypeVocabulary:
         self, *, kind: str, label: str, org_model, project_model, default_names: tuple[str, ...],
         org_type_in_use: Callable[[Session, uuid.UUID], bool],
         project_type_in_use: Callable[[Session, uuid.UUID], bool],
-        inherit_from_ancestors: bool = False,
+        inherit_from_ancestors: bool = False, extra_columns: tuple[str, ...] = (),
+        clean_extra: Callable[[str, Any], Any] | None = None,
     ) -> None:
         self.inherit_from_ancestors = inherit_from_ancestors
+        self.extra_columns = extra_columns
+        self.clean_extra = clean_extra
         self.kind = kind
         self.label = label
         self.org_model = org_model
@@ -107,8 +118,8 @@ class TypeVocabulary:
         for i, name in enumerate(self.default_names):
             db.add(self.org_model(organization_id=organization_id, name=name, sort_order=i, is_active=True))
 
-    def create_org_type(self, db: Session, organization_id: uuid.UUID, name: str):
-        """Creates an org type at the end of the organisation's order.
+    def create_org_type(self, db: Session, organization_id: uuid.UUID, name: str, **extras: Any):
+        """Creates an org type at the end of the organisation's order (`extras`: values for `extra_columns`).
 
         Raises:
             ValueError: If the organisation already has a type with `name`.
@@ -118,7 +129,7 @@ class TypeVocabulary:
         ) is not None:
             raise ValueError(f"A {self.label} named {name!r} already exists for this organisation.")
         count = len(db.scalars(select(self.org_model.id).where(self.org_model.organization_id == organization_id)).all())
-        org_type = self.org_model(organization_id=organization_id, name=name, sort_order=count)
+        org_type = self.org_model(organization_id=organization_id, name=name, sort_order=count, **extras)
         db.add(org_type)
         db.flush()
         return org_type
@@ -152,13 +163,13 @@ class TypeVocabulary:
         if definition_suppression.get_suppressed_ids(db, project_id, self.kind):
             return True
         model = self.project_model
-        return db.scalar(
-            select(model.id).where(
-                model.project_id == project_id,
-                (model.org_type_id.is_(None)) | (model.name_override.is_not(None))
-                | (model.display_order_override.is_not(None)) | (model.is_enabled.is_(False)),
-            ).limit(1)
-        ) is not None
+        configured = (
+            (model.org_type_id.is_(None)) | (model.name_override.is_not(None))
+            | (model.display_order_override.is_not(None)) | (model.is_enabled.is_(False))
+        )
+        for column in self.extra_columns:
+            configured = configured | getattr(model, column).is_not(None)
+        return db.scalar(select(model.id).where(model.project_id == project_id, configured).limit(1)) is not None
 
     def configuration_source(self, db: Session, project_id: uuid.UUID) -> uuid.UUID:
         """The project whose configuration `project_id` shows: itself, or (for an opted-in vocabulary, when it has
@@ -203,6 +214,8 @@ class TypeVocabulary:
             copy.name_override = row.name_override
             copy.display_order_override = row.display_order_override
             copy.is_enabled = row.is_enabled
+            for column in self.extra_columns:
+                setattr(copy, column, getattr(row, column))
             db.flush()
             mapping[row.id] = copy.id
         for org_type_id in definition_suppression.get_suppressed_ids(db, source_id, self.kind):
@@ -252,16 +265,26 @@ class TypeVocabulary:
                 continue
             o = overrides.get(org_type.id)
             if o is None:
-                effective.append(EffectiveType(org_type.id, org_type.name, org_type.sort_order, True, "org"))
+                effective.append(EffectiveType(
+                    org_type.id, org_type.name, org_type.sort_order, True, "org",
+                    {c: getattr(org_type, c) for c in self.extra_columns},
+                ))
             else:
                 effective.append(EffectiveType(
                     o.id, o.name_override if o.name_override is not None else org_type.name,
                     o.display_order_override if o.display_order_override is not None else org_type.sort_order,
                     o.is_enabled, "project_override",
+                    {
+                        c: getattr(o, c) if getattr(o, c) is not None else getattr(org_type, c)
+                        for c in self.extra_columns
+                    },
                 ))
         for r in rows:
             if r.org_type_id is None:
-                effective.append(EffectiveType(r.id, r.name_override or "", r.display_order_override or 0, r.is_enabled, "project_local"))
+                effective.append(EffectiveType(
+                    r.id, r.name_override or "", r.display_order_override or 0, r.is_enabled, "project_local",
+                    {c: getattr(r, c) for c in self.extra_columns},
+                ))
         effective.sort(key=lambda e: e.display_order)
         return effective
 
@@ -379,8 +402,10 @@ class TypeVocabulary:
                 definition_suppression.hide_definition(db, project_id, self.kind, org_type.id)
         return missing
 
-    def create_project_local(self, db: Session, project_id: uuid.UUID, name: str, *, display_order: int | None = None):
-        """Creates a fully project-local type.
+    def create_project_local(
+        self, db: Session, project_id: uuid.UUID, name: str, *, display_order: int | None = None, **extras: Any,
+    ):
+        """Creates a fully project-local type (`extras`: values for `extra_columns`).
 
         Raises:
             ValueError: If the project already has a local type named `name`.
@@ -394,14 +419,23 @@ class TypeVocabulary:
             raise ValueError(f"A project-local {self.label} named {name!r} already exists for this project.")
         if display_order is None:
             display_order = len(db.scalars(select(self.project_model.id).where(self.project_model.project_id == project_id)).all())
-        row = self.project_model(project_id=project_id, org_type_id=None, name_override=name, display_order_override=display_order, is_enabled=True)
+        row = self.project_model(
+            project_id=project_id, org_type_id=None, name_override=name, display_order_override=display_order,
+            is_enabled=True, **extras,
+        )
         db.add(row)
         db.flush()
         return row
 
     @staticmethod
-    def set_override(db: Session, row, *, name: str | None = None, display_order: int | None = None, is_enabled: bool | None = None):
-        """Partial update of a project type row; only non-`None` fields change."""
+    def set_override(
+        db: Session, row, *, name: str | None = None, display_order: int | None = None, is_enabled: bool | None = None,
+        extras: dict[str, Any] | None = None,
+    ):
+        """Partial update of a project type row; only non-`None` fields change (`extras`: `extra_columns` values,
+        set as given, so `None` there clears the override)."""
+        for column, value in (extras or {}).items():
+            setattr(row, column, value)
         if name is not None:
             row.name_override = name
         if display_order is not None:

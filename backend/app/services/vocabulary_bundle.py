@@ -1,8 +1,9 @@
 """
-Module: modules.product_feedback.vocabulary_bundle
+Module: services.vocabulary_bundle
 
-Bundle (export / import) halves of the module's two classified lists (`vocabularies.py`), shared so the external
-system list and the request channel list travel the same way:
+Bundle (export / import) halves of a two-tier typed list (`services.type_vocabulary.TypeVocabulary`), shared so the
+external system list and Product Feedback's request channel list travel the same way (a vocabulary's
+`extra_columns`, such as an external system's `url_template`, travel with each entry):
 
 - Organisation level: the organisation's entries by name, order and active flag; an import skips names the
   organisation already has, so a fresh organisation's seeded defaults are not doubled.
@@ -32,23 +33,47 @@ from app.services.type_vocabulary import TypeVocabulary
 MAX_NAME_LENGTH = 100
 
 
+def _extras(vocabulary: TypeVocabulary, row: dict[str, Any]) -> dict[str, Any]:
+    """The bundle entry's values for the vocabulary's `extra_columns` (absent, empty or not acceptable reads as unset)."""
+    out: dict[str, Any] = {}
+    for column in vocabulary.extra_columns:
+        value = row.get(column) or None
+        if value is not None and vocabulary.clean_extra is not None:
+            try:
+                value = vocabulary.clean_extra(column, value)
+            except ValueError:
+                value = None
+        out[column] = value
+    return out
+
+
 def export_org_list(db: Session, org: Organization, vocabulary: TypeVocabulary) -> list[dict[str, Any]]:
     """The organisation's entries of `vocabulary` in order."""
     model = vocabulary.org_model
     rows = db.scalars(select(model).where(model.organization_id == org.id).order_by(model.sort_order)).all()
-    return [{"name": r.name, "sort_order": r.sort_order, "is_active": r.is_active} for r in rows]
+    return [
+        {"name": r.name, "sort_order": r.sort_order, "is_active": r.is_active, **{c: getattr(r, c) for c in vocabulary.extra_columns}}
+        for r in rows
+    ]
 
 
 def import_org_list(db: Session, org: Organization, vocabulary: TypeVocabulary, rows: list[dict[str, Any]]) -> None:
     """Adds the bundle's entries the organisation does not already have (by name)."""
     model = vocabulary.org_model
-    existing = {r.name for r in db.scalars(select(model).where(model.organization_id == org.id))}
+    existing_rows = {r.name: r for r in db.scalars(select(model).where(model.organization_id == org.id))}
+    existing = set(existing_rows)
     for row in rows:
+        if row["name"] in existing_rows:
+            # A default the organisation already has keeps its own settings; a value it has not set is filled in.
+            for column, value in _extras(vocabulary, row).items():
+                if value is not None and getattr(existing_rows[row["name"]], column) is None:
+                    setattr(existing_rows[row["name"]], column, value)
+            continue
         if row["name"] in existing or not row["name"] or len(row["name"]) > MAX_NAME_LENGTH:
             continue
         db.add(model(
             organization_id=org.id, name=row["name"], sort_order=row.get("sort_order", len(existing)),
-            is_active=row.get("is_active", True),
+            is_active=row.get("is_active", True), **_extras(vocabulary, row),
         ))
         existing.add(row["name"])
     db.flush()
@@ -66,6 +91,7 @@ def export_project_list(db: Session, project: Project, vocabulary: TypeVocabular
             {
                 "org_type_name": org_names.get(r.org_type_id) if r.org_type_id else None, "name_override": r.name_override,
                 "display_order_override": r.display_order_override, "is_enabled": r.is_enabled,
+                **{c: getattr(r, c) for c in vocabulary.extra_columns},
             }
             for r in own
         ],
@@ -96,6 +122,11 @@ class NameResolver:
         self.warnings = warnings
         self.what = what
         self._local: dict[str, uuid.UUID] = {}
+        if project is not None:
+            # Rows the project already holds by the name a bundle record uses (an earlier import step created them).
+            for row in db.scalars(select(vocabulary.project_model).where(vocabulary.project_model.project_id == project.id)):
+                if row.name_override is not None:
+                    self._local[row.name_override] = row.id
         self._org = {
             t.name: t for t in db.scalars(select(vocabulary.org_model).where(vocabulary.org_model.organization_id == organization_id))
         }
@@ -112,12 +143,13 @@ class NameResolver:
                 row = self.vocabulary.get_or_create_project_type(self.db, self.project.id, self.organization_id, org_type.id)
                 self.vocabulary.set_override(
                     self.db, row, name=t.get("name_override"), display_order=t.get("display_order_override"),
-                    is_enabled=t.get("is_enabled"),
+                    is_enabled=t.get("is_enabled"), extras=_extras(self.vocabulary, t),
                 )
                 self._local[t.get("name_override") or org_type.name] = row.id
             else:
                 row = self.vocabulary.create_project_local(
                     self.db, self.project.id, t["name_override"], display_order=t.get("display_order_override"),
+                    **_extras(self.vocabulary, t),
                 )
                 row.is_enabled = t.get("is_enabled", True)
                 self._local[t["name_override"]] = row.id

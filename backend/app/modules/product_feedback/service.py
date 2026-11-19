@@ -46,6 +46,7 @@ from app.modules.product_feedback.models import (
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.scoring_filter import ScoredFilter, keep_by_scoring
 from app.services.current_versions import current_versions
+from app.services.external_references import EXTERNAL_REFERENCES_SUBCOMPONENT_KEY as SHARED_REFERENCES_SUBCOMPONENT_KEY
 from app.services.scoring_custom import effective_scheme
 from app.services.sequences import code_owner, generate_unique_code
 
@@ -56,7 +57,7 @@ REQUEST_SUBCOMPONENT_KEY = "enhancement_request"
 ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY = "organization_requests"
 #: Links to items in outside tools (Jira, ServiceNow) and the list of systems they point at; switchable per project and
 #: by organisation default like any sub-component. Turning it off hides the feature; stored references are kept.
-EXTERNAL_REFERENCES_SUBCOMPONENT_KEY = "external_references"
+EXTERNAL_REFERENCES_SUBCOMPONENT_KEY = SHARED_REFERENCES_SUBCOMPONENT_KEY
 
 #: The content fields a version carries (everything an edit may change except the status and the scoring
 #: levels, which are rows of their own: `version_levels`).

@@ -986,6 +986,43 @@ async def list_tags(project_id: str | None = None) -> dict:
 
 
 @mcp.tool
+async def list_external_systems(project_id: str | None = None) -> list[dict]:
+    """Lists the outside systems (Jira, ServiceNow, ...) a project's records can carry external references in.
+
+    One list is shared by every record type: the organisation's systems with the project's own changes (a system
+    it renamed, added or hid).
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        The systems in order, each with `id` (what a reference's `system_id` takes), `name`, `is_enabled`,
+        `source` ("org", "project_override" or "project_local") and `url_template` (an address with `{key}` in it
+        that turns a bare key into a link, or null).
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/external-systems")
+    return response.json()
+
+
+@mcp.tool
+async def list_organization_external_systems(organization_id: str | None = None) -> list[dict]:
+    """Lists an organisation's external systems (Jira, ServiceNow, ...), the list its projects start from.
+
+    The ids are the ones an organisation-owned record's reference takes as `system_id`.
+
+    Args:
+        organization_id: The organisation's UUID (from `list_organizations`).
+
+    Returns:
+        The systems in order, each with `id`, `name`, `sort_order`, `is_active` and `url_template`.
+    """
+    oid = _require_organization_id(organization_id)
+    response = await _call_backend("GET", f"/api/v1/orgs/{oid}/external-systems")
+    return response.json()
+
+
+@mcp.tool
 async def get_artefact_tags(project_id: str | None = None, *, artefact_type: str, artefact_id: str) -> dict:
     """Gets the tags on one record of any type.
 

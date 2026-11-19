@@ -157,14 +157,6 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="GET", path_template=f"{_PREFIX}/close-the-loop", params=[_PROJECT_ID],
         ),
         McpToolDefinition(
-            name="list_external_systems",
-            description=(
-                "Lists the project's effective external systems (Jira, ServiceNow, ...): the ids a request's "
-                "references take as system_id."
-            ),
-            method="GET", path_template=f"{_PREFIX}/external-systems", params=[_PROJECT_ID],
-        ),
-        McpToolDefinition(
             name="list_request_channels",
             description=(
                 "Lists the project's effective request channels (Support ticket, Call, Email, ...): the ids "
@@ -254,13 +246,13 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             ),
             method="POST", path_template=f"{_REQUEST}/references",
             params=[_PROJECT_ID, _REQUEST_ID,
-                    _body("system_id", "uuid", "The system (list_external_systems).", required=True), *_REFERENCE_FIELDS],
+                    _body("system_id", "uuid", "The system (the core list_external_systems tool).", required=True), *_REFERENCE_FIELDS],
         ),
         McpToolDefinition(
             name="update_request_reference",
             description="Changes a reference; only the fields supplied change. Needs the Feedback Triager role.",
             method="PATCH", path_template=f"{_REQUEST}/references/{{reference_id}}",
-            params=[_PROJECT_ID, _REQUEST_ID, _REFERENCE_ID, _body("system_id", "uuid", "The system (list_external_systems)."),
+            params=[_PROJECT_ID, _REQUEST_ID, _REFERENCE_ID, _body("system_id", "uuid", "The system (the core list_external_systems tool)."),
                     *_REFERENCE_FIELDS],
         ),
         McpToolDefinition(
@@ -313,10 +305,5 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="POST", path_template=f"{_ORG_PREFIX}/requests",
             params=[_ORG_ID, _body("title", "string", "Short name of the request.", required=True), *_REQUEST_FIELDS,
                     _CREATE_REFERENCES],
-        ),
-        McpToolDefinition(
-            name="list_inbox_external_systems",
-            description="Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.",
-            method="GET", path_template=f"{_ORG_PREFIX}/external-systems", params=[_ORG_ID],
         ),
     ) + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PREFIX)

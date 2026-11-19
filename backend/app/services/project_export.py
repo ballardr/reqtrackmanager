@@ -124,6 +124,7 @@ from app.services.bundle_common import (
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
+from app.services.external_references import EXTERNAL_SYSTEMS
 from app.services.files import read_file, resolve_bundle_files
 from app.services.imported_people import PeopleChoices, PersonPreview, classify_people, people_section
 from app.services.link_type_scope import resolve_link_type_scope
@@ -159,6 +160,7 @@ from app.services.tags import (
     restore_record_tags,
     set_keywords,
 )
+from app.services.vocabulary_bundle import NameResolver, export_project_list
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -572,6 +574,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             for c in components
         ],
         "code_prefixes": code_prefixes.export_overrides(db, project),
+        "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
         "custom_field_definitions": [
             {
                 "entity_kind": d.entity_kind.value, "name": d.name, "field_type": d.field_type.value,
@@ -1076,11 +1079,17 @@ def apply_project_data(
                 comment=rr.get("comment"),
             ))
 
+    # The project's external systems exist before any module imports a record that references one; the ones it hides
+    # are hidden afterwards, because a record above may use a system the project hides.
+    systems_data = data.get("external_systems") or {}
+    systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
+    systems.import_project_rows(systems_data.get("rows", []) if isinstance(systems_data, dict) else [])
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         hooks.import_(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         if hooks.import_late is not None:
             hooks.import_late(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    systems.hide(systems_data.get("hidden", []) if isinstance(systems_data, dict) else [])
     # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
     import_project_scoring(db, project, data, warnings)
 

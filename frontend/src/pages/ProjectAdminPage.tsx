@@ -48,6 +48,7 @@ import { StageWorkflowEditor, type StageWorkflowValues } from "../components/Sta
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
+import { ProjectExternalSystemsPanel } from "../components/ExternalSystemsPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
 import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
@@ -2222,6 +2223,12 @@ export function ProjectAdminPage() {
         {project && (
           <CollapsibleSection sectionKey="projectAdmin.fieldsActions.linkTypes" title={strings.orgAdmin.linkTypes} defaultCollapsed={false}>
             <LinkTypesPanel scope={{ kind: "project", orgId: project.organization_id, projectId: project.id }} />
+          </CollapsibleSection>
+        )}
+
+        {projectId && (
+          <CollapsibleSection sectionKey="projectAdmin.fieldsActions.externalSystems" title={strings.externalSystems.heading} help={strings.externalSystems.projectHelp} defaultCollapsed={false}>
+            <ProjectExternalSystemsPanel projectId={projectId} />
           </CollapsibleSection>
         )}
       </div>

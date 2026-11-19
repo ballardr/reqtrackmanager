@@ -47,13 +47,12 @@ export function RequestReferencesCard({
           <tbody>
             {references.map((ref) => {
               const text = ref.key || ref.url || "";
+              const href = ref.link ?? ref.url;
               return (
                 <tr key={ref.id}>
                   <td>{ref.system_name}</td>
                   <td>
-                    {ref.url && isWebUrl(ref.url)
-                      ? <a href={ref.url} target="_blank" rel="noopener noreferrer">{text}</a>
-                      : text}
+                    {href && isWebUrl(href) ? <a href={href} target="_blank" rel="noopener noreferrer">{text}</a> : text}
                   </td>
                   <td><Badge tone={ref.role === "origin" ? "info" : "accent"}>{EXTERNAL_REF_ROLE_LABEL[ref.role]}</Badge></td>
                   {canEdit && (

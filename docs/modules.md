@@ -1455,6 +1455,27 @@ flowchart LR
 - **Bundles and templates.** The project bundle carries `code_prefixes` (the project's own), the organisation bundle the organisation's own (a merge adds only types the target has not set). An entry that no longer fits (a type not registered, a prefix now taken) is skipped with a warning; a project made from a template copies the template's own.
 - **UI.** `RecordCodePrefixPanel` in Organisation Settings (Projects group) and in Project Admin overview; the inherited value is the placeholder with its tier, and a restore control returns to it.
 
+### 4l13. External references on every record
+
+A record can point to the same work in an outside tool (a Jira epic, a ServiceNow ticket, a customer's register), and be found from either side. One core table, `external_references`, serves every registered artefact type, keyed by the type string like tags and placements, so a module adds a type with no per-module code. A module declares nothing for it; the only optional hook is a sub-component keyed `external_references` (`services.external_references.EXTERNAL_REFERENCES_SUBCOMPONENT_KEY`), which lets an administrator switch the feature off for that module's types (the endpoints then answer 404 and stored references are kept; Product Feedback declares it).
+
+```mermaid
+flowchart LR
+    R["record (any type)"] -->|"artefact_type + artefact_id"| X["external_references"]
+    X -->|"org_system_id (organisation-owned record)"| O["external_system_definitions"]
+    X -->|"project_system_id (project record)"| P["project_external_systems"]
+    P -->|"org_type_id"| O
+    O -->|"url_template with {key}"| L["link"]
+    X -->|"url, else template + key"| L
+```
+
+- **Systems are one list for every type.** The organisation's `external_system_definitions` (name, order, active flag, optional `url_template`); a project's `project_external_systems` overrides, adds, and hides entries (a `ProjectDefinitionSuppression` tombstone), exactly as every `TypeVocabulary`, with the nested-project fallback (a child with no configuration of its own shows its nearest ancestor's list). `TypeVocabulary(extra_columns=("url_template",))` carries the template through effective lists, inherited copies and bundles; an override of null follows the organisation's template. Seeded for a new organisation by `run_on_org_created_hooks` (generic, not a module hook).
+- **The reference.** `artefact_type`, `artefact_id` (no foreign key; the owner calls `forget_record_references` when it deletes a record for good, and the owning project and organisation cascade), the system (organisation entry for an organisation-owned record, the project's row for a project record, a CHECK ties the tier to the owner), `key`, optional `url`, `note` and `role` (`origin` or `delivery`). At most 50 per record; a key or a URL is required.
+- **Links.** `url` and a template are http or https only, checked at every entry (API, bundle, record-table import) and again by `link_for`, which also URL-encodes the key into the template, so a `javascript:` or `data:` value can never become a link.
+- **API.** `GET/POST/PATCH/DELETE /api/v1/projects/{id}/artefacts/{type}/{id}/external-references[/{reference}]` (read follows the record, a record the caller cannot open is a 404; changes need the authority for tagging, `services.tags.can_tag`; each writes `reference_added`, `reference_updated` or `reference_removed`, never the key or link). `/api/v1/orgs/{id}/external-systems` (read by members, written by an organisation administrator) and `/api/v1/projects/{id}/external-systems` (read by members, written with project settings authority), both from the shared `services.vocabulary_endpoints` registrars, which take the gates and the schemas of the list.
+- **Bundles and templates.** The organisation bundle carries `external_systems` (the list with templates); the project bundle carries the project's own rows and hidden defaults, imported before any module imports a record and hidden afterwards. A template project copies its systems (`copy_project_systems`). Records carry their references by system name (`export_record_references` / `import_record_references`); Product Feedback does so today and the shared record columns follow.
+- **Product Feedback.** Its requests' references are rows of this table (`references.py` adapts a request to it; the request API shape is unchanged and gains `link`); its own tables for systems and references are gone (the data migration moves the rows and is reversible).
+
 ### 4l3. Components on every record
 
 Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.

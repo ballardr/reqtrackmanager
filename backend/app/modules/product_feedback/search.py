@@ -20,11 +20,11 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
+from app.models.external_reference import ExternalReference
 from app.modules.product_feedback.labels import REQUEST_STATUS_LABEL
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestComment,
-    EnhancementRequestExternalRef,
     EnhancementRequestVersion,
 )
 from app.modules.product_feedback.service import ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY
@@ -40,8 +40,10 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
             SearchField("description", "Description", EnhancementRequestVersion.description),
             # The keys of the request's external references (PROJ-123), so a ticket number finds the request.
             SearchField("references", "External references", select(func.string_agg(
-                EnhancementRequestExternalRef.key, " ",
-            )).where(EnhancementRequestExternalRef.request_id == EnhancementRequest.id).scalar_subquery()),
+                ExternalReference.key, " ",
+            )).where(
+                ExternalReference.artefact_type == "enhancement_request", ExternalReference.artefact_id == EnhancementRequest.id,
+            ).scalar_subquery()),
         ),
     ),
 }

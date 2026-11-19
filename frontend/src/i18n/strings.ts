@@ -4357,6 +4357,21 @@ const en = {
     fontFiles: "Files",
     fontsNone: "No fonts are listed.",
   },
+  externalSystems: {
+    heading: "External systems",
+    orgHelp:
+      "The outside tools a record can point to, such as Jira or ServiceNow. Every project in the organisation offers this list; a project can add its own systems or hide the ones it does not use.\n"
+      + "Link template: an address with {key} in it. A reference that has only a key then opens the item (https://tracker.example/browse/{key}).",
+    projectHelp:
+      "The outside tools records in this project can point to: the organisation's list plus any added here. A sub-project with no changes of its own shows its parent project's list; changing it makes it its own.\n"
+      + "Hiding a system affects only this project, and references that already use it are kept.\n"
+      + "Link template: an address with {key} in it. A value set here replaces the organisation's for this project.",
+    noun: "External system",
+    inUse: "This system is still used by a reference. Disable it instead of deleting it.",
+    linkTemplate: "Link template",
+    linkTemplatePlaceholder: "https://tracker.example/browse/{key}",
+    linkTemplateAria: "Link template",
+  },
   codePrefixes: {
     heading: "Record codes",
     recordType: "Record type",

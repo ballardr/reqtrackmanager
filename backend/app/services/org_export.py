@@ -129,6 +129,7 @@ from app.services.bundle_common import (
 )
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
+from app.services.external_references import EXTERNAL_SYSTEMS
 from app.services.files import read_file, resolve_bundle_files
 from app.services.imported_people import people_section
 from app.services.invites import create_pending_invite
@@ -150,6 +151,7 @@ from app.services.report_placement_bundle import export_org_placements, import_o
 from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
 from app.services.scoring import seed_missing_scoring_levels
 from app.services.stage_workflow_bundle import export_org_stage_workflows, import_org_stage_workflows
+from app.services.vocabulary_bundle import export_org_list, import_org_list
 
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
@@ -218,6 +220,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **org_dashboards.export_org(db, org.id),
         **org_policies.export_org(db, org.id),
         "code_prefixes": code_prefixes.export_overrides(db, org),
+        "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -771,6 +774,7 @@ def import_org_bundle(
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
     code_prefixes.import_overrides(db, org, data.get("code_prefixes"), acting_user.id, warnings.add)
+    import_org_list(db, org, EXTERNAL_SYSTEMS, data.get("external_systems") or [])
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, org, data, file_bytes_by_ref, acting_user, warnings)
@@ -932,6 +936,7 @@ def merge_org_bundle(
         current_user.id, warnings.add,
     )
     _warn_legacy_report_content(data, warnings)
+    import_org_list(db, target_org, EXTERNAL_SYSTEMS, data.get("external_systems") or [])
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, target_org, data, file_bytes_by_ref, acting_user, warnings)

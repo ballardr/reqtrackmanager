@@ -53,6 +53,8 @@ export interface ExternalRef {
   system_name: string;
   key: string;
   url: string | null;
+  /** What the reference opens: `url`, else the system's link template with the key in it, else null. */
+  link?: string | null;
   role: ExternalRefRole;
   created_by: string;
   created_at: string;

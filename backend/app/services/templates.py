@@ -64,6 +64,7 @@ from app.services import code_prefixes
 from app.services.bundle_common import BundleImportWarnings
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
+from app.services.external_references import copy_project_systems
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.relationships import create_link as create_artefact_link
 from app.services.requirements import get_current_version, get_keywords, set_keywords
@@ -198,6 +199,7 @@ def clone_project(
         )
 
     code_prefixes.copy_overrides(db, source, new_project, creator.id)
+    copy_project_systems(db, source, new_project)
 
     # Old project group id -> its copy in the new project, so a requirement owned by (or assigned for review
     # to) one of the template's project groups is owned by the copy, not by a group of another project.

@@ -63,6 +63,7 @@ from app.modules.stakeholders.service import (
 from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.client_date import effective_today
+from app.services.external_references import forget_record_references
 from app.services.files import delete_file
 from app.services.placements import forget_record_placements
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
@@ -500,6 +501,7 @@ def erase_engagement(db: Session, engagement: Engagement, actor: User) -> None:
         delete_link(db, link)
     forget_record_tags(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id)
     forget_record_placements(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id)
+    forget_record_references(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id)
     # The attachment rows cascade from the engagement; the bytes must be removed explicitly, so delete the assets.
     for asset in db.scalars(select(FileAsset).where(FileAsset.id.in_(file_ids))).all() if file_ids else []:
         delete_file(db, asset)

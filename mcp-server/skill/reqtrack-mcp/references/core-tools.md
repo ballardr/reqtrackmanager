@@ -248,6 +248,12 @@ Lists an organisation's custom roles (Fine-Grained Access Control) — each role
 
 Parameters: `organization_id` (string)
 
+## `list_external_systems` (read)
+
+Lists the outside systems (Jira, ServiceNow, ...) a project's records can carry external references in.
+
+Parameters: `project_id` (string)
+
 ## `list_link_candidate_projects` (read)
 
 Lists the projects a link made from this project may reach: itself, its parent projects and its child projects that the caller can open.
@@ -263,6 +269,12 @@ Lists requirements assigned to the caller with a scheduled review date that has 
 Lists the caller's own in-app notifications (project joins, stage transitions, change-request activity, permission grants, and more).
 
 Parameters: `unread_only` (boolean)
+
+## `list_organization_external_systems` (read)
+
+Lists an organisation's external systems (Jira, ServiceNow, ...), the list its projects start from.
+
+Parameters: `organization_id` (string)
 
 ## `list_organizations` (read)
 

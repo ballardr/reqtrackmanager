@@ -48,7 +48,7 @@ Three [sub-components](../overview.md#sub-component-enablement-finer-grained-tha
 | --- | --- |
 | **Enhancement requests** | Hides the project list, and the module's reports. |
 | **Organisation-level request inbox** | Hides the organisation's inbox without touching any project's requests. Organisation administration only. |
-| **External references** | Hides the references card, the form section and the **External Systems** settings; stored references are kept and return when it is switched back on. |
+| **External references** | Hides the references card and the form section; stored references are kept and return when it is switched back on. |
 
 ## Roles
 
@@ -56,7 +56,7 @@ Three [sub-components](../overview.md#sub-component-enablement-finer-grained-tha
 | --- | --- | --- |
 | **Feedback Triager** | Project | Edits, moves, merges, archives and attaches evidence to the project's requests, changes their status and records who was told. |
 | **Organisation Feedback Triager** | Organisation | The same for the organisation's inbox, and edits the organisation's scoring scheme. |
-| **Feedback List Admin** | Organisation | Edits the organisation's external system and request channel lists. |
+| **Feedback List Admin** | Organisation | Edits the organisation's request channel list. |
 
 Submitting a request needs no role: any project member can, unless a project administrator restricts submission to triagers (see [Who may submit](./enhancement-request.md#who-may-submit)). A server administrator, an organisation administrator, and for project roles the Project Manager, can do everything a module role can. Every other member can read the module once it is enabled.
 

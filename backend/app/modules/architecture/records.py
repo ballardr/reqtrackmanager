@@ -108,6 +108,7 @@ from app.services import placements as placement_service
 from app.services import record_comments as comment_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
+from app.services.external_references import forget_record_references
 from app.services.principals import label_of, principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.relationships import delete_link, get_all_links
 from app.services.sequences import generate_unique_code
@@ -698,11 +699,12 @@ def _linked_from_elsewhere(db: Session, element: ArchitectureElement) -> bool:
 
 
 def _forget(db: Session, artefact_type: str, record_id: uuid.UUID) -> None:
-    """Removes the links, tags, places and comments that refer to a record being deleted."""
+    """Removes the links, tags, places, external references and comments that refer to a record being deleted."""
     for link in get_all_links(db, artefact_type, record_id, include_cross_project=True):
         delete_link(db, link)
     tag_service.forget_record_tags(db, artefact_type, record_id)
     placement_service.forget_record_placements(db, artefact_type, record_id)
+    forget_record_references(db, artefact_type, record_id)
     comment_service.forget_record_comments(db, artefact_type, record_id)
 
 

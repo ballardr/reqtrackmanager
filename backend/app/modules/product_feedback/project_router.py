@@ -69,7 +69,7 @@ from app.modules.product_feedback.service import (
     set_request_page_sections,
     set_submission_policy,
 )
-from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
+from app.modules.product_feedback.vocabularies import REQUEST_CHANNELS
 from app.modules.product_feedback.vocabulary_routes import register_project_vocabulary
 from app.schemas.file import FileAssetOut
 from app.schemas.scoring import ScoringSchemeOut
@@ -116,10 +116,6 @@ def _get(db: Session, holder: RecordOwner, request_id: UUID) -> EnhancementReque
     return sh.get_request_in_scope(db, holder, request_id)
 
 
-register_project_vocabulary(
-    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system",
-    view_dependency=_require_references,
-)
 register_project_vocabulary(
     router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel", view_dependency=_require_view,
 )

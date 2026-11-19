@@ -80,6 +80,7 @@ from app.modules.stakeholders.models import (
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
 from app.services.audit import log_event
 from app.services.current_versions import current_versions, primed_current_version
+from app.services.external_references import forget_record_references
 from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
 from app.services.lookups import get_or_404
@@ -986,6 +987,7 @@ def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> Non
         delete_link(db, link)
     forget_record_tags(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id)
     forget_record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id)
+    forget_record_references(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id)
     db.execute(delete(StakeholderGroupMember).where(StakeholderGroupMember.stakeholder_id == stakeholder.id))
     # The attachment rows cascade from the stakeholder; the bytes must be
     # removed explicitly, so delete the assets (their FK cascades the links).

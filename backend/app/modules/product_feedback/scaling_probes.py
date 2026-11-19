@@ -20,7 +20,7 @@ _BASE = "modules/product_feedback"
 
 
 def _create(api: Any, project_id: str, start: int, count: int) -> list[str]:
-    systems = [e["id"] for e in api.get(f"/projects/{project_id}/{_BASE}/external-systems")]
+    systems = [e["id"] for e in api.get(f"/projects/{project_id}/external-systems")]
     return [
         api.post(
             f"/projects/{project_id}/{_BASE}/requests",

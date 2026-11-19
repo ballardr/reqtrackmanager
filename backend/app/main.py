@@ -42,6 +42,8 @@ from app.routers import (
     code_prefixes,
     custom_fields,
     custom_reports,
+    external_references,
+    external_systems,
     files,
     health,
     nav_labels,
@@ -399,6 +401,9 @@ app.include_router(artefact_links.router)
 app.include_router(placements.router)
 app.include_router(code_prefixes.org_router)
 app.include_router(code_prefixes.project_router)
+app.include_router(external_systems.org_router)
+app.include_router(external_systems.project_router)
+app.include_router(external_references.router)
 app.include_router(stage_workflows.org_router)
 app.include_router(stage_workflows.project_router)
 app.include_router(announcements.system_router)

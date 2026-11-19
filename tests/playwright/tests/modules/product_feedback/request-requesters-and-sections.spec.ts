@@ -106,7 +106,7 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
   test("External references are not offered while the project has no enabled external system", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "FeedbackRefsNoSystem");
     const request = await createRequest(page, projectBase(project.id), adminHeaders, { title: `Untracked ${suffix}` });
-    const systems = `${API_BASE_URL}/api/v1/projects/${project.id}/modules/product_feedback/external-systems`;
+    const systems = `${API_BASE_URL}/api/v1/projects/${project.id}/external-systems`;
     const detail = `/projects/${project.id}/modules/product_feedback/requests/${request.id}`;
 
     await test.step("with the organisation's systems the card is offered", async () => {
@@ -143,7 +143,7 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
       await expect(page.getByRole("region", { name: "External references" })).toBeVisible();
     });
 
-    await test.step("off: no card, no field in the form, no External Systems settings", async () => {
+    await test.step("off: no card, no field in the form", async () => {
       const off = await page.request.put(subcomponent, { headers: adminHeaders, data: { enabled: false } });
       expect(off.ok(), await off.text()).toBeTruthy();
       await page.goto(detail);

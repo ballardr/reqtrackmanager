@@ -50,6 +50,8 @@ export interface OrgTypeRow {
   name: string;
   is_active: boolean;
   definition?: string | null;
+  /** A link pattern with one `{key}` (an external system). */
+  url_template?: string | null;
 }
 
 /** One row of a project's effective type list. */
@@ -61,25 +63,30 @@ export interface EffectiveTypeRow {
   source: "org" | "project_override" | "project_local";
   /** The text shown for the type: the project's own, else the organisation's. */
   definition?: string | null;
+  /** The link pattern in effect here (an external system): the project's own, else the organisation's. */
+  url_template?: string | null;
 }
 
 /** The org-tier calls a module supplies. `scopeId` is the organisation id. */
 export interface OrgTypeVocabularyApi<T extends OrgTypeRow> {
   list(orgId: string): Promise<T[]>;
-  create(orgId: string, name: string, definition?: string): Promise<unknown>;
+  create(orgId: string, name: string, text?: string): Promise<unknown>;
   move(orgId: string, typeId: string, direction: "up" | "down"): Promise<unknown>;
-  update(orgId: string, typeId: string, values: { name?: string; is_active?: boolean; definition?: string }): Promise<unknown>;
+  update(orgId: string, typeId: string, values: { name?: string; is_active?: boolean; definition?: string; url_template?: string | null }): Promise<unknown>;
   delete(orgId: string, typeId: string): Promise<unknown>;
 }
 
 /** The project-tier calls a module supplies. */
 export interface ProjectTypeVocabularyApi {
   list(projectId: string): Promise<EffectiveTypeRow[]>;
-  createLocal(projectId: string, name: string, displayOrder?: number, definition?: string): Promise<unknown>;
+  createLocal(projectId: string, name: string, displayOrder?: number, text?: string): Promise<unknown>;
   override(
     projectId: string,
     typeRefId: string,
-    values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null; definition?: string | null },
+    values: {
+      name?: string | null; display_order?: number | null; is_enabled?: boolean | null; definition?: string | null;
+      url_template?: string | null;
+    },
   ): Promise<unknown>;
   /** Deletes a project-only type, or hides an organisation default (any org-backed row's id). */
   delete(projectId: string, typeRefId: string): Promise<unknown>;
@@ -88,16 +95,36 @@ export interface ProjectTypeVocabularyApi {
   restore(projectId: string, orgTypeIds?: string[]): Promise<unknown>;
 }
 
+/** A second text field a vocabulary's rows carry beside the name: a type's definition, or an external system's link pattern. */
+export interface VocabularyTextField {
+  key: "definition" | "url_template";
+  label: string;
+  placeholder: string;
+  ariaLabel: string;
+  multiline?: boolean;
+}
+
 /** The growing "Definition" field a vocabulary opts into with `withDefinition`. */
-function definitionField<T extends { definition?: string | null }>(noun: string, scope: string): DefinitionListField<T> {
+function definitionTextField(noun: string, scope: string): VocabularyTextField {
   return {
     key: "definition",
-    getValue: (item) => item.definition ?? "",
     label: "Definition (what belongs under it)",
     placeholder: `${scope}${noun} type definition (what belongs under it)`,
     ariaLabel: `${scope}${noun} type definition`,
-    track: "minmax(14rem, 2.5fr)",
     multiline: true,
+  };
+}
+
+/** The `DefinitionList` column for a `VocabularyTextField`. */
+function textFieldColumn<T extends { definition?: string | null; url_template?: string | null }>(field: VocabularyTextField): DefinitionListField<T> {
+  return {
+    key: field.key,
+    getValue: (item) => item[field.key] ?? "",
+    label: field.label,
+    placeholder: field.placeholder,
+    ariaLabel: field.ariaLabel,
+    track: field.multiline ? "minmax(14rem, 2.5fr)" : "minmax(14rem, 2fr)",
+    multiline: field.multiline,
     optional: true,
   };
 }
@@ -119,17 +146,22 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
   description,
   api,
   withDefinition = false,
+  textField,
   inUseMessage = "This type is still used by at least one project. Disable it instead of deleting it.",
 }: {
   orgId: string;
   /** Singular artefact name used in labels and toasts, e.g. "Pain Point". */
   noun: string;
-  description: ReactNode;
+  /** A sentence above the list; omit when the page explains the list in its section help. */
+  description?: ReactNode;
   api: OrgTypeVocabularyApi<T>;
   /** Each type also has an optional definition. */
   withDefinition?: boolean;
+  /** Each type also has this other optional text field (an external system's link pattern); wins over `withDefinition`. */
+  textField?: VocabularyTextField;
   inUseMessage?: string;
 }) {
+  const extra = textField ?? (withDefinition ? definitionTextField(noun, "") : undefined);
   const { showToast } = useToast();
   const [items, setItems] = useState<T[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,13 +191,13 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
 
   return (
     <div className="stack">
-      <p className="text-muted">{description}</p>
+      {description && <p className="text-muted">{description}</p>}
       <DefinitionList<T>
         layout="grid"
         items={items}
         fields={[
           { key: "name", getValue: (item) => item.name, label: "Name", placeholder: `${noun} type name`, ariaLabel: `${noun} type name`, track: "minmax(10rem, 1fr)" },
-          ...(withDefinition ? [definitionField<T>(noun, "")] : []),
+          ...(extra ? [textFieldColumn<T>(extra)] : []),
         ]}
         getReassignLabel={(item) => item.name}
         onMove={async (id, direction) => {
@@ -174,12 +206,15 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
         }}
         onRename={async (id, values) => {
           const current = items.find((i) => i.id === id);
-          const changed = withDefinition && values.definition !== (current?.definition ?? "");
-          await api.update(orgId, id, { name: values.name, ...(changed ? { definition: values.definition } : {}) });
+          const changed = extra !== undefined && values[extra.key] !== (current?.[extra.key] ?? "");
+          await api.update(orgId, id, {
+            name: values.name,
+            ...(changed && extra ? { [extra.key]: extra.key === "url_template" ? values[extra.key] || null : values[extra.key] } : {}),
+          });
           reload();
         }}
         onAdd={async (values) => {
-          await api.create(orgId, values.name, withDefinition ? values.definition || undefined : undefined);
+          await api.create(orgId, values.name, extra ? values[extra.key] || undefined : undefined);
           showToast(`${noun} type created.`);
           reload();
         }}
@@ -222,15 +257,20 @@ export function ProjectTypeVocabularyPanel({
   description,
   api,
   withDefinition = false,
+  textField,
 }: {
   projectId: string;
   /** Singular artefact name used in labels and toasts, e.g. "Pain Point". */
   noun: string;
-  description: ReactNode;
+  /** A sentence above the list; omit when the page explains the list in its section help. */
+  description?: ReactNode;
   api: ProjectTypeVocabularyApi;
   /** Each type also has an optional definition. */
   withDefinition?: boolean;
+  /** Each type also has this other optional text field (an external system's link pattern); wins over `withDefinition`. */
+  textField?: VocabularyTextField;
 }) {
+  const extra = textField ?? (withDefinition ? definitionTextField(noun, "Project ") : undefined);
   const { showToast } = useToast();
   const [items, setItems] = useState<EffectiveTypeRow[] | null>(null);
   const [hidden, setHidden] = useState<HiddenDefinition[]>([]);
@@ -261,13 +301,13 @@ export function ProjectTypeVocabularyPanel({
 
   return (
     <div className="stack">
-      <p className="text-muted">{description}</p>
+      {description && <p className="text-muted">{description}</p>}
       <DefinitionList<EffectiveTypeRow>
         layout="grid"
         items={items}
         fields={[
           { key: "name", getValue: (item) => item.name, label: "Name", placeholder: `Project ${noun} type name`, ariaLabel: `Project ${noun} type name`, track: "minmax(10rem, 1fr)" },
-          ...(withDefinition ? [definitionField<EffectiveTypeRow>(noun, "Project ")] : []),
+          ...(extra ? [textFieldColumn<EffectiveTypeRow>(extra)] : []),
         ]}
         getReassignLabel={(item) => item.name}
         onMove={async (id, direction) => {
@@ -286,13 +326,16 @@ export function ProjectTypeVocabularyPanel({
         }}
         onRename={async (id, values) => {
           const current = items.find((i) => i.id === id);
-          const changed = withDefinition && values.definition !== (current?.definition ?? "");
-          await api.override(projectId, id, { name: values.name, ...(changed ? { definition: values.definition } : {}) });
+          const changed = extra !== undefined && values[extra.key] !== (current?.[extra.key] ?? "");
+          await api.override(projectId, id, {
+            name: values.name,
+            ...(changed && extra ? { [extra.key]: extra.key === "url_template" ? values[extra.key] || null : values[extra.key] } : {}),
+          });
           reload();
         }}
         onAdd={async (values) => {
           const nextOrder = items.length === 0 ? 0 : Math.max(...items.map((i) => i.display_order)) + 1;
-          await api.createLocal(projectId, values.name, nextOrder, withDefinition ? values.definition || undefined : undefined);
+          await api.createLocal(projectId, values.name, nextOrder, extra ? values[extra.key] || undefined : undefined);
           showToast(`Project ${noun} type created.`);
           reload();
         }}

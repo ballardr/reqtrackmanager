@@ -27,6 +27,11 @@ from app.models.custom_role import (
 )
 from app.models.definition_suppression import ProjectDefinitionSuppression
 from app.models.engagement import CommentReaction, Subscription
+from app.models.external_reference import (
+    ExternalReference,
+    ExternalSystemDefinition,
+    ProjectExternalSystem,
+)
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.generated_report import GeneratedReport
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
@@ -102,8 +107,11 @@ from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "ExternalReference",
+    "ExternalSystemDefinition",
     "OrganizationCodePrefix",
     "ProjectCodePrefix",
+    "ProjectExternalSystem",
     "ArtefactPlacement",
     "RecordComment",
     "RecordCommentPin",

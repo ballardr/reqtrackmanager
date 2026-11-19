@@ -8,7 +8,8 @@
  */
 import { useEffect, useState } from "react";
 
-import { channelTypes, systemTypes } from "./api";
+import { externalSystemApi } from "../../api/externalSystems";
+import { channelTypes } from "./api";
 
 /** One choice in a picker. */
 export interface ListChoice {
@@ -27,9 +28,9 @@ export function useExternalSystemChoicesState(projectId?: string, organizationId
   useEffect(() => {
     let live = true;
     const load: Promise<ListChoice[]> = projectId
-      ? systemTypes.project.list(projectId).then((rows) => rows.filter((e) => e.is_enabled).map((e) => ({ value: e.id, label: e.name })))
+      ? externalSystemApi.project.list(projectId).then((rows) => rows.filter((e) => e.is_enabled).map((e) => ({ value: e.id, label: e.name })))
       : organizationId
-        ? systemTypes.org.list(organizationId).then((rows) => rows.filter((e) => e.is_active).map((e) => ({ value: e.id, label: e.name })))
+        ? externalSystemApi.org.list(organizationId).then((rows) => rows.filter((e) => e.is_active).map((e) => ({ value: e.id, label: e.name })))
         : Promise.resolve([]);
     load.then((choices) => { if (live) setState({ choices, loaded: true }); }).catch(() => { if (live) setState({ choices: [], loaded: true }); });
     return () => { live = false; };
