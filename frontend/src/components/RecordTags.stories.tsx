@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { buildPlace, buildPlacementsApi, buildRecordPlacements } from "../testing/placementsFixtures";
+import { buildReferencesApi, buildRecordReferences } from "../testing/referencesFixtures";
 import { buildChip, buildRecordTags, buildRecordTagsApi, openTagPicker, TAGS_PROJECT_ID } from "../testing/tagsFixtures";
 import { withToast } from "../testing/storybook-helpers";
 import { RecordTags } from "./RecordTags";
@@ -125,7 +126,7 @@ export const InlineShowsChipsAndOneEditButton: Story = {
     await expect(await canvas.findByText("Hardware / Cooling")).toBeInTheDocument();
     // The chips carry no remove control and no picker is on the line: editing is behind the one button.
     await expect(canvas.queryByRole("button", { name: "Remove tag Safety" })).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Tags and components" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Tags, components and references" })).toBeInTheDocument();
   },
 };
 
@@ -134,8 +135,8 @@ export const InlineEditsInADialogAndTheChipsFollow: Story = {
   args: { inline: true, api: statefulTagsApi(), placementsApi: buildPlacementsApi(), onChanged: fn() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Tags and components" }));
-    const dialog = within(await within(document.body).findByRole("dialog", { name: "Tags and components" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Tags, components and references" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Tags, components and references" }));
     await userEvent.click(await dialog.findByRole("button", { name: "Remove tag Safety" }));
     await waitFor(() => expect(args.api!.set).toHaveBeenCalledWith(TAGS_PROJECT_ID, "requirement", "req-1", []));
     await expect(args.onChanged).toHaveBeenCalled();
@@ -152,7 +153,7 @@ export const InlineWithNothingSetShowsOnlyTheButton: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("button", { name: "Tags and components" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("button", { name: "Tags, components and references" })).toBeInTheDocument();
     await expect(canvas.queryByText("Not placed in a component")).not.toBeInTheDocument();
     await expect(canvas.queryByText("No tags")).not.toBeInTheDocument();
   },
@@ -184,5 +185,39 @@ export const InlineReadOnlyHasNoButton: Story = {
     await expect(await canvas.findByText("Safety")).toBeInTheDocument();
     await expect(await canvas.findByText("Software")).toBeInTheDocument();
     await expect(canvas.queryByRole("button")).not.toBeInTheDocument();
+  },
+};
+
+/** The external references sit with the tags and the components: chips on the compact line, the editor in the dialog. */
+export const InlineShowsTheReferencesAndTheirEditorToo: Story = {
+  args: {
+    inline: true, api: buildRecordTagsApi(buildRecordTags({ can_edit: false })), placementsApi: buildPlacementsApi(buildRecordPlacements({ can_edit: false })),
+    referencesApi: buildReferencesApi(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText(/Jira:/)).toBeInTheDocument();
+    // Someone who may change references only still gets the one button, and the dialog holds the references editor.
+    await userEvent.click(await canvas.findByRole("button", { name: "Tags, components and references" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Tags, components and references" }));
+    await expect(await dialog.findByRole("button", { name: "Add external reference" })).toBeInTheDocument();
+  },
+};
+
+/** The full form renders the references panel after the tags and the components. */
+export const FullFormShowsTheReferencesPanel: Story = {
+  args: { api: buildRecordTagsApi(), placementsApi: buildPlacementsApi(), referencesApi: buildReferencesApi() },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("group", { name: "External references" })).toBeInTheDocument();
+  },
+};
+
+/** A page that keeps its own references (a Product Feedback request) leaves the panel out. */
+export const ReferencesCanBeLeftOut: Story = {
+  args: { api: buildRecordTagsApi(), placementsApi: buildPlacementsApi(), referencesApi: buildReferencesApi(buildRecordReferences()), references: false },
+  play: async ({ canvasElement, args }) => {
+    await waitFor(() => expect(args.api!.get).toHaveBeenCalled());
+    await expect(within(canvasElement).queryByRole("group", { name: "External references" })).not.toBeInTheDocument();
+    await expect(args.referencesApi!.get).not.toHaveBeenCalled();
   },
 };

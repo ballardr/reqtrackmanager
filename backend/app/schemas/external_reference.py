@@ -129,3 +129,31 @@ class RecordReferencesOut(BaseModel):
     references: list[ExternalReferenceOut]
     can_edit: bool
     systems: list[SystemChoiceOut]
+
+
+class PageReferencesOut(BaseModel):
+    """The references of the records a list page shows, by record id (records with none are absent)."""
+
+    references: dict[UUID, list[ExternalReferenceOut]]
+
+
+class ReferencedRecordOut(BaseModel):
+    """A record found by an outside key, with the reference that matched."""
+
+    artefact_type: str
+    type_label: str
+    id: UUID
+    label: str
+    status: str | None = None
+    is_archived: bool = False
+    project_id: UUID | None = None
+    project_name: str | None = None
+    project_code: str | None = None
+    reference: ExternalReferenceOut
+
+
+class ReferencedRecordsOut(BaseModel):
+    """Records carrying the outside key; `truncated` when more matched than were returned."""
+
+    records: list[ReferencedRecordOut]
+    truncated: bool

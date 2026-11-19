@@ -57,6 +57,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
@@ -96,6 +97,7 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
         "is_archived": persona.is_archived, "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
         "tags": record_tag_names(db, PERSONA_ARTEFACT_TYPE, persona.id),
         "placements": record_placements(db, PERSONA_ARTEFACT_TYPE, persona.id),
+        "external_references": record_references(db, PERSONA_ARTEFACT_TYPE, persona.id),
     })
     return data
 
@@ -155,6 +157,10 @@ def _create_persona_from_json(
         db, project_id=project_id, actor_id=creator_id,
         artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, entries=data.get("placements"),
     )
+    restore_record_references(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, entries=data.get("external_references"),
+    )
     return persona
 
 
@@ -212,6 +218,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_links(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_record_placements(db, PERSONA_ARTEFACT_TYPE, ids)
+    prime_record_references(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_file_links(db, PersonaFile, "persona_id", ids)
     personas_json = []
     for i, persona in enumerate(personas):

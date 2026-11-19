@@ -3,7 +3,8 @@
  *
  * The tags of one existing record, in its header: chips for everyone who can open the record,
  * and, for someone who may tag it, the tag picker so a tag is added or removed in place. The record's components
- * (`RecordPlacements`) are shown beside them, so every page that shows tags shows places too.
+ * (`RecordPlacements`) and external references (`RecordReferences`) are shown beside them, so every page that shows
+ * tags shows places and references too.
  *
  * Responsibilities:
  * - Load the record's tags, the vocabulary to pick from, the project's mode and `can_edit`
@@ -14,7 +15,7 @@
  *
  * `inline` is the compact form for the header's badge line (`RecordHeader` `tagsInline`): the tags and components as
  * read-only chips, nothing at all for a record with neither, and, for someone who may change them, one small
- * "Tags and components" button that opens the full editor in a dialog (a tag picker and a component picker each open
+ * "Tags, components and references" button that opens the full editor in a dialog (a tag picker and a component picker each open
  * a popover of their own, and popovers do not nest). The chips follow each change made in the dialog.
  *
  * `onChanged` lets a page refresh anything that shows the tags' effects (the Activity tab).
@@ -23,12 +24,14 @@
 import { Tags } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { recordReferencesApi, type RecordReferences as ReferencesData, type RecordReferencesApi } from "../api/externalReferences";
 import { placementLabel, recordPlacementsApi, type RecordPlacements as PlacementsData, type RecordPlacementsApi } from "../api/placements";
 import { recordTagsApi, type RecordTags as RecordTagsData, type RecordTagsApi } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { Modal } from "./Modal";
 import { RecordPlacements } from "./RecordPlacements";
+import { RecordReferences, ReferenceChip } from "./RecordReferences";
 import { TagChip } from "./TagChip";
 import { TagInput } from "./TagInput";
 import { Tooltip } from "./Tooltip";
@@ -42,10 +45,12 @@ import { Tooltip } from "./Tooltip";
  * @param components False leaves out the components, for a type that cannot be placed in the component tree.
  * @param api The tag calls (the live ones by default).
  * @param placementsApi The component calls (the live ones by default).
+ * @param references False leaves out the external references, for a page that keeps its own (a Product Feedback request).
+ * @param referencesApi The external reference calls (the live ones by default).
  */
 export function RecordTags({
   projectId, artefactType, artefactId, onChanged, inline = false, api = recordTagsApi, placementsApi = recordPlacementsApi,
-  components = true,
+  components = true, references = true, referencesApi = recordReferencesApi,
 }: {
   projectId: string;
   artefactType: string;
@@ -55,12 +60,14 @@ export function RecordTags({
   api?: RecordTagsApi;
   placementsApi?: RecordPlacementsApi;
   components?: boolean;
+  references?: boolean;
+  referencesApi?: RecordReferencesApi;
 }) {
   if (inline) {
     return (
       <RecordTagsInline
-        projectId={projectId} artefactType={artefactType} artefactId={artefactId}
-        onChanged={onChanged} api={api} placementsApi={placementsApi}
+        projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={api}
+        placementsApi={placementsApi} references={references} referencesApi={referencesApi}
       />
     );
   }
@@ -70,12 +77,15 @@ export function RecordTags({
       {components && (
         <RecordPlacements projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={placementsApi} />
       )}
+      {references && (
+        <RecordReferences projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={referencesApi} />
+      )}
     </>
   );
 }
 
 /**
- * The compact form of {@link RecordTags}: read-only chips and the "Tags and components" button.
+ * The compact form of {@link RecordTags}: read-only chips and the "Tags, components and references" button.
  *
  * Reads the record's tags and places itself (the dialog's editor loads its own copy), so it shows each change the
  * dialog saves. A failed read shows nothing, as in the full form.
@@ -83,7 +93,7 @@ export function RecordTags({
  * @param props The same props as {@link RecordTags}, all required.
  */
 function RecordTagsInline({
-  projectId, artefactType, artefactId, onChanged, api, placementsApi,
+  projectId, artefactType, artefactId, onChanged, api, placementsApi, references, referencesApi,
 }: {
   projectId: string;
   artefactType: string;
@@ -91,10 +101,13 @@ function RecordTagsInline({
   onChanged?: () => void;
   api: RecordTagsApi;
   placementsApi: RecordPlacementsApi;
+  references: boolean;
+  referencesApi: RecordReferencesApi;
 }) {
   const strings = useStrings();
   const [tags, setTags] = useState<RecordTagsData | null>(null);
   const [places, setPlaces] = useState<PlacementsData | null>(null);
+  const [refs, setRefs] = useState<ReferencesData | null>(null);
   const [editing, setEditing] = useState(false);
   const [reads, setReads] = useState(0);
 
@@ -102,14 +115,16 @@ function RecordTagsInline({
     let active = true;
     api.get(projectId, artefactType, artefactId).then((r) => active && setTags(r)).catch(() => active && setTags(null));
     placementsApi.get(projectId, artefactType, artefactId).then((r) => active && setPlaces(r)).catch(() => active && setPlaces(null));
+    if (references) referencesApi.get(projectId, artefactType, artefactId).then((r) => active && setRefs(r)).catch(() => active && setRefs(null));
     return () => {
       active = false;
     };
-  }, [api, placementsApi, projectId, artefactType, artefactId, reads]);
+  }, [api, placementsApi, referencesApi, references, projectId, artefactType, artefactId, reads]);
 
   const shownPlaces = places && !places.managed_on_record ? places.placements : [];
-  const canEdit = !!tags?.can_edit || (!!places?.can_edit && !places.managed_on_record);
-  if (!canEdit && (tags?.tags.length ?? 0) === 0 && shownPlaces.length === 0) return null;
+  const shownReferences = references && refs ? refs.references : [];
+  const canEdit = !!tags?.can_edit || (!!places?.can_edit && !places.managed_on_record) || (references && !!refs?.can_edit);
+  if (!canEdit && (tags?.tags.length ?? 0) === 0 && shownPlaces.length === 0 && shownReferences.length === 0) return null;
   return (
     <>
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
@@ -117,6 +132,7 @@ function RecordTagsInline({
         {shownPlaces.map((place) => (
           <span key={`${place.component_id}:${place.category_id}`} className="chip">{placementLabel(place)}</span>
         ))}
+        {shownReferences.map((reference) => <ReferenceChip key={reference.id} reference={reference} />)}
         {canEdit && (
           <Tooltip label={strings.tags.editLabel}>
             <button type="button" className="btn btn-sm btn-icon" aria-label={strings.tags.editLabel} aria-haspopup="dialog" onClick={() => setEditing(true)}>
@@ -130,6 +146,7 @@ function RecordTagsInline({
           <div className="stack">
             <RecordTags
               projectId={projectId} artefactType={artefactType} artefactId={artefactId} api={api} placementsApi={placementsApi}
+              references={references} referencesApi={referencesApi}
               onChanged={() => {
                 setReads((n) => n + 1);
                 onChanged?.();

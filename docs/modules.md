@@ -1473,7 +1473,27 @@ flowchart LR
 - **The reference.** `artefact_type`, `artefact_id` (no foreign key; the owner calls `forget_record_references` when it deletes a record for good, and the owning project and organisation cascade), the system (organisation entry for an organisation-owned record, the project's row for a project record, a CHECK ties the tier to the owner), `key`, optional `url`, `note` and `role` (`origin` or `delivery`). At most 50 per record; a key or a URL is required.
 - **Links.** `url` and a template are http or https only, checked at every entry (API, bundle, record-table import) and again by `link_for`, which also URL-encodes the key into the template, so a `javascript:` or `data:` value can never become a link.
 - **API.** `GET/POST/PATCH/DELETE /api/v1/projects/{id}/artefacts/{type}/{id}/external-references[/{reference}]` (read follows the record, a record the caller cannot open is a 404; changes need the authority for tagging, `services.tags.can_tag`; each writes `reference_added`, `reference_updated` or `reference_removed`, never the key or link). `/api/v1/orgs/{id}/external-systems` (read by members, written by an organisation administrator) and `/api/v1/projects/{id}/external-systems` (read by members, written with project settings authority), both from the shared `services.vocabulary_endpoints` registrars, which take the gates and the schemas of the list.
-- **Bundles and templates.** The organisation bundle carries `external_systems` (the list with templates); the project bundle carries the project's own rows and hidden defaults, imported before any module imports a record and hidden afterwards. A template project copies its systems (`copy_project_systems`). Records carry their references by system name (`export_record_references` / `import_record_references`); Product Feedback does so today and the shared record columns follow.
+- **Bundles and templates.** The organisation bundle carries `external_systems` (the list with templates); the project bundle carries the project's own rows and hidden defaults, imported before any module imports a record and hidden afterwards. A template project copies its systems (`copy_project_systems`). Records carry their references by system name, never id (`record_references` / `restore_record_references`, with `prime_record_references` for an export's one read), beside tags and places wherever a bundle row is written or read; a system the target lacks becomes an entry of the target project's own, with a warning. The project import creates the systems before the first record is imported.
+- **Surfaces (nothing per type).** Every registered type takes part with no code; `services/external_reference_surfaces.py` holds them.
+
+```mermaid
+flowchart TB
+    T["external_references"] --> F["List filter: external_system, external_key<br/>(TagFilter, requirement list)"]
+    T --> C["Shared column external_refs<br/>(export, import, both tiers)"]
+    T --> S["Search field external_refs (opt-in)"]
+    T --> RP["Report field external_refs"]
+    T --> PG["Page read for a list column"]
+    T --> LK["Look-up by outside key"]
+    T --> B["Project bundle: external_references"]
+    T --> M["MCP: get, add, update, remove, find"]
+```
+
+  - *Filter.* `external_system` (repeatable, a system's display name, case-insensitive; an organisation entry and a project's own entry of that name both match) and `external_key` (a fragment). Either alone is enough; both must hold for the same reference. `TagFilter` carries them, so every list that takes it, its export and a record-list report narrow the same rows; the requirement list has its own parameters of the same names. The condition is one SQL `EXISTS` on an alias of the table.
+  - *Column.* `external_refs` is `SYSTEM:KEY; SYSTEM:KEY`, added by the record-table engine beside the placements column on both tiers, never by a provider. An import makes the record carry exactly the keys in the cell: a reference already there with the same system and key is untouched (its link, note and role stay), the others are removed or added bare, each with its audit event. A system name is read by its longest offered name, a `;` or `\` in a key is escaped with a backslash, and a changed cell needs the authority for tagging (at the organisation tier, the right to create or update the type's records).
+  - *Search and reports.* The search field `external_refs` matches a key or a system's name (never a note or link) and is opt-in like the placements field; the report field of the same key is free text and groups one group per reference.
+  - *Page read and look-up.* `GET /projects/{id}/external-references/{type}?id=` returns a page's references in a few statements, leaving out a record the caller cannot open; `GET /projects/{id}/records/by-external-reference?key=&system=&artefact_type=` finds the records carrying a key exactly, through the caller's visibility rules like the tag look-up, for an integration or an agent.
+  - *MCP.* `get_artefact_external_references`, `find_artefacts_by_external_reference` and, in write mode, `add_`, `update_` and `remove_artefact_external_reference`; `list_requirements` takes the filter.
+  - *Scale.* The perf generator writes references for every type (`ratios.references_per_record`, through `add_tags` and the requirement generator), and the statements behind a list, its export, the page read and the bundle stay flat as records gain references.
 - **Product Feedback.** Its requests' references are rows of this table (`references.py` adapts a request to it; the request API shape is unchanged and gains `link`); its own tables for systems and references are gone (the data migration moves the rows and is reversible).
 
 ### 4l3. Components on every record

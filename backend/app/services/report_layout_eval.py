@@ -88,6 +88,7 @@ from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services import report_font_catalogue
 from app.services.branding import explicit_logo_band_hex, get_server_settings
+from app.services.external_reference_surfaces import CELL_SEPARATOR, REFERENCES_COLUMN_KEY
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.placements import PLACEMENT_TEXT_SEPARATOR, PLACEMENTS_FIELD_KEY
@@ -837,8 +838,9 @@ class _Run:
     def group_labels(self, record: ReportRecord, key: str) -> list[str]:
         """The group labels a record falls under when grouped by `key`.
 
-        A single-valued field gives one label (`(none)` when empty). Tags and placements give one label per tag or place, so a record with two
-        of either is in both groups (group counts then add up to more than the records); an untagged record is in `(none)`.
+        A single-valued field gives one label (`(none)` when empty). Tags, placements and external references give one label
+        per tag, place or reference, so a record with two of either is in both groups (group counts then add up to more
+        than the records); an untagged record is in `(none)`.
         A tag name cannot contain a comma, so the joined text splits back into the names.
         """
         text = self.text_of(record, key)
@@ -848,6 +850,9 @@ class _Run:
         if key == PLACEMENTS_FIELD_KEY:
             places = list(dict.fromkeys(n for n in text.split(PLACEMENT_TEXT_SEPARATOR) if n))
             return places or [EMPTY_GROUP_LABEL]
+        if key == REFERENCES_COLUMN_KEY:
+            found = list(dict.fromkeys(n for n in text.split(CELL_SEPARATOR) if n))
+            return found or [EMPTY_GROUP_LABEL]
         return [text or EMPTY_GROUP_LABEL]
 
     def resolve_sheet_links(self, offset: int) -> None:
@@ -1551,7 +1556,7 @@ def _eval_group(run: _Run, node: dict[str, Any], scope: Scope) -> None:
             groups.setdefault(label, []).append(record)
 
     def order(label: str) -> tuple[bool, Any]:
-        typed = None if key in ("tags", PLACEMENTS_FIELD_KEY) else run.sort_key(groups[label][0], key)
+        typed = None if key in ("tags", PLACEMENTS_FIELD_KEY, REFERENCES_COLUMN_KEY) else run.sort_key(groups[label][0], key)
         return label == EMPTY_GROUP_LABEL, (label.casefold() if typed is None else typed)
 
     for label in sorted(groups, key=order):

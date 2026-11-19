@@ -111,6 +111,7 @@ from app.modules.compliance.models import (
 from app.modules.compliance.service import materialize_assessment_rows
 from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
@@ -1228,6 +1229,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     evidence_ids = [e.id for e in evidence_rows]
     prime_record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
     prime_record_placements(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
+    prime_record_references(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
     revalidations_by_evidence: dict[UUID, list[ComplianceEvidenceRevalidation]] = {}
     files_by_evidence: dict[UUID, list[tuple]] = {}
     if evidence_ids:
@@ -1259,6 +1261,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "_archived_by": e.archived_by, "attachments": attachments,
             "tags": record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, e.id),
             "placements": record_placements(db, ARTEFACT_TYPE_EVIDENCE, e.id),
+            "external_references": record_references(db, ARTEFACT_TYPE_EVIDENCE, e.id),
             "revalidations": [
                 {
                     "_revalidated_by": r.revalidated_by, "revalidated_at": _j(r.revalidated_at),
@@ -1528,6 +1531,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=current_user.id,
             artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, entries=e.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, entries=e.get("external_references"),
         )
 
         for att in e.get("attachments", []):

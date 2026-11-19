@@ -35,6 +35,7 @@ import { projectTagAdminApi } from "../api/tags";
 import { TagFilterField } from "../components/TagFilterField";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
+import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
@@ -44,6 +45,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { usePageReferences } from "../hooks/usePageReferences";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useProjectScope } from "../hooks/useProjectScope";
@@ -83,6 +85,9 @@ export function RequirementsPage() {
   const canManageProject =
     myRoles.includes("project_manager") || myRoles.includes("project_administrator") || isOrgAdminOfProject;
   const [requirements, setRequirements] = useState<Requirement[] | null>(null);
+  // The External references column, read for the page's rows at once; shown only when a row has a reference.
+  const referenced = usePageReferences(projectId, "requirement", (requirements ?? []).filter((r) => !r.from_project_id).map((r) => r.id));
+  const showReferences = Object.keys(referenced).length > 0;
   const [total, setTotal] = useState(0);
   // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
@@ -691,6 +696,7 @@ export function RequirementsPage() {
                       />
                       <th>Target · level</th>
                       <th>Component · category</th>
+                      {showReferences && <th>{strings.references.column}</th>}
                       <th />
                     </tr>
                   </thead>
@@ -739,6 +745,7 @@ export function RequirementsPage() {
                         <td className="text-muted">
                           {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
                         </td>
+                        {showReferences && <td><ReferencesCell references={referenced[r.id]} /></td>}
                         <td>
                           {!r.from_project_id && (
                             <div className="row" style={{ gap: "var(--space-1)" }}>

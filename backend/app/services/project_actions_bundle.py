@@ -56,6 +56,7 @@ from app.services.bundle_common import (
 )
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.definitions import seed_action_types
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
@@ -131,6 +132,7 @@ def export_project_actions(db: Session, project: Project, assets: dict[uuid.UUID
 
     prime_record_tag_names(db, ACTION_ARTEFACT_TYPE, ids)
     prime_record_placements(db, ACTION_ARTEFACT_TYPE, ids)
+    prime_record_references(db, ACTION_ARTEFACT_TYPE, ids)
     prime_file_links(db, RequirementActionFile, "action_id", ids)
 
     def email(user_id: uuid.UUID | None) -> str | None:
@@ -154,6 +156,7 @@ def export_project_actions(db: Session, project: Project, assets: dict[uuid.UUID
             ],
             "tags": record_tag_names(db, ACTION_ARTEFACT_TYPE, a.id),
             "placements": record_placements(db, ACTION_ARTEFACT_TYPE, a.id),
+            "external_references": record_references(db, ACTION_ARTEFACT_TYPE, a.id),
         }
         for a in actions
     ]
@@ -282,6 +285,10 @@ def import_project_actions(
         restore_record_placements(
             db, project_id=project.id, actor_id=current_user.id,
             artefact_type=ACTION_ARTEFACT_TYPE, artefact_id=action.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ACTION_ARTEFACT_TYPE, artefact_id=action.id, entries=entry.get("external_references"),
         )
 
     import_artefact_links(

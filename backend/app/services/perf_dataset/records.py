@@ -45,7 +45,9 @@ from app.models.tag import ArtefactTag
 from app.services.link_types import get_org_link_type
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, CHUNK, PerfProjectContext, insert_rows, uuid_from
+from app.services.perf_dataset.context import poisson as _poisson
 from app.services.perf_dataset.core import AuditBuffer
+from app.services.perf_dataset.references import write_references
 
 
 def created_at(rng: random.Random, *, max_days: float = 540) -> datetime:
@@ -242,6 +244,7 @@ def add_tags(ctx: PerfProjectContext, batch: RecordBatch) -> None:
     generator calls this one function for a batch's classification. Does nothing for tags when the project has none."""
     rng, spec = ctx.rng, ctx.spec
     add_placements(ctx, batch)
+    write_references(ctx, batch.artefact_type, batch.ids, batch.created, batch.audit)
     if not ctx.tags or not batch.ids:
         return
     vocabulary = len(ctx.tags)
@@ -265,20 +268,6 @@ def add_tags(ctx: PerfProjectContext, batch: RecordBatch) -> None:
             )
     ctx.add_count("artefact_tags", insert_rows(ctx.db, ArtefactTag, rows))
     batch.audit.flush()
-
-
-def _poisson(rng: random.Random, mean: float) -> int:
-    """A Poisson draw (Knuth), fine for the small means used here."""
-    import math
-
-    if mean <= 0:
-        return 0
-    limit, k, p = math.exp(-mean), 0, 1.0
-    while True:
-        p *= rng.random()
-        if p <= limit:
-            return k
-        k += 1
 
 
 def org_link_types(ctx: PerfProjectContext) -> list[RequirementLinkTypeDefinition]:

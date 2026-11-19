@@ -5,9 +5,7 @@
  * column (`DirectoryTable`'s `placements`). A failed read shows no column rather than an error: the places are
  * secondary to the list.
  */
-import { useEffect, useState } from "react";
-
-import { useLatest } from "./useLatest";
+import { usePageByType } from "./usePageByType";
 import { recordPlacementsApi, type Placement, type RecordPlacementsApi } from "../api/placements";
 
 /**
@@ -34,23 +32,5 @@ export function usePagePlacements(
 export function usePagePlacementsByType(
   projectId: string | undefined, idsByType: Record<string, string[]>, api: RecordPlacementsApi = recordPlacementsApi,
 ): Record<string, Placement[]> {
-  const asks = Object.entries(idsByType).filter(([, ids]) => ids.length > 0).sort(([a], [b]) => a.localeCompare(b));
-  const key = asks.map(([type, ids]) => `${type}:${ids.join(",")}`).join("|");
-  // The effect reads the asks through a ref: `key` names exactly what they are, so it is the only dependency.
-  const latestAsks = useLatest(asks);
-  // The answer is kept with the request it belongs to, so rows that changed since are never shown the old places.
-  const [answer, setAnswer] = useState<{ key: string; places: Record<string, Placement[]> } | null>(null);
-  useEffect(() => {
-    let active = true;
-    if (!projectId || key === "") return;
-    const asked = `${projectId}/${key}`;
-    Promise.all((latestAsks.current ?? []).map(([type, ids]) => api.page(projectId, type, ids).catch(() => ({} as Record<string, Placement[]>))))
-      .then((parts) => active && setAnswer({ key: asked, places: Object.assign({}, ...parts) }));
-    return () => {
-      active = false;
-    };
-  }, [api, projectId, key, latestAsks]);
-  return answer !== null && answer.key === `${projectId}/${key}` ? answer.places : NO_PLACES;
+  return usePageByType(projectId, idsByType, api.page);
 }
-
-const NO_PLACES: Record<string, Placement[]> = {};

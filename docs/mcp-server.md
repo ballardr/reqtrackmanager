@@ -41,6 +41,8 @@ Twenty-two read tools, always available:
 | `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
 | `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
 | `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
+| `get_artefact_external_references` | One record's external references (system, key, link, note, role), whether the caller may change them, and the systems to choose from |
+| `find_artefacts_by_external_reference` | The records of every type that carry an outside key (exact, optionally in one system or type), limited to those the caller can open |
 | `search_records` | Records of every type (and projects) found by text: code, title and tags by default, more fields on request; scoped to all projects, one project or a module's unit such as a Compliance standard. Only what the caller can open; the first 500 matches |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
@@ -63,6 +65,7 @@ Plus seven write tools, only when [write mode](#write-mode) is enabled:
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
 | `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
+| `add_artefact_external_reference` / `update_artefact_external_reference` / `remove_artefact_external_reference` | Adds, changes or removes one external reference on a record (a reference is not record content, so an approved requirement takes it) |
 | `create_report_layout` / `save_report_layout_version` / `update_report_layout` / `delete_report_layout` | Author custom report layouts for a project or organisation (needs the layout-management permission; a save names the version it started from and is refused if someone saved since; delete is irreversible and also deletes the introduction, chapters and appendices written for the layout) |
 | `run_report_pack` | Queues a report pack to be produced in the background as one zip, as the caller (every report keeps its own access gate); the requester is notified and downloads it in the app. Subject to the per-user limit on background runs |
 | `copy_reports` | Copies report layouts, packs, folders and module-report settings from one project to another of the same organisation (needs the layout-management right in both). Previews by default (`dry_run`); never replaces, a taken name is renamed `Name (copy)` or skipped |

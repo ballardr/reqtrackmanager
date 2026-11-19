@@ -21,6 +21,7 @@ Dependencies: SQLAlchemy; `perf_dataset.skeleton` and `perf_dataset.spec` for th
 
 from __future__ import annotations
 
+import math
 import random
 import uuid
 from collections.abc import Iterable
@@ -43,6 +44,18 @@ CHUNK = 5000
 def uuid_from(rng: random.Random) -> uuid.UUID:
     """A version-4 UUID drawn from `rng`, so the same seed gives the same ids."""
     return uuid.UUID(int=rng.getrandbits(128), version=4)
+
+
+def poisson(rng: random.Random, mean: float) -> int:
+    """A Poisson draw (Knuth), fine for the small means the profiles use (0 for a mean that is not positive)."""
+    if mean <= 0:
+        return 0
+    limit, k, p = math.exp(-mean), 0, 1.0
+    while True:
+        p *= rng.random()
+        if p <= limit:
+            return k
+        k += 1
 
 
 def insert_rows(db: Session, model: Any, rows: Iterable[dict], *, chunk: int = CHUNK) -> int:

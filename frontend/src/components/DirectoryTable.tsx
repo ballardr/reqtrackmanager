@@ -50,12 +50,15 @@ import { useEffect, useRef } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import type { RecordReferencesApi } from "../api/externalReferences";
 import { placementsText, type RecordPlacementsApi } from "../api/placements";
 import { useStrings } from "../context/TerminologyContext";
 import { usePagePlacementsByType } from "../hooks/usePagePlacements";
+import { usePageReferencesByType } from "../hooks/usePageReferences";
 
 import { InlineCheckbox } from "./FormFields";
 import { LoadMoreButton } from "./LoadMoreButton";
+import { ReferencesCell } from "./ReferencesCell";
 import { SortableHeader } from "./SortableHeader";
 import type { SortState } from "./sortState";
 
@@ -163,15 +166,17 @@ export function DirectoryTable<Row>({
    * "nothing here yet" vs. "no results match this search/filter" copy —
    * only it knows whether a filter is currently active. */
   emptyState: ReactNode;
-  /** Adds a Components column showing where each row's record sits in the project's component tree, read for the
-   * whole page at once. The column appears only when a row on the page is placed somewhere, so a project that does
-   * not use components sees no new column. `api` is injectable for stories. */
+  /** Adds a Components column showing where each row's record sits in the project's component tree, and an External
+   * references column showing the outside items it points to, each read for the whole page at once. A column appears
+   * only when a row on the page has a value, so a project that uses neither sees no new column. `api` and
+   * `referencesApi` are injectable for stories. */
   placements?: {
     projectId: string | undefined;
     /** The record type of the rows, or (a list of several types) a function giving each row's type. */
     artefactType: string | ((row: Row) => string);
     rowId: (row: Row) => string;
     api?: RecordPlacementsApi;
+    referencesApi?: RecordReferencesApi;
   };
   /** Adds a leading column of checkboxes for a bulk action; the caller owns the selected keys and the action itself. */
   selection?: DirectoryTableSelection<Row>;
@@ -179,6 +184,8 @@ export function DirectoryTable<Row>({
   const strings = useStrings();
   const placed = usePagePlacementsByType(placements?.projectId, placementIdsByType(rows, placements), placements?.api);
   const showPlacements = placements !== undefined && rows.some((r) => (placed[placements.rowId(r)] ?? []).length > 0);
+  const referenced = usePageReferencesByType(placements?.projectId, placementIdsByType(rows, placements), placements?.referencesApi);
+  const showReferences = placements !== undefined && rows.some((r) => (referenced[placements.rowId(r)] ?? []).length > 0);
   const selectAll = useRef<HTMLInputElement>(null);
   const choosable = selection ? rows.filter((r) => selection.selectable?.(r) ?? true) : [];
   const chosen = selection ? choosable.filter((r) => selection.selected.has(rowKey(r))).length : 0;
@@ -219,6 +226,7 @@ export function DirectoryTable<Row>({
                 )
               )}
               {showPlacements && <th>{strings.placements.label}</th>}
+              {showReferences && <th>{strings.references.column}</th>}
             </tr>
           </thead>
           <tbody>
@@ -248,6 +256,9 @@ export function DirectoryTable<Row>({
                 ))}
                 {showPlacements && placements && (
                   <td>{placementsText(placed[placements.rowId(row)])}</td>
+                )}
+                {showReferences && placements && (
+                  <td><ReferencesCell references={referenced[placements.rowId(row)]} /></td>
                 )}
               </tr>
             ))}

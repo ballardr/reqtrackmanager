@@ -480,6 +480,77 @@ def import_record_references(
     return created
 
 
+def prime_record_references(db: Session, artefact_type: str, artefact_ids: Iterable[uuid.UUID]) -> None:
+    """Reads the references of many records of one type in a fixed number of statements, for `record_references` to
+    answer from. Like `services.tags.prime_record_tag_names` it only has an effect inside a `memoize_module_state()`
+    block (an export); elsewhere it does nothing."""
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is None:
+        return
+    ids = list(artefact_ids)
+    for record_id, entries in export_record_references(db, artefact_type, ids).items():
+        memo[("record_references", artefact_type, record_id)] = entries
+
+
+def record_references(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> list[dict[str, Any]]:
+    """A record's references as bundle entries (from `prime_record_references` when the export primed them)."""
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is not None and ("record_references", artefact_type, artefact_id) in memo:
+        return [dict(e) for e in memo[("record_references", artefact_type, artefact_id)]]
+    return export_record_references(db, artefact_type, [artefact_id])[artefact_id]
+
+
+def share_system_resolver(db: Session, resolver: Any) -> None:
+    """Makes an import's `NameResolver` for `EXTERNAL_SYSTEMS` the one `restore_record_references` uses for its owner
+    (a project's bundle import calls this once the project's own systems exist), so every module's records resolve
+    names against the same rows and the import's warnings collect in one place."""
+    db.info.setdefault("reference_systems", {})[(resolver.organization_id, resolver.project.id if resolver.project is not None else None)] = resolver
+
+
+def restore_record_references(
+    db: Session, *, organization_id: uuid.UUID, record_project_id: uuid.UUID | None, actor_id: uuid.UUID | None,
+    artefact_type: str, artefact_id: uuid.UUID, entries: Sequence[dict[str, Any]] | None, warnings: Any = None,
+) -> None:
+    """Applies a bundle row's references to its newly created record, by system name.
+
+    A name the target has no system for becomes a system of the target project's own, with a warning when `warnings`
+    (a `BundleImportWarnings`) is given, so a reference is never dropped. The resolver is kept for the import (on the
+    session), so a bundle of thousands of records reads the system lists once.
+
+    Args:
+        db: Active session; rows are added, not committed.
+        organization_id: The organisation being imported into.
+        record_project_id: The record's owning project, or `None` for a record the organisation owns.
+        actor_id: The importing user (falls back to the record's creator being unknown: such an entry is skipped).
+        artefact_type / artefact_id: The new record.
+        entries: The row's `record_references` output (nothing to do when empty or absent).
+        warnings: Where a system the target lacks is reported.
+    """
+    if not entries or actor_id is None:
+        return
+    from app.services.bundle_common import BundleImportWarnings
+    from app.services.vocabulary_bundle import NameResolver
+
+    cache = db.info.setdefault("reference_systems", {})
+    key = (organization_id, record_project_id)
+    resolver = cache.get(key)
+    if resolver is None:
+        project = db.get(Project, record_project_id) if record_project_id is not None else None
+        resolver = cache[key] = NameResolver(
+            db, EXTERNAL_SYSTEMS, organization_id, project, warnings or BundleImportWarnings(), "external system",
+        )
+    elif warnings is not None:
+        resolver.warnings = warnings
+    import_record_references(
+        db, artefact_type=artefact_type, artefact_id=artefact_id, organization_id=organization_id,
+        project=resolver.project, entries=entries, systems=resolver, actor_id=actor_id,
+    )
+
+
 def copy_project_systems(db: Session, source: Project, target: Project) -> None:
     """Copies `source`'s own system configuration (overrides, project-local systems, hidden defaults) to `target`, a
     project made from a template (not committed). The template's references to them are records and are not copied here."""

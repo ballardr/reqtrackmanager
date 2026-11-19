@@ -21,6 +21,7 @@ import { PrincipalBadge } from "../components/PrincipalBadge";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
 import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
@@ -29,6 +30,7 @@ import { useCommitTags } from "../hooks/useCommitTags";
 import { useProjectScope } from "../hooks/useProjectScope";
 import { placementsText } from "../api/placements";
 import { usePagePlacements } from "../hooks/usePagePlacements";
+import { usePageReferences } from "../hooks/usePageReferences";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
@@ -170,6 +172,8 @@ export function ProjectActionsPage() {
 
   const placed = usePagePlacements(projectId, "requirement_action", (actions ?? []).map((a) => a.id));
   const showPlaces = Object.keys(placed).length > 0;
+  const referenced = usePageReferences(projectId, "requirement_action", (actions ?? []).map((a) => a.id));
+  const showReferences = Object.keys(referenced).length > 0;
 
   function actionTypeName(id: string) {
     return actionTypes.find((t2) => t2.id === id)?.name ?? "—";
@@ -241,6 +245,7 @@ export function ProjectActionsPage() {
                         onSort={(key) => setSort((s) => cycleSort(s, key))}
                       />
                       {showPlaces && <th>{strings.placements.label}</th>}
+                      {showReferences && <th>{strings.references.column}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -269,6 +274,7 @@ export function ProjectActionsPage() {
                         <td className="text-muted"><PrincipalBadge principal={a.assignee} placeholder={strings.reviews.unassigned} /></td>
                         <td className="text-muted">{a.due_date ?? "—"}</td>
                         {showPlaces && <td className="text-muted">{placementsText(placed[a.id])}</td>}
+                        {showReferences && <td><ReferencesCell references={referenced[a.id]} /></td>}
                       </tr>
                     ))}
                   </tbody>

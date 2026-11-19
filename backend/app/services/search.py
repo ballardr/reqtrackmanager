@@ -27,7 +27,8 @@ Design decisions:
   `MAX_DEPTH`, a project cap, and a per-search `statement_timeout`.
 - Fields are opt-in per provider; ID (the record's code, qualified or not), Title and Tags are
   built here, so every taggable type is searched on tags with no provider work. Component and category
-  names (`placements`) are built here the same way, opt-in and never a default.
+  names (`placements`) and a record's external references (`external_refs`: the outside key and the system's name,
+  never the note or link) are built here the same way, opt-in and never a default.
 - A record owned by the organisation (a shared persona) is found only through a project that is
   allowed to see it, using the owning module's `get_many_in_project` rule (per-project hiding),
   and its count is taken after that check.
@@ -53,6 +54,7 @@ from sqlalchemy import String, and_, case, cast, exists, func, literal, or_, sel
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.models.external_reference import ExternalReference, ExternalSystemDefinition, ProjectExternalSystem
 from app.models.organization import Organization, UserOrgRole
 from app.models.placement import ArtefactPlacement
 from app.models.project import Project, ProjectCategory, ProjectComponent
@@ -74,6 +76,7 @@ from app.modules.registry import (
     memoize_module_state,
     prefetch_project_module_state,
 )
+from app.services.external_references import references_for_records
 from app.services.permissions import encode_permission
 from app.services.placements import COLUMN_PLACED_TYPES, placement_text, placements_for_records
 from app.services.project_access import accessible_project_ids
@@ -108,7 +111,11 @@ PROJECT_TYPE = "project"
 DEFAULT_FIELDS = ("id", "title", "tags")
 #: The reserved key for a record's component and category names (opt-in, never a default).
 PLACEMENTS_FIELD = "placements"
-_RESERVED_FIELDS = {"id": "ID", "title": "Title", "tags": "Tags", PLACEMENTS_FIELD: "Component and category"}
+#: The reserved key for a record's external references (the key and the system name; opt-in, never a default).
+REFERENCES_FIELD = "external_refs"
+_RESERVED_FIELDS = {
+    "id": "ID", "title": "Title", "tags": "Tags", PLACEMENTS_FIELD: "Component and category", REFERENCES_FIELD: "External references",
+}
 #: The reserved key for a record's comments: available only to the types that declare a comment table, and
 #: only ever chosen for one search, never a default (an `EXISTS` over a table per type is much dearer than
 #: matching the record's own columns).
@@ -583,6 +590,29 @@ def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
     )
 
 
+def _reference_exists(artefact_type: str, id_column: Any, term: str) -> Any:
+    """Whether the record carries an external reference whose key, or whose system's name, contains `term`.
+
+    The key and the system name are what is searched; a reference's note and link are not."""
+    like = f"%{_escape_like(term)}%"
+    system_name = or_(
+        ExternalReference.org_system_id.in_(
+            select(ExternalSystemDefinition.id).where(func.lower(ExternalSystemDefinition.name).like(like, escape="\\"))
+        ),
+        ExternalReference.project_system_id.in_(
+            select(ProjectExternalSystem.id).outerjoin(
+                ExternalSystemDefinition, ExternalSystemDefinition.id == ProjectExternalSystem.org_type_id
+            ).where(func.lower(func.coalesce(ProjectExternalSystem.name_override, ExternalSystemDefinition.name)).like(like, escape="\\"))
+        ),
+    )
+    return exists(
+        select(1).select_from(ExternalReference.__table__).where(
+            ExternalReference.artefact_type == artefact_type, ExternalReference.artefact_id == id_column,
+            or_(func.lower(ExternalReference.key).like(like, escape="\\"), system_name),
+        )
+    )
+
+
 def _comment_exists(comments: Any, id_column: Any, term: str) -> Any:
     """Whether the record has a comment whose text contains `term`."""
     return exists(
@@ -630,6 +660,8 @@ def _text_condition(artefact_type: str, provider: ArtefactSearchProvider, fields
             alternatives.append(_tag_exists(artefact_type, columns.id, term))
         if PLACEMENTS_FIELD in fields and artefact_type not in get_not_placeable_types():
             alternatives.append(_placement_exists(artefact_type, columns.id, term))
+        if REFERENCES_FIELD in fields:
+            alternatives.append(_reference_exists(artefact_type, columns.id, term))
         if COMMENTS_FIELD in fields and provider.comments is not None:
             alternatives.append(_comment_exists(provider.comments, columns.id, term))
         alternatives.extend(_like(carried[k].column, term) for k in fields if k in carried)
@@ -911,6 +943,20 @@ def _placement_names(db: Session, rows: list[_Row]) -> dict[tuple[str, uuid.UUID
     return found
 
 
+def _reference_names(db: Session, rows: list[_Row]) -> dict[tuple[str, uuid.UUID], list[str]]:
+    """The `System:KEY` text of the given records' external references, one pass per type."""
+    by_type: dict[str, list[uuid.UUID]] = {}
+    for r in rows:
+        if r.type != PROJECT_TYPE:
+            by_type.setdefault(r.type, []).append(r.id)
+    found: dict[tuple[str, uuid.UUID], list[str]] = {}
+    for artefact_type, ids in by_type.items():
+        for record_id, references in references_for_records(db, artefact_type, ids).items():
+            if references:
+                found[(artefact_type, record_id)] = [f"{r.system_name}:{r.key}" for r in references]
+    return found
+
+
 def _comment_texts(db: Session, rows: list[_Row], terms: list[str], providers: dict[str, ArtefactSearchProvider]) -> dict[tuple[str, uuid.UUID], str]:
     """The earliest comment containing a term, for each of the given records, one query per type."""
     by_type: dict[str, list[uuid.UUID]] = {}
@@ -936,8 +982,10 @@ def _snippet(
     row: _Row, fields: list[str], terms: list[str], tags: dict[tuple[str, uuid.UUID], list[str]], labels: dict[str, str],
     comment_texts: dict[tuple[str, uuid.UUID], str] | None = None,
     placements: dict[tuple[str, uuid.UUID], list[str]] | None = None,
+    references: dict[tuple[str, uuid.UUID], list[str]] | None = None,
 ) -> Snippet | None:
-    """The first of Tags, the placement names and the declared fields (in selection order) that contains a term."""
+    """The first of Tags, the placement names, the external references and the declared fields (in selection order)
+    that contains a term."""
     if "tags" in fields:
         matching = [n for n in tags.get((row.type, row.id), []) if any(t in n.lower() for t in terms)]
         if matching:
@@ -950,6 +998,11 @@ def _snippet(
         windowed = _window("; ".join(matching), terms) if matching else None
         if windowed:
             return Snippet(PLACEMENTS_FIELD, labels.get(PLACEMENTS_FIELD, "Component and category"), windowed[0], windowed[1])
+    if REFERENCES_FIELD in fields:
+        matching = [n for n in (references or {}).get((row.type, row.id), []) if any(t in n.lower() for t in terms)]
+        windowed = _window("; ".join(matching), terms) if matching else None
+        if windowed:
+            return Snippet(REFERENCES_FIELD, labels.get(REFERENCES_FIELD, "External references"), windowed[0], windowed[1])
     for key in fields:
         value = row.field_values.get(key)
         if not value:
@@ -1108,8 +1161,9 @@ def _run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
     field_labels = {k: v[0] for k, v in merged.items()}
     comment_texts = _comment_texts(db, page, terms, providers) if COMMENTS_FIELD in fields else {}
     placement_names = _placement_names(db, page) if PLACEMENTS_FIELD in fields else {}
+    reference_names = _reference_names(db, page) if REFERENCES_FIELD in fields else {}
     hits = [
-        _shape(r, providers, context, _snippet(r, fields, terms, tag_names, field_labels, comment_texts, placement_names))
+        _shape(r, providers, context, _snippet(r, fields, terms, tag_names, field_labels, comment_texts, placement_names, reference_names))
         for r in page
     ]
     total = None

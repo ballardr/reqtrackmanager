@@ -53,7 +53,8 @@ READ_ONLY_TOOLS = {
     # Fine-Grained Access Control — read-only permission-vocabulary and
     # custom-role-definition tools; no grant-roster tool exists (see docs/decisions.md).
     "list_permissions", "list_custom_roles", "get_custom_role",
-    "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "list_external_systems", "list_organization_external_systems", "get_record_by_code", "search_records",
+    "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "list_external_systems", "list_organization_external_systems",
+    "get_artefact_external_references", "find_artefacts_by_external_reference", "get_record_by_code", "search_records",
     "get_record_list_report",
     # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).
     "list_report_layouts", "get_report_layout", "run_custom_report", "get_report_layout_variables",
@@ -68,6 +69,7 @@ READ_ONLY_TOOLS = {
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
+    "add_artefact_external_reference", "update_artefact_external_reference", "remove_artefact_external_reference",
     "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",
     "run_report_pack", "copy_reports", "duplicate_report", "import_report_file",
     "save_report_snippet", "update_saved_report_snippet", "delete_saved_report_snippet",

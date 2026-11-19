@@ -78,6 +78,7 @@ from app.modules.risk_management.models import (
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_SCHEME_KEY
 from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_TYPES
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
@@ -217,6 +218,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     RISK_TYPES.prime_display_names(db, [(None, v.project_type_id) for _r, v in pairs])
     prime_record_tag_names(db, RISK_ARTEFACT_TYPE, risk_ids)
     prime_record_placements(db, RISK_ARTEFACT_TYPE, risk_ids)
+    prime_record_references(db, RISK_ARTEFACT_TYPE, risk_ids)
     prime_file_links(db, RiskFile, "risk_id", risk_ids)
     user_ids: set[UUID | None] = set()
     for risk, version in pairs:
@@ -245,6 +247,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "review_notified_for": {"due": _j(risk.review_due_notified_for), "overdue": _j(risk.review_overdue_notified_for)},
             "tags": record_tag_names(db, RISK_ARTEFACT_TYPE, risk.id),
             "placements": record_placements(db, RISK_ARTEFACT_TYPE, risk.id),
+            "external_references": record_references(db, RISK_ARTEFACT_TYPE, risk.id),
         }
         entry["attachments"] = export_file_links(db, RiskFile, "risk_id", risk.id, assets)
         entry["reviews"] = [
@@ -390,6 +393,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, entries=entry.get("external_references"),
         )
 
         for att in entry.get("attachments", []):

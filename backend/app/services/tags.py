@@ -56,6 +56,7 @@ from app.models.project import Project
 from app.models.tag import MAX_TAG_NAME_LENGTH, ArtefactTag, Tag
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.services.audit import log_event
+from app.services.external_reference_surfaces import ReferenceFilter
 from app.services.link_graph import ArtefactResolver
 from app.services.lookups import project_or_404
 from app.services.placements import PlacementFilter
@@ -437,6 +438,7 @@ class TagFilter:
         names: The requested tag names (blank entries dropped).
         match_all: True for `tag_mode=all`.
         placements: The component/category part of the filter.
+        references: The external reference part of the filter (`services.external_reference_surfaces`).
     """
 
     def __init__(
@@ -445,16 +447,20 @@ class TagFilter:
         tag_mode: Literal["any", "all"] = Query("any", description="Whether a record needs any or all of the `tag`s."),
         component_id: list[uuid.UUID] = Query([], description="Only records placed in these components."),
         category_id: list[uuid.UUID] = Query([], description="Only records placed in these categories."),
+        external_system: list[str] = Query([], description="Only records with an external reference in these systems (by name)."),
+        external_key: str | None = Query(None, description="Only records with an external reference whose key contains this text."),
     ) -> None:
-        """Reads the `tag`, `tag_mode`, `component_id` and `category_id` query parameters (blank names are ignored)."""
+        """Reads the `tag`, `tag_mode`, `component_id`, `category_id`, `external_system` and `external_key` query
+        parameters (blank names are ignored)."""
         self.names = [t for t in tag if t and t.strip()]
         self.match_all = tag_mode == "all"
         self.placements = PlacementFilter(list(component_id), list(category_id))
+        self.references = ReferenceFilter.of(external_system, external_key)
 
     @property
     def active(self) -> bool:
         """Whether the caller asked to filter."""
-        return bool(self.names) or self.placements.active
+        return bool(self.names) or self.placements.active or self.references.active
 
     @property
     def applied_keys(self) -> list[str]:
@@ -464,7 +470,7 @@ class TagFilter:
             keys.append("component")
         if self.placements.category_ids:
             keys.append("category")
-        return keys
+        return [*keys, *self.references.applied_keys]
 
     def ids(self, db: Session, project_id: uuid.UUID, artefact_type: str) -> set[uuid.UUID]:
         """Ids of the project's records of `artefact_type` that satisfy every active filter."""
@@ -479,6 +485,10 @@ class TagFilter:
         if self.placements.active:
             placed = self.placements.ids(db, project_id, artefact_type)
             wanted = placed if wanted is None else wanted & placed
+        if self.references.active:
+            project = db.get(Project, project_id)
+            referenced = self.references.ids(db, project.organization_id, artefact_type) if project is not None else set()
+            wanted = referenced if wanted is None else wanted & referenced
         return wanted or set()
 
     def keep(

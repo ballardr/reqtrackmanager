@@ -206,12 +206,12 @@ test.describe("System Architecture: diagram editor", () => {
 
     await test.step("a record with no tags or components shows no empty line, only the button", async () => {
       await expect(page.getByText("Not placed in a component")).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Tags and components" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Tags, components and references" })).toBeVisible();
     });
 
     await test.step("a tag and a component are added from the dialog and appear beside the version", async () => {
-      await page.getByRole("button", { name: "Tags and components" }).click();
-      const dialog = page.getByRole("dialog", { name: "Tags and components" });
+      await page.getByRole("button", { name: "Tags, components and references" }).click();
+      const dialog = page.getByRole("dialog", { name: "Tags, components and references" });
       await dialog.getByRole("button", { name: "Add tag" }).click();
       await page.getByRole("combobox", { name: "Tags" }).fill("Core");
       await page.keyboard.press("Enter");

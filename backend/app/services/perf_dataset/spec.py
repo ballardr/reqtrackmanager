@@ -42,6 +42,7 @@ class Ratios:
         comments: Review comments per requirement (mean).
         tags_per_requirement: Tags attached per requirement (mean).
         placements_per_record: Component/category places held by each record of every other type (mean).
+        references_per_record: External references held by each record of every type (mean).
         versions_per_requirement: Versions per requirement (mean, at least 1).
         tag_vocabulary: Tags defined in each project.
         mean_degree: Mean links touching one requirement.
@@ -68,6 +69,7 @@ class Ratios:
     dormant_link_fraction: float = 0.0
     hub_max_degree: int = 0
     placements_per_record: float = 0.0
+    references_per_record: float = 0.0
     records: tuple[tuple[str, float], ...] = ()
     compliance: tuple[tuple[str, float], ...] = ()
 
@@ -262,6 +264,7 @@ def build_spec(profiles: dict, *, tier: str, breadth: str = "single", density: s
         dormant_link_fraction=_number(profiles, "dormant_link_fraction", profiles.get("dormant_link_fraction", 0)),
         hub_max_degree=int(_number(profiles, "hub_max_degree", profiles.get("hub_max_degree", 0))),
         placements_per_record=_number(profiles, "ratios.placements_per_record", ratios.get("placements_per_record", 0)),
+        references_per_record=_number(profiles, "ratios.references_per_record", ratios.get("references_per_record", 0)),
         records=tuple(
             (name, float(_number(profiles, f"ratios.records.{name}", value)))
             for name, value in sorted((ratios.get("records") or {}).items())

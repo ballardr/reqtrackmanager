@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 11 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 12 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-11 / 25 phases complete.
+12 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -21,7 +21,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 9 | Org Resources: move sections | Move what the review approved; Organisation Settings keeps configuration only | [x] |
 | 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [x] |
 | 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [x] |
-| 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [ ] |
+| 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [x] |
 | 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [ ] |
 | 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [ ] |
 | 15 | Visual (WYSIWYG) Markdown editing | Spike with exit criteria, then the visual editor on `@tiptap/markdown`; shared toolbar with the policy editor | [ ] |
@@ -207,6 +207,8 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Record panel beside `RecordTags` through `RecordHeader`; create forms through the shared field (`QuickLinkField` pattern); list column and filter with `TagFilterField`'s companion; `external_refs` column in the shared export and import (`SYSTEM:KEY; SYSTEM:KEY`); search by key; a report field; project and organisation bundles with the `record_tags` pattern; look-up endpoint `GET …/records/by-external-reference?system=&key=` for integrations and MCP.
 - Core MCP tools (read, set, remove, look up) with the agent skill and its generated reference updated in the same change.
 - Tests: the existing per-type guards extended (a type with a bundle must carry references, as for tags and places), export and import round trip, search, perf probe and generator populate references.
+
+- As built: `services/external_reference_surfaces.py` (the filter as one SQL `EXISTS` on an alias, `ReferenceCells` and `reference_column` for the shared `external_refs` column on both tiers, `apply_imported_references`, `reference_texts`, `page_references`, `find_records_by_reference`); `TagFilter` and the requirement list take `external_system` and `external_key`; search field `external_refs` (opt-in) and a report field of the same key; `record_references` / `prime_record_references` / `restore_record_references` beside every tags and placements bundle site (requirements too), with the project's systems now imported before any record; routes `GET /projects/{id}/external-references/{type}` and `GET /projects/{id}/records/by-external-reference`; core MCP tools `get_`, `add_`, `update_`, `remove_artefact_external_reference` and `find_artefacts_by_external_reference`, with the skill and reference regenerated; perf generator `ratios.references_per_record` (profile version 15). Frontend: `RecordReferences` inside `RecordTags`, `ReferenceField` inside `TagField` and `useCommitTags`, `ReferenceFilterField` inside `TagFilterField` and `useTagFilter`, a column on every list through `DirectoryTable`'s `placements` prop, `usePageReferences` and `ReferencesCell` for the hand-written tables. Product Feedback keeps its own references panel (`references={false}`). See `docs/decisions.md`.
 
 ### Phase 13 — Markdown and Mermaid: shared foundation
 

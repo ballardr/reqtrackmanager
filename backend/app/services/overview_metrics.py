@@ -396,7 +396,10 @@ def build_record_filters(
                 category_ids = [row[0] for row in rows if (row[1], row[2]) in set(wanted)]
         if (components or categories) and not (component_ids or category_ids):
             component_ids = [_NO_MATCH]
-        return TagFilter(tag=list(tags), tag_mode="all" if mode == "all" else "any", component_id=component_ids, category_id=category_ids)
+        return TagFilter(
+            tag=list(tags), tag_mode="all" if mode == "all" else "any", component_id=component_ids, category_id=category_ids,
+            external_system=[], external_key=None,
+        )
 
     return own, for_project
 

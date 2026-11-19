@@ -125,6 +125,7 @@ from app.services import definition_suppression, report_images
 from app.services.bundle_comments import export_comments, import_comments, strip_comments
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.bundle_links import export_artefact_links, import_artefact_links
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.report_raster import ImageRejectedError
@@ -730,7 +731,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_record_tag_names(db, ELEMENT_ARTEFACT_TYPE, element_ids)
     prime_record_tag_names(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
     prime_record_placements(db, ELEMENT_ARTEFACT_TYPE, element_ids)
+    prime_record_references(db, ELEMENT_ARTEFACT_TYPE, element_ids)
     prime_record_placements(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
+    prime_record_references(db, CONNECTION_ARTEFACT_TYPE, connection_ids)
     element_comments = export_comments(db, ELEMENT_ARTEFACT_TYPE, element_ids, _no_anchor)
     connection_comments = export_comments(db, CONNECTION_ARTEFACT_TYPE, connection_ids, _no_anchor)
     emails = _emails(
@@ -760,6 +763,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": e.is_archived, "archived_at": _stamp(e.archived_at), "archived_by_email": _email(emails, e.archived_by),
             "tags": record_tag_names(db, ELEMENT_ARTEFACT_TYPE, e.id),
             "placements": record_placements(db, ELEMENT_ARTEFACT_TYPE, e.id),
+            "external_references": record_references(db, ELEMENT_ARTEFACT_TYPE, e.id),
             **element_comments.get(e.id, _NO_COMMENTS),
         }
         for e in elements
@@ -786,6 +790,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": c.is_archived, "archived_at": _stamp(c.archived_at), "archived_by_email": _email(emails, c.archived_by),
             "tags": record_tag_names(db, CONNECTION_ARTEFACT_TYPE, c.id),
             "placements": record_placements(db, CONNECTION_ARTEFACT_TYPE, c.id),
+            "external_references": record_references(db, CONNECTION_ARTEFACT_TYPE, c.id),
             **connection_comments.get(c.id, _NO_COMMENTS),
         }
         for c in connections
@@ -892,6 +897,7 @@ def _diagrams_json(
     foreign = foreign_refs(db, {e for e in wanted if e not in codes})
     prime_record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, ids)
     prime_record_placements(db, DIAGRAM_ARTEFACT_TYPE, ids)
+    prime_record_references(db, DIAGRAM_ARTEFACT_TYPE, ids)
 
     def anchor_code(kind: str, key: str) -> str | None:
         """The code of a pin's box (an element) or line (a connection), or `None` when it is not in this bundle."""
@@ -970,6 +976,7 @@ def _diagrams_json(
             "is_archived": d.is_archived, "archived_at": _stamp(d.archived_at), "archived_by_email": _email(emails, d.archived_by),
             "tags": record_tag_names(db, DIAGRAM_ARTEFACT_TYPE, d.id),
             "placements": record_placements(db, DIAGRAM_ARTEFACT_TYPE, d.id),
+            "external_references": record_references(db, DIAGRAM_ARTEFACT_TYPE, d.id),
             **diagram_comments.get(d.id, _NO_COMMENTS),
         }
         for d in rows
@@ -1289,6 +1296,10 @@ def _import_diagrams(
             db, project_id=project.id, actor_id=creator, artefact_type=DIAGRAM_ARTEFACT_TYPE, artefact_id=diagram.id,
             entries=entry.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=DIAGRAM_ARTEFACT_TYPE, artefact_id=diagram.id, entries=entry.get("external_references"),
+        )
     db.flush()
     return created
 
@@ -1407,6 +1418,10 @@ def import_project_data(
             db, project_id=project.id, actor_id=creator, artefact_type=ELEMENT_ARTEFACT_TYPE, artefact_id=element.id,
             entries=entry.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=ELEMENT_ARTEFACT_TYPE, artefact_id=element.id, entries=entry.get("external_references"),
+        )
     for entry in data.get(ELEMENTS_KEY, []):
         parent_code = entry.get("parent_code")
         if not parent_code or entry.get("unique_code") not in elements:
@@ -1456,6 +1471,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator, artefact_type=CONNECTION_ARTEFACT_TYPE,
             artefact_id=connection.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=creator,
+            artefact_type=CONNECTION_ARTEFACT_TYPE, artefact_id=connection.id, entries=entry.get("external_references"),
         )
     _import_realisations(db, data.get(CONNECTIONS_KEY, []), connections, warnings)
     diagram_ids = _import_diagrams(

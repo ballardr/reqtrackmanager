@@ -220,6 +220,8 @@ def list_requirements(
     keyword: str | None = None,
     tag: list[str] = Query([], description="Only requirements carrying these tags (case-insensitive)."),
     tag_mode: Literal["any", "all"] = Query("any", description="Whether a requirement needs any or all of the `tag`s."),
+    external_system: list[str] = Query([], description="Only requirements with an external reference in these systems (by name)."),
+    external_key: str | None = Query(None, description="Only requirements with an external reference whose key contains this text."),
     search: str | None = None,
     status_filter: RequirementStatus | None = Query(None, alias="status"),
     is_completed: bool | None = None,
@@ -280,7 +282,8 @@ def list_requirements(
 
     filters = RequirementFilters(
         include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
-        tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
+        tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword,
+        external_systems=tuple(s.strip() for s in external_system if s.strip()), external_key=external_key, search=search, status=status_filter,
         target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,
         has_comments=has_comments, only_watched=only_watched, phase=phase,
     )

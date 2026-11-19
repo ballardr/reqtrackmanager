@@ -19,10 +19,12 @@ import { ListPageLayout } from "../components/ListPageLayout";
 import { TagFilterField } from "../components/TagFilterField";
 import { placementsText } from "../api/placements";
 import { usePagePlacements } from "../hooks/usePagePlacements";
+import { usePageReferences } from "../hooks/usePageReferences";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
+import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useStrings, useTerm } from "../context/TerminologyContext";
@@ -79,6 +81,8 @@ export function ChangeRequestsPage() {
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
   const placed = usePagePlacements(projectId, "change_request", (crs ?? []).map((cr) => cr.id));
   const showPlaces = Object.keys(placed).length > 0;
+  const referenced = usePageReferences(projectId, "change_request", (crs ?? []).map((cr) => cr.id));
+  const showReferences = Object.keys(referenced).length > 0;
   const [total, setTotal] = useState(0);
   // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
@@ -305,6 +309,7 @@ export function ChangeRequestsPage() {
                         onSort={(key) => setSort((s) => cycleSort(s, key))}
                       />
                       {showPlaces && <th>{strings.placements.label}</th>}
+                      {showReferences && <th>{strings.references.column}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -332,6 +337,7 @@ export function ChangeRequestsPage() {
                         <td className="text-muted">{crLevelLabel(cr)}</td>
                         <td>{new Date(cr.created_at).toLocaleString()}</td>
                         {showPlaces && <td className="text-muted">{placementsText(placed[cr.id])}</td>}
+                        {showReferences && <td><ReferencesCell references={referenced[cr.id]} /></td>}
                       </tr>
                     ))}
                   </tbody>

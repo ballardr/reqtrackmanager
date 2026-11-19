@@ -111,7 +111,7 @@ def export_org_records(
     """
     organization, provider = authorise(db, current_user, request, organization_id, record_type)
     filters = split_org_params(provider, request.query_params.multi_items())
-    table = build_org_table(db, current_user, organization, provider, filters=filters)
+    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters)
     audit_export(db, current_user, organization, record_type, table, "csv")
     stem = f"{filename_safe(organization.name, fallback='organisation')}-{filename_safe(provider.label.lower())}"
     headers = {
@@ -166,7 +166,7 @@ def org_record_list_report(
     if format == "json":
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Use pdf, docx, html, odt, csv, xlsx or ods.")
     filters = split_org_params(provider, [(k, v) for k, v in request.query_params.multi_items() if k != "record_type"])
-    table = build_org_table(db, current_user, organization, provider, filters=filters)
+    table = build_org_table(db, current_user, organization, record_type, provider, filters=filters)
     if format in DOCUMENT_FORMATS and len(table.rows) > MAX_DOCUMENT_ROWS:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,

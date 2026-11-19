@@ -1147,7 +1147,7 @@ A create form for a linkable record includes **`QuickLinkField`** ("Link to"), s
 
 Any record can carry tags; the UI for them is four shared pieces, so no page builds its own:
 
-- **`RecordTags`** in `RecordHeader`'s `tags` slot, under the badges: chips for everyone who can open the record and, for someone who may tag it, the picker (`TagInput`) in place. A change saves at once with the whole set (`PUT .../tags`); a refusal puts the chips back and says why in a toast. It renders nothing when the record has no tags and the viewer cannot add any, and nothing at all if the read fails (tags are secondary to the record). With `RecordHeader`'s `tagsInline` and `<RecordTags inline />` they sit on the badge line beside the version as read-only chips with one "Tags and components" button that opens the editor in a dialog (the pickers open popovers, which do not nest); a record with neither shows no line.
+- **`RecordTags`** in `RecordHeader`'s `tags` slot, under the badges: chips for everyone who can open the record and, for someone who may tag it, the picker (`TagInput`) in place. A change saves at once with the whole set (`PUT .../tags`); a refusal puts the chips back and says why in a toast. It renders nothing when the record has no tags and the viewer cannot add any, and nothing at all if the read fails (tags are secondary to the record). With `RecordHeader`'s `tagsInline` and `<RecordTags inline />` they sit on the badge line beside the version as read-only chips with one "Tags, components and references" button that opens the editor in a dialog (the pickers open popovers, which do not nest); a record with neither shows no line.
 - **`TagField`** + `useCommitTags` in a create form, beside `QuickLinkField` and with the same contract: the field only collects names, the form creates the record and then applies them, and a refused set never undoes the record (a toast says where to add them). It asks the server about a draft record, so a caller who may not tag the type sees no field.
 - **`TagFilterField`** + `useTagFilter` in a list's filter panel: tick tags, then **Any of these** or **All of these** once two are ticked. The page sends `tag`/`tag_mode` with its list read, so the server narrows the list. Hidden while the project has no tags.
 - **`TagAdminPanel`** (Project Admin and Org Admin, one component bound to `projectTagAdminApi`/`orgTagAdminApi`): the mode, the vocabulary table and a usage table per kind of record.
@@ -1170,6 +1170,27 @@ Any record can sit in the project's component/category tree; the UI is the same 
 - **A Components column** on a list: `DirectoryTable`'s `placements` prop reads the page's places in one request and shows the column only when a row is placed; a hand-written table (Actions, Change requests) uses `usePagePlacements` and `placementsText`.
 
 Rules: the caption has a `(?)` help (`strings.help.recordComponents`), never permanent explanatory text; the picker lists every place as `Component` or `Component / Category` so a person sees the full path; a list never shows a component or category by raw id.
+
+## Pattern: external references
+
+Any record can point to items in outside systems (a Jira issue, a DOORS requirement); the UI is four shared pieces wired through the tag components, so no page builds its own:
+
+```mermaid
+flowchart LR
+    TF["TagFilterField"] --> RF["ReferenceFilterField"]
+    TG["TagField"] --> RFD["ReferenceField"]
+    RT["RecordTags"] --> RR["RecordReferences"]
+    DT["DirectoryTable placements prop"] --> RC["ReferencesCell"]
+    RFD --> FG["ReferenceFields"]
+    RR --> FG
+```
+
+- **`RecordReferences`** (rendered by `RecordTags`, in `RecordHeader`'s `tags` slot): a chip per reference (`System: key`; the key is a link only for an absolute http or https address and opens in a new tab with `rel="noopener noreferrer"`), the role as a badge, the note as a tooltip. Someone who may change references adds and edits in a dialog over `ReferenceFields` and removes after a Tier 1 confirmation; every change ends in a toast. It renders nothing for a record with none that the viewer cannot change, while references are switched off for the type (the server answers 404), or when the read fails. A page that keeps its own references passes `references={false}` to `RecordTags` and `TagField` (the Product Feedback request does).
+- **`ReferenceField`** (rendered by `TagField`) in a create form: collects references, which `useCommitTags` adds once the record exists (`hooks/pendingReferences`); a refused add never undoes the record. It asks the server about a draft record, so a form never offers a field the server would refuse.
+- **`ReferenceFilterField`** (rendered by `TagFilterField`) in a list's filter panel: tick systems and type part of a key; a record matches when one reference satisfies both. `useTagFilter` keeps them in the URL (`ref_system`, `ref_key`) and the list read and its export send `external_system` and `external_key`. Hidden while the project has no system.
+- **An External references column** on a list: `DirectoryTable`'s `placements` prop also reads the page's references in one request and shows the column only when a row has one; a hand-written table (Requirements, Actions, Change requests) uses `usePageReferences` and `ReferencesCell`.
+
+Rules: the system, key, link, role and note are always edited through `ReferenceFields`, in the create form and on the record alike; the caption has a `(?)` help (`strings.help.recordReferences`), never permanent explanatory text; the role shows through `EXTERNAL_REFERENCE_ROLE_LABEL`, never the raw value.
 
 ## Pattern: folders (organising a list)
 

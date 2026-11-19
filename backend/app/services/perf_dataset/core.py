@@ -27,7 +27,6 @@ Dependencies: SQLAlchemy models, `perf_dataset.context/textgen`, `models.*`.
 from __future__ import annotations
 
 import itertools
-import math
 import random
 import uuid
 from datetime import date, datetime, timedelta
@@ -50,6 +49,8 @@ from app.models.requirement_action import RequirementAction
 from app.models.tag import ArtefactTag, Tag
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, CHUNK, PerfProjectContext, insert_rows, uuid_from
+from app.services.perf_dataset.context import poisson as _poisson
+from app.services.perf_dataset.references import write_references
 
 #: Final-status mix of generated requirements.
 _STATUS_MIX = (
@@ -131,18 +132,6 @@ def extra_versions(rng: random.Random, mean_versions: float) -> int:
     while count < _MAX_EXTRA_VERSIONS and rng.random() > p:
         count += 1
     return count
-
-
-def _poisson(rng: random.Random, mean: float) -> int:
-    """A Poisson draw (Knuth), fine for the small means used here."""
-    if mean <= 0:
-        return 0
-    limit, k, p = math.exp(-mean), 0, 1.0
-    while True:
-        p *= rng.random()
-        if p <= limit:
-            return k
-        k += 1
 
 
 def _zipf_cumulative(rng: random.Random, n: int, exponent: float) -> list[float]:
@@ -346,6 +335,7 @@ def _generate_tags(
                 organization_id=org_id,
             )
     ctx.add_count("artefact_tags", insert_rows(ctx.db, ArtefactTag, attachments))
+    write_references(ctx, ArtefactType.REQUIREMENT.value, requirement_ids, created, audit)
 
 
 def _generate_comments(ctx: PerfProjectContext, requirement_ids: list[uuid.UUID], created: list[datetime]) -> None:

@@ -53,6 +53,11 @@ from app.modules.registry import (
     get_not_placeable_types,
     get_report_field_providers,
 )
+from app.services.external_reference_surfaces import (
+    REFERENCES_COLUMN_KEY,
+    REFERENCES_FIELD_LABEL,
+    reference_texts,
+)
 from app.services.placements import PLACEMENTS_FIELD_KEY, placement_texts
 from app.services.principals import principal_labels, principal_ref, principal_text
 from app.services.project_hierarchy import get_project_chain_ids
@@ -298,6 +303,8 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
     ]
     if artefact_type not in get_not_placeable_types():
         own.append(FieldInfo(PLACEMENTS_FIELD_KEY, "Component and category", "text"))
+    if REFERENCES_COLUMN_KEY not in {f.key for f in provider.fields}:
+        own.append(FieldInfo(REFERENCES_COLUMN_KEY, REFERENCES_FIELD_LABEL, "text"))
     return reserved + own
 
 
@@ -333,6 +340,8 @@ def field_domain(db: Session, artefact_type: str, key: str, project_ids: Sequenc
         return None
     by_key = {f.key: f for f in provider.fields}
     if key == PLACEMENTS_FIELD_KEY and key not in by_key and artefact_type not in get_not_placeable_types():
+        return None  # free text
+    if key == REFERENCES_COLUMN_KEY and key not in by_key:
         return None  # free text
     if key not in by_key:
         raise UnknownReportFieldError(f"{artefact_type}.{key}")
@@ -398,9 +407,13 @@ def load_records(
     by_key = {f.key: f for f in provider.fields}
     wanted: list[ReportField] = []
     with_placements = False
+    with_references = False
     for key in dict.fromkeys(k for k in field_keys if k not in RESERVED_FIELD_KEYS):
         if key == PLACEMENTS_FIELD_KEY and key not in by_key and artefact_type not in get_not_placeable_types():
             with_placements = True
+            continue
+        if key == REFERENCES_COLUMN_KEY and key not in by_key:
+            with_references = True
             continue
         if key not in by_key:
             raise UnknownReportFieldError(f"{artefact_type}.{key}")
@@ -460,6 +473,10 @@ def load_records(
         for rid, text in placement_texts(db, artefact_type, list(out)).items():
             if rid in out:
                 out[rid].values[PLACEMENTS_FIELD_KEY] = text
+    if with_references and out:
+        for rid, text in reference_texts(db, artefact_type, list(out)).items():
+            if rid in out:
+                out[rid].values[REFERENCES_COLUMN_KEY] = text
     if with_tags and out:
         for rid, names in tag_names_for_records(db, artefact_type, list(out)).items():
             if rid in out:

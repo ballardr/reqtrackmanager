@@ -45,7 +45,10 @@ test.describe("notification targets", () => {
   test("the notification list opens the same page as the bell", async ({ page }) => {
     await loginAs(page, PERSONAS.notified.email);
     await page.goto("/notifications");
-    await page.getByText("A stage phase is overdue", { exact: true }).click();
+    // The persona collects notifications from other specs and the list pages, so the sample is found by search
+    // rather than by its position on the first page.
+    await page.getByPlaceholder("Search notifications").fill("A stage phase is overdue");
+    await page.getByText("A stage phase is overdue", { exact: true }).first().click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/stage-phases$/);
   });
 

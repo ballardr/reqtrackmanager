@@ -8,6 +8,7 @@ import { DirectoryTable } from "./DirectoryTable";
 import type { SortState } from "./sortState";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 import { buildPlace, buildPlacementsApi, PLACEMENTS_PROJECT_ID } from "../testing/placementsFixtures";
+import { buildReference, buildReferencesApi } from "../testing/referencesFixtures";
 import { Badge } from "./Badge";
 
 interface DemoRow {
@@ -161,6 +162,40 @@ export const NoComponentsColumnWhenNothingIsPlaced: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(args.placements!.api!.page).toHaveBeenCalled());
     await expect(canvas.queryByRole("columnheader", { name: "Components" })).not.toBeInTheDocument();
+  },
+};
+
+/** An External references column appears when a row on the page has a reference; a key with a link opens the item. */
+export const ReferencesColumnShowsTheOutsideItemsOfRows: Story = {
+  args: {
+    placements: {
+      projectId: PLACEMENTS_PROJECT_ID, artefactType: "pain_point", rowId: (row: DemoRow) => row.id,
+      api: buildPlacementsApi(),
+      referencesApi: buildReferencesApi(undefined, {
+        page: fn(async () => ({ "u-alex": [buildReference(), buildReference({ key: "REQ-9", link: null }, "s-doors")] })),
+      }),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("columnheader", { name: "External references" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Open Jira: PROJ-1 in a new tab" })).toHaveAttribute("href", "https://tracker.example/browse/PROJ-1");
+    await expect(canvas.getByText(/DOORS:/)).toBeInTheDocument();
+    await expect(args.placements!.referencesApi!.page).toHaveBeenCalledWith(PLACEMENTS_PROJECT_ID, "pain_point", ["u-alex", "u-priya", "u-jordan"]);
+  },
+};
+
+/** No column when no row has a reference. */
+export const NoReferencesColumnWhenNothingIsReferenced: Story = {
+  args: {
+    placements: {
+      projectId: PLACEMENTS_PROJECT_ID, artefactType: "pain_point", rowId: (row: DemoRow) => row.id,
+      api: buildPlacementsApi(), referencesApi: buildReferencesApi(),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    await waitFor(() => expect(args.placements!.referencesApi!.page).toHaveBeenCalled());
+    await expect(within(canvasElement).queryByRole("columnheader", { name: "External references" })).not.toBeInTheDocument();
   },
 };
 

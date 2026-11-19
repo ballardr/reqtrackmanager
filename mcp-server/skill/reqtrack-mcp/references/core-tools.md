@@ -8,6 +8,12 @@ organisation to enable AI approval. Parameters marked `*` are required. Omit
 `organization_id` / `project_id` when the connection sets default-scope headers.
 Module-contributed tools are in `module-tools.md`.
 
+## `add_artefact_external_reference` (write)
+
+Adds an external reference to a record: where it lives or came from in an outside system.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `system_id*` (string), `key` (string), `url` (string), `note` (string), `role` (string)
+
 ## `add_artefact_tag` (write)
 
 Adds one tag to a record, keeping its others (see `set_artefact_tags` for the rules).
@@ -104,6 +110,12 @@ Exports report layouts and packs as one `.zip` report file (returned base64-enco
 
 Parameters: `layout_ids` (list[string]), `pack_ids` (list[string]), `project_id` (string), `organization_id` (string), `include_history` (boolean), `include_pack_layouts` (boolean)
 
+## `find_artefacts_by_external_reference` (read)
+
+Finds the records that carry a key from an outside system: "which record is PROJ-123?", from either side.
+
+Parameters: `project_id` (string), `key*` (string), `system` (string), `artefact_type` (string)
+
 ## `find_artefacts_by_tag` (read)
 
 Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
@@ -115,6 +127,12 @@ Parameters: `project_id` (string), `tags*` (list[string]), `tag_mode` (string), 
 Writes a valid layout tree as its text view. Stores nothing. Needs the layout-management permission.
 
 Parameters: `tree*` (object), `project_id` (string), `organization_id` (string)
+
+## `get_artefact_external_references` (read)
+
+Gets the external references on one record of any type: its keys and links in outside systems (Jira, DOORS, a customer's register).
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string)
 
 ## `get_artefact_link_graph` (read)
 
@@ -332,7 +350,7 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 
 Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
-Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string)
+Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string), `external_systems` (list[string]), `external_key` (string)
 
 ## `list_saved_report_snippets` (read)
 
@@ -363,6 +381,12 @@ Parameters: `project_id` (string), `change_request_id*` (string)
 Shows how many records each report in a pack would include for the chosen values. Stores and produces nothing.
 
 Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string), `variables` (object), `variable_set_id` (string), `include_children` (boolean), `project_ids` (list[string])
+
+## `remove_artefact_external_reference` (write)
+
+Removes one external reference from a record. Confirm with the user first: the key is not kept anywhere else.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `reference_id*` (string)
 
 ## `remove_artefact_tag` (write)
 
@@ -417,6 +441,12 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 Hides a saved snippet the project inherits (from the organisation or a parent project), or shows it again. It stops being offered in that project only; the snippet itself is unchanged. Needs the project's layout-management permission.
 
 Parameters: `snippet_id*` (string), `hidden*` (boolean), `project_id` (string)
+
+## `update_artefact_external_reference` (write)
+
+Changes one external reference: only the fields you pass change.
+
+Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `reference_id*` (string), `system_id` (string), `key` (string), `url` (string), `clear_url` (boolean), `note` (string), `role` (string), `clear_role` (boolean)
 
 ## `update_report_layout` (write)
 

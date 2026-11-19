@@ -66,8 +66,8 @@
      "role": "SFTP destinations for backups.", "reason": "Permissive (BSD-style); the Debian copyright file lists the component licences."},
     {"name": "GnuPG", "packages": ["gnupg"], "images": [], "licence": "GPL-3.0-or-later", "source": "https://gnupg.org/", "use": "build-tool",
      "role": "Verifies the PostgreSQL repository key while the backup image is built.", "reason": "Removed again in the same layer, so it is not in the published image."},
-    {"name": "nginx", "packages": [], "images": ["frontend", "docs"], "licence": "BSD-2-Clause", "source": "https://nginx.org/", "use": "program",
-     "role": "Web server for the front end and the documentation site.", "reason": "Permissive; comes with the base image."}
+    {"name": "nginx", "packages": ["nginx"], "images": ["frontend", "docs"], "licence": "BSD-2-Clause", "source": "https://nginx.org/", "use": "program",
+     "role": "Web server for the front end and the documentation site.", "reason": "Permissive; comes with the base image (the documentation image also upgrades the package itself so a security release is taken)."}
   ],
   "fonts": [
     {"name": "Liberation Sans, Serif and Mono", "licence": "OFL-1.1", "where": "backend: report fonts", "files": "backend/app/assets/report_fonts/",

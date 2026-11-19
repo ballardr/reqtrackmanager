@@ -70,6 +70,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
@@ -127,6 +128,7 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
         "archived_at": _j(stakeholder.archived_at), "created_at": _j(stakeholder.created_at),
         "tags": record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "placements": record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
+        "external_references": record_references(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "represents": [
             {"persona_name": get_current_persona_version(db, p.id).name, "persona_scope": p.scope.value}
             for _, p in list_represented_personas(db, stakeholder, organization_id)
@@ -315,6 +317,10 @@ def _create_stakeholder_from_json(
         db, project_id=project_id, actor_id=creator_id,
         artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, entries=data.get("placements"),
     )
+    restore_record_references(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, entries=data.get("external_references"),
+    )
     for rep in data.get("represents", []):
         persona_id = personas.get((rep["persona_name"], rep["persona_scope"]))
         persona = db.get(Persona, persona_id) if persona_id else None
@@ -391,6 +397,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_links(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
+    prime_record_references(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_file_links(db, StakeholderFile, "stakeholder_id", ids)
     emails = _stakeholder_emails(db, stakeholders)
     stakeholders_json = []

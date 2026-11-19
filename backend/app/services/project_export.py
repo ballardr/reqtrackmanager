@@ -124,7 +124,13 @@ from app.services.bundle_common import (
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
-from app.services.external_references import EXTERNAL_SYSTEMS
+from app.services.external_references import (
+    EXTERNAL_SYSTEMS,
+    prime_record_references,
+    record_references,
+    restore_record_references,
+    share_system_resolver,
+)
 from app.services.files import read_file, resolve_bundle_files
 from app.services.imported_people import PeopleChoices, PersonPreview, classify_people, people_section
 from app.services.link_type_scope import resolve_link_type_scope
@@ -421,6 +427,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "attachments": comment_attachments_by_comment.get(c.id, []),
         }
 
+    prime_record_references(db, ArtefactType.REQUIREMENT.value, [r.id for r in requirements])
     requirements_json = []
     for r in requirements:
         _, category_prefix = category_ref(r.category_id)
@@ -433,6 +440,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "is_completed": r.is_completed, "completed_at": _j(r.completed_at), "completed_by_email": email(r.completed_by),
             "versions": [serialize_requirement_version(v) for v in versions_by_req.get(r.id, [])],
             "keywords": keywords_by_req.get(r.id, []), "attachments": attachments_by_req.get(r.id, []),
+            "external_references": record_references(db, ArtefactType.REQUIREMENT.value, r.id),
         })
 
     requirement_links_json = [
@@ -452,6 +460,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     prime_record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
     prime_record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
+    prime_record_references(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
     change_requests_json = []
     for cr in change_requests:
         cr_versions_json = []
@@ -479,6 +488,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "decision_note": cr.decision_note, "versions": cr_versions_json,
             "tags": record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
             "placements": record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
+            "external_references": record_references(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
             "tasks": [
                 {
                     "description": t.description, "assignee": principal_to_bundle(db, t.assignee_type, t.assignee_id),
@@ -831,6 +841,12 @@ def apply_project_data(
         )
 
     requirement_id_by_code: dict[str, UUID] = {}
+    # The project's external systems exist before any record that references one (a requirement, a change request or a
+    # module's); the ones it hides are hidden afterwards, because a record may use a system the project hides.
+    systems_data = data.get("external_systems") or {}
+    systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
+    systems.import_project_rows(systems_data.get("rows", []) if isinstance(systems_data, dict) else [])
+    share_system_resolver(db, systems)
     version_id_by_code_and_number: dict[tuple[str, int], UUID] = {}
     max_seq = 0
     for r in data.get("requirements", []):
@@ -850,6 +866,10 @@ def apply_project_data(
         db.add(requirement)
         db.flush()
         requirement_id_by_code[r["unique_code"]] = requirement.id
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ArtefactType.REQUIREMENT.value, artefact_id=requirement.id, entries=r.get("external_references"),
+        )
         tail = r["unique_code"].rsplit("-", 1)[-1]
         if tail.isdigit():
             max_seq = max(max_seq, int(tail))
@@ -975,6 +995,10 @@ def apply_project_data(
             db, project_id=project.id, actor_id=current_user.id,
             artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, entries=cr.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, entries=cr.get("external_references"),
+        )
 
         for v in cr.get("versions", []):
             proposed_component_id = component_id_by_prefix.get(v["proposed_component_prefix"]) if v.get("proposed_component_prefix") else None
@@ -1079,11 +1103,6 @@ def apply_project_data(
                 comment=rr.get("comment"),
             ))
 
-    # The project's external systems exist before any module imports a record that references one; the ones it hides
-    # are hidden afterwards, because a record above may use a system the project hides.
-    systems_data = data.get("external_systems") or {}
-    systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
-    systems.import_project_rows(systems_data.get("rows", []) if isinstance(systems_data, dict) else [])
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         hooks.import_(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     for _module_key, hooks in get_all_module_project_bundle_hooks():

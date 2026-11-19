@@ -17,6 +17,7 @@ import { DRAFT_ARTEFACT_ID } from "../api/artefactLinks";
 import { recordTagsApi, type RecordTags, type RecordTagsApi } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
 import { ComponentField } from "./ComponentField";
+import { ReferenceField } from "./ReferenceField";
 import { TagInput } from "./TagInput";
 
 /**
@@ -26,9 +27,10 @@ import { TagInput } from "./TagInput";
  * @param onChange Called with the new list.
  * @param api Injectable calls (stories pass a fake).
  * @param components False leaves out the component picker, for a type that cannot be placed in the component tree.
+ * @param references False leaves out the external references, for a form that collects its own (Product Feedback).
  */
 export function TagField({
-  projectId, artefactType, value, onChange, api = recordTagsApi, components = true,
+  projectId, artefactType, value, onChange, api = recordTagsApi, components = true, references = true,
 }: {
   projectId: string;
   artefactType: string;
@@ -36,6 +38,7 @@ export function TagField({
   onChange: (names: string[]) => void;
   api?: RecordTagsApi;
   components?: boolean;
+  references?: boolean;
 }) {
   const strings = useStrings();
   const [data, setData] = useState<RecordTags | null>(null);
@@ -60,6 +63,7 @@ export function TagField({
         </div>
       )}
       {components && <ComponentField projectId={projectId} artefactType={artefactType} />}
+      {references && <ReferenceField projectId={projectId} artefactType={artefactType} />}
     </>
   );
 }

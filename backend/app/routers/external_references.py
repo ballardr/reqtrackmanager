@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,17 +28,29 @@ from app.modules.registry import get_all_registered_artefact_types
 from app.schemas.external_reference import (
     ExternalReferenceIn,
     ExternalReferenceUpdate,
+    PageReferencesOut,
     RecordReferencesOut,
+    ReferencedRecordOut,
+    ReferencedRecordsOut,
     SystemChoiceOut,
 )
 from app.services import external_references as refs
+from app.services.external_reference_surfaces import (
+    MAX_FOUND_RECORDS,
+    MAX_PAGE_RECORDS,
+    find_records_by_reference,
+    page_references,
+)
 from app.services.link_authoring import DRAFT_ARTEFACT_ID
 from app.services.link_graph import ArtefactResolver
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_view
 from app.services.tags import can_tag, require_tag_authority, require_visible_record
 from app.services.type_vocabulary import EffectiveType
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/external-references", tags=["external-references"])
+#: The reads that are about a project's records as a whole (a list's column, the look-up by key).
+project_router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["external-references"])
 
 
 def _project_or_404(db: Session, project_id: UUID) -> Project:
@@ -178,3 +190,41 @@ def remove_record_reference(
     refs.remove_reference(db, row)
     db.commit()
     return _out(db, project, resolver, artefact_type, artefact_id, owner)
+
+
+@project_router.get("/external-references/{artefact_type}", response_model=PageReferencesOut)
+def get_page_references(
+    project_id: UUID, artefact_type: str, id: list[UUID] = Query(default=[]),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> PageReferencesOut:
+    """The references of the listed records of one type, in a few statements, for a list's External references
+    column. Records the caller cannot open from this project are left out, never reported as having none."""
+    project = _project_or_404(db, project_id)
+    if artefact_type not in get_all_registered_artefact_types():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact not found.")
+    if not refs.references_enabled(db, artefact_type, organization_id=project.organization_id, project_id=project.id):
+        return PageReferencesOut(references={})
+    resolver = ArtefactResolver(db, project, current_user.id)
+    return PageReferencesOut(references=page_references(db, project, resolver, artefact_type, id[:MAX_PAGE_RECORDS]))
+
+
+@project_router.get("/records/by-external-reference", response_model=ReferencedRecordsOut)
+def find_records_by_external_reference(
+    project_id: UUID, key: str = Query(..., description="The key in the outside system, e.g. `PROJ-123` (exact, ignoring case)."),
+    system: str | None = Query(None, description="The external system's name; any system when omitted."),
+    artefact_type: str | None = Query(None, description="Only records of this registered type."),
+    limit: int = Query(MAX_FOUND_RECORDS, ge=1, le=MAX_FOUND_RECORDS), project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> ReferencedRecordsOut:
+    """Records of any type that carry this outside key and that the caller can open (others are omitted, not
+    described), for an integration or an agent that holds a Jira or DOORS key and needs the record.
+
+    `project_scope` also looks in the related projects the caller can open; each record carries its project."""
+    project = _project_or_404(db, project_id)
+    resolver = ArtefactResolver(db, project, current_user.id, include_related=project_scope.widened)
+    scope_ids = {r.project.id for r in project_scope.projects(db, project, current_user.id)}
+    records, truncated = find_records_by_reference(
+        db, project=project, resolver=resolver, key=key, system=system, artefact_type=artefact_type, limit=limit,
+        project_ids=scope_ids,
+    )
+    return ReferencedRecordsOut(records=[ReferencedRecordOut(**r.__dict__) for r in records], truncated=truncated)

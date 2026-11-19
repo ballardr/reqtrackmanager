@@ -128,6 +128,7 @@ from app.services import definition_suppression
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.current_versions import prime_current_versions, primed_current_version
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.scoring import list_levels, seed_missing_scoring_levels
@@ -264,6 +265,7 @@ def _versioned_json(
         "archived_by_email": emails.get(record.archived_by),
         "tags": record_tag_names(db, spec.artefact_type, record.id),
         "placements": record_placements(db, spec.artefact_type, record.id),
+        "external_references": record_references(db, spec.artefact_type, record.id),
     }
     if spec.owner:
         entry["owner"] = principal_to_bundle(db, version.owner_type, version.owner_id)
@@ -310,6 +312,10 @@ def _create_versioned(
         db, project_id=project_id, actor_id=creator_id,
         artefact_type=spec.artefact_type, artefact_id=record.id, entries=entry.get("placements"),
     )
+    restore_record_references(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=spec.artefact_type, artefact_id=record.id, entries=entry.get("external_references"),
+    )
     return record
 
 
@@ -341,6 +347,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         emails = _emails(db, {r.creator_id for r in records} | {r.archived_by for r in records})
         prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
         prime_record_placements(db, spec.artefact_type, [r.id for r in records])
+        prime_record_references(db, spec.artefact_type, [r.id for r in records])
         prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, None) for r in records
@@ -473,6 +480,7 @@ def _pain_point_json(
         "archived_by_email": (emails.get(pp.archived_by) if pp.archived_by else None),
         "tags": record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
         "placements": record_placements(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
+        "external_references": record_references(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
         "attachments": export_file_links(db, PainPointFile, "pain_point_id", pp.id, assets),
         "scores": scores,
     }
@@ -517,6 +525,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         prime_current_versions(db, spec.version, spec.fk, [r.id for r in records])
         prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
         prime_record_placements(db, spec.artefact_type, [r.id for r in records])
+        prime_record_references(db, spec.artefact_type, [r.id for r in records])
         prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, assets) for r in records
@@ -533,6 +542,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails.update(_emails(db, scorer_ids))
     prime_record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
     prime_record_placements(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
+    prime_record_references(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
     prime_file_links(db, PainPointFile, "pain_point_id", [p.id for p in pain_points])
     pain_point_type_rows = {
         r.id: r for r in db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.id.in_({p.pain_point_type_id for p in pain_points})))
@@ -557,6 +567,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails = _emails(db, {q.creator_id for q in questions} | {q.archived_by for q in questions})
     prime_record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
     prime_record_placements(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
+    prime_record_references(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
     prime_file_links(db, OpenQuestionFile, "open_question_id", [q.id for q in questions])
     out["open_questions"] = [
         {
@@ -567,6 +578,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "archived_by_email": (emails.get(q.archived_by) if q.archived_by else None),
             "tags": record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
             "placements": record_placements(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
+            "external_references": record_references(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
             "attachments": export_file_links(db, OpenQuestionFile, "open_question_id", q.id, assets),
         }
         for q in questions
@@ -713,6 +725,10 @@ def import_project_data(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=PAIN_POINT_ARTEFACT_TYPE, artefact_id=pp.id, entries=entry.get("placements"),
         )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=PAIN_POINT_ARTEFACT_TYPE, artefact_id=pp.id, entries=entry.get("external_references"),
+        )
         import_file_links(
             db, organization_id=organization_id, file_model=PainPointFile, fk="pain_point_id", record_id=pp.id,
             entries=entry.get("attachments", []), file_bytes_by_ref=file_bytes_by_ref, current_user=current_user,
@@ -749,6 +765,10 @@ def import_project_data(
         restore_record_placements(
             db, project_id=project.id, actor_id=creator_id,
             artefact_type=OPEN_QUESTION_ARTEFACT_TYPE, artefact_id=oq.id, entries=entry.get("placements"),
+        )
+        restore_record_references(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=OPEN_QUESTION_ARTEFACT_TYPE, artefact_id=oq.id, entries=entry.get("external_references"),
         )
         import_file_links(
             db, organization_id=organization_id, file_model=OpenQuestionFile, fk="open_question_id", record_id=oq.id,

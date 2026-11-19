@@ -64,6 +64,7 @@ from app.modules.architecture.service import (
 )
 from app.services.bundle_comments import export_comments, import_comments, strip_comments
 from app.services.bundle_common import BundleImportWarnings, UserResolver
+from app.services.external_references import prime_record_references, record_references, restore_record_references
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
@@ -104,7 +105,10 @@ def _instant(value: str | None) -> datetime | None:
 
 def _classification(db: Session, artefact_type: str, record_id: UUID) -> dict[str, Any]:
     """A record's tags and places for its bundle row (a type that cannot be placed has no places)."""
-    return {"tags": record_tag_names(db, artefact_type, record_id), "placements": record_placements(db, artefact_type, record_id)}
+    return {
+        "tags": record_tag_names(db, artefact_type, record_id), "placements": record_placements(db, artefact_type, record_id),
+        "external_references": record_references(db, artefact_type, record_id),
+    }
 
 
 def _restore_classification(
@@ -118,6 +122,10 @@ def _restore_classification(
     restore_record_placements(
         db, project_id=project.id, actor_id=actor_id, artefact_type=artefact_type, artefact_id=record_id,
         entries=entry.get("placements"),
+    )
+    restore_record_references(
+        db, organization_id=project.organization_id, record_project_id=project.id, actor_id=actor_id,
+        artefact_type=artefact_type, artefact_id=record_id, entries=entry.get("external_references"),
     )
 
 
@@ -173,6 +181,7 @@ def export_state_machines(
     for artefact_type, record_ids in ((STATE_MACHINE_ARTEFACT_TYPE, ids), (STATE_ARTEFACT_TYPE, [s.id for s in states])):
         prime_record_tag_names(db, artefact_type, record_ids)
         prime_record_placements(db, artefact_type, record_ids)
+        prime_record_references(db, artefact_type, record_ids)
     comments = export_comments(db, STATE_MACHINE_ARTEFACT_TYPE, ids, anchor)
     notes = list(db.scalars(
         select(ArchitectureDiagramNote).where(ArchitectureDiagramNote.state_machine_diagram_id.in_(ids))

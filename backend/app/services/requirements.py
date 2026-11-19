@@ -39,6 +39,7 @@ from app.services import component_stages, engagement
 from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.custom_fields import validate_custom_field_values
+from app.services.external_reference_surfaces import reference_clause
 from app.services.lookups import present, project_or_404
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import lock_project_for_update, lock_row_for_update
@@ -425,6 +426,8 @@ class RequirementFilters:
     category_id: UUID | None = None
     tag_names: tuple[str, ...] = ()
     tag_match_all: bool = False
+    external_systems: tuple[str, ...] = ()
+    external_key: str | None = None
     keyword: str | None = None
     search: str | None = None
     status: RequirementStatus | None = None
@@ -589,6 +592,11 @@ def filter_requirement_rows(
                 db, project=project_or_404(db, project_id), artefact_type="requirement",
                 names=list(filters.tag_names), match_all=filters.tag_match_all,
             )
+        ))
+    if filters.external_systems or filters.external_key:
+        conditions.append(reference_clause(
+            db, project_or_404(db, project_id).organization_id, "requirement", Requirement.id,
+            filters.external_systems, filters.external_key,
         ))
     if filters.target_stage_id:
         conditions.append(RequirementVersion.target_stage_id == filters.target_stage_id)

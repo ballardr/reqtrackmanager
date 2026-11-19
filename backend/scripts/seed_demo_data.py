@@ -398,6 +398,19 @@ def tag_record(headers: dict, project_id: str, artefact_type: str, artefact_id: 
     return r.json()
 
 
+def reference_record(
+    headers: dict, project_id: str, artefact_type: str, artefact_id: str, system_id: str, key: str, *,
+    role: str | None = None,
+) -> dict:
+    """Adds an external reference (a key in an outside system; any registered artefact type) to a record."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/external-references",
+        json={"system_id": system_id, "key": key, "role": role}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def place_record(
     headers: dict, project_id: str, artefact_type: str, artefact_id: str, places: list[tuple[dict, dict | None]],
 ) -> dict:
@@ -4680,6 +4693,12 @@ def main() -> None:
         tag_record(h_pm, drone["id"], "requirement", requirement["id"], names)
     tag_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], ["Safety-critical", "Needs review"])
     tag_record(h_pm, drone["id"], "risk", risk_single_controller["id"], ["Safety-critical"])
+    # External references on records of several types, so the record panel, the list column and filter, the export
+    # and the look-up by key all have something to show (Jira has a link template; ServiceNow has none).
+    for index, requirement in enumerate(drone_req_list[:3]):
+        reference_record(h_pm, drone["id"], "requirement", requirement["id"], external_systems["Jira"], f"FAL-{310 + index}")
+    reference_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], external_systems["ServiceNow"], "INC0020001", role="origin")
+    reference_record(h_pm, drone["id"], "risk", risk_single_controller["id"], external_systems["Jira"], "FAL-350")
     tag_record(h_pm, drone["id"], "persona", drone_operator_persona["id"], ["Regulatory"])
     create_tag_org = httpx.post(
         f"{BASE}/orgs/{org['id']}/tags", json={"name": "Strategic", "colour": "#6b46c1"}, headers=h_pm, timeout=30,

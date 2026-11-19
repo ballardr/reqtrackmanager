@@ -92,6 +92,12 @@ from app.services import pubsub
 from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
+from app.services.external_reference_surfaces import (
+    REFERENCES_COLUMN_KEY,
+    ReferenceCells,
+    apply_imported_references,
+    reference_column,
+)
 from app.services.link_graph import ArtefactResolver
 from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
@@ -100,7 +106,7 @@ from app.services.principals import group_ref_from_text, principal_labels, princ
 from app.services.project_scope import ProjectScope, gate_open
 from app.services.rbac import can_manage_project_settings, get_effective_org_roles, get_effective_permissions, permission_satisfied
 from app.services.record_policy import REASON_PERMISSION, tag_decisions
-from app.services.tags import TagFilter
+from app.services.tags import TagFilter, can_tag
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +115,9 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
 CODE_COLUMN = "code"
 PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
-GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode", "component_id", "category_id"})
+GENERIC_PARAMS = frozenset({
+    "format", "project_scope", "tag", "tag_mode", "component_id", "category_id", "external_system", "external_key",
+})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
 REPORT_PARAMS = frozenset({"record_type"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
@@ -524,8 +532,10 @@ def build_table(
         The `RecordTable`; rows from a related project are labelled in a trailing `project` column.
     """
     shared = placement_column(db, project, artefact_type, may_place=False, id_of=provider.id_of)
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
+    refs_shared = reference_column(db, organization, project, artefact_type, may_edit=False, id_of=provider.id_of)
     columns, omitted = resolve_export_columns(
-        db, user, [*provider.columns(db, project), *([shared[0]] if shared else [])],
+        db, user, [*provider.columns(db, project), *([shared[0]] if shared else []), *([refs_shared[0]] if refs_shared else [])],
         organization_id=project.organization_id, project_id=project.id, purpose="export",
     )
 
@@ -537,7 +547,8 @@ def build_table(
     prepared = provider.prepare(db, project, records) if provider.prepare is not None else None
     if shared:
         shared[1].expect(provider.id_of(record) for record in records)
-    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
+    if refs_shared:
+        refs_shared[1].expect(provider.id_of(record) for record in records)
     owners: dict[uuid.UUID, Project] = {project.id: project}
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
     if project_scope.widened:
@@ -607,7 +618,8 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
 
 
 def build_org_table(
-    db: Session, user: User, organization: Organization, provider: RecordTableProvider, *, filters: RecordFilters,
+    db: Session, user: User, organization: Organization, artefact_type: str, provider: RecordTableProvider, *,
+    filters: RecordFilters,
 ) -> RecordTable:
     """Builds the table of the organisation's own records of one type with the organisation list's filters.
 
@@ -615,6 +627,7 @@ def build_org_table(
         db: Active session (read only).
         user: The caller (authorised by the route).
         organization: The request organisation.
+        artefact_type: The record type.
         provider: The type's provider (it has an organisation tier).
         filters: The organisation tier's filters.
 
@@ -623,11 +636,15 @@ def build_org_table(
         always cited.
     """
     tier = org_tier(provider)
+    refs_shared = reference_column(db, organization, None, artefact_type, may_edit=False, id_of=provider.id_of)
     columns, omitted = resolve_export_columns(
-        db, user, tier.columns(db, organization), organization_id=organization.id, purpose="export",
+        db, user, [*tier.columns(db, organization), *([refs_shared[0]] if refs_shared else [])],
+        organization_id=organization.id, purpose="export",
     )
     records = tier.list_records(db, user, organization, filters)
     prepared = tier.prepare(db, organization, records) if tier.prepare is not None else None
+    if refs_shared:
+        refs_shared[1].expect(provider.id_of(record) for record in records)
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
     rows = [
         [display_code(provider.code_of(record), organization.code, organization_owned=True), *(c.get(prepared, record) for c in columns)]
@@ -1056,6 +1073,7 @@ class _ImportTarget:
         create / update: The provider's write paths, already `None` where the caller lacks the right.
         code_of / id_of: Read a record's code and id.
         place: How the tier reads in a message ("project" / "organisation").
+        references: The shared external references column's reader, or `None` while the type has none.
     """
 
     organization: Organization
@@ -1069,6 +1087,7 @@ class _ImportTarget:
     code_of: Callable[[Any], str]
     id_of: Callable[[Any], Any]
     place: str
+    references: ReferenceCells | None = None
 
     @property
     def owner(self) -> Project | Organization:
@@ -1113,18 +1132,27 @@ def run_import(
         may_place=can_place(ArtefactResolver(db, project, user.id), artefact_type),
     )
 
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
+    refs_shared = reference_column(
+        db, organization, project, artefact_type, id_of=provider.id_of,
+        may_edit=can_tag(ArtefactResolver(db, project, user.id), artefact_type),
+    )
+
     def prepare(records: list[Any]) -> Any:
-        """The provider's lookups, with the shared placement cells of the same records loaded together."""
+        """The provider's lookups, with the shared placement and reference cells of the same records loaded together."""
         if shared:
             shared[1].expect(provider.id_of(record) for record in records)
+        if refs_shared:
+            refs_shared[1].expect(provider.id_of(record) for record in records)
         return provider_prepare(db, project, records) if provider_prepare is not None else None
 
     target = _ImportTarget(
-        organization=get_or_404(db, Organization, project.organization_id, "Organisation"), project=project,
-        columns=[*provider.columns(db, project), *([shared[0]] if shared else [])],
+        organization=organization, project=project,
+        columns=[*provider.columns(db, project), *([shared[0]] if shared else []), *([refs_shared[0]] if refs_shared else [])],
         find=lambda code: _find_record(db, project, provider, code),
         find_many=(lambda codes: _find_many_exported(provider_find_many, db, project, codes)) if provider_find_many is not None else None,
-        prepare=prepare if shared or provider_prepare is not None else None,
+        prepare=prepare if shared or refs_shared or provider_prepare is not None else None,
+        references=refs_shared[1] if refs_shared else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
     )
@@ -1152,13 +1180,24 @@ def run_org_import(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
     tier_find_many = tier.find_many  # bound here so the lambdas below keep the not-None narrowing
     tier_prepare = tier.prepare
+    # Whoever may create or update the organisation's records of this type may also change their references.
+    refs_shared = reference_column(db, organization, None, artefact_type, id_of=provider.id_of, may_edit=may_create or may_update)
+
+    def prepare(records: list[Any]) -> Any:
+        """The tier's lookups, with the shared reference cells of the same records loaded together."""
+        if refs_shared:
+            refs_shared[1].expect(provider.id_of(record) for record in records)
+        return tier_prepare(db, organization, records) if tier_prepare is not None else None
+
     target = _ImportTarget(
-        organization=organization, project=None, columns=list(tier.columns(db, organization)),
+        organization=organization, project=None,
+        columns=[*tier.columns(db, organization), *([refs_shared[0]] if refs_shared else [])],
         find=lambda code: _find_org_record(db, organization, tier, code),
         find_many=(lambda codes: _find_many_exported(tier_find_many, db, organization, codes)) if tier_find_many is not None else None,
-        prepare=(lambda records: tier_prepare(db, organization, records)) if tier_prepare is not None else None,
+        prepare=prepare if refs_shared or tier_prepare is not None else None,
         create=tier.create if may_create else None, update=tier.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="organisation",
+        references=refs_shared[1] if refs_shared else None,
     )
     return _import_rows(db, user, target, artefact_type, data, apply=apply)
 
@@ -1258,11 +1297,14 @@ def _import_rows(
                 assert create_fn is not None  # a missing create right was rejected above
                 values = {key: parse(ctx, cells[key]) for key, parse in parsers.items()}
                 placed = values.pop(PLACEMENT_COLUMN_KEY, None)
+                referenced = values.pop(REFERENCES_COLUMN_KEY, None)
                 with db.begin_nested():
                     created = create_fn(ctx, values)
                     db.flush()
                     if placed:
                         apply_imported_placements(ctx, artefact_type, created, placed)
+                    if referenced and target.references is not None:
+                        apply_imported_references(ctx, artefact_type, created, referenced, target.references)
                 result.action = "create"
                 result.code = ""
             else:
@@ -1279,11 +1321,14 @@ def _import_rows(
                     assert update_fn is not None  # a missing update right was rejected above
                     values = {c.column: parsers[c.column](ctx, c.after) for c in changes}
                     placed = values.pop(PLACEMENT_COLUMN_KEY, None)
+                    referenced = values.pop(REFERENCES_COLUMN_KEY, None)
                     with db.begin_nested():
                         if values:
                             update_fn(ctx, record, values)
                         if placed is not None:
                             apply_imported_placements(ctx, artefact_type, record, placed)
+                        if referenced is not None and target.references is not None:
+                            apply_imported_references(ctx, artefact_type, record, referenced, target.references)
                         db.flush()
                     result.action = "update"
                     result.changes = changes
