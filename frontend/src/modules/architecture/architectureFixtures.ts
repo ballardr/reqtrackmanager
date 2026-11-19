@@ -391,6 +391,39 @@ export interface ArchitectureReads {
   baselineComparison?: BaselineComparison;
 }
 
+/** The browser-storage key under which the symbol picker remembers List or Gallery. */
+export const SYMBOL_PICKER_VIEW_KEY = "architecture.symbolPickerView";
+
+/**
+ * Holds the symbol picker's remembered view in memory for the running story, so it starts at List and a story that
+ * chooses Gallery cannot change what another story opens at. Storybook's test files share one browser origin and run
+ * concurrently, so a value written to the real `localStorage` by one file is read by the pickers mounted in the others
+ * (Gallery tiles are radios, not options, so a form story that picks a symbol then fails). The spies are per test file,
+ * because each file runs in its own frame.
+ *
+ * @returns The cleanup that restores the real storage methods; return it from `beforeEach`.
+ */
+export function isolateSymbolPickerView(): () => void {
+  let remembered: string | null = null;
+  const getItem = Storage.prototype.getItem;
+  const setItem = Storage.prototype.setItem;
+  const removeItem = Storage.prototype.removeItem;
+  const spies = [
+    spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, key: string) {
+      return key === SYMBOL_PICKER_VIEW_KEY ? remembered : getItem.call(this, key);
+    }),
+    spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === SYMBOL_PICKER_VIEW_KEY) remembered = String(value);
+      else setItem.call(this, key, value);
+    }),
+    spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+      if (key === SYMBOL_PICKER_VIEW_KEY) remembered = null;
+      else removeItem.call(this, key);
+    }),
+  ];
+  return () => spies.forEach((spy) => spy.mockRestore());
+}
+
 /**
  * Answers the GET requests the architecture screens make, so a story needs no network. A path it does not know throws,
  * which the screens treat as an empty optional list (tags, placements, link types).

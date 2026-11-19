@@ -12,11 +12,9 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { popoverFitViolations } from "../../testing/popoverFit";
 import { withToast } from "../../testing/storybook-helpers";
-import { mockArchitectureReads, PROJECT_ID, SYMBOLS } from "./architectureFixtures";
+import { isolateSymbolPickerView, mockArchitectureReads, PROJECT_ID, SYMBOLS } from "./architectureFixtures";
 import { SymbolPicker } from "./SymbolPicker";
 import type { ArchitectureSymbol } from "./types";
-
-const VIEW_KEY = "architecture.symbolPickerView";
 
 /** A library long enough to scroll, with names that are long and names that cannot break. */
 const LONG_LIBRARY: ArchitectureSymbol[] = [
@@ -47,9 +45,9 @@ const meta: Meta<typeof Harness> = {
   component: Harness,
   decorators: [withToast()],
   beforeEach: () => {
-    window.localStorage.removeItem(VIEW_KEY);
+    const restoreStorage = isolateSymbolPickerView();
     const reads = mockArchitectureReads({ canManageTypes: true });
-    return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
+    return () => { reads.mockRestore(); restoreStorage(); };
   },
 };
 export default meta;

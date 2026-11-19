@@ -4,11 +4,9 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { withToast } from "../../testing/storybook-helpers";
-import { mockArchitectureReads, ORG_ID, PROJECT_ID, SYMBOLS } from "./architectureFixtures";
+import { isolateSymbolPickerView, mockArchitectureReads, ORG_ID, PROJECT_ID, SYMBOL_PICKER_VIEW_KEY as VIEW_KEY, SYMBOLS } from "./architectureFixtures";
 import { SymbolPicker } from "./SymbolPicker";
 import type { ArchitectureSymbol } from "./types";
-
-const VIEW_KEY = "architecture.symbolPickerView";
 
 /** A picker with the state a form gives it, so a choice shows. */
 function Harness(args: React.ComponentProps<typeof SymbolPicker>) {
@@ -26,9 +24,9 @@ const meta: Meta<typeof SymbolPicker> = {
     urlFor: (id) => `/symbols/${id}`, emptyLabel: "Use the type's symbol", scope: { kind: "project", projectId: PROJECT_ID },
   },
   beforeEach: () => {
-    window.localStorage.removeItem(VIEW_KEY);
+    const restoreStorage = isolateSymbolPickerView();
     const reads = mockArchitectureReads({ canManageTypes: false });
-    return () => { reads.mockRestore(); window.localStorage.removeItem(VIEW_KEY); };
+    return () => { reads.mockRestore(); restoreStorage(); };
   },
 };
 export default meta;

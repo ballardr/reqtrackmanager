@@ -31,9 +31,15 @@ ENV DOCS_BASE_URL=${DOCS_BASE_URL}
 # Pull in Alpine security fixes released after the base image was built, so the
 # CI vulnerability gate (HIGH/CRITICAL with a fix available) does not fail on a
 # patched-but-not-yet-rebuilt base layer. Also drop the stock nginx welcome page
-# so nothing but the docs is served.
+# so nothing but the docs is served. The base image pins nginx and its four
+# dynamic modules (none loaded here) to one version in /etc/apk/world, which
+# makes `apk upgrade` skip an nginx security release; removing the modules and
+# re-adding nginx unpinned lets it update.
 USER root
-RUN apk upgrade --no-cache && rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
+RUN apk del --no-cache nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt \
+    && apk add --no-cache --upgrade nginx \
+    && apk upgrade --no-cache \
+    && rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 USER nginx
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
