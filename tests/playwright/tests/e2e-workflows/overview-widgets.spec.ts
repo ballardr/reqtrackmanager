@@ -130,6 +130,48 @@ test.describe("project overview widgets", () => {
     });
   });
 
+  test("a text note is written in Markdown, previewed, and draws a diagram", async ({ page }) => {
+    test.setTimeout(120_000);
+    const email = PERSONAS.orgAdminAlphaBeta.email;
+    const project = await createDisposableProject(page.request, email, "E2E Overview Markdown", ORG_NAMES.alpha);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginAs(page, email);
+    await page.goto(`/projects/${project.projectId}`);
+    await page.getByRole("button", { name: "Customise overview" }).click();
+    const editor = page.locator('[data-overview-editor="project"]');
+    const note = [
+      "## Release plan", "", "| Step | Owner |", "| --- | --- |", "| Build | Ada |", "", "- Freeze on **Friday**",
+      "", "```mermaid", "flowchart LR", "  A[Build] --> B[Release]", "```",
+    ].join("\n");
+
+    await test.step("the Text field offers Write and Preview, and Preview shows the formatting and the diagram", async () => {
+      await editor.getByRole("combobox", { name: "Add widget" }).selectOption("text");
+      const panel = page.getByRole("dialog", { name: /^Settings:/ });
+      await panel.getByRole("textbox", { name: "Title" }).fill("Plan");
+      await panel.getByRole("textbox", { name: "Text" }).fill(note);
+      await panel.getByRole("tab", { name: "Preview" }).click();
+      await expect(panel.getByRole("heading", { name: "Release plan" })).toBeVisible();
+      await expect(panel.getByRole("cell", { name: "Ada" })).toBeVisible();
+      await expect(panel.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
+      await panel.getByRole("tab", { name: "Write" }).click();
+      await panel.getByRole("button", { name: "Done" }).click();
+    });
+
+    await test.step("saved, the note is formatted for everyone and the diagram is an image, not live markup", async () => {
+      await editor.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Overview saved.")).toBeVisible();
+      await page.reload();
+      const widget = page.locator('[data-widget-type="text"]');
+      await expect(widget.getByRole("heading", { name: "Release plan" })).toBeVisible();
+      await expect(widget.getByRole("cell", { name: "Build" })).toBeVisible();
+      await expect(widget.locator("strong")).toHaveText("Friday");
+      const diagram = widget.getByRole("img", { name: "Diagram: flowchart" });
+      await expect(diagram).toBeVisible({ timeout: 30_000 });
+      expect(await diagram.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
+      expect(await widget.locator("svg").count()).toBe(0);
+    });
+  });
+
   test("the overview reflows: two tiles to a row on a phone and one row of tiles on a laptop", async ({ page }) => {
     test.setTimeout(60_000);
     const email = PERSONAS.orgAdminAlphaBeta.email;

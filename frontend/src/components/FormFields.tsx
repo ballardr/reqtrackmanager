@@ -15,6 +15,7 @@ import { normaliseHexColour } from "../utils/color";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FieldCaption, FieldHelp, FieldShell, RequiredMark } from "./FieldHelp";
 import { HexColourInput } from "./HexColourInput";
+import { MarkdownEditor } from "./MarkdownEditor";
 import type { FieldHelpProps } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -115,7 +116,7 @@ export function InlineCheckbox({
  * (`scripts/check_textarea_autogrow.py` fails an empty reason).
  */
 export function TextAreaField({
-  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, fixedHeight, labelExtra, help, required,
+  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, fixedHeight, labelExtra, help, required, markdown,
 }: FieldHelpProps & {
   label: string;
   value: string;
@@ -130,12 +131,19 @@ export function TextAreaField({
   fixedHeight?: string;
   /** A control beside the label (an `OverridePill`); the label is then a sibling of the control, not its wrapper. */
   labelExtra?: ReactNode;
+  /** The text is Markdown: edited with the Write and Preview views (`MarkdownEditor`), formatted where it is shown. */
+  markdown?: boolean;
 }) {
   const id = useId();
   const controlId = inputProps?.id ?? id;
   return (
     <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required}>
-      {!fixedHeight ? (
+      {markdown ? (
+        <MarkdownEditor
+          value={value} onChange={onChange} rows={rows} ariaLabel={ariaLabel ?? label} disabled={disabled}
+          textareaProps={{ ...inputProps, id: controlId, required: required ?? inputProps?.required, "aria-required": required || undefined }}
+        />
+      ) : !fixedHeight ? (
         <AutoGrowTextarea {...inputProps} rows={rows} required={required ?? inputProps?.required} aria-required={required || undefined} id={controlId} value={value} onChange={onChange} aria-label={ariaLabel ?? label} disabled={disabled} />
       ) : (
         <textarea

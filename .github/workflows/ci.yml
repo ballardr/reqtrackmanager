@@ -229,6 +229,10 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      # The diagram library (Mermaid) must stay a lazily loaded chunk, never part of the files every page loads.
+      - name: Mermaid is lazy-loaded
+        run: python3 ../scripts/check_mermaid_lazy.py
+
       # test-storybook (vite.config.ts) runs every Storybook story as a real
       # Chromium test via Vitest's browser mode. No separate browser-install
       # step needed: the job container (see `container:` above) already has

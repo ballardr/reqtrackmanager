@@ -260,7 +260,7 @@ export function OverviewWidgetSettings({
 
       {widget.type === "text" && (
         <TextAreaField
-          label={t.textContent} help={strings.help.overviewText} rows={6}
+          label={t.textContent} help={strings.help.overviewText} rows={6} markdown
           value={String(config.markdown ?? "")} onChange={(v) => setConfig({ ...config, markdown: v })}
           inputProps={{ maxLength: 4000 }}
         />

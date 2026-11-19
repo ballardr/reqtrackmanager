@@ -90,6 +90,7 @@ Responsibilities:
 - render UI state from backend APIs
 - manage client-side routing and local state
 - provide responsive behavior for desktop and mobile use
+- show long text written in Markdown, with Mermaid diagrams drawn in the browser on demand as images (no script can run from stored text); the server validates the same limits ([modules.md](modules.md) §4l14)
 
 ### Application Layer
 The backend service is implemented in Python and exposes a RESTful API. It is responsible for:

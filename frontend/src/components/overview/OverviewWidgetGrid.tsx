@@ -38,12 +38,12 @@ import { useStrings } from "../../context/TerminologyContext";
 import type { OverviewMetricsState } from "../../hooks/useOverviewMetrics";
 import { getInstalledModule } from "../../modules/registry";
 import { buildRecordTotalsChart, RECORD_SLICE_COLORS } from "../../utils/recordTotals";
-import { renderMarkdown } from "../../utils/safeMarkdown";
 import {
   chartDestination, clamp, effectiveScope, formatMetricValue, gridSpans, isScopedType, moveWidgetTo, orgTileDestination, OVERVIEW_COLUMNS,
   OVERVIEW_MAX_ROWS, resizedBy, tileDestination,
 } from "../../utils/overviewWidgets";
 import { ActivityNote } from "../ActivityNote";
+import { MarkdownView } from "../MarkdownView";
 import { rowLabel, titleOf } from "./overviewTitles";
 import { Badge } from "../Badge";
 import { BarChart } from "../BarChart";
@@ -154,12 +154,12 @@ export interface OverviewGridEdit {
   onOpenSettings: (id: string) => void;
 }
 
-/** The text widget: its title (when it has one) and its markdown, rendered without raw HTML or images. */
+/** The text widget: its title (when it has one) and its Markdown, formatted without raw HTML or images. */
 function TextWidget({ title, markdown }: { title: string; markdown: string }) {
   return (
     <div className="card overview-text">
       {title && <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>}
-      {renderMarkdown(markdown)}
+      <MarkdownView text={markdown} />
     </div>
   );
 }

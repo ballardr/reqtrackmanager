@@ -475,6 +475,16 @@ Use this for any free-text field where more than a couple of lines is a realisti
 
 **The rule (long prose always grows).** Every long free-text field is `autoGrow`, wherever it appears: create forms, edit forms and detail pages (a record's description, rationale, source, impact, evidence, notes). `TextAreaField` grows by default, with `rows` as its minimum height; a field meant to stay short passes `fixedHeight="<reason>"`, which keeps a plain fixed-height box (an inline editor with no label uses `AutoGrowTextarea` directly, never a raw `<textarea>`). A create form and the matching edit form use the same field group, so they cannot disagree. `scripts/check_textarea_autogrow.py` (empty baseline) fails a raw `<textarea>` and a `fixedHeight` with no reason. Reason: a fixed box hides what was typed and makes the author scroll inside a field to review it (the Pain Point description was the case that exposed this).
 
+## Pattern: Markdown fields
+
+A long text field that holds formatted prose (a decision's rationale, a dashboard note) is written in Markdown. The stored value is the Markdown source; people see it formatted.
+
+- **Edit** with `TextAreaField markdown` (the `MarkdownEditor`: Write with a formatting toolbar, and Preview). The field keeps its label, `help` and accessible name like any text area; the `help.markdown` text states what is supported (headings, lists, emphasis, code, quotations, tables, rules, links, and a `mermaid` block for a diagram).
+- **Show** with `MarkdownView`, never `dangerouslySetInnerHTML` and never a per-page renderer. Headings start at the third level because the page owns the first two. Raw HTML and images are shown as the text typed; only https, http and mailto addresses are links.
+- **Diagrams** are drawn on demand as images with the source available beneath; do not import Mermaid directly (`utils/mermaidRender` is the one entry, lazily loaded and limited).
+- **Lists and notifications** show plain text (`services.markdown_text.plain_text`), never raw Markdown.
+- A new editor toolbar button is a `ToolbarButton` (icon, tooltip and accessible name the same).
+
 ## Pattern: view toggle (tile vs. list)
 
 *(New 2026-08-24, documenting an existing, working component that was never written up as a rule — the same story `FilterBadge` had before Principle 10. See [Favourites](plans/completed/ux-audit-2026-08.md#favourites-no-filter-nav-rail-lag-no-view-toggle).)*

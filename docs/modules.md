@@ -1496,6 +1496,26 @@ flowchart TB
   - *Scale.* The perf generator writes references for every type (`ratios.references_per_record`, through `add_tags` and the requirement generator), and the statements behind a list, its export, the page read and the bundle stay flat as records gain references.
 - **Product Feedback.** Its requests' references are rows of this table (`references.py` adapts a request to it; the request API shape is unchanged and gains `link`); its own tables for systems and references are gone (the data migration moves the rows and is reversible).
 
+### 4l14. Markdown text and diagrams
+
+A long text field can be written in Markdown, including Mermaid diagrams. One reader and one view are shared, so a field adopts it with a prop, not new code.
+
+```mermaid
+flowchart LR
+    S["stored value: Markdown source"] --> V["MarkdownView (screen)"]
+    S --> T["services.markdown_text (server)"]
+    V -->|"fenced mermaid block"| D["MermaidDiagram (lazy)"]
+    D --> R["utils/mermaidRender"]
+    T --> L["limits: size, depth, diagrams"]
+    T --> P["plain text: lists, search, notifications"]
+```
+
+- **The stored value is the author's Markdown source**, never rewritten and never HTML. The screen reads it with markdown-it (`utils/markdownIt.ts`: raw HTML off, links limited to https, http and mailto, a single line break kept, nesting capped) and builds React elements (`MarkdownView`); nothing is inserted as markup.
+- **Editing.** `TextAreaField` takes `markdown` and renders `MarkdownEditor`: Write (the source, a formatting toolbar from `ToolbarButton`, growing with the text) and Preview (the same view readers see). The toolbar's edits are pure functions in `utils/markdownEdit.ts`.
+- **Diagrams.** A fenced block whose info string starts with `mermaid` is drawn by `MermaidDiagram`: the library loads on first use only (`scripts/check_mermaid_lazy.py` fails the build if it joins the start-up files), runs in strict mode with SVG text labels, and the result is shown as an `<img>` of a data URI so a diagram can never run script. The DejaVu Sans font is registered on the page (so Mermaid measures with it) and embedded in the drawing (an image cannot use page fonts). The drawing carries a text alternative (the diagram type) and the source in an expandable block; a diagram that fails shows its source and the reason.
+- **One contract with the server.** `frontend/src/utils/mermaidRenderConfig.json` holds the engine version (equal to the exact `mermaid` pin; a story checks it), the font and the limits (source size, edges, drawn elements, time). `services/markdown_text.py` applies the same source limit and `backend/tests/test_markdown_text.py` fails if they differ, so the screen and the server refuse the same diagrams.
+- **Server.** `services.markdown_text`: `validate_markdown` / `markdown_limit(max_chars)` (a pydantic validator: size, control characters, depth below the reader's own cut-off, at most 20 diagrams of at most 20,000 characters), `plain_text` (for list cells, search snippets and notifications, which never show raw Markdown; diagrams as nothing, a label or their source) and `mermaid_sources` (for the report renderer).
+
 ### 4l3. Components on every record
 
 Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.

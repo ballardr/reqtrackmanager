@@ -27,6 +27,8 @@
     "dompurify": "^3.4.17",
     "katex": "^0.18.10",
     "lucide-react": "^0.446.0",
+    "markdown-it": "15.0.3",
+    "mermaid": "12.3.0",
     "papaparse": "^5.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

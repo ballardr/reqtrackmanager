@@ -276,3 +276,19 @@ export const RequiredFieldsAreStarredAndConstrained: Story = {
     await expect(canvasElement.querySelector(".field-required")).toHaveAttribute("aria-hidden", "true");
   },
 };
+
+/** A Markdown text area keeps the field's label and accessible name, and its preview formats what was typed. */
+function MarkdownFieldHarness() {
+  const [value, setValue] = useState("**Decided**");
+  return <TextAreaField label="Rationale" help="Why." value={value} onChange={setValue} markdown rows={3} />;
+}
+
+export const MarkdownTextAreaHasWriteAndPreview: Story = {
+  render: () => <MarkdownFieldHarness />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("textbox", { name: "Rationale" })).toHaveValue("**Decided**");
+    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await expect(canvasElement.querySelector("strong")).toHaveTextContent("Decided");
+  },
+};

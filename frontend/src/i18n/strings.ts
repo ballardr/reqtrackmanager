@@ -3863,7 +3863,9 @@ const en = {
     overviewWidgetSize:
       "The width is a number of the 12 columns the overview is divided into; the height is a number of rows, and a row grows if the content needs more. On a narrow screen the columns collapse and every widget takes the full width, apart from the small tiles, which sit two to a row. Dragging the corner of the widget does the same.",
     overviewText:
-      "Notes for the people who open the overview. Supports headings (# Title), lists (- item, 1. item), **bold**, *italic*, `code`, quotes (> text), rules (---) and links in the form [text](https://example.com). Raw HTML and images are not shown.",
+      "Notes for the people who open the overview, written in Markdown. Headings (# Title), lists (- item, 1. item), **bold**, _italic_, `code`, quotations (> text), tables, rules (---), links in the form [text](https://example.com) and diagrams (a block that starts with ```mermaid) are formatted. Raw HTML and images are not shown.",
+    markdown:
+      "Formatted text, written in Markdown. Headings (# Title), lists (- item, 1. item), **bold**, _italic_, `code`, quotations (> text), tables, rules (---) and links in the form [text](https://example.com) are formatted.\nA block that starts with ```mermaid draws a diagram.\nRaw HTML and images are not shown; a link must start with https:, http: or mailto:.",
     overviewMetric:
       "The figure the widget shows. The list is fixed: a metric is a defined count or percentage, not a free query, so an overview cannot show anything a person is not allowed to see.",
     overviewRecordType:
@@ -4250,6 +4252,28 @@ const en = {
     scopeServer: "Platform",
     scopeOrganisation: "Organisation",
     endBeforeStart: "The end must be after the start.",
+  },
+  markdown: {
+    write: "Write",
+    preview: "Preview",
+    editorView: "Editor view",
+    toolbar: "Formatting",
+    previewEmpty: "Nothing to preview.",
+    bold: "Bold",
+    italic: "Italic",
+    heading: "Heading",
+    bulleted: "Bulleted list",
+    numbered: "Numbered list",
+    quote: "Quotation",
+    code: "Code block",
+    link: "Link",
+    table: "Table",
+    diagram: "Diagram",
+    diagramDrawing: "Drawing the diagram…",
+    diagramFailed: (reason: string) => `The diagram could not be drawn: ${reason}`,
+    diagramLabel: (kind: string) => `Diagram: ${kind}`,
+    diagramSource: "Diagram source",
+    characterCount: (used: number, max: number) => `${used} of ${max} characters`,
   },
   policies: {
     heading: "Policies",

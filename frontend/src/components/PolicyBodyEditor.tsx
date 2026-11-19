@@ -16,33 +16,15 @@
  */
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import {
-  Bold, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Minus, Quote, Redo2, Undo2, Unlink,
-  type LucideIcon,
-} from "lucide-react";
+import { Bold, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Minus, Quote, Redo2, Undo2, Unlink } from "lucide-react";
 import { useId, useState } from "react";
 
 import type { PolicyBody } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { FieldCaption } from "./FieldHelp";
-import { Tooltip } from "./Tooltip";
+import { ToolbarButton } from "./ToolbarButton";
 
 const ALLOWED_LINK = /^(https?:|mailto:)/i;
-
-function ToolbarButton({ icon: Icon, label, active, disabled, onClick }: {
-  icon: LucideIcon; label: string; active?: boolean; disabled?: boolean; onClick: () => void;
-}) {
-  return (
-    <Tooltip label={label}>
-      <button
-        type="button" className={`btn ${active ? "btn-primary" : ""}`} aria-label={label} aria-pressed={active}
-        disabled={disabled} onClick={onClick}
-      >
-        <Icon size={16} />
-      </button>
-    </Tooltip>
-  );
-}
 
 function Toolbar({ editor }: { editor: Editor }) {
   const text = useStrings().policies;

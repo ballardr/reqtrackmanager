@@ -72,8 +72,8 @@
   "fonts": [
     {"name": "Liberation Sans, Serif and Mono", "licence": "OFL-1.1", "where": "backend: report fonts", "files": "backend/app/assets/report_fonts/",
      "text": "backend/app/assets/report_fonts/LICENSE_LIBERATION", "note": "Liberation 2 (Red Hat; digitised data copyright Google), used as the default report fonts."},
-    {"name": "DejaVu Sans", "licence": "Bitstream-Vera", "where": "backend: diagrams and mathematics in reports", "files": "backend/app/assets/fonts/",
-     "text": "backend/app/assets/fonts/LICENSE_DEJAVU", "note": "Bitstream Vera licence; DejaVu's own changes are in the public domain."},
+    {"name": "DejaVu Sans", "licence": "Bitstream-Vera", "where": "backend: diagrams and mathematics in reports; frontend: diagram labels (Latin subset, WOFF2)", "files": "backend/app/assets/fonts/, frontend/src/assets/fonts/",
+     "text": "backend/app/assets/fonts/LICENSE_DEJAVU", "note": "Bitstream Vera licence; DejaVu's own changes are in the public domain. The frontend file is a Latin subset of the same font (glyph designs unchanged), shipped with the licence text beside it."},
     {"name": "KaTeX fonts", "licence": "OFL-1.1", "where": "frontend: mathematics", "files": "bundled by the katex package",
      "text": null, "note": "Computer Modern and AMS derived fonts; KaTeX's font sources carry the SIL Open Font License 1.1 notice."}
   ],

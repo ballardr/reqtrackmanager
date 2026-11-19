@@ -66,14 +66,14 @@
    "where": "backend: report fonts"
   },
   {
-   "files": "backend/app/assets/fonts/",
+   "files": "backend/app/assets/fonts/, frontend/src/assets/fonts/",
    "licence": "Bitstream-Vera",
    "name": "DejaVu Sans",
-   "note": "Bitstream Vera licence; DejaVu's own changes are in the public domain.",
+   "note": "Bitstream Vera licence; DejaVu's own changes are in the public domain. The frontend file is a Latin subset of the same font (glyph designs unchanged), shipped with the licence text beside it.",
    "texts": [
     "7a083b136e64"
    ],
-   "where": "backend: diagrams and mathematics in reports"
+   "where": "backend: diagrams and mathematics in reports; frontend: diagram labels (Latin subset, WOFF2)"
   },
   {
    "files": "bundled by the katex package",
@@ -437,7 +437,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -2133,7 +2134,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -2181,6 +2183,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@chevrotain/cst-dts-gen/v/13.2.0",
+   "name": "@chevrotain/cst-dts-gen",
+   "review": "none",
+   "texts": [
+    "cfc7749b96f6"
+   ],
+   "version": "13.2.0"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -2194,6 +2212,22 @@
     "cfc7749b96f6"
    ],
    "version": "11.1.2"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@chevrotain/gast/v/13.2.0",
+   "name": "@chevrotain/gast",
+   "review": "none",
+   "texts": [
+    "cfc7749b96f6"
+   ],
+   "version": "13.2.0"
   },
   {
    "components": [
@@ -2213,6 +2247,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@chevrotain/regexp-to-ast/v/13.2.0",
+   "name": "@chevrotain/regexp-to-ast",
+   "review": "none",
+   "texts": [
+    "cfc7749b96f6"
+   ],
+   "version": "13.2.0"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -2229,6 +2279,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@chevrotain/types/v/13.2.0",
+   "name": "@chevrotain/types",
+   "review": "none",
+   "texts": [
+    "cfc7749b96f6"
+   ],
+   "version": "13.2.0"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -2242,6 +2308,22 @@
     "cfc7749b96f6"
    ],
    "version": "11.1.2"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@chevrotain/utils/v/13.2.0",
+   "name": "@chevrotain/utils",
+   "review": "none",
+   "texts": [
+    "cfc7749b96f6"
+   ],
+   "version": "13.2.0"
   },
   {
    "components": [
@@ -3847,7 +3929,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -3863,7 +3946,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -4386,6 +4470,22 @@
     "d374061c40bf"
    ],
    "version": "2.0.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@mermaid-js/parser/v/2.0.1",
+   "name": "@mermaid-js/parser",
+   "review": "none",
+   "texts": [
+    "d374061c40bf"
+   ],
+   "version": "2.0.1"
   },
   {
    "components": [
@@ -6557,7 +6657,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6590,7 +6691,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6606,7 +6708,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6622,7 +6725,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6655,7 +6759,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6671,7 +6776,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6687,7 +6793,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6720,7 +6827,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6753,7 +6861,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6769,7 +6878,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6785,7 +6895,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6801,7 +6912,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6817,7 +6929,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6867,7 +6980,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6883,7 +6997,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6899,7 +7014,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6932,7 +7048,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -6999,7 +7116,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -7161,7 +7279,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -7819,7 +7938,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -8504,6 +8624,22 @@
     "de4d1f2d2ad5"
    ],
    "version": "2.0.1"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "PSF-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/argparse/v/3.0.4",
+   "name": "argparse",
+   "review": "none",
+   "texts": [
+    "ab745c5061d1"
+   ],
+   "version": "3.0.4"
   },
   {
    "components": [
@@ -9383,6 +9519,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/chevrotain/v/13.2.0",
+   "name": "chevrotain",
+   "review": "none",
+   "texts": [
+    "cfc7749b96f6"
+   ],
+   "version": "13.2.0"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -9737,7 +9889,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10087,7 +10240,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10103,7 +10257,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10505,7 +10660,25 @@
   },
   {
    "components": [
-    "docs"
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/cytoscape/v/3.35.0",
+   "name": "cytoscape",
+   "review": "none",
+   "texts": [
+    "4a5a644717fc",
+    "f7ebdc2a36c4"
+   ],
+   "version": "3.35.0"
+  },
+  {
+   "components": [
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10521,7 +10694,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10553,7 +10727,24 @@
   },
   {
    "components": [
-    "docs"
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3/v/7.9.2",
+   "name": "d3",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "7.9.2"
+  },
+  {
+   "components": [
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10586,6 +10777,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-array/v/3.2.5",
+   "name": "d3-array",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.2.5"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -10599,6 +10806,22 @@
     "e008c5e25a6b"
    ],
    "version": "3.0.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-axis/v/3.0.1",
+   "name": "d3-axis",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.1"
   },
   {
    "components": [
@@ -10618,6 +10841,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-brush/v/3.0.1",
+   "name": "d3-brush",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.1"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -10634,8 +10873,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-chord/v/3.0.2",
+   "name": "d3-chord",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.2"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10648,6 +10902,22 @@
     "faa682e3e430"
    ],
    "version": "3.1.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-color/v/3.1.1",
+   "name": "d3-color",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.1.1"
   },
   {
    "components": [
@@ -10667,6 +10937,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-contour/v/4.0.3",
+   "name": "d3-contour",
+   "review": "none",
+   "texts": [
+    "12e8f2deb66d"
+   ],
+   "version": "4.0.3"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -10680,6 +10966,22 @@
     "582c3022bd01"
    ],
    "version": "6.0.4"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-delaunay/v/6.0.6",
+   "name": "d3-delaunay",
+   "review": "none",
+   "texts": [
+    "f7e8b7069fb7"
+   ],
+   "version": "6.0.6"
   },
   {
    "components": [
@@ -10763,8 +11065,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-dsv/v/3.0.2",
+   "name": "d3-dsv",
+   "review": "none",
+   "texts": [
+    "86dfa68e0bbd"
+   ],
+   "version": "3.0.2"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10777,6 +11094,22 @@
     "b989d9085148"
    ],
    "version": "3.0.1"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "BSD-3-Clause",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-ease/v/3.0.2",
+   "name": "d3-ease",
+   "review": "none",
+   "texts": [
+    "82f2a38e51f9"
+   ],
+   "version": "3.0.2"
   },
   {
    "components": [
@@ -10796,6 +11129,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-fetch/v/3.0.2",
+   "name": "d3-fetch",
+   "review": "none",
+   "texts": [
+    "055e5433e596"
+   ],
+   "version": "3.0.2"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -10812,8 +11161,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-force/v/3.0.1",
+   "name": "d3-force",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.1"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10826,6 +11190,22 @@
     "2a6d2d5f32ba"
    ],
    "version": "3.1.2"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-format/v/3.1.3",
+   "name": "d3-format",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.1.3"
   },
   {
    "components": [
@@ -10845,6 +11225,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-geo/v/3.1.2",
+   "name": "d3-geo",
+   "review": "none",
+   "texts": [
+    "3ded44a2c793"
+   ],
+   "version": "3.1.2"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -10861,8 +11257,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-hierarchy/v/3.1.3",
+   "name": "d3-hierarchy",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.1.3"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10878,7 +11289,24 @@
   },
   {
    "components": [
-    "docs"
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-interpolate/v/3.0.2",
+   "name": "d3-interpolate",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.2"
+  },
+  {
+   "components": [
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10894,8 +11322,7 @@
   },
   {
    "components": [
-    "docs",
-    "frontend"
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10908,6 +11335,22 @@
     "a09b0d6d76e7"
    ],
    "version": "3.1.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-path/v/3.1.1",
+   "name": "d3-path",
+   "review": "none",
+   "texts": [
+    "f5dff44740d5"
+   ],
+   "version": "3.1.1"
   },
   {
    "components": [
@@ -10927,6 +11370,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-polygon/v/3.0.2",
+   "name": "d3-polygon",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.2"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -10940,6 +11399,22 @@
     "e008c5e25a6b"
    ],
    "version": "3.0.1"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-quadtree/v/3.0.2",
+   "name": "d3-quadtree",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.2"
   },
   {
    "components": [
@@ -10959,7 +11434,24 @@
   },
   {
    "components": [
-    "docs"
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-random/v/3.0.2",
+   "name": "d3-random",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.2"
+  },
+  {
+   "components": [
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10975,8 +11467,7 @@
   },
   {
    "components": [
-    "docs",
-    "frontend"
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -10989,6 +11480,22 @@
     "e008c5e25a6b"
    ],
    "version": "4.0.2"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-scale/v/4.0.3",
+   "name": "d3-scale",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "4.0.3"
   },
   {
    "components": [
@@ -11005,6 +11512,22 @@
     "0986d9394490"
    ],
    "version": "3.1.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-scale-chromatic/v/3.1.1",
+   "name": "d3-scale-chromatic",
+   "review": "none",
+   "texts": [
+    "667e7fd523c8"
+   ],
+   "version": "3.1.1"
   },
   {
    "components": [
@@ -11040,7 +11563,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11073,8 +11597,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-shape/v/3.2.1",
+   "name": "d3-shape",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.2.1"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11090,8 +11629,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-time/v/3.1.1",
+   "name": "d3-time",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.1.1"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11107,8 +11661,23 @@
   },
   {
    "components": [
-    "docs",
     "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-time-format/v/4.1.1",
+   "name": "d3-time-format",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "4.1.1"
+  },
+  {
+   "components": [
+    "docs"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11121,6 +11690,22 @@
     "e008c5e25a6b"
    ],
    "version": "3.0.1"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "ISC",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/d3-timer/v/3.0.2",
+   "name": "d3-timer",
+   "review": "none",
+   "texts": [
+    "2a6d2d5f32ba"
+   ],
+   "version": "3.0.2"
   },
   {
    "components": [
@@ -11188,7 +11773,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11220,7 +11806,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11492,7 +12079,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -11921,6 +12509,22 @@
     "25ba5c59dad3"
    ],
    "version": "1.5.428"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "EPL-2.0 OR GPL-3.0-or-later",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/elkjs/v/0.12.1",
+   "name": "elkjs",
+   "review": "notice",
+   "texts": [
+    "637e81f4a1b6"
+   ],
+   "version": "0.12.1"
   },
   {
    "components": [
@@ -13330,7 +13934,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -13964,7 +14569,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -14092,7 +14698,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -14216,7 +14823,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -15138,7 +15746,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -15234,7 +15843,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -15250,7 +15860,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -15492,6 +16103,22 @@
    "ecosystem": "npm",
    "licence": "MIT",
    "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/linkify-it/v/6.1.0",
+   "name": "linkify-it",
+   "review": "none",
+   "texts": [
+    "95e3f7f0e81e"
+   ],
+   "version": "6.1.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
    "link": "https://www.npmjs.com/package/linkifyjs/v/4.4.0",
    "name": "linkifyjs",
    "review": "none",
@@ -15550,7 +16177,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -15790,6 +16418,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": true,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/markdown-it/v/15.0.3",
+   "name": "markdown-it",
+   "review": "none",
+   "texts": [
+    "792c48c5a849"
+   ],
+   "version": "15.0.3"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -15806,7 +16450,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -16174,6 +16819,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/mdurl/v/2.1.0",
+   "name": "mdurl",
+   "review": "none",
+   "texts": [
+    "6b6a356c4337"
+   ],
+   "version": "2.1.0"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -16267,6 +16928,22 @@
     "ec9fb67dcb25"
    ],
    "version": "12.0.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": true,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/mermaid/v/12.3.0",
+   "name": "mermaid",
+   "review": "none",
+   "texts": [
+    "ec9fb67dcb25"
+   ],
+   "version": "12.3.0"
   },
   {
    "components": [
@@ -17800,6 +18477,22 @@
    "components": [
     "frontend"
    ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/package-manager-detector/v/1.9.0",
+   "name": "package-manager-detector",
+   "review": "none",
+   "texts": [
+    "05c365176db3"
+   ],
+   "version": "1.9.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
    "direct": true,
    "ecosystem": "npm",
    "licence": "MIT",
@@ -17990,7 +18683,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -18198,7 +18892,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -18214,7 +18909,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -19671,6 +20367,22 @@
   },
   {
    "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/punycode.js/v/2.3.1",
+   "name": "punycode.js",
+   "review": "none",
+   "texts": [
+    "483acb265f18"
+   ],
+   "version": "2.3.1"
+  },
+  {
+   "components": [
     "docs"
    ],
    "direct": false,
@@ -20748,7 +21460,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -20780,7 +21493,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -20844,7 +21558,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -20892,7 +21607,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -21957,7 +22673,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -22180,7 +22897,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -22372,7 +23090,8 @@
   },
   {
    "components": [
-    "docs"
+    "docs",
+    "frontend"
    ],
    "direct": false,
    "ecosystem": "npm",
@@ -22511,6 +23230,22 @@
     "a5e9f9b15753"
    ],
    "version": "6.0.3"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/uc.micro/v/3.0.0",
+   "name": "uc.micro",
+   "review": "none",
+   "texts": [
+    "483acb265f18"
+   ],
+   "version": "3.0.0"
   },
   {
    "components": [
@@ -24131,13 +24866,13 @@
    "ecosystem": "python",
    "licence": "MIT",
    "licence_source": "classifier",
-   "link": "https://pypi.org/project/exceptiongroup/1.3.1/",
+   "link": "https://pypi.org/project/exceptiongroup/1.3.2/",
    "name": "exceptiongroup",
    "review": "none",
    "texts": [
     "6e5070d76503"
    ],
-   "version": "1.3.1"
+   "version": "1.3.2"
   },
   {
    "components": [
@@ -24566,13 +25301,13 @@
    "ecosystem": "python",
    "licence": "MIT",
    "licence_source": "metadata",
-   "link": "https://pypi.org/project/librt/0.16.0/",
+   "link": "https://pypi.org/project/librt/0.17.0/",
    "name": "librt",
    "review": "none",
    "texts": [
     "88f9e379c684"
    ],
-   "version": "0.16.0"
+   "version": "0.17.0"
   },
   {
    "components": [
@@ -25003,8 +25738,7 @@
   },
   {
    "components": [
-    "backend",
-    "mcp-server"
+    "backend"
    ],
    "direct": true,
    "ecosystem": "python",
@@ -25020,8 +25754,23 @@
   },
   {
    "components": [
-    "backend",
     "mcp-server"
+   ],
+   "direct": false,
+   "ecosystem": "python",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/pydantic/2.14.4/",
+   "name": "pydantic",
+   "review": "none",
+   "texts": [
+    "a9e186f3ca16"
+   ],
+   "version": "2.14.4"
+  },
+  {
+   "components": [
+    "backend"
    ],
    "direct": false,
    "ecosystem": "python",
@@ -25034,6 +25783,22 @@
     "2afdd30d54b4"
    ],
    "version": "2.50.4"
+  },
+  {
+   "components": [
+    "mcp-server"
+   ],
+   "direct": false,
+   "ecosystem": "python",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/pydantic-core/2.50.5/",
+   "name": "pydantic-core",
+   "review": "none",
+   "texts": [
+    "2afdd30d54b4"
+   ],
+   "version": "2.50.5"
   },
   {
    "components": [
@@ -26201,8 +26966,10 @@
    ],
    "licence": "BSD-2-Clause",
    "name": "nginx",
-   "packages": [],
-   "reason": "Permissive; comes with the base image.",
+   "packages": [
+    "nginx"
+   ],
+   "reason": "Permissive; comes with the base image (the documentation image also upgrades the package itself so a security release is taken).",
    "role": "Web server for the front end and the documentation site.",
    "source": "https://nginx.org/",
    "use": "program"

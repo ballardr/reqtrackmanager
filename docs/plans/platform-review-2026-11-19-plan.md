@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 12 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 13 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-12 / 25 phases complete.
+13 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -22,7 +22,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [x] |
 | 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [x] |
 | 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [x] |
-| 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [ ] |
+| 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [x] |
 | 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [ ] |
 | 15 | Visual (WYSIWYG) Markdown editing | Spike with exit criteria, then the visual editor on `@tiptap/markdown`; shared toolbar with the policy editor | [ ] |
 | 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [ ] |
@@ -220,6 +220,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Server: `services/markdown_text.py` (markdown-it-py is already a dependency) for validation limits, plain-text extraction (list cells, search snippets, notifications) and the report walker.
 - Pin exact versions at least two weeks old; extend `check_licences.py` (phase 4) for the new packages.
 - Tests: hostile inputs (script tags, `javascript:` links, event handlers, oversized and deeply nested Mermaid), story and Playwright; bundle size check that Mermaid is not in the main chunk.
+- As built: `utils/markdownIt.ts` (markdown-it 15.0.3, pinned exactly) and `MarkdownView` (tokens to React elements; `#` is an `h3`; a refused link or an image stays as the text typed); `MermaidDiagram` and `utils/mermaidRender.ts` (Mermaid 12.3.0, pinned exactly; lazy, strict, SVG text labels, drawn one at a time, cached, image of a data URI through `safeSvgImage` with the font embedded as trusted CSS); `utils/mermaidRenderConfig.json` (version, font and limits, the contract the report renderer will share; a story checks the version against the pin and `test_markdown_text.py` checks the limit); the font is a 25 KB Latin subset of DejaVu Sans in `frontend/src/assets/fonts/` (licence policy updated); `MarkdownEditor` (Write with toolbar, Preview; `ToolbarButton` extracted from the policy editor, which now uses it) and `TextAreaField markdown`; `help.markdown`; `services/markdown_text.py` (`validate_markdown`, `markdown_limit`, `plain_text`, `mermaid_sources`; nesting limit 50 because the reader silently drops everything past 100); `scripts/check_mermaid_lazy.py` in the CI frontend job (the bundle check). The first consumer is the overview text widget, which dropped its own subset renderer (`safeMarkdown`). Not done here, by design: the report walker (the reports phase replaces `report_model`'s narrower inline reader with it) and any schema using `markdown_limit` (Decisions, next). See `docs/decisions.md`.
 
 ### Phase 14 — Decisions: Markdown and a long-form Document
 
