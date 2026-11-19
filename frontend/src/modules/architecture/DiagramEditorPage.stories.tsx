@@ -1615,7 +1615,8 @@ export const RoutingTheChosenConnectionDrawsItAsALineOfItsOwn: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const panel = await selectLine(canvas, /connection from Gateway to Orders/i);
-    await expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(1);
+    // Selecting a line redraws the edges, so the count is awaited rather than read in the same tick.
+    await waitFor(() => expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(1));
     await userEvent.click(panel.getByRole("button", { name: /^CON-002 / }));
     await userEvent.selectOptions(await panel.findByRole("combobox", { name: "Line starts at" }), "Top");
     await waitFor(() => expect(canvas.getAllByLabelText(/connection from Gateway to Orders/i)).toHaveLength(2));
