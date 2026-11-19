@@ -63,6 +63,8 @@ import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_PERSONAS_SECTION_KEY } from "./orgResourceKeys";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Persona activated.",
@@ -80,8 +82,10 @@ export function PersonaDetailPage() {
   const { showToast } = useToast();
   const scopedApi = projectId ? projectPersonaApi : orgPersonaApi;
   const scopeId = projectId ?? organizationId;
-  const backLink = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=persona` : "/org-overview";
-  const backLabel = projectId ? "People" : "Organisation overview";
+  const backLink = projectId
+    ? `/projects/${projectId}/modules/stakeholders/people?kind=persona`
+    : organizationId ? orgResourcesPath(organizationId, ORG_PERSONAS_SECTION_KEY) : "/org-resources";
+  const backLabel = projectId ? "People" : "Personas";
 
   const [persona, setPersona] = useState<Persona | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

@@ -36,12 +36,9 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * (Action Types, Custom Fields) on `ProjectAdminPage.tsx`, matching where
  * Action Types themselves already live, per explicit user direction.
  *
- * `orgAdminSections` (moved from `orgOverviewSections`):
- * `DecisionTemplatesPanel`, the org-scoped Decision Template library — an org admin manages the template library on
- * Org Management (`OrgAdminPage.tsx`), not the Org Dashboard
- * (`OrgOverviewPage.tsx`), per explicit user direction; `render({orgId})`
- * is identical either way since both pages share `OrgAdminSectionDef`'s
- * shape.
+ * `orgAdminSections`: `DecisionTemplatesPanel`, the org-scoped Decision Template library, managed by an org admin on
+ * Organisation Settings (`OrgAdminPage.tsx`) per explicit user direction; `render({orgId})` is identical on Org
+ * Resources, which shares `OrgAdminSectionDef`'s shape.
  *
  * `entityAccentColor`: intentionally **not** set. This module still
  * doesn't add a `requirementDetailSections` contribution (a requirement's
@@ -51,10 +48,10 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * Add it alongside whichever change does add such a list, not speculatively now.
  *
  * No `globalNavItems`/`standaloneWorkspaces`/`globalRoutes`/
- * `overviewWidgets`/`orgOverviewSections` — Decision Management has no
+ * `overviewWidgets`/`orgResourceSections` — Decision Management has no
  * cross-org standalone entity (a Decision only ever exists inside a
  * project, unlike Compliance's own Standards), and nothing
- * calls for a project-overview summary tile or an org-dashboard
+ * calls for a project-overview summary tile or an Org Resources
  * surface of its own.
  */
 export const moduleDefinition: TierAModuleDefinition = {

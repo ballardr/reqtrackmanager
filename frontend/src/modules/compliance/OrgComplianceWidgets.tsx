@@ -109,7 +109,7 @@ export function OrgComplianceSummaryWidget({ orgId }: { orgId: string }) {
         <MetricTile
           label="Projects subject to compliance"
           value={projectsSubjectToCompliance.length}
-          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project`}
+          to={`/orgs/${orgId}/resources/compliance-by-standard?groupBy=project`}
         />
         <StatCard label="Overall compliance" value={Math.round(overallCompliancePercentage)}>
           <span className="text-muted">%, weighted by applicable requirements</span>
@@ -117,32 +117,32 @@ export function OrgComplianceSummaryWidget({ orgId }: { orgId: string }) {
         <MetricTile
           label="Non-compliant projects"
           value={nonCompliantProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-by-standard?groupBy=project&state=non_compliant`}
+          to={`/orgs/${orgId}/resources/compliance-by-standard?groupBy=project&state=non_compliant`}
         />
         <MetricTile
           label="Projects with outstanding actions"
           value={outstandingActionProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=actions`}
+          to={`/orgs/${orgId}/resources/compliance-outstanding?category=actions`}
         />
         <MetricTile
           label="Projects with expired evidence"
           value={expiredEvidenceProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expired`}
+          to={`/orgs/${orgId}/resources/compliance-outstanding?category=evidence&validity=expired`}
         />
         <MetricTile
           label="Projects with evidence approaching expiry"
           value={expiringSoonEvidenceProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=evidence&validity=expiring_soon`}
+          to={`/orgs/${orgId}/resources/compliance-outstanding?category=evidence&validity=expiring_soon`}
         />
         <MetricTile
           label="Projects with overdue compliance reviews"
           value={overdueReviewProjects.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=reviews`}
+          to={`/orgs/${orgId}/resources/compliance-outstanding?category=reviews`}
         />
         <MetricTile
           label="Assessments awaiting approval"
           value={pending.length}
-          to={`/orgs/${orgId}/overview/compliance-outstanding?category=pending`}
+          to={`/orgs/${orgId}/resources/compliance-outstanding?category=pending`}
         />
     </div>
 

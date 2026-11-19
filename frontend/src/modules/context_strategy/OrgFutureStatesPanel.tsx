@@ -3,18 +3,12 @@ const NONE: FutureState[] = [];
 /**
  * Module: modules/context_strategy/OrgFutureStatesPanel
  *
- * The org-scoped equivalent of `ProjectFutureStatesPage.tsx` — an
- * organisation's own org-scoped Future State records (the
- * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
- * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
+ * The org-scoped equivalent of `ProjectFutureStatesPage.tsx` — an organisation's own org-scoped Future State records
+ * (the org/project scope discriminator), rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s
+ * `orgResourceSections`).
  *
- * **Placement, Decided by: Agent — follows `OrgStrategiesPanel.tsx`'s own
- * placement directly, for consistency.** No reason for Future State to differ
- * was found: an org-scoped Future State is the same kind of org-level
- * content a Future State Owner/Approver works with day to day that
- * `OrgStrategiesPanel.tsx`'s own docstring already reasons through for
- * Strategy, so it lands on `orgOverviewSections` (Org Dashboard) too, not
- * `orgAdminSections` (Org Management).
+ * Placement follows `OrgStrategiesPanel.tsx` (Decided by: Agent): org-level content its owners work with and projects
+ * reuse, so it sits in Org Resources.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

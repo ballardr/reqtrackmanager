@@ -168,6 +168,8 @@ import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;
+/** Longest joined role list the Role cell shows; beyond it the cell reads "N roles" so a row never widens the column. */
+const ROLES_SUMMARY_MAX_LENGTH = 28;
 
 type Row =
   | { kind: "member"; member: EffectiveMember }
@@ -494,12 +496,18 @@ export function ProjectMembersTable({
             <MultiSelectDropdown
               triggerLabel={strings.membersTable.rolesFor(group.org_group_name)}
               emptyLabel={strings.membersTable.noRoles}
+              summaryMaxLength={ROLES_SUMMARY_MAX_LENGTH}
+              summaryCount={strings.membersTable.nRoles}
               options={PROJECT_ROLES.map((role) => {
                 const checked = group.roles.includes(role);
+                // Same rule as a member row: the last role cannot be cleared, since the row would vanish.
+                const isOnlyRole = checked && group.roles.length === 1;
                 return {
                   value: role,
-                  label: PROJECT_ROLE_LABEL[role],
+                  label: PROJECT_ROLE_LABEL[role] + (isOnlyRole ? ` ${strings.membersTable.roleOnlyRoleSuffix}` : ""),
                   checked,
+                  disabled: isOnlyRole,
+                  title: isOnlyRole ? strings.membersTable.cannotRemoveOnlyRole : undefined,
                   optionLabel: checked
                     ? strings.membersTable.revokeRole(PROJECT_ROLE_LABEL[role], group.org_group_name)
                     : strings.membersTable.grantRole(PROJECT_ROLE_LABEL[role], group.org_group_name),
@@ -514,6 +522,8 @@ export function ProjectMembersTable({
           <MultiSelectDropdown
             triggerLabel={strings.membersTable.rolesFor(member.display_name)}
             emptyLabel={strings.membersTable.noRoles}
+            summaryMaxLength={ROLES_SUMMARY_MAX_LENGTH}
+            summaryCount={strings.membersTable.nRoles}
             options={[
               ...PROJECT_ROLES.map((role) => {
                 const sourcesForRole = member.sources.filter((s) => s.role === role);
@@ -521,12 +531,19 @@ export function ProjectMembersTable({
                 const kinds = new Set(sourcesForRole.map((s) => s.kind));
                 const purelyDirect = checked && kinds.size === 1 && kinds.has("direct_role");
                 const isLastManager = purelyDirect && role === "project_manager" && directRoleManagerCount <= 1;
-                const disabled = checked && (!purelyDirect || isLastManager);
+                // A member exists only through its role grants, so revoking the last one removes the row at once
+                // (and its subscriptions). Removal is the confirmed "Remove all access" action, never a side effect
+                // of clearing a role, so a person changing roles can clear roles first without losing the member.
+                const isOnlyAccess =
+                  purelyDirect && !member.sources.some((s) => !(s.role === role && s.kind === "direct_role"));
+                const disabled = checked && (!purelyDirect || isLastManager || isOnlyAccess);
                 const title = !disabled
                   ? undefined
                   : !purelyDirect
                     ? strings.membersTable.roleNotDirectlyRevocable
-                    : strings.membersTable.cannotRemoveLastManager;
+                    : isLastManager
+                      ? strings.membersTable.cannotRemoveLastManager
+                      : strings.membersTable.cannotRemoveOnlyRole;
                 // Inline suffix on the option's own label (not just its
                 // hover `title` above) so a greyed-out option states why
                 // at a glance — platform review 2026-09 follow-up; see
@@ -537,7 +554,9 @@ export function ProjectMembersTable({
                   ? ""
                   : !purelyDirect
                     ? ` ${strings.membersTable.roleByGroupSuffix}`
-                    : ` ${strings.membersTable.roleOnlyManagerSuffix}`;
+                    : isLastManager
+                      ? ` ${strings.membersTable.roleOnlyManagerSuffix}`
+                      : ` ${strings.membersTable.roleOnlyRoleSuffix}`;
                 return {
                   value: role,
                   label: PROJECT_ROLE_LABEL[role] + disabledSuffix,

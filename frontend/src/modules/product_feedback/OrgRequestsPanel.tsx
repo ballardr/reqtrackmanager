@@ -2,7 +2,7 @@
  * Module: modules/product_feedback/OrgRequestsPanel
  *
  * The organisation's request inbox: requests that arrived before anyone knew which project they belong to. It is a
- * group on the Organisation Overview (`module.ts`'s `orgOverviewSections`), the same placement and reasoning as the
+ * group on Org Resources (`module.ts`'s `orgResourceSections`), the same placement and reasoning as the
  * organisation-level Strategy list: it is day-to-day content, not configuration.
  *
  * Triage is moving a request into a project (on the request's page), which renumbers it there. An inbox request has

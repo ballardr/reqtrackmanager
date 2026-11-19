@@ -8,7 +8,7 @@
  * delete, the active toggle, and why a 409 on delete blocks rather than
  * offering reassignment).
  *
- * **Placement: `orgAdminSections` (Org Management), not `orgOverviewSections`
+ * **Placement: `orgAdminSections` (Org Management), not `orgResourceSections`
  * (Org Dashboard)** — a type vocabulary is a configuration table an org
  * admin manages, not day-to-day artefact content like an org-scoped
  * Strategy, the same distinction `DecisionTemplatesPanel.tsx` draws

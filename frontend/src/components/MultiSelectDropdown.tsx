@@ -53,6 +53,8 @@ export function MultiSelectDropdown({
   emptyLabel = "None",
   filterable = false,
   summaryLimit,
+  summaryMaxLength,
+  summaryCount,
   id,
   icon,
   addFromFilter,
@@ -67,6 +69,10 @@ export function MultiSelectDropdown({
   filterable?: boolean;
   /** Shows "N selected" on the trigger instead of every label once more than this many are checked. */
   summaryLimit?: number;
+  /** Shows a count instead of the labels once the joined labels would be longer than this many characters, so a trigger in a table cell never grows with its content. */
+  summaryMaxLength?: number;
+  /** Wording of that count (`3 roles`); defaults to "N selected". */
+  summaryCount?: (count: number) => string;
   /** `id` of the trigger, so a field caption can point at it (`FieldShell`'s `controlId`). */
   id?: string;
   /** Renders the trigger as an icon-only button (named and given a tooltip by `triggerLabel`) instead of a dropdown showing the summary. */
@@ -87,10 +93,11 @@ export function MultiSelectDropdown({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
   const checked = options.filter((o) => o.checked);
-  const summary =
-    summaryLimit !== undefined && checked.length > summaryLimit
-      ? strings.common.nSelected(checked.length)
-      : checked.map((o) => o.label).join(", ") || emptyLabel;
+  const labels = checked.map((o) => o.label).join(", ") || emptyLabel;
+  const collapse =
+    (summaryLimit !== undefined && checked.length > summaryLimit) ||
+    (summaryMaxLength !== undefined && labels.length > summaryMaxLength);
+  const summary = collapse ? (summaryCount ?? strings.common.nSelected)(checked.length) : labels;
   const needle = filter.trim().toLowerCase();
   const typed = filter.trim();
   const canAdd = !!addFromFilter && filterable && needle !== "" && !options.some((o) => o.label.trim().toLowerCase() === needle);
@@ -119,7 +126,7 @@ export function MultiSelectDropdown({
         type="button"
         className="input row"
         style={{ justifyContent: "space-between", flexWrap: "nowrap", cursor: "pointer" }}
-        title={summary}
+        title={labels}
         aria-label={triggerLabel}
         aria-haspopup="true"
         aria-expanded={open}

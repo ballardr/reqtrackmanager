@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 import { expect, type Page, test } from "@playwright/test";
 
-import { installCleanupHook, selectOrgOverviewGroup } from "./helpers";
+import { installCleanupHook, selectOrgResourcesGroup } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
 import { chooseExport } from "../listActions";
 
@@ -19,8 +19,8 @@ installCleanupHook();
  */
 
 async function openOrgPersonas(page: Page): Promise<void> {
-  await page.goto("/org-overview");
-  await selectOrgOverviewGroup(page, "Personas");
+  await page.goto("/org-resources");
+  await selectOrgResourcesGroup(page, "Personas");
 }
 
 test("the organisation's Personas export, an edited goal re-imports as an update, and a project's Persona stays out", async ({ page }) => {

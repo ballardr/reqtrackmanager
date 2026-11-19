@@ -3,34 +3,13 @@ const NONE: Strategy[] = [];
 /**
  * Module: modules/context_strategy/OrgStrategiesPanel
  *
- * The org-scoped equivalent of `ProjectStrategiesPage.tsx` — an
- * organisation's own org-scoped Strategy records (the org/project
- * scope discriminator), rendered as an `OrgOverviewPage.tsx` `ResourceMenu`
- * group (`module.ts`'s `orgOverviewSections`).
+ * The org-scoped equivalent of `ProjectStrategiesPage.tsx` — an organisation's own org-scoped Strategy records (the
+ * org/project scope discriminator), rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group (`module.ts`'s
+ * `orgResourceSections`).
  *
- * **Placement decision, Decided by: Agent:** checked this module's own
- * existing precedent before picking a surface — `modules/compliance/
- * module.ts` puts its org-wide *dashboards* (Compliance by standard,
- * Outstanding) on `orgOverviewSections` (Org Dashboard) and its
- * *management* surfaces (standards/action types CRUD) on the standalone
- * `/standards` nav tab; `modules/decisions/module.ts` puts its org-scoped
- * *template library* on `orgAdminSections` (Org Management), reasoning
- * explicitly that "an org admin manages the template library on Org
- * Management, not the Org Dashboard." An org-scoped **Strategy** is neither
- * a dashboard nor a pure admin-configuration table — it's org-level
- * *content* a Strategy Owner/Approver works with day to day, the closest
- * analogue being Decision Management's own Decision list (which has no org
- * scope to compare against directly). Landed on `orgOverviewSections`
- * (Org Dashboard) rather than `orgAdminSections` (Org Management):
- * `OrgOverviewPage.tsx` is this codebase's "what's the current state of
- * things in this organisation" surface (stats header, Compliance's own
- * dashboard panels), which fits an org-level Strategy list better than
- * Org Management's administration-focused framing (roles, modules, org
- * settings) — a Strategy Owner reviewing/approving Strategy is checking on
- * organisational state, not configuring the org. Revisit if a later
- * artefact type (e.g. Guiding Principle, also org/project
- * scoped) suggests a different, more consistent placement across all of
- * Context & Strategy's org-scoped surfaces.
+ * Placement (Decided by: Agent): an org Strategy is org-level content a Strategy Owner or Approver works with and
+ * projects reuse, so it sits in Org Resources, not in Organisation Settings (configuration) or the Organisation
+ * Overview (computed figures). Guiding Principle and Future State follow the same placement.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

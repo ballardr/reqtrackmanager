@@ -205,6 +205,7 @@ const en = {
     signOut: "Sign out",
     myReviews: "My reviews due",
     orgOverview: (orgCap: string) => `${orgCap} overview`,
+    orgResources: (orgCap: string) => `${orgCap} resources`,
     orgSettings: (orgCap: string) => `${orgCap} settings`,
     favourites: "Favourites",
     serverManagement: "Server management",
@@ -895,6 +896,12 @@ const en = {
     // `project_manager` role that can't be revoked because it's the
     // {project}'s last manager, not because it's group-sourced.
     roleOnlyManagerSuffix: "(only manager)",
+    // The role is the member's last source of access: clearing it would remove the member immediately, so it is
+    // unavailable until another role is granted; removal is the separate, confirmed "Remove all access" action.
+    roleOnlyRoleSuffix: "(only role)",
+    // Role cell summary once the role names no longer fit: the names stay in the trigger's tooltip and the list.
+    nRoles: (count: number) => `${count} roles`,
+    cannotRemoveOnlyRole: "This is the only role, so clearing it would remove the member. Grant another role first, or use Remove all access.",
     add: "Add",
     // Whole-row Source-column summary (platform review 2026-09 follow-up)
     // — replaces the old always-visible per-role provenance lines below
@@ -1304,7 +1311,7 @@ const en = {
     // that inner `Tabs` was itself a second, redundant navigation
     // mechanism nested inside the `ResourceMenu` group's own left-hand
     // menu, so the three tabs became three flat top-level
-    // `orgOverviewSections` entries instead (`ResourceMenu → Tabs →
+    // `orgResourceSections` entries instead (`ResourceMenu → Tabs →
     // content`, three deep, collapsed to `ResourceMenu → content`, two).
     groupComplianceDashboard: "Compliance dashboard",
     groupComplianceByStandard: "Compliance by standard",
@@ -4456,6 +4463,12 @@ const en = {
     validation: {
       metric: "Choose a metric.",
     },
+  },
+  // Org Resources: the page of records and content an organisation owns and shares with its projects.
+  orgResources: {
+    menuAria: "Organisation resources",
+    // Shown while no enabled module contributes a section; the page is built from the module registry.
+    empty: "No organisation resources are available. Resources appear here when a module that provides them is enabled.",
   },
   orgDashboards: {
     noun: "dashboard",

@@ -3,12 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
 
 /**
- * On the organisation overview, a section's Export trigger sits in the title row's action group beside Reports,
- * level with the Organisation settings link, and does not move when switching between sections.
+ * On Org Resources, a section's Export trigger sits in the title row's action group, level with the Organisation
+ * settings link, and does not move when switching between sections.
  */
 test("Export stays level with the title row's actions on every organisation compliance page", async ({ page }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  await page.goto("/org-overview");
+  await page.goto("/org-resources");
   await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
   await expect(page.getByRole("heading", { name: ORG_NAMES.alpha })).toBeVisible();
 

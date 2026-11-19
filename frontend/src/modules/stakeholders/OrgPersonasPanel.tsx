@@ -1,13 +1,11 @@
 /**
  * Module: modules/stakeholders/OrgPersonasPanel
  *
- * An organisation's own org-scoped Personas (one live,
- * shared record every project can see and score against), rendered as an
- * `OrgOverviewPage` `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
+ * An organisation's own org-scoped Personas (one live, shared record every project can see and score against),
+ * rendered as an `OrgResourcesPage` `ResourceMenu` group (`module.ts`'s `orgResourceSections`).
  *
- * Placement follows Guiding Principle's and Strategy's org panels
- * (Decided by: Agent): an org persona is org-level content its owners work
- * with day to day, not a configuration table — the Persona *types* are the
+ * Placement follows Guiding Principle's and Strategy's org panels (Decided by: Agent): an org persona is org-level
+ * content its owners work with and projects reuse, not a configuration table — the Persona *types* are the
  * configuration and live on `orgAdminSections`. The list/filter/create UI is
  * the shared `PersonaListView`.
  */

@@ -535,3 +535,61 @@ export const GroupRowAlongsideMembersAndSearch: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** A member whose only source is one direct role cannot have it cleared from the dropdown: the row exists only through
+ * its grants, so clearing it would remove the member at once (a person changing roles clears the old one after granting
+ * the new one). Removal stays the confirmed "Remove all access" action. Once a second role is held, the first is
+ * clearable again. */
+export const OnlyRoleCannotBeCleared: Story = {
+  args: {
+    members: [
+      {
+        user_id: "u-sam",
+        display_name: "Sam Ortiz",
+        email: "sam@example.com",
+        effective_role: "member",
+        sources: [
+          {
+            kind: "direct_role", role: "member", via_project_id: null, via_project_name: null,
+            via_mode: null, via_group_id: null, via_group_name: null,
+          },
+        ],
+        module_roles: [],
+      },
+    ],
+    invites: [],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Sam Ortiz's roles" }));
+    const only = within(document.body).getByRole("checkbox", { name: "Revoke Member from Sam Ortiz" });
+    await expect(only).toBeChecked();
+    await expect(only).toBeDisabled();
+    await expect(only).toHaveAttribute("title", expect.stringContaining("only role"));
+    await expect(within(document.body).getByRole("checkbox", { name: "Grant Stakeholder to Sam Ortiz" })).toBeEnabled();
+  },
+};
+
+/** A member with many roles reads "N roles" in the Role cell instead of widening the column; the names stay in the
+ * trigger's tooltip and the opened list. A short list still shows the names. */
+export const ManyRolesCollapseToCount: Story = {
+  args: {
+    members: [
+      { ...MEMBERS[0], user_id: "u-many", display_name: "Riley Park", email: "riley@example.com",
+        sources: (["project_manager", "project_administrator", "stakeholder", "member"] as const).map((role) => ({
+          kind: "direct_role" as const, role, via_project_id: null, via_project_name: null,
+          via_mode: null, via_group_id: null, via_group_name: null,
+        })),
+        module_roles: [] },
+      MEMBERS[1],
+    ],
+    invites: [],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const many = canvas.getByRole("button", { name: "Riley Park's roles" });
+    await expect(many).toHaveTextContent("4 roles");
+    await expect(many).toHaveAttribute("title", expect.stringContaining("Project administrator"));
+    await expect(canvas.getByRole("button", { name: "Priya Shah's roles" })).toHaveTextContent("Stakeholder");
+  },
+};

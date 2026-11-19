@@ -56,6 +56,8 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_STRATEGIES_SECTION_KEY } from "./orgResourceKeys";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -97,8 +99,7 @@ export function StrategyDetailPage() {
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/strategies`
-    : `/org-overview`;
-  const backLabel = projectId ? "Strategies" : "Organisation overview";
+    : organizationId ? orgResourcesPath(organizationId, ORG_STRATEGIES_SECTION_KEY) : "/org-resources";
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -209,7 +210,7 @@ export function StrategyDetailPage() {
         code={strategy.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="strategy" artefactId={strategy.id} /> : undefined}
         codeOwner={codeOwner}
-        back={{ to: backLink, label: backLabel }}
+        back={{ to: backLink, label: "Strategies" }}
         badges={
           <>
           <Badge tone={STRATEGY_STATUS_TONE[strategy.status]}>

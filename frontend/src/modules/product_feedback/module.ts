@@ -12,6 +12,7 @@ import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import { RequestDetailPage } from "./RequestDetailPage";
 import { EXTERNAL_REFERENCES_KEY } from "./useExternalReferences";
 import { SubmissionPolicyPanel } from "./SubmissionPolicyPanel";
+import { ORG_REQUEST_INBOX_SECTION_KEY } from "./orgResourceKeys";
 import { REQUEST_STATUS_LABEL } from "./types";
 
 /**
@@ -29,7 +30,7 @@ import { REQUEST_STATUS_LABEL } from "./types";
  * single project whose enabled-modules list could gate the route (the same reasoning as an organisation Strategy),
  * and `RequestDetailPage` is one scope-aware component serving both paths.
  *
- * `orgOverviewSections`: the inbox, as day-to-day content on the Organisation Overview rather than configuration.
+ * `orgResourceSections`: the inbox, as day-to-day content on Org Resources rather than configuration.
  * `orgAdminSections` / `projectAdminSections`: the scoring configuration, through core's shared scoring editors (the
  * module only names its scheme key), the project's submission setting, and the two classified lists (external systems,
  * request channels) through the shared type vocabulary panels.
@@ -66,9 +67,9 @@ export const moduleDefinition: TierAModuleDefinition = {
   globalRoutes: [
     { path: "/orgs/:organizationId/modules/product_feedback/requests/:requestId", element: createElement(RequestDetailPage) },
   ],
-  orgOverviewSections: [
+  orgResourceSections: [
     {
-      key: "product-feedback-inbox",
+      key: ORG_REQUEST_INBOX_SECTION_KEY,
       label: "Request inbox",
       render: ({ orgId }) => createElement(OrgRequestsPanel, { orgId }),
     },

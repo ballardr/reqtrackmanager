@@ -138,7 +138,7 @@ export const LoggedInNoProject: Story = {
   },
 };
 
-/** The Global section reads Projects, Files, Organisation overview, Organisation settings; the full
+/** The Global section reads Projects, Files, Organisation overview, Organisation resources, Organisation settings; the full
  * Notifications page has no rail entry (the header bell links to it), and with nothing due there is no
  * reviews entry. */
 export const GlobalSectionOrderWithNothingDue: Story = {
@@ -153,7 +153,9 @@ export const GlobalSectionOrderWithNothingDue: Story = {
     await waitFor(() => expect(api.getPage).toHaveBeenCalled());
     const rail = within(canvas.getByRole("navigation"));
     const names = rail.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
-    await expect(names.slice(names.indexOf("Projects"))).toEqual(["Projects", "Files", "Organisation overview", "Organisation settings"]);
+    await expect(names.slice(names.indexOf("Projects"))).toEqual([
+      "Projects", "Files", "Organisation overview", "Organisation resources", "Organisation settings",
+    ]);
     await expect(rail.queryByRole("link", { name: "My reviews due" })).not.toBeInTheDocument();
     await expect(rail.queryByRole("link", { name: "Notifications" })).not.toBeInTheDocument();
   },
@@ -170,8 +172,21 @@ export const ReviewsDueEntryShownWhenSomethingIsDue: Story = {
     await rail.findByRole("link", { name: "My reviews due" });
     const names = rail.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
     await expect(names.slice(names.indexOf("Projects"))).toEqual([
-      "Projects", "Files", "My reviews due", "Organisation overview", "Organisation settings",
+      "Projects", "Files", "My reviews due", "Organisation overview", "Organisation resources", "Organisation settings",
     ]);
+  },
+};
+
+/** The Organisation overview and Organisation resources entries each stay active on the page they open. */
+export const OrganisationOverviewAndResourcesEntriesAreActiveOnTheirPages: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/orgs/org-1/resources/some-section")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const rail = within(within(canvasElement).getByRole("navigation"));
+    await expect(await rail.findByRole("link", { name: "Organisation resources" })).toHaveClass("active");
+    await expect(rail.getByRole("link", { name: "Organisation overview" })).not.toHaveClass("active");
   },
 };
 

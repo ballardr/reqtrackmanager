@@ -62,6 +62,8 @@ import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_STAKEHOLDERS_SECTION_KEY } from "./orgResourceKeys";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -80,8 +82,10 @@ export function StakeholderDetailPage() {
   const scopedApi = projectId ? projectStakeholderApi : orgStakeholderApi;
   const groupApi = projectId ? projectStakeholderGroupApi : orgStakeholderGroupApi;
   const scopeId = projectId ?? organizationId;
-  const listPath = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder` : "/org-overview";
-  const backLabel = projectId ? "People" : "Organisation overview";
+  const listPath = projectId
+    ? `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder`
+    : organizationId ? orgResourcesPath(organizationId, ORG_STAKEHOLDERS_SECTION_KEY) : "/org-resources";
+  const backLabel = projectId ? "People" : "Stakeholders";
 
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

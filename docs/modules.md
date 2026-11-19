@@ -1422,6 +1422,15 @@ The core types an organisation dashboard offers are the metric tile, gauge, char
 
 Pages are `organization_dashboards` rows with their viewers in `organization_dashboard_viewers`. The built-in Overview page exists before it is stored and is stored on its first edit; it cannot be renamed, moved or deleted. A page with no viewers is shown to every member, otherwise to the viewers (a user, or an organisation group by effective membership) and to organisation administrators, who always see and change every page. One predicate (`org_dashboards.can_view`) decides the list, the page read and the figures request, and a page the caller may not see is a 404 on every route. The viewer reference is a mandatory principal reference, so deleting a group that restricts a page needs a replacement and never widens who may see it. An import never widens a page either: a viewer that cannot be matched stands as the importing user. Pages travel in the organisation bundle (`organization_dashboards`, viewers by email or group name). A page is organisation-scoped with no project analogue, so there is no nested-project fallback; the route segment `dashboard-<id>` is reserved for pages, so a module section key never starts with it.
 
+### 4l11. Org Resources sections
+
+Org Resources (`/orgs/:orgId/resources/:group?/:section?`, `pages/OrgResourcesPage.tsx`) is where an organisation keeps what it owns and shares with its projects, as opposed to Organisation Settings (configuration) and the Organisation Overview (computed figures). A module adds a section through one declaration, never an edit to a core file: `TierAModuleDefinition.orgResourceSections[{key, label, subComponent?, group?, render({orgId})}]`, the shape of `orgAdminSections`.
+
+- The page offers a section only while the organisation has the module enabled and, when the section names a `subComponent`, that sub-component on (readable by administrators; where the caller cannot read it the section is offered and its own endpoints decide). The page decides nothing about access: each section's endpoints enforce their permission.
+- Keys are unique across modules and distinct from the page's own core groups (`CORE_ORG_RESOURCE_GROUP_KEYS`); a colliding section is dropped with a console error rather than shadowing another. Sections sharing a `group` become one expandable entry (`modules/adminMenu.ts`).
+- A record opened from a section links back to it with `orgResourcesPath(orgId, sectionKey)`, keeping the section keys in a small module file (`orgResourceKeys.ts`) so a detail page does not import the module definition.
+- `/orgs/:orgId/overview/<section key>` redirects to the section's Resources address, keeping the query string and hash, so bookmarks and saved links keep working.
+
 ### 4l3. Components on every record
 
 Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.

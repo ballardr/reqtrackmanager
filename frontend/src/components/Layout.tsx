@@ -1,4 +1,4 @@
-import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, Library, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -294,7 +294,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
                 single-org/multi-org auto-redirect convention as its entry
                 point, the same way `/orgs` already does for org admin. */}
-            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
+            <NavRailLink to="/org-overview" exact alsoActiveOn={/^\/orgs\/[^/]+\/overview(\/|$)/} label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
+            {/* "Org Resources" — the records and content the organisation shares with its projects; its sections
+                are contributed through the module registry (`orgResourceSections`), so this entry names no module. */}
+            <NavRailLink to="/org-resources" exact alsoActiveOn={/^\/orgs\/[^/]+\/resources(\/|$)/} label={strings.nav.orgResources(orgLabelCap)} icon={<Library size={16} />} railCollapsed={railIconOnly} />
             {/* The only path to org administration: /orgs already auto-redirects
                 straight to a single org's admin page, or lists every org a
                 user belongs to otherwise — it just had no rail entry before

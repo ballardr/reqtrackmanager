@@ -22,7 +22,7 @@ import { api } from "../api/client";
 import type { Organization, ProjectListItem } from "../api/types";
 import type { EntitySwitcherOption } from "../components/EntitySwitcher";
 
-export async function loadOrgSwitcherOptions(target: "overview" | "admin"): Promise<EntitySwitcherOption[]> {
+export async function loadOrgSwitcherOptions(target: "overview" | "resources" | "admin"): Promise<EntitySwitcherOption[]> {
   const orgs = await api.get<Organization[]>("/api/v1/orgs?mine=true");
   return orgs.filter((o) => o.is_active).map((o) => ({ id: o.id, label: o.name, href: `/orgs/${o.id}/${target}` }));
 }

@@ -38,7 +38,7 @@ function mockApis(overrides: {
   });
 }
 
-const DEFAULT_PATH = "/orgs/org-1/overview/compliance-outstanding";
+const DEFAULT_PATH = "/orgs/org-1/resources/compliance-outstanding";
 
 const meta: Meta<typeof OrgComplianceOutstandingPanel> = {
   title: "Modules/Compliance/OrgComplianceOutstandingPanel",

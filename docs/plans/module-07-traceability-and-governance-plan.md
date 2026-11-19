@@ -341,6 +341,13 @@ enforced" (Q13). Traceability exposes status and never blocks.
 **Why:** the preferred behaviour is to prevent formal approval or baselining, not to block
 creation (§20).
 
+**Input from the Platform Review plan (Phase 19, 2026-11-19):** a requirement made independent from an
+alias is a draft that carries copies of the original's links. The status computation must be able to
+show a record whose verification or validation links are all *carried over* as "verification
+inherited", not as verified (the same rule as an approved waiver in Phase 13). The link carries a
+note naming the source record; the status reads it through a generic link field, never a
+requirement-specific case.
+
 ## Phase 13 — Traceability exceptions (`traceability_exceptions`)
 
 **Scope** (§22): `TraceabilityException` as a registered artefact type (Q15): record, rule,

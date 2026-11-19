@@ -108,17 +108,14 @@ test.describe("Organisation Overview page", () => {
   });
 
   /**
-   * The stats header is folded into a real, always-present
-   * "Overview" `ResourceMenu` group, and `ResourceMenu` itself hides its own
-   * menu-strip chrome whenever there's nothing to switch between. A module
-   * that is enabled for the org contributes overview groups of its own, and
-   * the seeded orgs differ in which modules they have on (Gamma has
-   * Stakeholders & Personas, for example), so this runs in a disposable org
-   * whose only module is Compliance (default on) and toggles that off itself,
-   * rather than mutating a shared seed org — a failure between the toggle and
-   * the restore used to leave Compliance off for every later spec in the org.
+   * The Overview is dashboards only, so its menu chrome stays hidden while there is one dashboard. A module enabled
+   * for the organisation contributes sections to Org Resources (`/orgs/:orgId/resources`), and the Overview's earlier
+   * address for such a section redirects there with its query string. The seeded orgs differ in which modules they
+   * have on (Gamma has Stakeholders & Personas, for example), so this runs in a disposable org whose only module is
+   * Compliance (default on) and toggles that off itself, rather than mutating a shared seed org — a failure between
+   * the toggle and the restore used to leave Compliance off for every later spec in the org.
    */
-  test("ResourceMenu chrome is hidden with compliance disabled, shown with it enabled", async ({ page, request }) => {
+  test("Org Resources lists Compliance's sections only while it is enabled, and the Overview address redirects there", async ({ page, request }) => {
     const suffix = Date.now();
     const adminEmail = `e2e-overview-admin-${suffix}@example.com`;
     const api = "http://localhost:8000/api/v1";
@@ -141,22 +138,33 @@ test.describe("Organisation Overview page", () => {
 
     await page.goto("/org-overview");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);
-    // Scoped to `.resource-menu-nav` and matched `exact` — a bare `getByRole
-    // ("link", { name: "Overview" })` also matches `Layout.tsx`'s persistent
-    // "Organisation overview" nav-rail link (case-insensitive substring),
-    // which is unrelated to the `ResourceMenu` group chrome this asserts on.
+    // Scoped to `.resource-menu-nav`: the nav rail also has an "Organisation overview" link.
     await expect(page.locator(".resource-menu-nav")).toHaveCount(0);
     await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
+
+    // With the module off, Org Resources has nothing to list and says so; the old section address returns here too.
+    await page.goto("/org-resources");
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources$/);
+    await expect(page.getByText("No organisation resources are available.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Compliance by standard", exact: true })).toHaveCount(0);
+    await page.goto(`/orgs/${org.id}/resources/compliance-by-standard`);
+    await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/resources$`));
 
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
     await setOrgModuleAvailability(page, "Compliance", initial);
 
-    await page.goto("/org-overview");
-    await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview$/);
-    const overviewLink = page.locator(".resource-menu-nav").getByRole("link", { name: "Overview", exact: true });
-    await expect(overviewLink).toBeVisible();
-    await expect(overviewLink).toHaveAttribute("aria-current", "page");
-    await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
+    await page.goto("/org-resources");
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources$/);
+    const standardsLink = page.locator(".resource-menu-nav").getByRole("link", { name: "Compliance by standard", exact: true });
+    await expect(standardsLink).toBeVisible();
+    await expect(standardsLink).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation").getByRole("link", { name: "Organisation resources" })).toHaveClass(/\bactive\b/);
+
+    // An earlier Overview address of a section redirects to Org Resources, keeping its query string.
+    await page.goto(`/orgs/${org.id}/overview/compliance-outstanding?category=actions`);
+    await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/resources/compliance-outstanding\\?category=actions$`));
+    await expect(page.locator(".resource-menu-nav").getByRole("link", { name: "Outstanding compliance items", exact: true }))
+      .toHaveAttribute("aria-current", "page");
   });
 });

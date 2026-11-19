@@ -330,17 +330,15 @@ export interface TierAModuleDefinition {
    * place, size, hide or remove. Declared on the backend too
    * (`ModuleDefinition.overview_widgets`). Omitted (or empty) for a module with no overview widget of its own. */
   overviewWidgets?: ProjectOverviewWidgetDef[];
-  /** This module's `ResourceMenu` groups on `pages/OrgOverviewPage.tsx`
-   * (the "Organisation Overview"
-   * page), below that page's own core stats header. Reuses
-   * `OrgAdminSectionDef`'s exact `{key, label, render({orgId})}` shape —
-   * the two pages need identical things from a module (a `ResourceMenu`
-   * group's own menu item plus the content it renders) — rather than
-   * declaring a second, identically-shaped interface. `OrgOverviewPage.tsx`
-   * filters these to this org's actually-enabled modules the same way
-   * `OrgAdminPage.tsx` already filters `orgAdminSections`. Omitted (or
-   * empty) for a module with no org-overview surface of its own. */
-  orgOverviewSections?: OrgAdminSectionDef[];
+  /** This module's `ResourceMenu` sections on `pages/OrgResourcesPage.tsx` (Org Resources): the records and content
+   * an organisation owns and shares with its projects (an organisation Strategy list, a request inbox, a status table
+   * over every project). Reuses `OrgAdminSectionDef`'s `{key, label, subComponent?, group?, render({orgId})}` shape —
+   * both pages need the same from a module, a menu entry and the content to draw — and is filtered to the
+   * organisation's enabled modules and sub-components the same way `OrgAdminPage.tsx` filters `orgAdminSections`.
+   * Keys must be unique across modules and distinct from the page's own core groups. Omitted (or empty) for a module
+   * with no organisation-owned content. Configuration (vocabularies, scoring, defaults) stays in `orgAdminSections`;
+   * computed figures are `orgOverviewWidgets`. */
+  orgResourceSections?: OrgAdminSectionDef[];
   /** This module's widgets for an organisation's overview dashboards, offered only while the organisation has the
    * module enabled. Omitted (or empty) for a module with no organisation-level figures of its own. */
   orgOverviewWidgets?: OrgOverviewWidgetDef[];

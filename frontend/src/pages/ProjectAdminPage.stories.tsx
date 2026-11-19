@@ -1212,7 +1212,8 @@ export const MembersTabToggleDirectRoleOff: Story = {
       effectiveMembers: [
         {
           user_id: "u1", display_name: "Alex Morgan", email: "alex@example.com", effective_role: "stakeholder",
-          sources: [{ kind: "direct_role", role: "stakeholder", via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null }],
+          // Two direct roles: the last remaining one is not clearable, so the member would otherwise vanish.
+          sources: (["stakeholder", "member"] as const).map((role) => ({ kind: "direct_role" as const, role, via_project_id: null, via_project_name: null, via_mode: null, via_group_id: null, via_group_name: null })),
           module_roles: [],
         },
       ],

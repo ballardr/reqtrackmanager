@@ -8,7 +8,7 @@ installCleanupHook();
 
 /**
  * Job to be done: the Global section of the navigation rail lists Projects, Files, any module entries, Organisation
- * overview and Organisation settings in that order; the Notifications page has no entry there (the header bell opens it);
+ * overview, Organisation resources and Organisation settings in that order; the Notifications page has no entry there (the header bell opens it);
  * and "My reviews due" appears only once a review is due for the person.
  *
  * Disposable organisation and administrator via `setUpOrg`, so no review is due at the start; the due review is created
@@ -27,7 +27,7 @@ test.describe("navigation rail: Global section", () => {
       await expect(rail.getByRole("link", { name: "Notifications" })).toHaveCount(0);
       const names = await railNames();
       expect(names.slice(names.indexOf("Projects"), names.indexOf("Projects") + 2)).toEqual(["Projects", "Files"]);
-      expect(names.slice(-2)).toEqual(["Organisation overview", "Organisation settings"]);
+      expect(names.slice(-3)).toEqual(["Organisation overview", "Organisation resources", "Organisation settings"]);
     });
 
     await test.step("the header bell still reaches the full Notifications page", async () => {
@@ -58,7 +58,7 @@ test.describe("navigation rail: Global section", () => {
       // personal items, so the order is asserted around them rather than assuming none are present.
       const fromFiles = names.slice(names.indexOf("Files"));
       expect(fromFiles[0]).toBe("Files");
-      expect(fromFiles.slice(-3)).toEqual(["My reviews due", "Organisation overview", "Organisation settings"]);
+      expect(fromFiles.slice(-4)).toEqual(["My reviews due", "Organisation overview", "Organisation resources", "Organisation settings"]);
     });
   });
 });

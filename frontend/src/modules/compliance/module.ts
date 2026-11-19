@@ -46,19 +46,17 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * `orgAdminSections` is empty. Standards, action types and mapping types
  * management lives on the top-level `/standards` nav-rail tab
  * (`StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
- * `ComplianceSettingsPage.tsx`), and the cross-project view lives on the
- * Organisation Overview page (`orgOverviewSections`/`orgOverviewWidgets`
- * below). Labels are read from `i18n/strings.ts`'s own `t()` (the same static
+ * `ComplianceSettingsPage.tsx`), and the cross-project view lives on Org Resources (`orgResourceSections`) and as
+ * Organisation Overview widgets (`orgOverviewWidgets`) below. Labels are read from `i18n/strings.ts`'s own `t()` (the same static
  * English table `useStrings()` layers terminology substitution on top of)
  * rather than duplicated as literals here — none of this module's group
  * labels contain `{term}` tokens, so the plain, unsubstituted `t()` call
  * (this file isn't a component and can't call the `useStrings()` hook)
- * already returns the exact same string `OrgAdminPage`/`OrgOverviewPage`
+ * already returns the exact same string `OrgAdminPage`/`OrgResourcesPage`
  * would resolve for every other group's label.
  *
- * `orgOverviewSections` (`modules/types.ts`): two flat top-level entries
- * (Compliance by standard / Outstanding) beside the overview's dashboard pages in
- * `pages/OrgOverviewPage.tsx`, each rendering its
+ * `orgResourceSections` (`modules/types.ts`): two flat top-level entries
+ * (Compliance by standard / Outstanding) on `pages/OrgResourcesPage.tsx`, each rendering its
  * panel component directly, using the same `{key, label, render({orgId})}`
  * shape `orgAdminSections` established. There is deliberately no inner `Tabs`:
  * `ResourceMenu → Tabs → content` was one navigation layer too many (the style
@@ -152,7 +150,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     { path: "/standards/settings/:orgId/:group?", element: createElement(ComplianceSettingsPage) },
     { path: "/standards/:standardId/:section?/:versionId?", element: createElement(StandardWorkspacePage) },
   ],
-  orgOverviewSections: [
+  orgResourceSections: [
     {
       key: "compliance-by-standard",
       label: strings.orgAdmin.groupComplianceByStandard,

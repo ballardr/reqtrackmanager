@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
+import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgResourcesGroup } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
  * Job to be done: the org-level Organisation Compliance View + Dashboard (§22/§23): the compliance summary is a
  * widget on the Organisation Overview's dashboard, and "Compliance by standard" / "Outstanding compliance items" are
- * two flat `ResourceMenu` groups on the core "Organisation Overview" page (`/orgs/:orgId/overview`) — see
- * `frontend/src/modules/compliance/module.ts`'s `orgOverviewSections` for
+ * two flat `ResourceMenu` groups on the core "Org Resources" page (`/orgs/:orgId/resources`) — see
+ * `frontend/src/modules/compliance/module.ts`'s `orgResourceSections` for
  * how these moved off `OrgAdminPage.tsx` (where they originally lived, as
  * one combined "Compliance overview" group), and for
  * why that group's internal `Tabs` were collapsed into three flat
@@ -107,7 +107,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     const nonCompliantTile = page.getByRole("link", { name: /Non-compliant projects/ });
     await expect(nonCompliantTile).toBeVisible();
     await nonCompliantTile.click();
-    await expect(page).toHaveURL(/\/orgs\/[^/]+\/overview\/compliance-by-standard\?groupBy=project&state=non_compliant/);
+    await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources\/compliance-by-standard\?groupBy=project&state=non_compliant/);
     const expandProjectButton = page.getByRole("button", { name: `Expand standards for ${PROJECT_NAMES.alpha1}`, exact: true });
     await expect(expandProjectButton).toBeVisible();
     await expandProjectButton.click();
@@ -118,7 +118,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
 
     // --- download the organisation-wide compliance report,
     //     behind the "Export" popover trigger (Principle 11), in the title row of the Compliance sections.
-    await selectOrgOverviewGroup(page, "Compliance by standard");
+    await selectOrgResourcesGroup(page, "Compliance by standard");
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("menuitem", { name: "Download PDF report" }).click();
@@ -127,9 +127,9 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
 
     // --- "Compliance by standard" group: the standard groups the project,
     //     and drilling down opens the project's own Compliance page. The section is already open from the export step,
-    //     with the project pivot the summary tile linked to, so go through the Overview to open it fresh.
-    await selectOrgOverviewGroup(page, "Overview");
-    await selectOrgOverviewGroup(page, "Compliance by standard");
+    //     with the project pivot the summary tile linked to, so go through the other section to open it fresh.
+    await selectOrgResourcesGroup(page, "Outstanding compliance items");
+    await selectOrgResourcesGroup(page, "Compliance by standard");
 
     // This panel's own Export trigger carries its active Standard
     // filter as a query param too — "export what I'm looking at" applies
@@ -154,9 +154,9 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
 
     // --- Outstanding group: the non-compliant requirement is listed,
     //     tagged with the project it belongs to.
-    await page.goto("/org-overview");
+    await page.goto("/org-resources");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgOverviewGroup(page, "Outstanding compliance items");
+    await selectOrgResourcesGroup(page, "Outstanding compliance items");
     await expect(page.getByText(requirementName)).toBeVisible();
     await expect(page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).first()).toBeVisible();
   });
@@ -224,9 +224,9 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await assignStandard(PROJECT_NAMES.alpha1, "v1.0");
     await assignStandard(PROJECT_NAMES.alpha2, "v2.0");
 
-    await page.goto("/org-overview");
+    await page.goto("/org-resources");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgOverviewGroup(page, "Compliance by standard");
+    await selectOrgResourcesGroup(page, "Compliance by standard");
     await page.getByRole("button", { name: new RegExp(`Expand projects for ${reference}`) }).click();
 
     // More than one version behind this standard — each is its own
@@ -332,9 +332,9 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await page.getByRole("button", { name: "Close" }).click();
 
     // --- Outstanding group: sidebar layout, then the new filters.
-    await page.goto("/org-overview");
+    await page.goto("/org-resources");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgOverviewGroup(page, "Outstanding compliance items");
+    await selectOrgResourcesGroup(page, "Outstanding compliance items");
     await expect(page.getByText(childRequirementName)).toBeVisible();
 
     // 40a: the filter panel is the right-hand sidebar, not a full-width top

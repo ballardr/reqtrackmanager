@@ -50,6 +50,8 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_FUTURE_STATES_SECTION_KEY } from "./orgResourceKeys";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -92,8 +94,7 @@ export function FutureStateDetailPage() {
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/future-states`
-    : `/org-overview`;
-  const backLabel = projectId ? "Future States" : "Organisation overview";
+    : organizationId ? orgResourcesPath(organizationId, ORG_FUTURE_STATES_SECTION_KEY) : "/org-resources";
 
   const [futureState, setFutureState] = useState<FutureState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -204,7 +205,7 @@ export function FutureStateDetailPage() {
         code={futureState.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="future_state" artefactId={futureState.id} /> : undefined}
         codeOwner={codeOwner}
-        back={{ to: backLink, label: backLabel }}
+        back={{ to: backLink, label: "Future States" }}
         badges={
           <>
           <Badge tone={FUTURE_STATE_STATUS_TONE[futureState.status]}>

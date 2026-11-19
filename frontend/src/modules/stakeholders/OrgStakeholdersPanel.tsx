@@ -1,13 +1,11 @@
 /**
  * Module: modules/stakeholders/OrgStakeholdersPanel
  *
- * An organisation's own org-scoped Stakeholders (one
- * live, shared record every project can see), rendered as an
- * `OrgOverviewPage` `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
+ * An organisation's own org-scoped Stakeholders (one live, shared record every project can see), rendered as an
+ * `OrgResourcesPage` `ResourceMenu` group (`module.ts`'s `orgResourceSections`).
  *
- * Placement mirrors `OrgPersonasPanel` (Decided by: Agent): an org stakeholder
- * is org-level content its owners work with day to day, not a configuration
- * table — the Stakeholder *types* and scoring levels are the configuration and
+ * Placement mirrors `OrgPersonasPanel` (Decided by: Agent): an org stakeholder is org-level content its owners work
+ * with and projects reuse, not a configuration table — the Stakeholder *types* and scoring levels are the configuration and
  * live on `orgAdminSections`. The list/filter/create UI is the shared
  * `StakeholderListView`.
  */

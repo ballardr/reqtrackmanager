@@ -25,6 +25,7 @@ import { ProjectPersonaTypesPanel } from "./ProjectPersonaTypesPanel";
 import { ProjectStakeholderTypesPanel } from "./ProjectStakeholderTypesPanel";
 import { ProjectStakeholderGroupsPage } from "./ProjectStakeholderGroupsPage";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
+import { ORG_PERSONAS_SECTION_KEY, ORG_STAKEHOLDER_GROUPS_SECTION_KEY, ORG_STAKEHOLDERS_SECTION_KEY } from "./orgResourceKeys";
 import { StakeholderGroupsPanel } from "./StakeholderGroupsPanel";
 import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
 
@@ -43,8 +44,8 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  *   used for an org record opened from a project, so a persona's weight
  *   override stays reachable.
  * - `globalRoutes`: the org-scoped detail pages, for an org record opened from
- *   the org dashboard (no single project's enabled list could gate them).
- * - `orgOverviewSections`: the org Persona and Stakeholder lists and the
+ *   Org Resources (no single project's enabled list could gate them).
+ * - `orgResourceSections`: the org Persona and Stakeholder lists and the
  *   Stakeholder group manager (org-level content); the project's own group
  *   manager is the `groups` route.
  * - `reportViews`: the custom on-screen views of reports S1 (the power/interest grid)
@@ -127,19 +128,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     s1: { component: PowerInterestGridReportView, ownedParams: ["group_id", "group_by"] },
     s4: { component: EngagementStalenessReportView, ownedParams: ["group_id", "group_by"] },
   },
-  orgOverviewSections: [
+  orgResourceSections: [
     {
-      key: "stakeholders-org-personas",
+      key: ORG_PERSONAS_SECTION_KEY,
       label: "Personas",
       render: ({ orgId }) => createElement(OrgPersonasPanel, { orgId }),
     },
     {
-      key: "stakeholders-org-stakeholders",
+      key: ORG_STAKEHOLDERS_SECTION_KEY,
       label: "Stakeholders",
       render: ({ orgId }) => createElement(OrgStakeholdersPanel, { orgId }),
     },
     {
-      key: "stakeholders-org-groups",
+      key: ORG_STAKEHOLDER_GROUPS_SECTION_KEY,
       label: "Stakeholder Groups",
       render: ({ orgId }) => createElement(StakeholderGroupsPanel, { organizationId: orgId }),
     },

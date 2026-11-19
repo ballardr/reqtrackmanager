@@ -22,6 +22,7 @@ import { OrgAdminPage } from "./pages/OrgAdminPage";
 import { OrgListPage } from "./pages/OrgListPage";
 import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { OrgOverviewPage } from "./pages/OrgOverviewPage";
+import { OrgResourcesPage } from "./pages/OrgResourcesPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { HelpRedirectPage } from "./pages/HelpRedirectPage";
 import { ReportRunPage } from "./pages/ReportRunPage";
@@ -144,6 +145,10 @@ function ProtectedRoutes() {
             same way `/orgs` already does for `/orgs/:orgId/admin`. */}
         <Route path="/org-overview" element={<OrgListPage target="overview" />} />
         <Route path="/orgs/:orgId/overview/:group?" element={<OrgOverviewPage />} />
+        {/* "Org Resources" — what the organisation owns and shares with its projects; its sections come from the
+            module registry (`orgResourceSections`). Same single-org/multi-org entry convention. */}
+        <Route path="/org-resources" element={<OrgListPage target="resources" />} />
+        <Route path="/orgs/:orgId/resources/:group?/:section?" element={<OrgResourcesPage />} />
         {/* Every installed module's own always-mounted top-level routes
             (`TierAModuleDefinition.globalRoutes`)
             — unlike `buildModuleRoutes` above (project-scoped,

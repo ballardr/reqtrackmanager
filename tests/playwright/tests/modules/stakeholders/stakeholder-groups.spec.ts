@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook, selectOrgOverviewGroup, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
+import { installCleanupHook, selectOrgResourcesGroup, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -37,8 +37,8 @@ const addMember = (page: Page, orgId: string, headers: Headers, groupId: string,
   post(page, `${orgBase(orgId)}/stakeholder-groups/${groupId}/members`, headers, { stakeholder_id: stakeholderId });
 
 async function openOrgGroups(page: Page) {
-  await page.goto("/org-overview");
-  await selectOrgOverviewGroup(page, "Stakeholder Groups");
+  await page.goto("/org-resources");
+  await selectOrgResourcesGroup(page, "Stakeholder Groups");
 }
 
 test.describe("Stakeholders & Personas: Stakeholder groups", () => {

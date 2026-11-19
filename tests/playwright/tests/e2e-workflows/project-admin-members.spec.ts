@@ -84,16 +84,27 @@ test.describe("project admin: Members section", () => {
       await page.keyboard.press("Escape");
     });
 
-    await test.step("toggling that same direct role off calls DELETE .../roles and the checkbox unchecks", async () => {
+    await test.step("the member's only role cannot be cleared (it would remove the member at once); Remove all access is the explicit way", async () => {
       const rolesButton = page.getByRole("button", { name: `${PERSONAS.memberAlphaBeta.name}'s roles` });
       await rolesButton.click();
       const rolesGroup = page.getByRole("group", { name: `${PERSONAS.memberAlphaBeta.name}'s roles` });
       const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Stakeholder from ${PERSONAS.memberAlphaBeta.name}`) });
+      await expect(checkbox).toBeChecked();
+      await expect(checkbox).toBeDisabled();
+      await expect(checkbox).toHaveAttribute("title", /only role/);
+
+      // Granting another role first makes the original clearable, and the member stays listed throughout.
+      await rolesGroup.getByRole("checkbox", { name: new RegExp(`Grant Member to ${PERSONAS.memberAlphaBeta.name}`) }).click();
       await expect(checkbox).toBeEnabled();
       await checkbox.click();
+      await expect(rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Stakeholder from`) })).toHaveCount(0);
+      await expect(page.getByRole("cell", { name: PERSONAS.memberAlphaBeta.name, exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
-      // Re-fetches effective-members after the toggle — the row drops out
-      // entirely once its only role/source is gone.
+
+      await page.getByRole("button", { name: `${PERSONAS.memberAlphaBeta.name}'s actions` }).click();
+      await page.getByRole("menuitem", { name: "Remove all access" }).click();
+      await page.getByRole("button", { name: "Remove access" }).click();
+      // Re-fetches effective-members after the removal: the row drops out once its only role/source is gone.
       await expect(page.getByRole("cell", { name: PERSONAS.memberAlphaBeta.name, exact: true })).toHaveCount(0);
     });
 

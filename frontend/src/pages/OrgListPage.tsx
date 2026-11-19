@@ -28,8 +28,9 @@ const strings = t();
  * `/org-overview` reuses the exact same component (`target="overview"`)
  * for the new "Organisation Overview" page's entry point, rather than
  * duplicating this fetch-then-redirect-or-list logic a second time.
- * `/org-files` (`target="files"`) does the same for the organisation Files
- * page, so the navigation rail never needs an organisation id.
+ * `/org-files` (`target="files"`) and `/org-resources` (`target="resources"`)
+ * do the same for the organisation Files and Org Resources pages, so the
+ * navigation rail never needs an organisation id.
  *
  * Rebuilt onto the shared `DirectoryTable` + `FilterPanel` (search) shell
  * every other directory in the app uses — this used to be a bare
@@ -45,7 +46,7 @@ const strings = t();
  * query params purely for this page. Revisit server-side if a deployment's
  * "orgs one person belongs to" count ever grows large enough to matter.
  */
-export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview" | "files" }) {
+export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview" | "resources" | "files" }) {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   // The search lives in the URL so the list comes back as it was left after a visit to a record.
   const [search, setSearch] = useUrlText("q");
@@ -68,7 +69,13 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
   }
 
   const heading =
-    target === "overview" ? `${orgLabelCap} overview` : target === "files" ? strings.files.orgTitle(orgLabelCap) : "Org Management";
+    target === "overview"
+      ? `${orgLabelCap} overview`
+      : target === "resources"
+        ? strings.nav.orgResources(orgLabelCap)
+        : target === "files"
+          ? strings.files.orgTitle(orgLabelCap)
+          : "Org Management";
 
   const needle = search.trim().toLowerCase();
   const filteredOrgs = needle ? orgs.filter((o) => o.name.toLowerCase().includes(needle)) : orgs;

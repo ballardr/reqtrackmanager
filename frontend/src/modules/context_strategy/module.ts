@@ -24,6 +24,7 @@ import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import { ProjectGuidingPrinciplesPage } from "./ProjectGuidingPrinciplesPage";
 import { ProjectOpenQuestionsPage } from "./ProjectOpenQuestionsPage";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
+import { ORG_FUTURE_STATES_SECTION_KEY, ORG_GUIDING_PRINCIPLES_SECTION_KEY, ORG_STRATEGIES_SECTION_KEY } from "./orgResourceKeys";
 import { ProjectPainPointTypesPanel } from "./ProjectPainPointTypesPanel";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
 import { StrategyDetailPage } from "./StrategyDetailPage";
@@ -63,13 +64,13 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * `organizationId` its current route supplies, not two near-identical page
  * components.
  *
- * `orgOverviewSections`: `OrgStrategiesPanel`, `OrgFutureStatesPanel` and
+ * `orgResourceSections`: `OrgStrategiesPanel`, `OrgFutureStatesPanel` and
  * `OrgGuidingPrinciplesPanel` — see `OrgStrategiesPanel.tsx`'s docstring for
- * the full reasoning on why `orgOverviewSections` (Org Dashboard) rather than
- * `orgAdminSections` (Org Management) was chosen.
+ * the reasoning on why `orgResourceSections` (Org Resources) rather than
+ * `orgAdminSections` (Organisation Settings) was chosen.
  *
  * Pain Point and Open Question are **project-scoped only** (§6 and §9): `routes` has their list/detail pages, but there is no
- * `globalRoutes` entry and no `orgOverviewSections` contribution for them,
+ * `globalRoutes` entry and no `orgResourceSections` contribution for them,
  * since there is no org-scoped artefact to reach via either mechanism.
  *
  * Pain Point also has a **two-tier type vocabulary** with its own admin
@@ -78,7 +79,7 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * `ProjectPainPointTypesPanel` (the project-scoped override/local-type tier)
  * — see each panel's docstring for the full placement reasoning, including
  * why the type vocabulary lands on the admin sections while the artefacts'
- * own org-scoped siblings landed on `orgOverviewSections`. Guiding Principle
+ * own org-scoped siblings are `orgResourceSections`. Guiding Principle
  * and Open Question have no configurable type vocabulary, so they need none
  * of that admin-section wiring.
  *
@@ -193,19 +194,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     r1: { component: PainPointPrioritisationReportView, ownedParams: ["model_key", "rollup"] },
     r4: { component: OpenQuestionRegisterReportView },
   },
-  orgOverviewSections: [
+  orgResourceSections: [
     {
-      key: "context-strategy-org-strategies",
+      key: ORG_STRATEGIES_SECTION_KEY,
       label: "Strategy",
       render: ({ orgId }) => createElement(OrgStrategiesPanel, { orgId }),
     },
     {
-      key: "context-strategy-org-future-states",
+      key: ORG_FUTURE_STATES_SECTION_KEY,
       label: "Future State",
       render: ({ orgId }) => createElement(OrgFutureStatesPanel, { orgId }),
     },
     {
-      key: "context-strategy-org-guiding-principles",
+      key: ORG_GUIDING_PRINCIPLES_SECTION_KEY,
       label: "Guiding Principle",
       render: ({ orgId }) => createElement(OrgGuidingPrinciplesPanel, { orgId }),
     },

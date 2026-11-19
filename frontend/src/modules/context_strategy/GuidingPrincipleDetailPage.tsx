@@ -79,6 +79,8 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_GUIDING_PRINCIPLES_SECTION_KEY } from "./orgResourceKeys";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
@@ -122,8 +124,7 @@ export function GuidingPrincipleDetailPage() {
   const scopeId = projectId ?? organizationId;
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/guiding-principles`
-    : `/org-overview`;
-  const backLabel = projectId ? "Guiding Principles" : "Organisation overview";
+    : organizationId ? orgResourcesPath(organizationId, ORG_GUIDING_PRINCIPLES_SECTION_KEY) : "/org-resources";
 
   const [guidingPrinciple, setGuidingPrinciple] = useState<GuidingPrinciple | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -266,7 +267,7 @@ export function GuidingPrincipleDetailPage() {
         code={guidingPrinciple.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} /> : undefined}
         codeOwner={codeOwner}
-        back={{ to: backLink, label: backLabel }}
+        back={{ to: backLink, label: "Guiding Principles" }}
         badges={
           <>
           <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}>

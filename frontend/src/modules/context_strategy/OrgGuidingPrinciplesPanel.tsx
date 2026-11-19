@@ -3,25 +3,13 @@ const NONE: GuidingPrinciple[] = [];
 /**
  * Module: modules/context_strategy/OrgGuidingPrinciplesPanel
  *
- * The org-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx` — an
- * organisation's own org-scoped Guiding Principle records (the
- * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
- * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
+ * The org-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx` — an organisation's own org-scoped Guiding Principle
+ * records (the org/project scope discriminator), rendered as an `OrgResourcesPage.tsx` `ResourceMenu` group
+ * (`module.ts`'s `orgResourceSections`).
  *
- * **Placement decision, Decided by: Agent — follows `OrgStrategiesPanel.tsx`/
- * `OrgFutureStatesPanel.tsx`'s own precedent directly, resolving that
- * precedent's own "revisit if a later org/project-scoped artefact suggests a
- * different placement" note.** An org-scoped Guiding Principle is the same
- * shape as an org-scoped Strategy/Future State — org-level *content* an
- * Owner/Approver works with day to day, not an admin-configuration table —
- * so it lands on `orgOverviewSections` (Org Dashboard) too, for the same
- * reasoning those two components' own docstrings already give. Pain Point
- * Type landed on `orgAdminSections` instead because it *is* a
- * configuration table with no org-scoped artefact behind it at all — a
- * different case entirely, not a competing precedent for this one. No
- * deviation found worth flagging: Guiding Principle's org/project dual scope
- * is exactly the case that precedent's own "revisit" note anticipated, and
- * it confirms rather than overturns the existing placement.
+ * Placement follows `OrgStrategiesPanel.tsx` (Decided by: Agent): org-level content its owners work with and projects
+ * reuse, so it sits in Org Resources. Pain Point Type is a configuration table with no org-scoped record behind it, so
+ * it is an `orgAdminSections` entry instead.
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

@@ -70,6 +70,8 @@ import type {
 import { useExternalReferencesEnabled } from "./useExternalReferences";
 import { usePainPointsAvailable } from "./usePainPointsAvailable";
 import { useExternalSystemChoicesState, useRequestChannelChoices } from "./useFeedbackLists";
+import { orgResourcesPath } from "../orgResources";
+import { ORG_REQUEST_INBOX_SECTION_KEY } from "./orgResourceKeys";
 
 const SCHEME_KEY = "enhancement_request";
 
@@ -347,7 +349,9 @@ export function RequestDetailPage() {
 
   const canTriage = access?.can_triage === true;
   const isDuplicate = request.status === "duplicate";
-  const listPath = projectId ? `/projects/${projectId}/modules/product_feedback/requests` : "/org-overview";
+  const listPath = projectId
+    ? `/projects/${projectId}/modules/product_feedback/requests`
+    : organizationId ? orgResourcesPath(organizationId, ORG_REQUEST_INBOX_SECTION_KEY) : "/org-resources";
   const moves = request.allowed_next_statuses.filter((to) => !request.is_archived && canTriage && to !== "duplicate");
   const delivering = pending?.to === "delivered";
   const showLoop = Boolean(projectId) && loop !== null && (request.status === "delivered" || request.status === "declined");
@@ -491,7 +495,7 @@ export function RequestDetailPage() {
         code={request.unique_code}
         codeOwner={codeOwner}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="enhancement_request" artefactId={request.id} /> : undefined}
-        back={{ to: listPath, label: projectId ? "Enhancement requests" : "Organisation overview" }}
+        back={{ to: listPath, label: projectId ? "Enhancement requests" : "Request inbox" }}
         version={request.version_number}
         badges={
           <>

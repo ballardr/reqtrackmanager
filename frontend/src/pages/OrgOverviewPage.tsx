@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Files, LayoutDashboard, Settings } from "lucide-react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Organization, OrgDashboard, OrgModule, OrgOverviewStats } from "../api/types";
+import type { Organization, OrgDashboard, OrgOverviewStats } from "../api/types";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { EntitySwitcher } from "../components/EntitySwitcher";
@@ -16,10 +16,10 @@ import { Spinner } from "../components/Spinner";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useReportCatalogue } from "../hooks/useReportCatalogue";
 import { useReportPackEntries } from "../hooks/useReportPackEntries";
-import { installedModules } from "../modules/registry";
+import { findOrgResourceSectionPath } from "../modules/orgResources";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 
-/** Prefix of the route segment (`/orgs/:orgId/overview/:group`) that names a dashboard page; a module section key never starts with it. */
+/** Prefix of the route segment (`/orgs/:orgId/overview/:group`) that names a dashboard page; a section key never starts with it. */
 const DASHBOARD_GROUP_PREFIX = "dashboard-";
 
 /** The `ResourceMenu` group key of a dashboard page: the built-in first page keeps the bare overview address. */
@@ -36,10 +36,11 @@ const OVERVIEW_GROUP_KEY = "overview";
  * `/orgs/:orgId/overview`.
  *
  * The page is a `ResourceMenu` of the dashboard pages the person may see (the built-in Overview first, then any the
- * organisation's administrators added, each optionally limited to chosen people or groups), followed by the sections
- * enabled modules contribute (`orgOverviewSections`, for example Compliance's tables). A dashboard is the same widget grid
- * the project overview uses (`OrgDashboardView`); modules contribute widgets to it through `orgOverviewWidgets`, so this
- * core page never imports a module. An unknown address (a removed section's old link) returns to the Overview.
+ * organisation's administrators added, each optionally limited to chosen people or groups). A dashboard is the same
+ * widget grid the project overview uses (`OrgDashboardView`); modules contribute widgets to it through
+ * `orgOverviewWidgets`, so this core page never imports a module. The organisation's records and tables are on Org
+ * Resources (`OrgResourcesPage`); an earlier address of one of those sections here redirects to it, keeping the query
+ * string. Any other unknown address returns to the Overview.
  *
  * Actions in the title row: a section's own actions (its Export, a dashboard's Customise) are portalled in through
  * `PageActions`, just before Reports, so they stay level with Reports and the group does not shift when switching;
@@ -51,11 +52,11 @@ const OVERVIEW_GROUP_KEY = "overview";
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
+  const location = useLocation();
   const strings = useStrings();
   const orgLabelCap = useOrgLabelCapitalized();
   const [org, setOrg] = useState<Organization | null>(null);
   const [stats, setStats] = useState<OrgOverviewStats | null>(null);
-  const [modules, setModules] = useState<OrgModule[]>([]);
   const [dashboards, setDashboards] = useState<OrgDashboard[] | null>(null);
   const [managing, setManaging] = useState(false);
   const reportCatalogue = useReportCatalogue("organization", orgId);
@@ -70,38 +71,26 @@ export function OrgOverviewPage() {
     if (!orgId) return;
     api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg);
     api.get<OrgOverviewStats>(`/api/v1/orgs/${orgId}/overview-stats`).then(setStats);
-    api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`).then(setModules);
   }, [orgId]);
   useLoadOnChange(loadDashboards, [orgId]);
 
   if (!orgId) return null;
+  // A section that moved to Org Resources keeps working at its earlier address (bookmarks, saved links).
+  const movedTo = groupParam === undefined ? null : findOrgResourceSectionPath(orgId, groupParam);
+  if (movedTo) return <Navigate to={`${movedTo}${location.search}${location.hash}`} replace />;
   if (!org || !stats || !dashboards || reportCatalogue.loading || reportPacks.loading) return <Spinner />;
 
-  // Only the sections of modules this organisation has enabled, as `OrgAdminPage.tsx` does for `orgAdminSections`.
-  const enabledModuleKeys = new Set(modules.filter((m) => m.enabled).map((m) => m.module_key));
-  const moduleSections = installedModules
-    .filter((m) => enabledModuleKeys.has(m.key))
-    .flatMap((m) => m.orgOverviewSections ?? []);
-
   const hasReports = reportCatalogue.entries.length > 0 || reportPacks.entries.length > 0;
-  const groups: ResourceMenuGroupDef<string>[] = [
-    ...dashboards.map((page) => ({
-      key: dashboardGroupKey(page), label: page.name,
-      href: page.is_default ? `/orgs/${orgId}/overview` : `/orgs/${orgId}/overview/${dashboardGroupKey(page)}`,
-    })),
-    ...moduleSections.map((section) => ({
-      key: section.key,
-      label: section.label,
-      href: `/orgs/${orgId}/overview/${section.key}`,
-    })),
-  ];
-  const activeModuleSection = moduleSections.find((s) => s.key === groupParam);
+  const groups: ResourceMenuGroupDef<string>[] = dashboards.map((page) => ({
+    key: dashboardGroupKey(page), label: page.name,
+    href: page.is_default ? `/orgs/${orgId}/overview` : `/orgs/${orgId}/overview/${dashboardGroupKey(page)}`,
+  }));
   const activePage = groupParam === undefined
     ? dashboards.find((page) => page.is_default)
     : dashboards.find((page) => dashboardGroupKey(page) === groupParam);
-  // An address that names nothing (a removed section, a dashboard the person may not see) returns to the Overview.
-  if (groupParam !== undefined && !activeModuleSection && !activePage) return <Navigate to={`/orgs/${orgId}/overview`} replace />;
-  const active = activeModuleSection?.key ?? (activePage ? dashboardGroupKey(activePage) : OVERVIEW_GROUP_KEY);
+  // An address that names nothing (a removed page, a dashboard the person may not see) returns to the Overview.
+  if (groupParam !== undefined && !activePage) return <Navigate to={`/orgs/${orgId}/overview`} replace />;
+  const active = activePage ? dashboardGroupKey(activePage) : OVERVIEW_GROUP_KEY;
   const canManageDashboards = dashboards.some((page) => page.can_manage);
 
   return (
@@ -141,14 +130,10 @@ export function OrgOverviewPage() {
       </div>
 
       <ResourceMenu ariaLabel={strings.orgDashboards.menuAria} groups={groups} active={active}>
-        {activeModuleSection ? (
-          activeModuleSection.render({ orgId })
-        ) : (
-          <OrgDashboardView
-            key={activePage?.id ?? OVERVIEW_GROUP_KEY} orgId={orgId} dashboardId={activePage?.id ?? OVERVIEW_GROUP_KEY}
-            scopedFigures={!stats.is_full_org_total}
-          />
-        )}
+        <OrgDashboardView
+          key={activePage?.id ?? OVERVIEW_GROUP_KEY} orgId={orgId} dashboardId={activePage?.id ?? OVERVIEW_GROUP_KEY}
+          scopedFigures={!stats.is_full_org_total}
+        />
       </ResourceMenu>
       {managing && (
         <ManageDashboardsDialog

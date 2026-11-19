@@ -42,7 +42,7 @@ function mockApis(rows: ProjectComplianceStatus[]) {
   });
 }
 
-const DEFAULT_PATH = "/orgs/org-1/overview/compliance-by-standard";
+const DEFAULT_PATH = "/orgs/org-1/resources/compliance-by-standard";
 
 const meta: Meta<typeof OrgComplianceStandardsPanel> = {
   title: "Modules/Compliance/OrgComplianceStandardsPanel",
