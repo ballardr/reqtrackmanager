@@ -547,10 +547,10 @@ def branch_names(refs: list[GroupRef], universe: dict[uuid.UUID, StakeholderGrou
 def text_proposals(
     db: Session, stakeholders: list[Stakeholder], universe: dict[uuid.UUID, StakeholderGroup]
 ) -> list[dict]:
-    """Distinct non-blank `organisation_group` values (case-insensitive, first spelling kept) among
-    `stakeholders`, each with its stakeholder count and the existing child of the text root with
-    that name, if one exists."""
-    ids = [s.id for s in stakeholders]
+    """Distinct non-blank `organisation_group` values (case-insensitive, the spelling of the earliest
+    created stakeholder kept) among `stakeholders`, each with its stakeholder count and the existing
+    child of the text root with that name, if one exists."""
+    ids = [s.id for s in sorted(stakeholders, key=lambda s: (s.created_at, s.id))]
     texts = dict(db.execute(select(StakeholderVersion.stakeholder_id, StakeholderVersion.organisation_group).where(
         StakeholderVersion.stakeholder_id.in_(ids), StakeholderVersion.valid_to.is_(None)
     )).tuples().all()) if ids else {}
