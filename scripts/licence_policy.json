@@ -1,0 +1,85 @@
+{
+  "_about": "Licence policy for every third-party component this product ships. Read by scripts/licence_inventory.py, generate_third_party_notices.py and check_licences.py. A change here is a licensing decision: say why in the entry (docs/soc2/policies/vendor-and-subprocessor-management-policy.md, Licence compliance).",
+  "permissive": [
+    "MIT", "MIT-0", "MIT-CMU", "ISC", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "Apache-2.0", "BlueOak-1.0.0", "CC0-1.0",
+    "CC-BY-4.0", "Unlicense", "Zlib", "PSF-2.0", "Python-2.0", "WTFPL", "TCL", "HPND", "Unicode-3.0", "OFL-1.1",
+    "Bitstream-Vera", "PostgreSQL", "curl"
+  ],
+  "file_level_copyleft": ["MPL-2.0", "MPL-1.1", "EPL-2.0"],
+  "library_copyleft": ["LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-3.0-only", "LGPL-3.0-or-later"],
+  "library_copyleft_named": {
+    "python:svglib": ["LGPL-3.0-or-later"],
+    "python:psycopg2-binary": ["LGPL-3.0-or-later"]
+  },
+  "library_copyleft_reasons": {
+    "python:svglib": "Used unmodified as a Python library and replaceable by the operator (pip); it converts SVG for report output only.",
+    "python:psycopg2-binary": "Used unmodified as the PostgreSQL driver and replaceable by the operator (pip); the licence carries a linking exception for OpenSSL."
+  },
+  "denied_prefixes": ["GPL", "AGPL", "LGPL", "SSPL", "BUSL", "Commons-Clause", "Elastic", "LicenseRef", "SEE LICENSE", "UNLICENSED"],
+  "overrides": {
+    "python:cssselect2": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE file is the BSD 3-Clause text; the metadata names no clause count."},
+    "python:jinja2": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE.txt is the BSD 3-Clause text (Pallets); the metadata gives only the BSD classifier."},
+    "python:passlib": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE states the BSD licence with a no-endorsement clause (three clauses); the metadata says only BSD."},
+    "python:psycopg2-binary": {"licence": "LGPL-3.0-or-later WITH openvpn-openssl-exception", "evidence": "Packaged LICENSE: LGPL version 3 or later with a special exception for linking with OpenSSL."},
+    "python:pyperclip": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE.txt is the BSD 3-Clause text; the metadata names no licence."},
+    "python:python-dateutil": {"licence": "Apache-2.0 AND BSD-3-Clause", "evidence": "Packaged LICENSE: Apache 2.0 for newer contributions, BSD 3-Clause for earlier ones; the metadata says only Dual License."},
+    "python:qrcode": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE is the BSD 3-Clause text; the metadata says only BSD."},
+    "python:reportlab": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE is the BSD 3-Clause text (ReportLab Inc.); the metadata is a free-text sentence."},
+    "python:resvg-py": {"licence": "MIT", "evidence": "Packaged LICENSE is the MIT text (baseplate-admin); the metadata declares no licence."},
+    "python:sniffio": {"licence": "MIT OR Apache-2.0", "evidence": "Packaged LICENSE offers either LICENSE.MIT or LICENSE.APACHE2."},
+    "python:tinycss2": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE is the BSD 3-Clause text; the metadata gives only the BSD classifier."},
+    "python:webencodings": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE is the BSD 3-Clause text; the metadata gives only the BSD classifier."},
+    "npm:khroma": {"licence": "MIT", "evidence": "Installed licence file is the MIT text; package.json declares no licence."},
+    "npm:require-like": {"licence": "MIT", "evidence": "Installed License file is the MIT permission notice; package.json declares no licence."}
+  },
+  "base_images": {
+    "python:3.15-slim": {"licence": "Mixed (Debian packages)", "images": ["backend", "backup", "converter"], "note": "Debian slim; each package's licence is in /usr/share/doc/<package>/copyright inside the image."},
+    "python:3.12-slim": {"licence": "Mixed (Debian packages)", "images": ["mcp-server"], "note": "Debian slim; each package's licence is in /usr/share/doc/<package>/copyright inside the image."},
+    "node:26-alpine": {"licence": "Build stage only", "images": [], "note": "Builds the front end and the documentation site; nothing from this stage is in a published image except the compiled output."},
+    "nginx:1.31-alpine": {"licence": "BSD-2-Clause (nginx) and Alpine package licences", "images": ["frontend"], "note": "Alpine; each package's licence is in /usr/share/licenses inside the image."},
+    "nginxinc/nginx-unprivileged:1.30-alpine": {"licence": "BSD-2-Clause (nginx) and Alpine package licences", "images": ["docs"], "note": "Alpine; each package's licence is in /usr/share/licenses inside the image."}
+  },
+  "system_components": [
+    {"name": "Ghostscript", "packages": ["ghostscript"], "images": ["converter"], "licence": "AGPL-3.0-or-later", "source": "https://ghostscript.com/releases/", "use": "separate-program",
+     "role": "Converts uploaded EPS logos to SVG.",
+     "reason": "Runs as a separate process inside the converter container (subprocess call); never linked into or imported by this product's code, and not modified. The Debian package source is the source offer."},
+    {"name": "poppler-utils", "packages": ["poppler-utils"], "images": ["converter"], "licence": "GPL-2.0-or-later", "source": "https://poppler.freedesktop.org/", "use": "separate-program",
+     "role": "Converts uploaded PDF logos to SVG.",
+     "reason": "Runs as a separate process inside the converter container (subprocess call); never linked into or imported by this product's code, and not modified. The Debian package source is the source offer."},
+    {"name": "URW++ base 35 fonts", "packages": ["fonts-urw-base35"], "images": ["converter"], "licence": "AGPL-3.0-or-later WITH font exception", "source": "https://github.com/ArtifexSoftware/urw-base35-fonts", "use": "separate-program",
+     "role": "Stand-in PostScript fonts (Helvetica, Times) for EPS files that do not embed them.",
+     "reason": "Data files read by Ghostscript in the converter container; the font exception keeps documents that embed them out of the licence's scope (Debian copyright file: AGPL-3 with Font exception)."},
+    {"name": "zlib", "packages": ["zlib1g"], "images": ["backend", "backup", "converter", "mcp-server"], "licence": "Zlib", "source": "https://zlib.net/", "use": "library",
+     "role": "Compression library, named so the patched Debian release replaces the base image's copy.", "reason": "Permissive."},
+    {"name": "PostgreSQL client libraries", "packages": ["libpq-dev", "postgresql-client-16"], "images": ["backend", "backup"], "licence": "PostgreSQL", "source": "https://www.postgresql.org/", "use": "library",
+     "role": "Client library for the database driver build, and pg_dump for the backup image.", "reason": "Permissive (PostgreSQL licence); the Debian copyright file also lists BSD-3-Clause parts."},
+    {"name": "GCC", "packages": ["gcc"], "images": ["backend", "backup"], "licence": "GPL-3.0-or-later WITH GCC-exception-3.1", "source": "https://gcc.gnu.org/", "use": "build-tool",
+     "role": "Compiler present in the image from the dependency build.",
+     "reason": "A build tool; nothing it produced is a derivative of GCC (the runtime library exception), and the application does not link or call it. Debian package source is the source offer."},
+    {"name": "curl", "packages": ["curl"], "images": ["backend", "backup", "mcp-server"], "licence": "curl", "source": "https://curl.se/", "use": "program",
+     "role": "Container health probe.", "reason": "Permissive."},
+    {"name": "restic", "packages": ["restic"], "images": ["backup"], "licence": "BSD-2-Clause", "source": "https://github.com/restic/restic", "use": "program",
+     "role": "Encrypted backup repository tool run by the backup image.", "reason": "Permissive."},
+    {"name": "age", "packages": ["age"], "images": ["backup"], "licence": "BSD-3-Clause", "source": "https://github.com/FiloSottile/age", "use": "program",
+     "role": "File encryption for backups.", "reason": "Permissive."},
+    {"name": "OpenSSH client", "packages": ["openssh-client"], "images": ["backup"], "licence": "BSD-2-Clause AND BSD-3-Clause AND ISC AND MIT", "source": "https://www.openssh.com/", "use": "program",
+     "role": "SFTP destinations for backups.", "reason": "Permissive (BSD-style); the Debian copyright file lists the component licences."},
+    {"name": "GnuPG", "packages": ["gnupg"], "images": [], "licence": "GPL-3.0-or-later", "source": "https://gnupg.org/", "use": "build-tool",
+     "role": "Verifies the PostgreSQL repository key while the backup image is built.", "reason": "Removed again in the same layer, so it is not in the published image."},
+    {"name": "nginx", "packages": [], "images": ["frontend", "docs"], "licence": "BSD-2-Clause", "source": "https://nginx.org/", "use": "program",
+     "role": "Web server for the front end and the documentation site.", "reason": "Permissive; comes with the base image."}
+  ],
+  "fonts": [
+    {"name": "Liberation Sans, Serif and Mono", "licence": "OFL-1.1", "where": "backend: report fonts", "files": "backend/app/assets/report_fonts/",
+     "text": "backend/app/assets/report_fonts/LICENSE_LIBERATION", "note": "Liberation 2 (Red Hat; digitised data copyright Google), used as the default report fonts."},
+    {"name": "DejaVu Sans", "licence": "Bitstream-Vera", "where": "backend: diagrams and mathematics in reports", "files": "backend/app/assets/fonts/",
+     "text": "backend/app/assets/fonts/LICENSE_DEJAVU", "note": "Bitstream Vera licence; DejaVu's own changes are in the public domain."},
+    {"name": "KaTeX fonts", "licence": "OFL-1.1", "where": "frontend: mathematics", "files": "bundled by the katex package",
+     "text": null, "note": "Computer Modern and AMS derived fonts; KaTeX's font sources carry the SIL Open Font License 1.1 notice."}
+  ],
+  "notes": [
+    "Grafana, Loki, Tempo and Alloy (AGPL-3.0) and cAdvisor and Prometheus (Apache-2.0) are optional observability services that Compose pulls from their publishers; this repository neither builds nor redistributes them.",
+    "The development profiling image adds memray (Apache-2.0) and py-spy (MIT); it is built only by developers and never published.",
+    "The Playwright test project and the performance tooling are not part of any image and are outside the inventory."
+  ]
+}

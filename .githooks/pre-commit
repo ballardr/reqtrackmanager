@@ -42,6 +42,15 @@ if git diff --cached --name-only | grep -qE '^perf/results/'; then
   }
 fi
 
+# A shipped dependency must stay within the licence policy and the third-party inventory must match the lockfiles;
+# see scripts/check_licences.py (offline here; CI also resolves the Python requirements afresh).
+if git diff --cached --name-only | grep -qE '^(frontend/package-lock\.json|docs/website/package-lock\.json|backend/requirements\.txt|mcp-server/requirements\.txt|scripts/licence_(policy|inventory)\.|frontend/public/licences/|(.*/)?Dockerfile[^/]*$)'; then
+  python3 "$(git rev-parse --show-toplevel)/scripts/check_licences.py" || {
+    echo "pre-commit: fix the licence finding(s) above, or regenerate with scripts/generate_third_party_notices.py, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 # Container health probes must use 127.0.0.1, not localhost; see scripts/check_health_probes.py.
 if git diff --cached --name-only | grep -qE '(^|/)(Dockerfile[^/]*|docker-compose[^/]*\.ya?ml)$'; then
   python3 "$(git rev-parse --show-toplevel)/scripts/check_health_probes.py" || {

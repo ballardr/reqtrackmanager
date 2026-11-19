@@ -190,11 +190,12 @@ spec creates, so:
 - **`backend-tests`** — the full backend pytest suite with coverage (check + job-summary percentage + downloadable HTML report) against the real dev/test Docker Compose stack (`tests/container/`), the same one you run locally, then `ruff` lint and the `mypy` ratchet. Fails if line coverage drops below the `--cov-fail-under` figure in `ci.yml` (the published figure minus two points; raise it when coverage rises, never lower it to pass a run).
 - **`e2e-tests`** — the full dev/test stack, the mcp-server's own pytest suite and `ruff` lint, then the full Playwright E2E suite.
 - **`dependency-scan`** — `pip-audit` on `backend/requirements.txt` and `mcp-server/requirements.txt` (resolves transitive packages too) and `npm audit --omit=dev --audit-level=high` on the frontend and Playwright lockfiles. The documentation site's audit is reported but not gating while Docusaurus's `braces` dependency has no patched release. A finding is fixed by upgrading the package; there is no ignore list. To reproduce locally: `pip install pip-audit && pip-audit -r backend/requirements.txt`, and `npm audit --omit=dev` in the folder.
+- **`licences`** — `scripts/check_licences.py --live`: the licence guard (see [Licence guard](#licence-guard)). Gates `docker-build`.
 - **`static-analysis`** and **`secret-scan`** — security-specific scans that gate `docker-build` (see [Security scanning](#security-scanning)).
 - **`publish-badges`** — runs after both jobs above (`needs:`), regardless of whether they passed (best-effort; never fails the pipeline). Turns each side's coverage/JUnit output into the four `shields.io` endpoint badges at the top of the README (backend tests + coverage, Storybook tests, frontend coverage), and pushes them to a dedicated `badges` branch. A dedicated job rather than a step inside `frontend`/`backend-tests` specifically because those two run in parallel — either publishing its own badges independently would force-push over the other's files nondeterministically depending on which finished last.
 - **`image-scan`** — no `needs`, so it runs alongside the test jobs and fails within minutes rather than after the ~40 minute suites. Builds the production backend/frontend/mcp-server/converter/docs-site images (the docs image with a `/docs/` base path, smoke tested) and scans every image with [Trivy](https://trivy.dev): a HIGH or CRITICAL finding that has a fix fails the job. To reproduce, `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/aquasecurity/trivy:0.75.0 image --severity HIGH,CRITICAL --ignore-unfixed <image>`. A base-image finding is fixed by moving the base image or running `apk upgrade` in the Dockerfile, never an ignore file.
 - **`version`** — computes the [GitVersion](https://gitversion.net/) SemVer (`GitVersion.yml`, `mode: ContinuousDeployment` — see that file's own comment for why not `Mainline`, which GitVersion 6 removed) and the build date once, so every image leg tags and labels identically.
-- **`docker-build`** — gated on `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan`, `restore-test`, `static-analysis`, `secret-scan` and `version` passing. A matrix of the six production images (`backend`, `backup`, `frontend`, `mcp-server`, `converter`, `docs`) × `amd64` and `arm64`, each leg on a native runner of its architecture (`ubuntu-latest`, `ubuntu-24.04-arm`) rather than under QEMU. Every leg builds on every run, pull requests included, so an architecture-specific build break fails the PR. The `arm64` legs also load the image and run [`scripts/smoke_test_image.sh`](../scripts/smoke_test_image.sh) (the backend starts against a throwaway PostgreSQL, runs migrations, logs in and lists projects; the others start and answer on their health/static endpoints) and the same Trivy gate as `image-scan`; only a leg that passes pushes its digest (untagged), and never on a pull request. Run the smoke test yourself on any Docker host with `scripts/smoke_test_image.sh backend <image> [expected-arch]`. Unit, backend and Playwright tests stay `amd64`-only; the smoke test is the `arm64` gate.
+- **`docker-build`** — gated on `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `licences`, `image-scan`, `restore-test`, `static-analysis`, `secret-scan` and `version` passing. A matrix of the six production images (`backend`, `backup`, `frontend`, `mcp-server`, `converter`, `docs`) × `amd64` and `arm64`, each leg on a native runner of its architecture (`ubuntu-latest`, `ubuntu-24.04-arm`) rather than under QEMU. Every leg builds on every run, pull requests included, so an architecture-specific build break fails the PR. The `arm64` legs also load the image and run [`scripts/smoke_test_image.sh`](../scripts/smoke_test_image.sh) (the backend starts against a throwaway PostgreSQL, runs migrations, logs in and lists projects; the others start and answer on their health/static endpoints) and the same Trivy gate as `image-scan`; only a leg that passes pushes its digest (untagged), and never on a pull request. Run the smoke test yourself on any Docker host with `scripts/smoke_test_image.sh backend <image> [expected-arch]`. Unit, backend and Playwright tests stay `amd64`-only; the smoke test is the `arm64` gate.
 - **`docker-publish`** — runs on `main` only, after every `docker-build` leg passed. Assembles each image's two digests into one multi-arch manifest list tagged with the SemVer, the commit SHA and `latest`, pushes to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}`, and fails if either platform is missing from a result. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
 
 ### Security scanning
@@ -218,6 +219,35 @@ docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 dir /repo --co
 Fix a finding in the code. The only exceptions are a documented false positive (a `# nosemgrep: <rule>` comment with the reason on the line above, as in `backend/app/services/dr_restore.py`) and the seven earlier commits `.gitleaks.toml` names, which hold fake test credentials that history cannot change. `.github/workflows/dynamic-scan.yml` runs the OWASP ZAP baseline weekly (or on demand) against the Compose test stack only, never a shared or public environment, and fails on a high-risk alert. Third-party GitHub Actions are pinned to a commit SHA with the tag in a comment; Dependabot (`.github/dependabot.yml`) opens no pull requests (`open-pull-requests-limit: 0`); updates are made in a reviewed change instead. To publish images the repository needs a `release` environment limited to the `main` branch (Settings → Environments), so a branch that edits the workflow cannot reach the registry.
 
 See the [README's Code Quality Rules](../README.md#code-quality-rules) for the conventions all of the above is expected to follow.
+
+### Licence guard
+
+The shipped application must never link a GPL, AGPL or source-available (SSPL, BUSL, Elastic) dependency, because that would close off offering the product under other terms. `scripts/check_licences.py` enforces this against the policy in `scripts/licence_policy.json`:
+
+```mermaid
+flowchart LR
+    L["Lockfiles: frontend, docs site"] --> I["scripts/licence_inventory.py"]
+    R["requirements.txt: backend, mcp-server"] -->|"installed in a throwaway environment"| I
+    D["Dockerfiles: apt and apk packages, base images"] --> I
+    P["licence_policy.json"] --> I
+    I --> C["check_licences.py (CI, pre-commit)"]
+    I --> G["generate_third_party_notices.py"]
+    G --> N["frontend/public/licences/: notices and texts"]
+```
+
+| Class | Licences | Result |
+| --- | --- | --- |
+| Permissive | MIT, ISC, BSD, Apache-2.0, Zlib, PSF, OFL and the like | Pass |
+| File-level copyleft | MPL, EPL | Pass, flagged for its notice and source terms |
+| Library copyleft | LGPL | Pass only for a package named in the policy with its reason (`svglib`, `psycopg2-binary`: used unmodified and replaceable) |
+| Strong copyleft, source-available, unknown | GPL, AGPL, SSPL, BUSL, Elastic, no licence found | Fail |
+| Operating-system package | Any, including GPL and AGPL | Only as a separate program or build tool (Ghostscript and poppler run in the converter container), with the reason in the policy |
+
+- `python3 scripts/check_licences.py` (offline) judges the committed inventory, checks it against the lockfiles and the pinned requirements, and checks that every operating-system package and base image a Dockerfile uses is named in the policy. `--live` also installs each requirements file afresh and judges everything that resolves now, so a transitive dependency that changed licence fails before an image is built.
+- After a change to a lockfile, a requirements file or a Dockerfile package, regenerate with `python scripts/generate_third_party_notices.py` (needs network and `npm ci` in `frontend/` and `docs/website/`) and commit `frontend/public/licences/`. The generator's `--check` mode (also run by `check_licences.py`) reports a stale inventory.
+- A failure is fixed by replacing the dependency. A reviewed exception goes into the policy with its evidence (`overrides` for metadata that does not state the licence, `library_copyleft_named` for LGPL), never into the script.
+- Python transitive versions float between image builds, so the inventory records the versions resolved when it was generated; the guard gates licences, never versions.
+- Optional observability services (Grafana, Loki, Tempo, Alloy, cAdvisor, Prometheus) are pulled from their publishers and are not redistributed here.
 
 ### Testing the pipeline locally with `act`
 

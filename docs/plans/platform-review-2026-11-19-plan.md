@@ -1,19 +1,19 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 3 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 4 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-3 / 21 phases complete.
+4 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
 | 1 | Return to the page after signing in | Return path kept across the sign-in, 2FA, SSO and forced password change routes | [x] |
 | 2 | Notification targets: review | [Register](platform-review-2026-11-19-notification-register.md) of every notification (type, record, current target, correct target); signed off 2026-11-19 | [x] |
 | 3 | Notification targets: fixes | One address (`/notifications/:id`) and one browser resolver for the bell, the list, the email and the digest; test that no type lacks a target | [x] |
-| 4 | Licence audit and dependency licence guard | Shipped-component inventory, generated notices, CI guard that keeps the commercial option open | [ ] |
+| 4 | Licence audit and dependency licence guard | Shipped-component inventory, generated notices, CI guard that keeps the commercial option open | [x] |
 | 5 | Licences in the Policies area | Public read-only Licences group; separate from the policy tables | [ ] |
 | 6 | Licence model: decision and change | Options paper and the user's choice (a decision gate); then the licence files, contribution terms and website page | [ ] |
 | 7 | Org Resources: review | Classify every Organisation Settings group and Overview section as configuration or resource; sign-off | [ ] |
@@ -121,6 +121,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - The converter image gains the embedded Mermaid engine and its font in phase 17; the inventory and the guard are extended then.
 - Separately licensed optional services (Grafana, Loki, Tempo, Alloy are AGPL; cAdvisor and Prometheus Apache-2.0) are pulled from upstream, not redistributed; documented as such.
 - Tests: the guard fails on a fixture dependency with a disallowed licence; the generator is deterministic.
+- As built: `scripts/licence_policy.json` (the policy), `licence_inventory.py` (collection and judging), `generate_third_party_notices.py` (writes `frontend/public/licences/third-party-notices.json` and `third-party-texts.json`, so phase 5 serves them as static assets) and `check_licences.py` (offline in the pre-commit hook; `--live` in the new `licences` CI job, which also resolves the Python requirements afresh). `resvg_py` is MIT (its packaged `LICENSE`); the `UNKNOWN` item is closed. The converter image distributes GPL and AGPL programs, so a source offer is an obligation of that image; recorded for phase 6. See `docs/decisions.md`.
 
 ### Phase 5 — Licences in the Policies area
 
