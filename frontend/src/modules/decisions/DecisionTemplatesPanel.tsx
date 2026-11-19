@@ -10,10 +10,9 @@ const TEMPLATE_SORT_VALUES: Record<string, (template: DecisionTemplate) => SortV
  * Module: modules/decisions/DecisionTemplatesPanel
  *
  * The org-scoped Decision Template library
- * — registered as this module's `orgAdminSections` contribution
- * (`module.ts`; moved here from `orgResourceSections` on
- * 2026-09-22, per explicit user direction — an org admin manages this
- * library on Org Management, not the Org Dashboard), the org-level
+ * — registered as this module's `orgResourceSections` contribution
+ * (`module.ts`): authored content that projects start new decisions from,
+ * so it sits on Org Resources, not Organisation Settings. It is the org-level
  * counterpart to the opt-in template-pack picker
  * `pages/ServerOrganisationsPage.tsx` already surfaces at
  * organisation-creation time (`GET /orgs/creation-choices`). This panel is

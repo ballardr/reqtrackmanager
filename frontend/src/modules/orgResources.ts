@@ -8,18 +8,20 @@
  * - `orgResourcesPath`: the address of the page, or of one section by its key.
  * - `findOrgResourceSectionPath`: the address of a section by key across every installed module, enablement
  *   ignored, so an earlier address (the Organisation Overview section it used to be) can be redirected.
+ * - `findMovedOrgAdminPath`: the Resources address that replaces an Organisation Settings address for a section that
+ *   moved (the Reports group, Tags and the record lists modules used to contribute to Settings).
  *
  * It reads only the generic section shape and the registry and names no module, so core never imports a module's
  * directory for Org Resources. A section is addressed `/orgs/:orgId/resources/:group/:section` (see
  * `adminMenu.ts`), the same grouping and redirect rules as the administration pages.
  */
-import type { OrgModuleSubComponent } from "../api/types";
 import { adminSectionPath } from "./adminMenu";
 import { installedModules } from "./registry";
 import type { OrgAdminSectionDef, TierAModuleDefinition } from "./types";
 
-/** Group keys the Org Resources page itself declares; a module section may not use one. */
-export const CORE_ORG_RESOURCE_GROUP_KEYS: readonly string[] = [];
+/** Section keys the Org Resources page itself declares (the organisation's report resources and tag vocabulary); a
+ * module section may not use one. Their Organisation Settings addresses (`/admin/reports`, `/admin/tags`) redirect. */
+export const CORE_ORG_RESOURCE_GROUP_KEYS: readonly string[] = ["reports", "tags"];
 
 /** The Org Resources address of an organisation, or of one section when its key is given (an ungrouped section's
  * own address; a grouped one is redirected to its full address by the page). */
@@ -44,22 +46,56 @@ export function findOrgResourceSectionPath(orgId: string, sectionKey: string): s
 }
 
 /**
+ * The Org Resources address that replaces an earlier Organisation Settings address, for a section that has moved.
+ *
+ * Settings addresses are `/admin/:group/:section?`. A moved core section answers to its own key (`/admin/reports`); a
+ * moved module section is found by its section key across every installed module, enablement ignored, so a bookmark
+ * keeps working and the Resources page then decides whether to offer it. An address that Settings still owns (a core
+ * group, or a key some module still contributes to `orgAdminSections`) is never redirected.
+ *
+ * @param orgId The organisation the address is for.
+ * @param groupParam The `:group` segment of the Settings address, if any.
+ * @param sectionParam The `:section` segment, if any.
+ * @param settingsCoreKeys The group keys Organisation Settings declares itself.
+ * @returns The Resources address, or `null` when the address is not a moved one.
+ */
+export function findMovedOrgAdminPath(
+  orgId: string,
+  groupParam: string | undefined,
+  sectionParam: string | undefined,
+  settingsCoreKeys: readonly string[],
+): string | null {
+  if (!groupParam || settingsCoreKeys.includes(groupParam)) return null;
+  if (!sectionParam && CORE_ORG_RESOURCE_GROUP_KEYS.includes(groupParam)) return orgResourcesPath(orgId, groupParam);
+  const key = sectionParam ?? groupParam;
+  const settingsKeys = new Set<string>();
+  for (const module of installedModules) {
+    for (const section of module.orgAdminSections ?? []) {
+      settingsKeys.add(section.key);
+      if (section.group) settingsKeys.add(section.group.key);
+    }
+  }
+  if (settingsKeys.has(key)) return null;
+  return findOrgResourceSectionPath(orgId, key);
+}
+
+/**
  * The sections the caller is offered, in module order.
  *
- * A module that is off for the organisation contributes nothing; a section tied to a sub-component is left out once
- * that sub-component is known to be off (`subComponents` holds only what the caller could read). A section whose key
+ * A module that is off for the organisation contributes nothing; a section tied to a sub-component is left out while
+ * that sub-component is off. A section whose key
  * (or group key) is reserved, or already used by another section as a section or a group, is dropped with a console
  * error rather than shadowing the other, because two entries for one address would make one unreachable.
  *
  * @param modules The installed modules (injectable for tests).
  * @param enabledKeys Keys of the modules enabled for the organisation.
- * @param subComponents Sub-component state by module key, for the modules that were asked.
+ * @param disabledSubComponents Keys of the sub-components that are off, by module key.
  * @param reservedKeys Group keys the page owns.
  */
 export function collectOrgResourceSections(
   modules: TierAModuleDefinition[],
   enabledKeys: ReadonlySet<string>,
-  subComponents: Record<string, OrgModuleSubComponent[] | undefined>,
+  disabledSubComponents: Readonly<Record<string, readonly string[] | undefined>>,
   reservedKeys: readonly string[] = CORE_ORG_RESOURCE_GROUP_KEYS,
 ): OrgAdminSectionDef[] {
   const sectionKeys = new Set<string>();
@@ -69,8 +105,7 @@ export function collectOrgResourceSections(
   for (const module of modules) {
     if (!enabledKeys.has(module.key)) continue;
     for (const section of module.orgResourceSections ?? []) {
-      const subs = subComponents[module.key];
-      if (section.subComponent && subs && !subs.some((s) => s.subcomponent_key === section.subComponent && s.enabled)) continue;
+      if (section.subComponent && disabledSubComponents[module.key]?.includes(section.subComponent)) continue;
       const top = section.group?.key ?? section.key;
       const clash =
         reservedKeys.includes(top) || sectionKeys.has(section.key) ||

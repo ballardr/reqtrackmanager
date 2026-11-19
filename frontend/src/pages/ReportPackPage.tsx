@@ -3,7 +3,7 @@
  *
  * The editor of one report pack, at `/projects/:projectId/report-packs/:packId` and
  * `/orgs/:orgId/report-packs/:packId`. It only binds the URL to a scope (`reportPackApi`) and supplies where Back
- * leads (Report setup of Project Admin, Reports of Org Admin); the editor itself is `ReportPackEditor`.
+ * leads (Report setup of Project Admin, Reports of Org Resources); the editor itself is `ReportPackEditor`.
  */
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
@@ -12,6 +12,7 @@ import type { LayoutScope } from "../api/reportLayouts";
 import { reportPackApi } from "../api/reportPacks";
 import { ReportPackEditor } from "../components/ReportPackEditor";
 import { Spinner } from "../components/Spinner";
+import { orgResourcesPath } from "../modules/orgResources";
 
 export function ReportPackPage() {
   const { projectId, orgId, packId } = useParams<{ projectId?: string; orgId?: string; packId: string }>();
@@ -19,6 +20,6 @@ export function ReportPackPage() {
   const scopeId = projectId ?? orgId ?? null;
   const packs = useMemo(() => (kind && scopeId ? reportPackApi({ kind, id: scopeId }) : null), [kind, scopeId]);
   if (!kind || !scopeId || !packs || !packId) return <Spinner />;
-  const backTo = kind === "project" ? `/projects/${scopeId}/admin/reportSetup` : `/orgs/${scopeId}/admin/reports`;
+  const backTo = kind === "project" ? `/projects/${scopeId}/admin/reportSetup` : orgResourcesPath(scopeId, "reports");
   return <ReportPackEditor api={packs} packId={packId} backTo={backTo} />;
 }

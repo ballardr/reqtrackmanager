@@ -4467,8 +4467,6 @@ const en = {
   // Org Resources: the page of records and content an organisation owns and shares with its projects.
   orgResources: {
     menuAria: "Organisation resources",
-    // Shown while no enabled module contributes a section; the page is built from the module registry.
-    empty: "No organisation resources are available. Resources appear here when a module that provides them is enabled.",
   },
   orgDashboards: {
     noun: "dashboard",

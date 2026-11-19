@@ -468,6 +468,19 @@ class OrgModuleOut(BaseModel):
     frontend_manifest: ModuleFrontendManifestOut | None = None
 
 
+class OrgEnabledModuleOut(BaseModel):
+    """One module the organisation can currently use (`GET /orgs/{id}/enabled-modules`): the lean, read-only shape any
+    organisation member uses to decide which module sections to offer, as `ModuleNavEntryOut` does for a project.
+
+    Unlike `OrgModuleOut` (the administrator's bookkeeping view) it lists only modules the organisation is entitled
+    to and has enabled, and carries no description, version or manifest.
+    """
+
+    module_key: str
+    # Keys of this module's sub-components that are off for the organisation; a section tied to one is not offered.
+    disabled_sub_components: list[str] = []
+
+
 class ModuleNavEntryOut(BaseModel):
     """One currently-*enabled* module's nav-facing summary (`GET /projects/{id}/enabled-modules`) — unlike `OrgModuleOut`
     (an org-admin bookkeeping view that deliberately includes non-entitled/

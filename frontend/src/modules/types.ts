@@ -335,7 +335,8 @@ export interface TierAModuleDefinition {
    * over every project). Reuses `OrgAdminSectionDef`'s `{key, label, subComponent?, group?, render({orgId})}` shape —
    * both pages need the same from a module, a menu entry and the content to draw — and is filtered to the
    * organisation's enabled modules and sub-components the same way `OrgAdminPage.tsx` filters `orgAdminSections`.
-   * Keys must be unique across modules and distinct from the page's own core groups. Omitted (or empty) for a module
+   * Keys must be unique across modules, distinct from the page's own core sections (Reports, Tags) and distinct from every
+   * `orgAdminSections` key, because an earlier Settings address for a section that moved is redirected by its key. Omitted (or empty) for a module
    * with no organisation-owned content. Configuration (vocabularies, scoring, defaults) stays in `orgAdminSections`;
    * computed figures are `orgOverviewWidgets`. */
   orgResourceSections?: OrgAdminSectionDef[];

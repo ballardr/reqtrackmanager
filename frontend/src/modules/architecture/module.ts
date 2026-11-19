@@ -36,8 +36,9 @@ import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./typ
  * something to list.
  * `linkedRecordCreators`: "Create new" element or diagram in another record's Links panel. A connection needs two elements, so it
  * is created from the Connections list or an element's page.
- * `projectAdminSections` / `orgAdminSections`: the two type vocabularies and the symbol library at each level, and the
- * organisation's own elements and collections, under one "System Architecture" group.
+ * `projectAdminSections` / `orgAdminSections`: the two type vocabularies and the symbol library at each level, under
+ * one "System Architecture" group. `orgResourceSections`: the organisation's own elements and collections, which
+ * projects share, on Org Resources.
  */
 
 /** The architecture settings share one expandable entry in the project and organisation admin menus. */
@@ -139,8 +140,10 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "architecture-symbols", label: "Symbols", group: ARCHITECTURE_ADMIN_GROUP,
       render: ({ orgId }) => createElement(SymbolLibraryPanel, { scope: { kind: "org", organizationId: orgId } }),
     },
+  ],
+  orgResourceSections: [
     {
-      key: "architecture-elements", label: "Elements and Collections", group: ARCHITECTURE_ADMIN_GROUP,
+      key: "architecture-elements", label: "Architecture Elements and Collections",
       render: ({ orgId }) => createElement(OrgElementsPanel, { orgId }),
     },
   ],

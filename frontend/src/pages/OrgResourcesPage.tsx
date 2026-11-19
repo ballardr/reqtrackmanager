@@ -7,7 +7,8 @@
  *
  * Responsibilities:
  * - Build the menu from `orgResourceSections` of the installed modules enabled for the organisation
- *   (`collectOrgResourceSections`), so a disabled module, or a sub-component that is off, is not offered.
+ *   (`collectOrgResourceSections`), so a disabled module, or a sub-component that is off, is not offered, followed by
+ *   the two sections core owns: Reports (layouts, packs, snippets, configuration) and Tags (the shared vocabulary).
  * - Resolve the address with the shared admin-menu rules (`resolveAdminSection`): grouped sections, a bare group
  *   redirecting to its first section, an unknown address returning to the page. Redirects keep the query string and
  *   hash, because a section's own filters live in the URL.
@@ -16,27 +17,30 @@
  *
  * Design decisions: the page decides nothing about access. Each section's endpoints enforce their permission, so a
  * section a person may not use shows the error its endpoint returns. Core never imports a module: sections arrive
- * through the registry only. With no enabled module contributing, the page is an explained empty state, not an error.
+ * through the registry only; the core sections (`CORE_ORG_RESOURCE_GROUP_KEYS`) are the only ones named here.
  *
- * Dependencies: `GET /orgs/{id}`, `GET /orgs/{id}/modules` and, only for modules whose sections declare a
- * sub-component, `GET /orgs/{id}/modules/{key}/subcomponents` (readable by administrators; where the caller cannot read
- * it the sub-component filter does not apply).
+ * Dependencies: `GET /orgs/{id}` and `GET /orgs/{id}/enabled-modules` (readable by every member, so the page works for
+ * a person who is not an administrator).
  */
 import { useState } from "react";
 import { Settings } from "lucide-react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Organization, OrgModule, OrgModuleSubComponent } from "../api/types";
+import type { OrgEnabledModule, Organization } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { PageActionsProvider, PageActionsSlot } from "../components/PageActions";
 import { ResourceMenu } from "../components/ResourceMenu";
+import { CollapsibleSection } from "../components/CollapsibleSection";
+import { OrgReportsResources } from "../components/OrgReportsResources";
+import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu";
 import { collectOrgResourceSections, orgResourcesPath } from "../modules/orgResources";
+import type { OrgAdminSectionDef } from "../modules/types";
 import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 
@@ -53,44 +57,46 @@ export function OrgResourcesPage() {
   const strings = useStrings();
   const orgLabelCap = useOrgLabelCapitalized();
   const [org, setOrg] = useState<Organization | null>(null);
-  const [modules, setModules] = useState<OrgModule[] | null>(null);
-  const [subComponents, setSubComponents] = useState<Record<string, OrgModuleSubComponent[] | undefined>>({});
+  const [enabledModules, setEnabledModules] = useState<OrgEnabledModule[] | null>(null);
 
   useLoadOnChange(async () => {
     if (!orgId) return;
+    // The member-readable list: this page is for everyone in the organisation, and `/modules` is for administrators.
     const [loadedOrg, loadedModules] = await Promise.all([
       api.get<Organization>(`/api/v1/orgs/${orgId}`),
-      api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`),
+      api.get<OrgEnabledModule[]>(`/api/v1/orgs/${orgId}/enabled-modules`),
     ]);
-    // Only a module with a sub-component-tied section needs the state; a caller who cannot read it is not filtered.
-    const asked = installedModules.filter(
-      (m) => loadedModules.some((om) => om.module_key === m.key && om.enabled) &&
-        (m.orgResourceSections ?? []).some((s) => s.subComponent),
-    );
-    const entries = await Promise.all(
-      asked.map(async (m) => {
-        try {
-          return [m.key, await api.get<OrgModuleSubComponent[]>(`/api/v1/orgs/${orgId}/modules/${m.key}/subcomponents`)] as const;
-        } catch {
-          return [m.key, undefined] as const;
-        }
-      }),
-    );
-    setSubComponents(Object.fromEntries(entries));
     setOrg(loadedOrg);
-    setModules(loadedModules);
+    setEnabledModules(loadedModules);
   }, [orgId]);
 
   if (!orgId) return null;
-  if (!org || !modules) return <Spinner />;
+  if (!org || !enabledModules) return <Spinner />;
 
-  const enabledKeys = new Set(modules.filter((m) => m.enabled).map((m) => m.module_key));
-  const sections = collectOrgResourceSections(installedModules, enabledKeys, subComponents);
+  const enabledKeys = new Set(enabledModules.map((m) => m.module_key));
+  const disabledSubComponents = Object.fromEntries(enabledModules.map((m) => [m.module_key, m.disabled_sub_components]));
+  // Core's own sections follow the modules'; their keys are reserved (`CORE_ORG_RESOURCE_GROUP_KEYS`).
+  const coreSections: OrgAdminSectionDef[] = [
+    {
+      key: "reports", label: strings.orgAdmin.groupReports,
+      render: ({ orgId: id }) => <OrgReportsResources orgId={id} />,
+    },
+    {
+      key: "tags", label: strings.orgAdmin.groupTags,
+      render: ({ orgId: id }) => (
+        <CollapsibleSection sectionKey="orgAdmin.tags" collapsible={false} title={strings.tags.admin.title}>
+          <OrgTagsPanel organizationId={id} />
+        </CollapsibleSection>
+      ),
+    },
+  ];
+  const sections = [...collectOrgResourceSections(installedModules, enabledKeys, disabledSubComponents), ...coreSections];
   const base = orgResourcesPath(orgId);
   const route = resolveAdminSection(sections, base, group, section);
   if (route.redirectTo) return <Navigate to={`${route.redirectTo}${location.search}${location.hash}`} replace />;
   // An address that names nothing (a section of a module since switched off, a mistyped key) returns to the page.
   if (group !== undefined && !route.section) return <Navigate to={base} replace />;
+  // Core always contributes sections, so the first entry is the landing section.
   const active = route.section ?? sections[0];
 
   return (
@@ -114,14 +120,10 @@ export function OrgResourcesPage() {
           </div>
         </div>
 
-        {active ? (
-          <ResourceMenu ariaLabel={strings.orgResources.menuAria} groups={buildAdminMenuEntries(sections, base)} active={active.key}>
-            {/* Keyed by section so one section's state never carries into the next. */}
-            <div key={active.key}>{active.render({ orgId })}</div>
-          </ResourceMenu>
-        ) : (
-          <p className="text-muted">{strings.orgResources.empty}</p>
-        )}
+        <ResourceMenu ariaLabel={strings.orgResources.menuAria} groups={buildAdminMenuEntries(sections, base)} active={active.key}>
+          {/* Keyed by section so one section's state never carries into the next. */}
+          <div key={active.key}>{active.render({ orgId })}</div>
+        </ResourceMenu>
       </div>
     </PageActionsProvider>
   );

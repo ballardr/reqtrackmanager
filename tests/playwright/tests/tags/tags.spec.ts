@@ -226,10 +226,10 @@ test("a create form applies the chosen tags, and the Requirements list tags the 
 });
 
 /**
- * A record the organisation owns uses the organisation's tags, kept in Org Admin: tagged from a project
+ * A record the organisation owns uses the organisation's tags, kept on Org Resources: tagged from a project
  * that shows it, the tag appears there with its usage, and not in the project's own list.
  */
-test("an organisation-owned persona is tagged from a project and managed in Org Admin", async ({ page }) => {
+test("an organisation-owned persona is tagged from a project and managed in Org Resources", async ({ page }) => {
   const { suffix, org, project, adminHeaders } = await setUpOrg(page, "TagsOrg");
   const persona = (await (await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/modules/stakeholders/personas`, {
     headers: adminHeaders, data: { name: `Org persona ${suffix}` },
@@ -243,7 +243,7 @@ test("an organisation-owned persona is tagged from a project and managed in Org 
   await page.getByRole("option", { name: `Add tag "${tag}"` }).click();
   await saved;
 
-  await page.goto(`/orgs/${org.id}/admin/tags`);
+  await page.goto(`/orgs/${org.id}/resources/tags`);
   await expect(page.getByRole("table", { name: "Tags", exact: true }).getByText(tag)).toBeVisible();
   await expect(page.getByRole("table", { name: "Where tags are used: Persona" }).getByText(tag)).toBeVisible();
 

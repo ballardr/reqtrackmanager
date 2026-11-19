@@ -2511,6 +2511,13 @@ export interface OrgModuleSubComponent {
   has_org_override: boolean;
 }
 
+/** A module an organisation can use (`GET /orgs/{id}/enabled-modules`, readable by every member): its key and the
+ * sub-components that are off. The lean counterpart of `OrgModule`, which only administrators read. */
+export interface OrgEnabledModule {
+  module_key: string;
+  disabled_sub_components: string[];
+}
+
 /** An org's availability choice for a module or sub-component — the two
  * backend levers (`enabled`, `default_project_enabled`) collapsed into the
  * three states that are actually meaningful (the default does nothing

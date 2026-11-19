@@ -36,9 +36,8 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * (Action Types, Custom Fields) on `ProjectAdminPage.tsx`, matching where
  * Action Types themselves already live, per explicit user direction.
  *
- * `orgAdminSections`: `DecisionTemplatesPanel`, the org-scoped Decision Template library, managed by an org admin on
- * Organisation Settings (`OrgAdminPage.tsx`) per explicit user direction; `render({orgId})` is identical on Org
- * Resources, which shares `OrgAdminSectionDef`'s shape.
+ * `orgResourceSections`: `DecisionTemplatesPanel`, the org-scoped Decision Template library new decisions start from,
+ * on Org Resources (authored content projects share, not configuration).
  *
  * `entityAccentColor`: intentionally **not** set. This module still
  * doesn't add a `requirementDetailSections` contribution (a requirement's
@@ -78,7 +77,7 @@ export const moduleDefinition: TierAModuleDefinition = {
       render: ({ projectId }) => createElement(DecisionTypesPanel, { projectId }),
     },
   ],
-  orgAdminSections: [
+  orgResourceSections: [
     {
       key: "decision-templates",
       label: "Decision Templates",

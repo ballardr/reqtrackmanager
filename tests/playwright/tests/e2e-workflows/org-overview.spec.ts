@@ -142,10 +142,11 @@ test.describe("Organisation Overview page", () => {
     await expect(page.locator(".resource-menu-nav")).toHaveCount(0);
     await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
 
-    // With the module off, Org Resources has nothing to list and says so; the old section address returns here too.
+    // With the module off, Org Resources keeps only what core owns (Reports, Tags); the old section address returns here too.
     await page.goto("/org-resources");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources$/);
-    await expect(page.getByText("No organisation resources are available.")).toBeVisible();
+    await expect(page.locator("nav.resource-menu-nav").getByRole("link", { name: "Reports", exact: true })).toBeVisible();
+    await expect(page.locator("nav.resource-menu-nav").getByRole("link", { name: "Tags", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compliance by standard", exact: true })).toHaveCount(0);
     await page.goto(`/orgs/${org.id}/resources/compliance-by-standard`);
     await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/resources$`));

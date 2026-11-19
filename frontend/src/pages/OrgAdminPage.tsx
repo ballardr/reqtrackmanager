@@ -4,8 +4,8 @@ import { ImportWarnings } from "../components/ImportWarnings";
 import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
 import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -52,12 +52,10 @@ import {
   toModuleAvailability,
   type FooterPosition,
 } from "../api/types";
-import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { ActionMenu } from "../components/ActionMenu";
 import { Tooltip } from "../components/Tooltip";
 import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
-import { FileNameField } from "../components/FileNameField";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
@@ -97,18 +95,14 @@ import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useFederatedModules } from "../hooks/useFederatedModules";
 import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu";
+import { findMovedOrgAdminPath } from "../modules/orgResources";
 import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { labelOptions } from "../utils/labelOptions";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
-import { reportLayoutApi } from "../api/reportLayouts";
-import { reportPackApi } from "../api/reportPacks";
-import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
-import { ReportSetupPanel } from "../components/ReportSetupPanel";
-import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, ColorField, FileField, TextField, ToggleField } from "../components/FormFields";
 import { LogoBandField } from "../components/LogoBandField";
 import { FieldHelp } from "../components/FieldHelp";
@@ -157,12 +151,10 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "projects",
   "workflow",
   "branding-defaults",
-  "reports",
   "oauth-sso",
   "email",
   "security",
   "modules",
-  "tags",
   "messages",
   "policies",
   // Fine-Grained Access Control (core, not a module —): custom-role
@@ -194,8 +186,8 @@ type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
  */
 type OrgAdminGroupKey = CoreOrgAdminGroupKey | string;
 
-/** The four groups of advanced settings, each with its own Save (see `saveAdvanced`). */
-type AdvancedGroup = "email" | "security" | "pats" | "reports";
+/** The three groups of advanced settings, each with its own Save (see `saveAdvanced`). */
+type AdvancedGroup = "email" | "security" | "pats";
 
 /** One row of the Org Users `DirectoryTable`
  * — a real user or a not-yet-accepted org-only invite, merged client-side.
@@ -223,10 +215,7 @@ export function OrgAdminPage() {
   const run = useMutation();
   const strings = useStrings();
   const { orgId, group: groupParam, section: sectionParam } = useParams<{ orgId: string; group?: string; section?: string }>();
-  const layoutApi = useMemo(() => (orgId ? reportLayoutApi({ kind: "organization", id: orgId }) : null), [orgId]);
-  const snippetScope = useMemo(() => ({ kind: "organization" as const, id: orgId ?? "" }), [orgId]);
-  const packApi = useMemo(() => (orgId ? reportPackApi({ kind: "organization", id: orgId }) : null), [orgId]);
-  const placementApi = useMemo(() => (orgId ? reportPlacementApi({ kind: "organization", id: orgId }) : null), [orgId]);
+  const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
@@ -431,11 +420,6 @@ export function OrgAdminPage() {
   type OrgUserSortKey = "display_name" | "email" | "last_login_at";
   const [userSort, setUserSort] = useState<SortState<OrgUserSortKey> | null>(null);
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
-  const [reportOutputRetentionDays, setReportOutputRetentionDays] = useState("");
-  const [reportFileName, setReportFileName] = useState("");
-  const [reportFooterText, setReportFooterText] = useState("");
-  const [reportIncludeCoverPage, setReportIncludeCoverPage] = useState(false);
-  const [reportChaptersPerComponent, setReportChaptersPerComponent] = useState(true);
   const [require2fa, setRequire2fa] = useState(false);
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
@@ -465,7 +449,7 @@ export function OrgAdminPage() {
   // own comment and docs/decisions.md. Set on every field's onChange,
   // cleared once `saveAdvanced` succeeds (so a later, legitimate reload
   // can resume populating the form again).
-  const advancedDirtyRef = useRef<Record<AdvancedGroup, boolean>>({ email: false, security: false, pats: false, reports: false });
+  const advancedDirtyRef = useRef<Record<AdvancedGroup, boolean>>({ email: false, security: false, pats: false });
   const [outsideDomainUsers, setOutsideDomainUsers] = useState<OutsideDomainUser[] | null>(null);
   const [outsideDomainError, setOutsideDomainError] = useState<string | null>(null);
   const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
@@ -683,13 +667,6 @@ export function OrgAdminPage() {
         setSmtpUseTls(a.smtp_use_tls);
       }
       if (!dirty.pats) setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
-      if (!dirty.reports) {
-        setReportOutputRetentionDays(a.report_output_retention_days ? String(a.report_output_retention_days) : "");
-        setReportFileName(a.report_file_name ?? "");
-        setReportFooterText(a.report_footer_text ?? "");
-        setReportIncludeCoverPage(a.report_include_cover_page);
-        setReportChaptersPerComponent(a.report_chapters_per_component);
-      }
       if (!dirty.security) {
         setRequire2fa(a.require_2fa);
         setAllowSelfSignup(a.allow_self_signup);
@@ -840,7 +817,7 @@ export function OrgAdminPage() {
    * send as it is, so each Save sends only its own group's fields and an unsaved edit in another group is neither
    * saved nor overwritten.
    *
-   * @param group `email` (SMTP), `security` (sign-in and project policies), `pats` (token lifetime) or `reports`.
+   * @param group `email` (SMTP), `security` (sign-in and project policies) or `pats` (token lifetime).
    */
   async function saveAdvanced(group: AdvancedGroup) {
     if (!orgId) return;
@@ -854,13 +831,6 @@ export function OrgAdminPage() {
         smtp_use_tls: smtpUseTls,
       },
       pats: { pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null },
-      reports: {
-        report_output_retention_days: reportOutputRetentionDays ? Number(reportOutputRetentionDays) : null,
-        report_file_name: reportFileName.trim() || null,
-        report_footer_text: reportFooterText.trim() || null,
-        report_include_cover_page: reportIncludeCoverPage,
-        report_chapters_per_component: reportChaptersPerComponent,
-      },
       security: {
         require_2fa: require2fa,
         allow_self_signup: allowSelfSignup,
@@ -1735,6 +1705,10 @@ export function OrgAdminPage() {
     setImportMergeError(null);
   }
 
+  // A section that now lives on Org Resources (Reports, Tags, a module's record lists) keeps its old address working.
+  const movedTo = orgId ? findMovedOrgAdminPath(orgId, groupParam, sectionParam, CORE_ORG_ADMIN_GROUP_KEYS) : null;
+  if (movedTo) return <Navigate to={`${movedTo}${location.search}${location.hash}`} replace />;
+
   const orgIsDisabled = loadError?.toLowerCase().includes("disabled") ?? false;
 
   if (loadError && orgIsDisabled && user?.is_server_admin) {
@@ -1890,12 +1864,10 @@ export function OrgAdminPage() {
     { key: "projects", label: strings.orgAdmin.groupProjects, href: `/orgs/${orgId}/admin/projects` },
     { key: "workflow", label: strings.orgAdmin.groupWorkflow, href: `/orgs/${orgId}/admin/workflow` },
     { key: "branding-defaults", label: strings.orgAdmin.groupBrandingDefaults, href: `/orgs/${orgId}/admin/branding-defaults` },
-    { key: "reports", label: strings.orgAdmin.groupReports, href: `/orgs/${orgId}/admin/reports` },
     { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
-    { key: "tags", label: strings.orgAdmin.groupTags, href: `/orgs/${orgId}/admin/tags` },
     { key: "messages", label: strings.announcements.heading, href: `/orgs/${orgId}/admin/messages` },
     { key: "policies", label: strings.policies.heading, href: `/orgs/${orgId}/admin/policies` },
     { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
@@ -2837,82 +2809,6 @@ export function OrgAdminPage() {
           </div>
         )}
 
-        {activeGroup === "reports" && (
-          <div className="stack">
-            {layoutApi && packApi && placementApi && (
-              <CollapsibleSection sectionKey="orgAdmin.reportSetup" title={strings.orgAdmin.reportLayoutsSection} defaultCollapsed={false}>
-                <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
-              </CollapsibleSection>
-            )}
-            {orgId && (
-              <CollapsibleSection sectionKey="orgAdmin.reportSnippets" title={strings.reportSnippetsPanel.sectionTitle} defaultCollapsed>
-                <ReportSnippetsPanel scope={snippetScope} />
-              </CollapsibleSection>
-            )}
-
-            {advanced && (
-              <CollapsibleSection sectionKey="orgAdmin.reportConfiguration" title={strings.orgAdmin.reportConfigurationTitle} defaultCollapsed>
-                <FileNameField
-                  label={strings.reportFileName.organizationLabel}
-                  help={strings.help.reportFileNameOrganization}
-                  value={reportFileName}
-                  kind="organization"
-                  onChange={(next) => {
-                    advancedDirtyRef.current.reports = true;
-                    setReportFileName(next);
-                  }}
-                />
-                <TextField
-                  label={strings.orgAdmin.reportOutputRetention}
-                  help={strings.help.reportOutputRetention}
-                  value={reportOutputRetentionDays}
-                  onChange={(next) => {
-                    advancedDirtyRef.current.reports = true;
-                    setReportOutputRetentionDays(next);
-                  }}
-                  hint={strings.orgAdmin.reportOutputRetentionHint(
-                    advanced.report_output_default_retention_days, advanced.report_output_max_retention_days,
-                  )}
-                  inputProps={{ type: "number", min: 1, max: 3650, style: { maxWidth: 160 } }}
-                />
-                <TextField
-                  label={strings.orgAdmin.reportFooterText}
-                  help={strings.help.reportFooterText}
-                  value={reportFooterText}
-                  onChange={(next) => {
-                    advancedDirtyRef.current.reports = true;
-                    setReportFooterText(next);
-                  }}
-                  inputProps={{ maxLength: 500 }}
-                />
-                <CheckboxField
-                  label={strings.orgAdmin.reportIncludeCoverPage}
-                  help={strings.help.reportIncludeCoverPage}
-                  checked={reportIncludeCoverPage}
-                  onChange={(next) => {
-                    advancedDirtyRef.current.reports = true;
-                    setReportIncludeCoverPage(next);
-                  }}
-                />
-                <CheckboxField
-                  label={strings.orgAdmin.reportChaptersPerComponent}
-                  help={strings.help.reportChaptersPerComponent}
-                  checked={reportChaptersPerComponent}
-                  onChange={(next) => {
-                    advancedDirtyRef.current.reports = true;
-                    setReportChaptersPerComponent(next);
-                  }}
-                />
-                <InlineMessage>{advancedError}</InlineMessage>
-                <button className="btn btn-primary" onClick={() => void saveAdvanced("reports")} style={{ alignSelf: "flex-start" }}>
-                  {strings.orgAdmin.saveReportConfiguration}
-                </button>
-              </CollapsibleSection>
-            )}
-
-          </div>
-        )}
-
         {activeGroup === "oauth-sso" && (
           <div className="stack">
             {ssoConfig && (
@@ -3246,14 +3142,6 @@ export function OrgAdminPage() {
                 <PersonalDataPolicyPanel scope={{ kind: "organization", organizationId: orgId }} />
               </CollapsibleSection>
             )}
-          </div>
-        )}
-
-        {activeGroup === "tags" && orgId && (
-          <div className="stack">
-            <CollapsibleSection sectionKey="orgAdmin.tags" collapsible={false} title={strings.tags.admin.title}>
-              <OrgTagsPanel organizationId={orgId} />
-            </CollapsibleSection>
           </div>
         )}
 

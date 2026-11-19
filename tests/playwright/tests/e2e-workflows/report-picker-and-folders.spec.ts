@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, closeDialogWithoutSaving, openDesignerTextView } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectProjectAdminGroup, closeDialogWithoutSaving, openDesignerTextView } from "./helpers";
 import { chooseReport, listReports, openReportPicker, reportPickerButton } from "./reportPicker";
 
 const API = "http://localhost:8000/api/v1";
@@ -185,8 +185,7 @@ test.describe("Report picker, folders and placements", () => {
     const [alpha, beta] = projects;
 
     await test.step("the organisation moves one module report to a nested folder and hides another", async () => {
-      await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Reports");
+      await page.goto(`/orgs/${org.id}/resources/reports`);
       let table = await searchReportSetup(page, "Decision register");
       await table.getByRole("button", { name: "Actions for Decision register" }).click();
       await page.getByRole("menuitem", { name: "Move to folder…" }).click();

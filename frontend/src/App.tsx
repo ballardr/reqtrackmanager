@@ -55,7 +55,7 @@ import { SignupPage } from "./pages/SignupPage";
  */
 function OldOrgReportsRedirect() {
   const { orgId } = useParams<{ orgId: string }>();
-  return <Navigate to={`/orgs/${orgId}/admin/reports`} replace />;
+  return <Navigate to={`/orgs/${orgId}/resources/reports`} replace />;
 }
 
 /**

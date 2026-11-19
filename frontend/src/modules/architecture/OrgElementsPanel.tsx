@@ -1,7 +1,7 @@
 /**
  * Module: modules/architecture/OrgElementsPanel
  *
- * The organisation's own elements and collections, on the organisation administration page: shared platform blocks (an
+ * The organisation's own elements and collections, on Org Resources: shared platform blocks (an
  * identity service, a standard board) that projects use once a collection holding them is granted to the project or to a
  * group. Two tabs: *Elements* (a table with create, edit, status and archive; an element's code is qualified by the
  * organisation code) and *Collections* (`CollectionsPanel`). An organisation element has no project, so it takes no tags,

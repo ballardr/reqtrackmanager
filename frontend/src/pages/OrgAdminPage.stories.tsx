@@ -4,7 +4,6 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../api/client";
 import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
-import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -128,9 +127,6 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/groups")) return orgGroups;
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
-    if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: null, origin: "organization" })];
-    // Report Setup merges these three lists with the layouts: empty is a valid answer for each.
-    if (path.endsWith("/report-packs") || path.endsWith("/report-placements") || path.endsWith("/report-folders")) return [];
     if (path.includes("/advanced-settings")) {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
       return overrides.advanced ?? advanced;
@@ -254,6 +250,19 @@ const meta: Meta<typeof OrgAdminPage> = {
 export default meta;
 
 type Story = StoryObj<typeof OrgAdminPage>;
+
+/** The Organisation Settings menu no longer lists Reports or Tags. */
+export const SettingsMenuNoLongerListsReportsOrTags: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Tags" })).not.toBeInTheDocument();
+  },
+};
 
 export const UsersSectionAndCreateUser: Story = {
   beforeEach: () => {
@@ -792,35 +801,6 @@ export const UsersSectionMigratedFilterCheckboxesWorkIndependently: Story = {
         expect.stringMatching(/stale_since_days=180.*has_2fa=false|has_2fa=false.*stale_since_days=180/)
       )
     );
-  },
-};
-
-/** Reports lists the organisation's report layouts, shared with every project. */
-export const ReportsListsTheReportLayouts: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis();
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
-    const grid = within(await canvas.findByRole("treegrid", { name: "Reports, packs and tables" }));
-    await userEvent.click(grid.getByRole("button", { name: "Expand Custom reports" }));
-    await expect(grid.getByRole("button", { name: /^Requirements by component/ })).toBeInTheDocument();
-  },
-};
-
-/** Report templates are gone: the organisation has one look, set on Branding and Configuration. */
-export const NoReportTemplatesSectionRemains: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis();
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
-    await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
-    await expect(canvas.queryByRole("button", { name: "Report templates section" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "New template" })).not.toBeInTheDocument();
   },
 };
 
@@ -1370,56 +1350,6 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
         expect.objectContaining({ allow_relaxed_child_project_creation: false })
-      )
-    );
-  },
-};
-
-/** Reports opens on the Report layouts list with every other section closed (Report layouts itself is open). */
-export const ReportsOpensOnTheReportLayouts: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis();
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
-    await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
-    await expect(canvas.getByRole("button", { name: "Report layouts section" })).toHaveAttribute("aria-expanded", "true");
-    for (const title of ["Report snippets", "Configuration"]) {
-      await expect(canvas.getByRole("button", { name: `${title} section` })).toHaveAttribute("aria-expanded", "false");
-    }
-  },
-};
-
-/** Configuration holds the background-report retention (with the platform default and ceiling), the default report
- * file name and the report look's footer text, cover page and chapter layout; one Save sends them all with the
- * organisation's advanced settings (an emptied file name is saved as none). */
-export const ReportConfigurationIsSavedWithOneButton: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis();
-    spyOn(api, "put").mockResolvedValue(advanced);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Configuration section" }));
-    const retention = await canvas.findByLabelText("Keep background report files for (days)");
-    await expect(canvas.getByText(/platform default of 7 days/)).toBeInTheDocument();
-    await userEvent.type(retention, "3");
-    const fileName = await canvas.findByRole("textbox", { name: "Default report file name" });
-    await userEvent.type(fileName, "{{{{project_name}}-{{{{report_title}}", { delay: null });
-    await userEvent.type(canvas.getByRole("textbox", { name: "Default footer text" }), "Confidential");
-    await userEvent.click(canvas.getByRole("checkbox", { name: "Include cover page" }));
-    await userEvent.click(canvas.getByRole("checkbox", { name: /Chapter per/ }));
-    await expect(canvas.getAllByRole("button", { name: "Save configuration" })).toHaveLength(1);
-    await userEvent.click(canvas.getByRole("button", { name: "Save configuration" }));
-    await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(
-        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
-        expect.objectContaining({
-          report_output_retention_days: 3, report_file_name: "{{project_name}}-{{report_title}}",
-          report_footer_text: "Confidential", report_include_cover_page: true, report_chapters_per_component: false,
-        })
       )
     );
   },

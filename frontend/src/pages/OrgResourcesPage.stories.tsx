@@ -11,16 +11,19 @@ import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import { ApiError, api } from "../api/client";
-import type { OrgModule, OrgModuleSubComponent, Organization } from "../api/types";
+import { api } from "../api/client";
+import type { OrgEnabledModule, Organization } from "../api/types";
 import { installedModules } from "../modules/registry";
+import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
+import { OrgAdminPage } from "./OrgAdminPage";
 import { OrgOverviewPage } from "./OrgOverviewPage";
 import { OrgResourcesPage } from "./OrgResourcesPage";
 
 const ORG_ID = "org-1";
 const FIXTURE_MODULE_KEY = "fake_org_resources_fixture_module";
 const OTHER_MODULE_KEY = "fake_org_resources_other_module";
+const SHADOWING_MODULE_KEY = "fake_org_resources_shadowing_module";
 const GATED_SUB_COMPONENT = "gated";
 
 const org: Organization = {
@@ -57,36 +60,34 @@ installedModules.push(
     key: OTHER_MODULE_KEY,
     orgResourceSections: [{ key: "fixture-plain", label: "Duplicate records", render: () => <div>Duplicate content</div> }],
   },
+  {
+    // Declares the key of a section core owns, so the page must ignore it.
+    key: SHADOWING_MODULE_KEY,
+    orgResourceSections: [{ key: "reports", label: "Shadow of Reports", render: () => <div>Shadow content</div> }],
+  },
 );
 
-function orgModule(key: string, enabled = true): OrgModule {
-  return {
-    module_key: key, name: key, description: "Fixture module.", version: "0.1.0", implemented: true, entitled: true,
-    enabled, default_project_enabled: true, default_enabled: true, frontend_manifest: null,
-  };
+/** A module the organisation can use, with the sub-components that are off. */
+function orgModule(key: string, disabledSubComponents: string[] = []): OrgEnabledModule {
+  return { module_key: key, disabled_sub_components: disabledSubComponents };
 }
 
-function subComponent(enabled: boolean): OrgModuleSubComponent {
-  return {
-    module_key: FIXTURE_MODULE_KEY, subcomponent_key: GATED_SUB_COMPONENT, name: "Gated", default_enabled: true,
-    enabled, default_project_enabled: true, has_org_override: false,
-  };
-}
-
-function mockApis(options: { modules?: OrgModule[]; subComponents?: "on" | "off" | "forbidden"; siblingOrg?: boolean } = {}) {
-  const modules = options.modules ?? [orgModule(FIXTURE_MODULE_KEY), orgModule(OTHER_MODULE_KEY)];
+/** Serves the member-readable `enabled-modules` list: a module that is off is simply absent from it. */
+function mockApis(options: { modules?: OrgEnabledModule[]; subComponentOff?: boolean; siblingOrg?: boolean } = {}) {
+  const modules = options.modules ?? [orgModule(FIXTURE_MODULE_KEY, options.subComponentOff ? [GATED_SUB_COMPONENT] : []), orgModule(OTHER_MODULE_KEY)];
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}`) return org;
-    if (path === `/api/v1/orgs/${ORG_ID}/modules`) return modules;
-    if (path === `/api/v1/orgs/${ORG_ID}/modules/${FIXTURE_MODULE_KEY}/subcomponents`) {
-      if (options.subComponents === "forbidden") throw new ApiError(403, "Forbidden");
-      return [subComponent(options.subComponents !== "off")];
-    }
+    if (path === `/api/v1/orgs/${ORG_ID}/enabled-modules`) return modules;
+    // The Reports section (core) is the landing section when no module contributes one.
+    if (path.endsWith("/starters")) return { missing: [] };
+    if (path === `/api/v1/orgs/${ORG_ID}/tags`) return buildVocabulary({ own_mode: null });
+    if (path === `/api/v1/orgs/${ORG_ID}/tags/usage`) return buildUsage();
     if (path === "/api/v1/orgs?mine=true") return options.siblingOrg ? [org, { ...org, id: "org-2", name: "Globex Corporation" }] : [org];
     // The Overview page mounted by the redirect story requests more before it redirects; nothing there is asserted.
     return [];
   });
   spyOn(api, "post").mockImplementation(async () => ({ results: {} }));
+  spyOn(api, "getPage").mockResolvedValue({ items: [], total: 0 });
 }
 
 function LocationProbe() {
@@ -99,6 +100,7 @@ const withRoutes: Decorator = (Story, context) => (
     <Routes>
       <Route path="/orgs/:orgId/resources/:group?/:section?" element={<Story />} />
       <Route path="/orgs/:orgId/overview/:group?" element={<OrgOverviewPage />} />
+      <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
     </Routes>
     <LocationProbe />
   </MemoryRouter>
@@ -107,7 +109,8 @@ const withRoutes: Decorator = (Story, context) => (
 const meta: Meta<typeof OrgResourcesPage> = {
   title: "Pages/OrgResourcesPage",
   component: OrgResourcesPage,
-  decorators: [withStatefulAuth(buildUser({ id: "user-1", is_server_admin: false })), withRoutes],
+  // Routes first so the signed-in context wraps every route, not only the page under test.
+  decorators: [withRoutes, withStatefulAuth(buildUser({ id: "user-1", is_server_admin: false }))],
 };
 export default meta;
 
@@ -188,20 +191,48 @@ export const AnUnknownAddressReturnsToThePage: Story = {
   },
 };
 
-/** A module that is off contributes nothing, and with nothing to list the page says so. */
+/** A module that is off contributes nothing; the page still offers the sections core owns (Reports and Tags) and opens
+ * on the first of them. */
 export const ADisabledModuleContributesNothing: Story = {
-  beforeEach: () => mockApis({ modules: [orgModule(FIXTURE_MODULE_KEY, false), orgModule(OTHER_MODULE_KEY, false)] }),
+  beforeEach: () => mockApis({ modules: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText(/No organisation resources are available/)).toBeInTheDocument();
+    await expect(await canvas.findByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
+    await expect(canvas.getByRole("link", { name: "Tags" })).toHaveAttribute("href", `/orgs/${ORG_ID}/resources/tags`);
     await expect(canvas.queryByRole("link", { name: "Fixture records" })).not.toBeInTheDocument();
     await expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument();
   },
 };
 
+/** Reports and Tags follow the modules' sections, whichever modules are enabled. */
+export const CoreSectionsFollowTheModuleSections: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Fixture records" });
+    const labels = canvas.getAllByRole("link").map((l) => l.textContent);
+    await expect(labels.indexOf("Reports")).toBeGreaterThan(labels.indexOf("Fixture records"));
+    await expect(labels.indexOf("Tags")).toBeGreaterThan(labels.indexOf("Reports"));
+  },
+};
+
+/** A module section that reuses a core key is ignored, not shadowing Reports or Tags. */
+export const AModuleSectionCannotShadowACoreSection: Story = {
+  beforeEach: () => {
+    mockApis({ modules: [orgModule(FIXTURE_MODULE_KEY), orgModule(SHADOWING_MODULE_KEY)] });
+    spyOn(console, "error").mockImplementation(() => undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Fixture records" });
+    await expect(canvas.queryByRole("link", { name: "Shadow of Reports" })).not.toBeInTheDocument();
+    await expect(canvas.getAllByRole("link", { name: "Reports" })).toHaveLength(1);
+  },
+};
+
 /** A section tied to a sub-component is left out while the organisation has that sub-component off. */
 export const ASectionWhoseSubComponentIsOffIsHidden: Story = {
-  beforeEach: () => mockApis({ subComponents: "off" }),
+  beforeEach: () => mockApis({ subComponentOff: true }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole("link", { name: "Fixture records" });
@@ -209,13 +240,17 @@ export const ASectionWhoseSubComponentIsOffIsHidden: Story = {
   },
 };
 
-/** The sub-component state is readable only by administrators; where the caller cannot read it the section is offered
- * and its own endpoints decide what the person may do. */
-export const ASectionIsOfferedWhenSubComponentStateIsUnreadable: Story = {
-  beforeEach: () => mockApis({ subComponents: "forbidden" }),
+/** The page reads the member-readable list only: it never asks for the administrator-only module list, so a person who
+ * is not an administrator sees the same sections. */
+export const ThePageNeverAsksForTheAdministratorOnlyModuleList: Story = {
+  beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("link", { name: "Gated records" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Reports" })).toBeInTheDocument();
+    const paths = (api.get as unknown as { mock: { calls: string[][] } }).mock.calls.map((c) => c[0]);
+    await expect(paths.some((p) => p.endsWith("/modules") || p.includes("/subcomponents"))).toBe(false);
+    await expect(paths).toContain(`/api/v1/orgs/${ORG_ID}/enabled-modules`);
   },
 };
 
@@ -227,6 +262,38 @@ export const AnEarlierOverviewAddressRedirectsKeepingTheQuery: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText(`Fixture records for org ${ORG_ID}`)).toBeInTheDocument();
     await expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/fixture-plain?filter=open`);
+  },
+};
+
+/** The Organisation Settings addresses of what moved here redirect, keeping the query string: Reports and Tags by their
+ * key, and a module's record list by its section key, alone or under the group it had in Settings. */
+export const EarlierSettingsAddressesRedirectKeepingTheQuery: Story = {
+  parameters: { initialPath: `/orgs/${ORG_ID}/admin/reports?tab=packs` },
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/reports?tab=packs`));
+    await expect(await canvas.findByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
+  },
+};
+
+export const ASettingsTagsAddressRedirects: Story = {
+  parameters: { initialPath: `/orgs/${ORG_ID}/admin/tags` },
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/tags`));
+    await expect(await canvas.findByRole("table", { name: "Tags" })).toBeInTheDocument();
+  },
+};
+
+export const AModuleSectionUnderItsOldSettingsGroupRedirects: Story = {
+  parameters: { initialPath: `/orgs/${ORG_ID}/admin/old-group/fixture-plain` },
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/fixture-plain`));
+    await expect(await canvas.findByText(`Fixture records for org ${ORG_ID}`)).toBeInTheDocument();
   },
 };
 

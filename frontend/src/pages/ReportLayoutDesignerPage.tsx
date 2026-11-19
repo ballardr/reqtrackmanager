@@ -3,7 +3,7 @@
  *
  * The designer of one report layout, at `/projects/:projectId/report-layouts/:layoutId` and
  * `/orgs/:orgId/report-layouts/:layoutId`. It only binds the URL to a scope (`reportLayoutApi`), supplies where
- * Back leads (Report setup of Project Admin, Reports of Org Admin) and, for an organisation layout,
+ * Back leads (Report setup of Project Admin, Reports of Org Resources) and, for an organisation layout,
  * the projects a preview can be narrowed to; the designer itself is `ReportLayoutDesigner`.
  */
 import { useMemo, useState } from "react";
@@ -15,6 +15,7 @@ import type { ProjectListItem } from "../api/types";
 import { ReportLayoutDesigner } from "../components/ReportLayoutDesigner";
 import { Spinner } from "../components/Spinner";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { orgResourcesPath } from "../modules/orgResources";
 
 export function ReportLayoutDesignerPage() {
   const { projectId, orgId, layoutId } = useParams<{ projectId?: string; orgId?: string; layoutId: string }>();
@@ -34,6 +35,6 @@ export function ReportLayoutDesignerPage() {
   }, [kind, scopeId]);
 
   if (!kind || !scopeId || !layouts || !layoutId) return <Spinner />;
-  const backTo = kind === "project" ? `/projects/${scopeId}/admin/reportSetup` : `/orgs/${scopeId}/admin/reports`;
+  const backTo = kind === "project" ? `/projects/${scopeId}/admin/reportSetup` : orgResourcesPath(scopeId, "reports");
   return <ReportLayoutDesigner api={layouts} layoutId={layoutId} backTo={backTo} projectOptions={projects} />;
 }

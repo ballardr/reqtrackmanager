@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport } from "./reportPicker";
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD } from "./helpers";
 import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API = "http://localhost:8000/api/v1";
@@ -181,8 +181,7 @@ test.describe("Custom report background run", () => {
   test("an organisation admin sets how long background report files are kept", async ({ page, request }) => {
     const { org } = await setup(page, request);
 
-    await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Reports");
+    await page.goto(`/orgs/${org.id}/resources/reports`);
     await ensureExpanded(page, "Configuration");
     await expect(page.getByText(/platform default of 7 days/)).toBeVisible();
     await page.getByLabel("Keep background report files for (days)").fill("3");
@@ -190,7 +189,6 @@ test.describe("Custom report background run", () => {
 
     await expect(page.getByText("Settings saved.")).toBeVisible();
     await page.reload();
-    await selectOrgAdminGroup(page, "Reports");
     await ensureExpanded(page, "Configuration");
     await expect(page.getByLabel("Keep background report files for (days)")).toHaveValue("3");
   });

@@ -48,6 +48,7 @@ from app.schemas.org import (
     OrganizationOut,
     OrgCodePolicyUpdate,
     OrgCodeUpdate,
+    OrgEnabledModuleOut,
     OrgModuleEnablementUpdate,
     OrgModuleOut,
     OrgSsoConfigOut,
@@ -305,6 +306,33 @@ def list_org_modules(
                 frontend_manifest=ModuleFrontendManifestOut(**vars(manifest)) if manifest else None,
             )
         )
+    return result
+
+
+@router.get("/{organization_id}/enabled-modules", response_model=list[OrgEnabledModuleOut])
+def list_org_enabled_modules(
+    organization_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
+    db: Session = Depends(get_db),
+):
+    """Lists the modules this organisation is entitled to and has enabled, with the sub-components that are off.
+
+    Readable by every organisation member, unlike `GET .../modules` (administrators only): organisation-level pages
+    that people work in (Org Resources) need to know which module sections to offer, and a section for a module the
+    organisation cannot use must not be shown (module availability and visibility). It carries keys only: no module
+    description, version or manifest and no entitlement detail for a module the organisation does not have.
+    """
+    if db.get(Organization, organization_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    result: list[OrgEnabledModuleOut] = []
+    for definition in get_module_registry().values():
+        if not is_module_enabled(db, organization_id, definition.key):
+            continue
+        disabled = [
+            sub.key for sub in definition.sub_components
+            if not (resolve_org_subcomponent_state(db, organization_id, definition.key, sub.key) or (True, True))[0]
+        ]
+        result.append(OrgEnabledModuleOut(module_key=definition.key, disabled_sub_components=disabled))
     return result
 
 
