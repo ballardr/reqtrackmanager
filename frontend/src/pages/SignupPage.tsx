@@ -6,7 +6,7 @@ import type { SignupConfig } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
-import { resolveLandingPath } from "./LoginPage";
+import { resolvePostSignInPath } from "../utils/signInDestination";
 import { AuthCard } from "../components/AuthCard";
 import { TextField } from "../components/FormFields";
 
@@ -52,7 +52,7 @@ export function SignupPage() {
         setAwaitingConfirmation(true);
         return;
       }
-      navigate(await resolveLandingPath(user));
+      navigate(await resolvePostSignInPath(user));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.signup.error);
     } finally {

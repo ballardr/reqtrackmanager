@@ -1,3 +1,4 @@
+import { useEffect, useRef, type RefObject } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
@@ -5,6 +6,7 @@ import { Spinner } from "./components/Spinner";
 import { useAuth } from "./context/AuthContext";
 import { useFederatedModules } from "./hooks/useFederatedModules";
 import { useProjectEnabledModules } from "./hooks/useProjectEnabledModules";
+import { rememberReturnTo } from "./utils/returnTo";
 import { buildModuleRoutes } from "./modules/buildModuleRoutes";
 import { installedModules } from "./modules/registry";
 import { ActionDetailPage } from "./pages/ActionDetailPage";
@@ -54,6 +56,22 @@ function OldOrgReportsRedirect() {
   return <Navigate to={`/orgs/${orgId}/admin/reports`} replace />;
 }
 
+/**
+ * Sends a person who is not signed in to the sign-in page.
+ *
+ * Args:
+ *     signedInBefore: Set once this tab has had a signed-in person. When it is not set the person arrived by a link,
+ *         so the address they asked for is remembered and signing in returns them to it.
+ */
+function RedirectToLogin({ signedInBefore }: { signedInBefore: RefObject<boolean> }) {
+  const location = useLocation();
+  const asked = location.pathname + location.search + location.hash;
+  useEffect(() => {
+    if (!signedInBefore.current) rememberReturnTo(asked);
+  }, [asked, signedInBefore]);
+  return <Navigate to="/login" replace />;
+}
+
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -81,6 +99,12 @@ function ProtectedRoutes() {
   // link could otherwise still hit the wildcard `Navigate` below before
   // that load resolves. Folded into the same gate rather than a second,
   // parallel one.
+  // Whether this tab has had a signed-in person: a redirect to sign-in after that is a lapsed session or a deliberate
+  // sign-out (the 401 handler and `logout` manage the remembered page); one before it is a followed link.
+  const signedInBefore = useRef(false);
+  useEffect(() => {
+    if (user) signedInBefore.current = true;
+  }, [user]);
   const federatedModulesStillLoading = Object.values(federatedModuleStates).some((s) => s.status === "loading");
 
   if (loading) {
@@ -92,7 +116,7 @@ function ProtectedRoutes() {
   }
   // The Policies page is public: the people a privacy policy concerns most have not signed in yet.
   if (!user && /^\/policies(\/|$)/.test(location.pathname)) return <PublicPoliciesPage />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <RedirectToLogin signedInBefore={signedInBefore} />;
   // An administrator-set password is changed before anything else is shown (the server refuses every other request).
   if (user.must_change_password) return <ForcedPasswordChangePage />;
 

@@ -4,6 +4,7 @@ import { expect, fn, waitFor, within } from "storybook/test";
 
 import { withAuth } from "../testing/storybook-helpers";
 import { OidcCompletePage } from "./OidcCompletePage";
+import { clearReturnTo, rememberReturnTo } from "../utils/returnTo";
 import { OIDC_CLIENT_NONCE_STORAGE_KEY } from "./OrgLoginPage";
 
 const NONCE = "test-nonce-abc123";
@@ -24,6 +25,7 @@ const withOidcRoutes: Decorator = (Story) => (
     <Routes>
       <Route path="/oidc-complete" element={<Story />} />
       <Route path="/projects" element={<div>Projects landing page</div>} />
+      <Route path="/projects/:projectId/requirements" element={<div>Requirements page</div>} />
       <Route path="/login" element={<div>Login page</div>} />
     </Routes>
   </MemoryRouter>
@@ -59,6 +61,21 @@ export const SuccessfulLoginRedirects: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Projects landing page")).toBeInTheDocument());
+  },
+};
+
+/** The page the person was on when sign-in was required is where single sign-on returns them. */
+export const SuccessfulLoginReturnsToTheRememberedPage: Story = {
+  beforeEach: () => {
+    refreshUserMock.mockResolvedValue(undefined);
+    sessionStorage.setItem(OIDC_CLIENT_NONCE_STORAGE_KEY, NONCE);
+    rememberReturnTo("/projects/p1/requirements");
+    setLocation(`#token=real-access-token&client_nonce=${NONCE}`);
+    return clearReturnTo;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Requirements page")).toBeInTheDocument());
   },
 };
 

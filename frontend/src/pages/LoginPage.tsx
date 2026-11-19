@@ -2,39 +2,25 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
-import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
+import type { ServerSettings, SignupConfig } from "../api/types";
 import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { TextField } from "../components/FormFields";
+import { resolvePostSignInPath } from "../utils/signInDestination";
+import { peekReturnTo } from "../utils/returnTo";
 
 const strings = t();
-
-/**
- * Resolves where to send the user after login (U-U-03): a specific project,
- * the project overview list, or "automatic" (the sole accessible project if
- * there's exactly one, else the overview list).
- */
-export async function resolveLandingPath(user: User): Promise<string> {
-  const preference = user.landing_preference;
-  if (preference && preference !== "auto" && preference !== "overview") {
-    return `/projects/${preference}`;
-  }
-  if (preference === "overview") {
-    return "/projects";
-  }
-  const projects = await api.get<ProjectListItem[]>("/api/v1/projects?archived=false");
-  return projects.length === 1 ? `/projects/${projects[0].id}` : "/projects";
-}
 
 export function LoginPage() {
   const { login, verify2fa } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const routerState = location.state as { message?: string; challengeToken?: string } | null;
-  const reauthMessage = routerState?.message ?? null;
+  // A page is waiting to be returned to: say so, unless the redirect already carries its own message.
+  const reauthMessage = routerState?.message ?? (peekReturnTo() ? strings.login.returnToPage : null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -76,7 +62,7 @@ export function LoginPage() {
       if (result.requires2fa) {
         setChallengeToken(result.challengeToken);
       } else {
-        navigate(await resolveLandingPath(result.user));
+        navigate(await resolvePostSignInPath(result.user));
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
@@ -92,7 +78,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       const user = await verify2fa(challengeToken, code);
-      navigate(await resolveLandingPath(user));
+      navigate(await resolvePostSignInPath(user));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);
     } finally {

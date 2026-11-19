@@ -5,6 +5,7 @@ import type { UiPreferenceValue, User } from "../api/types";
 import { applyUiPreferencePatch } from "./uiPreferencePatch";
 import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthContextValue";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { clearReturnTo, rememberReturnTo } from "../utils/returnTo";
 
 // Every other call through this client waits indefinitely (no timeout at
 // all) — login/2FA-verify are the deliberate exception. Both hit
@@ -82,7 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result.user;
   }, []);
 
+  // A deliberate sign-out forgets any remembered page: the next person to sign in on this tab is not taken to it.
   const logout = useCallback(() => {
+    clearReturnTo();
     setAuthToken(null);
     setUser(null);
   }, []);
@@ -95,6 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // rendered on stale data until a hard refresh forces a re-check.
   useEffect(() => {
     const onUnauthorized = () => {
+      // The page the person was on is where signing in again returns them.
+      rememberReturnTo(window.location.pathname + window.location.search + window.location.hash);
       setAuthToken(null);
       setUser(null);
     };

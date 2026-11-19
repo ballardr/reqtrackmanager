@@ -8,7 +8,7 @@ import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
-import { resolveLandingPath } from "./LoginPage";
+import { resolvePostSignInPath } from "../utils/signInDestination";
 import { TextField } from "../components/FormFields";
 
 const strings = t();
@@ -80,7 +80,7 @@ export function OrgLoginPage() {
         // email/password again.
         navigate("/login", { state: { challengeToken: result.challengeToken } });
       } else {
-        window.location.href = await resolveLandingPath(result.user);
+        window.location.href = await resolvePostSignInPath(result.user);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.login.error);

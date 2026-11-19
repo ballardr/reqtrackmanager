@@ -7,6 +7,7 @@ import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { OIDC_CLIENT_NONCE_STORAGE_KEY } from "./OrgLoginPage";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { takeReturnTo } from "../utils/returnTo";
 
 const strings = t();
 
@@ -69,7 +70,7 @@ export function OidcCompletePage() {
     // history/back-forward cache as a visible URL.
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
     setAuthToken(token);
-    refreshUser().then(() => navigate("/projects", { replace: true }));
+    refreshUser().then(() => navigate(takeReturnTo() ?? "/projects", { replace: true }));
   }, []);
 
   if (error) {

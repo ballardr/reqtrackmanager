@@ -5,21 +5,22 @@
  * (`User.must_change_password`): the person enters the password they were given and chooses their own.
  *
  * Responsibilities: collect and confirm the new password, send it with `POST /auth/change-password`, and send the
- * person to the sign-in page afterwards (the change ends every session, including this one). Signing out is the
- * alternative.
+ * person to the sign-in page afterwards (the change ends every session, including this one; the page they were on is
+ * remembered so that signing in returns them to it). Signing out is the alternative.
  *
  * Design decisions: rendered in place of the whole signed-in application by `App.tsx`, not as a route, so there is no
  * address that leaves it; the server refuses every other request of the account in any case
  * (`services.password_change_gate`).
  */
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import { AuthCard } from "../components/AuthCard";
 import { TextField } from "../components/FormFields";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
+import { rememberReturnTo } from "../utils/returnTo";
 
 const strings = t();
 
@@ -29,6 +30,7 @@ const strings = t();
 export function ForcedPasswordChangePage() {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -46,6 +48,8 @@ export function ForcedPasswordChangePage() {
     try {
       await api.post("/api/v1/auth/change-password", { current_password: current, new_password: password });
       logout();
+      // The change ends this session; signing in again returns the person to the page they were on.
+      rememberReturnTo(location.pathname + location.search + location.hash);
       navigate("/login", { state: { message: strings.login.reauthRequired } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.forcedPasswordChange.failed);
