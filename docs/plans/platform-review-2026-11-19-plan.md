@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 6 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 7 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-6 / 22 phases complete.
+6 / 23 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -16,7 +16,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 4 | Licence audit and dependency licence guard | Shipped-component inventory, generated notices, CI guard that keeps the commercial option open | [x] |
 | 5 | Licences in the Policies area | Public read-only Licences group; separate from the policy tables | [x] |
 | 6 | Licence model: decision and change | Options paper and the user's choice (a decision gate); then the licence files, contribution terms and website page; decided 2026-11-19: AGPLv3 + commercial, CLA | [x] |
-| 7 | Org Resources: review | Classify every Organisation Settings group and Overview section as configuration or resource; sign-off | [ ] |
+| 7 | Org Resources: review | [Register](platform-review-2026-11-19-org-resources-register.md) classifying every Organisation Settings group and Overview section; signed off 2026-11-19: Resources holds what is shared with projects (Tags, Reports, Compliance and the module record lists) | [x] |
 | 8 | Org Resources: page and extension point | `/orgs/:orgId/resources`, registry-driven sections, redirects, navigation entry | [ ] |
 | 9 | Org Resources: move sections | Move what the review approved; Organisation Settings keeps configuration only | [ ] |
 | 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [ ] |
@@ -28,7 +28,8 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [ ] |
 | 17 | Markdown and diagrams in reports and exports | Markdown to PDF, Word, OpenDocument and HTML; one shared browserless Mermaid renderer in the converter container, same engine version and font as the screen, confirmed by a spike | [ ] |
 | 18 | MCP tools: components and categories | List, add, edit, reorder and delete (only when empty) a project's components and categories through MCP, so a new project can be structured by an agent; skill and generated reference updated | [ ] |
-| R | Review checkpoint: all changes together | The user reviews phases 1 to 18 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
+| 19 | Requirements in several components | A requirement can sit in more than one component and category; one primary pair keeps the code prefix; decision gate first | [ ] |
+| R | Review checkpoint: all changes together | The user reviews phases 1 to 19 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
 | S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
 | C | Local CI test review | Every job in `.github/workflows/` run locally before the pull request exists | [ ] |
@@ -48,6 +49,7 @@ flowchart LR
     P15 --> P16
     P16 --> P17["17 Reports"]
     P18["18 MCP taxonomy tools"] --> R
+    P19["19 Requirement placements"] --> R
     P3 --> R{"R Review"}
     P5 --> R
     P6 --> R
@@ -57,7 +59,7 @@ flowchart LR
     R --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
 ```
 
-Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17 and 18 are six independent tracks and may be built in any order; phase 3 builds on phase 1 (an email link must survive sign-in). W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
+Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18 and 19 are seven independent tracks and may be built in any order; phase 3 builds on phase 1 (an email link must survive sign-in). W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
 
 ## Findings and objections
 
@@ -151,6 +153,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Register: each Organisation Settings group (overview, details, users, groups, projects, workflow, branding defaults, reports, SSO, email, security, modules, tags, messages, policies, role management) and each `orgOverviewSections` entry (five modules today), proposed home (Settings, Resources or Overview), and the access rule that applies.
 - Check the planned organisation-level workflow modules for what they need from the page.
 - Tests: none (analysis). Sign-off recorded.
+- As built: [the register](platform-review-2026-11-19-org-resources-register.md). The code has four modules with Overview sections (nine sections), not five. Signed off by the user, 2026-11-19: Org Resources is what the organisation shares with its projects. Moves: the four modules' Overview sections including Compliance's two status tables, the whole Reports group (each section keeps its own permission gate), Tags, and (agent proposal, unchallenged) Architecture Elements and Collections and Decision Templates. Stays in Settings: Messages, Policies, Workflow group, project statuses and every module vocabulary and scoring section. Recorded in `docs/decisions.md`.
 
 ### Phase 8 — Org Resources: page and extension point
 
@@ -259,9 +262,24 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Backend tests for the optional `reassign_to` (empty category deleted with none, including a project's only category; refused with a requirement; refused with a placed record; supplied target unchanged), and the UI's category delete dialog and `docs/website/` page checked for wording that assumes a target is always required. Audit event unchanged.
 - Tests: `mcp-server/tests` for each tool (request path, body and error pass-through, including a duplicate prefix and a category under a component of another project); `mcp-server/tests/test_skill.py` stays green; an end-to-end check against the running stack that a new project is structured and a requirement created using only MCP tools.
 
+### Phase 19 — Requirements in several components
+
+**Why:** raised 2026-11-19: a requirement often concerns more than one component (an interface requirement touches both sides) and today it can sit in exactly one. Every other record type already can: `artefact_placements` holds any number of component/category pairs per record, and the requirement is the one type excluded (`COLUMN_PLACED_TYPES`, `docs/modules.md` §4l3) because its single `component_id`/`category_id` form its code prefix (C-G-07). No other live plan covers this (all non-completed plans checked 2026-11-19; the nearest is the shared-table decision in `docs/decisions.md`, "Component and category on every record", which left the requirement out as an **Agent** decision, so it may be revisited). **Risk addressed:** a duplicated requirement per component, losing traceability, or a second placement mechanism beside the shared one. **Outcome:** a requirement can be placed in further components and categories, with one primary pair that still supplies its code.
+
+- Gate: the user chooses the open questions below before any file changes (**Decided by: User** to be recorded). Recommended answers are given; none is decided yet.
+  1. *Model.* Recommended: keep `component_id`/`category_id` as the **primary** pair (code prefix, ordering) and allow **additional** pairs for a requirement in the shared table, so the type needs no second mechanism and the other record types are untouched. Rejected: dropping the columns and taking the prefix from the first placement (changes the identity of every requirement and its bundles, reports and imports for no gain).
+  2. *Code on change of primary.* A stored code never changes (finding 7); recommended: moving a requirement's primary pair, or promoting an additional one, leaves its code as it is, as the primary component edit does today (verify against the code first).
+  3. *Reports and the requirements document (C-G-04, C-E-01, C-E-02).* Recommended: a requirement is listed under its primary pair, and its additional pairs appear as a "Also in" line, so a document does not repeat the same requirement and counts stay correct; a report option may list it under every pair.
+  4. *Lists and counts.* Component filter matches primary or additional pair; a component's requirement count counts a requirement once per component it sits in, labelled as such.
+- `docs/requirements.md` is not changed; the primary pair keeps C-G-07 true.
+- Backend: `services.placements` accepts additional pairs for a requirement (not equal to the primary pair; component required, category under it); `pairs_for_records` returns primary first, then additional; deleting a component or category treats additional pairs as it treats other placements; export and import gain an additional-placements column beside the requirement table's component and category columns (prefix form, `;`-separated); project and organisation bundles, template classification, search (`placements` field), report field and the requirement MCP tools (create, update, read) carry them, with the agent skill and its generated reference updated.
+- Frontend: the requirement create and edit forms, through the one `RequirementFields` group, offer additional components through the shared `ComponentField`; the record page shows them through `RecordPlacements`; `ComponentFilterField` on the requirements list matches both (the page's own filter is reconciled, not duplicated).
+- Seeds: the demo and e2e datasets contain a requirement in two components.
+- Tests: primary and additional resolution, duplicate and cross-project rejection, code unchanged on promotion, filter and count, export and import round trip, bundle round trip, report layout ("Also in"), probe and generator populate additional pairs and stay flat, Storybook and Playwright for the form, the record page and the list filter.
+
 ### Phase R — Review checkpoint: all changes together
 
-**Why:** eighteen phases across six tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
+**Why:** nineteen phases across seven tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
 
 - The user reviews the running stack with every phase in place; each item raised becomes a numbered phase or is fixed in place; W starts only after the sign-off is recorded (**Decided by: User**).
 
@@ -269,7 +287,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 **Why:** the docs website is a separate published artefact. **Risk addressed:** pages that describe the old Overview, old settings addresses, plain-text Decisions or a single licence. **Outcome:** every user-visible change documented once, after the review fixed what it would otherwise describe.
 
-- Review `docs/website/docs/` and update, with Mermaid diagrams where they clarify: signing in and return, notifications (what each opens), the Policies and Licences area and the licensing page, Org Resources versus Organisation Settings, record codes and per-project overrides, external references and systems, writing with Markdown and Mermaid, Decisions documents, the glossary, and the Decisions and settings reference. Check `docs/user-guide.md`, `docs/modules.md`, `docs/mcp-server.md`, `docs/solution-architecture.md`, README and the performance pages if a measured number moved (a new core table and a lookup on every create).
+- Review `docs/website/docs/` and update, with Mermaid diagrams where they clarify: signing in and return, notifications (what each opens), the Policies and Licences area and the licensing page, Org Resources versus Organisation Settings, record codes and per-project overrides, requirements in several components, external references and systems, writing with Markdown and Mermaid, Decisions documents, the glossary, and the Decisions and settings reference. Check `docs/user-guide.md`, `docs/modules.md`, `docs/mcp-server.md`, `docs/solution-architecture.md`, README and the performance pages if a measured number moved (a new core table and a lookup on every create).
 - Tests: the docs build and link check.
 
 ### Phase S — Security review
@@ -307,4 +325,4 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - **Reordering sections:** old bookmarks, saved reports and notification links to organisation sections must keep working through redirects.
 - **No performance run is planned in the phases;** phase W reviews whether a new lookup on every create and a long-text render moved a measured number, and phase C does not run load scenarios (the project decided against performance tests in CI).
 
-When the table reads 22/22: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 23/23: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
