@@ -1,17 +1,17 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phase 1 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 and 2 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-1 / 21 phases complete.
+2 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
 | 1 | Return to the page after signing in | Return path kept across the sign-in, 2FA, SSO and forced password change routes | [x] |
-| 2 | Notification targets: review | Register of every notification (type, record, current target, correct target); sign-off | [ ] |
+| 2 | Notification targets: review | [Register](platform-review-2026-11-19-notification-register.md) of every notification (type, record, current target, correct target); signed off 2026-11-19 | [x] |
 | 3 | Notification targets: fixes | One target resolver for the bell, the notification list and the email; test that no type lacks a target | [ ] |
 | 4 | Licence audit and dependency licence guard | Shipped-component inventory, generated notices, CI guard that keeps the commercial option open | [ ] |
 | 5 | Licences in the Policies area | Public read-only Licences group; separate from the policy tables | [ ] |
@@ -96,15 +96,17 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 **Why:** the reported notification is one instance of a class. **Risk addressed:** more notifications that open an unrelated page or none. **Outcome:** a register the user signs off.
 
-- List every `NotificationType` (core and each module's `notification_types`) with the `entity_type`, `project_id` and `entity_id` it is created with (about 90 call sites), the page the bell opens today, the page the email button opens today, and the correct page, with no-project cases (storage alerts, password changed, announcements, policy published) given a destination.
-- Known already: `project_stage` opens `/admin` instead of Delivery status; email always opens the project root; Compliance, Risk and organisation types depend on module `artefactPaths`.
-- Tests: none (analysis). Sign-off recorded in `docs/decisions.md`.
+- As built: [the register](platform-review-2026-11-19-notification-register.md) lists all 43 types (40 core, 3 Risk) with the entity each is created with (about 50 creation sites, not the 90 first estimated), the page the bell and the email open today, and the signed-off target kind. Findings: eight stage types open project administration; seven types open nothing in at least one case; four Compliance types open only the project root; three creation sites lack an organisation or standard id.
+- Signed off by the user, 2026-11-19: stages open Delivery status; access changes open the affected organisation, project or standard; a message with no page opens the notification detail; Compliance assignments, target dates, reviews and a new standard version open the project's Compliance page. Recorded in `docs/decisions.md`.
+- Tests: none (analysis).
 
 ### Phase 3 — Notification targets: fixes
 
 **Why:** see finding 8. **Risk addressed:** a notification that cannot take the person to its subject, and a new type shipped without a target. **Outcome:** every notification, in the bell, the list, the email and the digest, opens its subject.
 
-- Extend `getNotificationLink` with the signed-off targets; add the `/notifications/:id` route that resolves, marks the notification read and navigates; email and digest buttons use it.
+- Implement the [signed-off register](platform-review-2026-11-19-notification-register.md): extend `getNotificationLink` with its target kinds; add the `/notifications/:id` route that resolves, marks the notification read and navigates, or shows the full notification when no page applies or the subject is no longer reachable; email and each digest item link to it.
+- Add the organisation id (access grants, invites) and the standard id (standard access grants, standard-level reviews) as the entity where the register marks data (D); a stored notification without them falls back to the detail page.
+- Delivery status gains a settings (gear) link to project administration, Stages and phases, shown only to a person who may change them (**Decided by: User**, 2026-11-19; placement per the Organisation Overview settings link).
 - A declared target kind per `NotificationType` and per module kind (`ModuleDefinition.notification_types` extended generically, no per-module code in core). A backend test fails for a type with none; a frontend test fails for a kind with no route, using the route table so a renamed page cannot leave a dead link.
 - Seeds: the demo and e2e datasets contain one notification of each kind.
 - Tests: the two guards above; Playwright opens one notification of each target class from the bell and from an email link while signed out (uses phase 1).
