@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 4 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 5 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-4 / 21 phases complete.
+5 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -14,7 +14,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 2 | Notification targets: review | [Register](platform-review-2026-11-19-notification-register.md) of every notification (type, record, current target, correct target); signed off 2026-11-19 | [x] |
 | 3 | Notification targets: fixes | One address (`/notifications/:id`) and one browser resolver for the bell, the list, the email and the digest; test that no type lacks a target | [x] |
 | 4 | Licence audit and dependency licence guard | Shipped-component inventory, generated notices, CI guard that keeps the commercial option open | [x] |
-| 5 | Licences in the Policies area | Public read-only Licences group; separate from the policy tables | [ ] |
+| 5 | Licences in the Policies area | Public read-only Licences group; separate from the policy tables | [x] |
 | 6 | Licence model: decision and change | Options paper and the user's choice (a decision gate); then the licence files, contribution terms and website page | [ ] |
 | 7 | Org Resources: review | Classify every Organisation Settings group and Overview section as configuration or resource; sign-off | [ ] |
 | 8 | Org Resources: page and extension point | `/orgs/:orgId/resources`, registry-driven sections, redirects, navigation entry | [ ] |
@@ -131,6 +131,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - `PoliciesPage` no longer redirects when no policy is published (the group always exists); the footer link follows.
 - Strings use formal wording; the glossary entry is added.
 - Tests: story, Playwright signed in and signed out (public route).
+- As built: `LicencesPanel` (three sections, library table with search, sort and "Show more", detail dialog, texts read on demand), addresses `/policies/licences/{product|components|fonts}` read from the location (`utils/policiesPath.ts`), `ResourceMenu` keeps its menu for a single group with sub-pages, footer link permanent, and the product licence is one constant (GPL-3.0-only today) for phase 6 to change. The signed-out page now resolves a policy address (it ignored it before). See `docs/decisions.md`.
 
 ### Phase 6 — Licence model: decision and change
 

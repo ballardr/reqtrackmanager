@@ -182,6 +182,27 @@ export const HidesMenuChromeWithOneGroup: Story = {
   },
 };
 
+/** A single group that has sub-pages keeps the menu: its sub-pages are the only way to choose between them. */
+const ONLY_WITH_CHILDREN: ResourceMenuGroupDef<string>[] = [
+  {
+    key: "licences", label: "Licences", href: "/single/a",
+    children: [{ key: "a", label: "First page", href: "/single/a" }, { key: "b", label: "Second page", href: "/single/b" }],
+  },
+];
+
+export const KeepsMenuForOneGroupWithSubPages: Story = {
+  render: () => (
+    <ResourceMenu ariaLabel="One group with pages" groups={ONLY_WITH_CHILDREN} active="a">
+      <div className="card">Content</div>
+    </ResourceMenu>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("navigation", { name: "One group with pages" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Second page" })).toBeInTheDocument();
+  },
+};
+
 const NO_GROUPS: ResourceMenuGroupDef<string>[] = [];
 
 function NoGroupsDemo() {

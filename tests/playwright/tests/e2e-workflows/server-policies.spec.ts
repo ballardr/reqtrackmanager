@@ -60,7 +60,8 @@ test.describe("server policies", () => {
       await logout(page);
       await page.goto("/policies");
       await expect(page.getByText(marker)).toHaveCount(0);
-      await expect(page).toHaveURL(/\/login$/);
+      // The page always exists (it holds the licences): with no policy published it opens on the product licence.
+      await expect(page.getByRole("heading", { name: "Product licence", level: 2 })).toBeVisible();
     });
 
     await test.step("publishing makes it readable without signing in", async () => {
@@ -73,7 +74,7 @@ test.describe("server policies", () => {
       await expect(page.getByText("Policy published.")).toBeVisible();
       await logout(page);
       await page.goto("/policies");
-      // A single published policy has no side menu; the page shows it at once.
+      // The first published policy is shown at once, with the Licences group beside it in the menu.
       await expect(page.getByRole("heading", { name: marker, level: 2 })).toBeVisible();
       await expect(page.getByText("Use the service responsibly.")).toBeVisible();
       await expect(page.getByText(/Version 1, published/)).toBeVisible();
@@ -116,9 +117,10 @@ test.describe("server policies", () => {
       await logout(page);
       await page.goto("/policies");
       await expect(page.getByText(marker)).toHaveCount(0);
-      await expect(page).toHaveURL(/\/login$/);
-      await expect(page.getByRole("link", { name: "Policies" })).toHaveCount(0);
-      // The footer stays (it carries the version) but has no policies link.
+      await expect(page.getByRole("heading", { name: "Product licence", level: 2 })).toBeVisible();
+      // The sign-in page's footer keeps its Policies link (the Licences group is always there) and the version.
+      await page.goto("/login");
+      await expect(page.getByLabel("Page footer").getByRole("link", { name: "Policies" })).toBeVisible();
       await expect(page.getByLabel("Page footer").getByText(/^Version: v\S+$/)).toBeVisible();
     });
   });

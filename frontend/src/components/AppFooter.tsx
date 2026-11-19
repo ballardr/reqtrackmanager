@@ -2,7 +2,7 @@
  * Module: components/AppFooter
  *
  * The footer every page ends with, signed in or not: the server's company name (a link to its website, after an
- * optional prefix such as "Hosted by"), postal address and company identifier when set, the link to the published policies when any can be read, and the application and API
+ * optional prefix such as "Hosted by"), postal address and company identifier when set, the link to the Policies page (always present: it holds the licences), and the application and API
  * versions, separated by `|`.
  *
  * Responsibilities: lay the groups out in muted, wrapping, centred lines at the end of the page's scrolling content
@@ -21,7 +21,6 @@ import { Link } from "react-router-dom";
 import { useStrings } from "../context/TerminologyContext";
 import { useBackendVersion } from "../hooks/useBackendVersion";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
-import { useMemberPolicies, usePublishedPolicies } from "../hooks/usePublishedPolicies";
 import { APP_VERSION } from "../version";
 
 /**
@@ -48,9 +47,6 @@ export function AppFooter() {
   const strings = useStrings();
   const platform = usePlatformBranding();
   const backendVersion = useBackendVersion();
-  const { policies: serverPolicies } = usePublishedPolicies();
-  const { policies: memberPolicies } = useMemberPolicies();
-  const hasPolicies = serverPolicies.length > 0 || memberPolicies.length > 0;
   const name = platform?.email_footer_company_name?.trim();
   const website = platform?.email_footer_website?.trim();
   // The address keeps its line breaks in storage; the footer shows it on one line.
@@ -74,7 +70,7 @@ export function AppFooter() {
   }
   if (address) groups.push(<span key="address">{address}</span>);
   if (companyId) groups.push(<span key="companyId">{companyId}</span>);
-  if (hasPolicies) groups.push(<Link key="policies" className="text-muted" to="/policies">{strings.policies.footerLabel}</Link>);
+  groups.push(<Link key="policies" className="text-muted" to="/policies">{strings.policies.footerLabel}</Link>);
   groups.push(<span key="versions">{strings.footer.version(APP_VERSION, backendVersion?.version ?? null)}</span>);
   const footerRef = useRef<HTMLElement>(null);
   const [joined, setJoined] = useState<boolean[]>([]);

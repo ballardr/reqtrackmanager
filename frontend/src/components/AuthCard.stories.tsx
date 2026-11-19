@@ -1,11 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { withRouter } from "../testing/storybook-helpers";
 import { AuthCard } from "./AuthCard";
 
 const meta: Meta<typeof AuthCard> = {
   title: "Components/AuthCard",
   component: AuthCard,
+  // The page shell's footer always links to the Policies page, so the card renders inside a router.
+  decorators: [withRouter("/login")],
 };
 export default meta;
 

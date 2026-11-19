@@ -41,7 +41,7 @@ function drawsSeparator(group: Element): boolean {
   return getComputedStyle(group, "::before").content.includes("|");
 }
 
-/** Signed out: the application version only (the API version needs a session), no company details when unset. */
+/** Signed out: the Policies link (it holds the licences) and the application version only (the API version needs a session), no company details when unset. */
 export const SignedOutWithNothingElse: Story = {
   beforeEach: () => {
     mockReads({}, []);
@@ -50,7 +50,8 @@ export const SignedOutWithNothingElse: Story = {
     const footer = within(canvasElement).getByRole("contentinfo", { name: "Page footer" });
     await expect(within(footer).getByText("Version: vdev")).toBeInTheDocument();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/system/branding"));
-    await expect(within(footer).queryByRole("link")).not.toBeInTheDocument();
+    await expect(within(footer).getAllByRole("link")).toHaveLength(1);
+    await expect(within(footer).getByRole("link", { name: "Policies" })).toHaveAttribute("href", "/policies");
     await expect(within(footer).queryByText(/\/v/)).not.toBeInTheDocument();
   },
 };
@@ -89,7 +90,7 @@ export const AddressOnlyHasNoStraySeparators: Story = {
   },
   play: async ({ canvasElement }) => {
     const footer = within(canvasElement).getByRole("contentinfo", { name: "Page footer" });
-    await waitFor(() => expect(groupTexts(footer)).toEqual(["1 Main Street", "Version: vdev"]));
+    await waitFor(() => expect(groupTexts(footer)).toEqual(["1 Main Street", "Policies", "Version: vdev"]));
   },
 };
 
@@ -113,7 +114,7 @@ export const UnsafeWebsiteIsNotALink: Story = {
   play: async ({ canvasElement }) => {
     const footer = within(canvasElement).getByRole("contentinfo", { name: "Page footer" });
     await expect(await within(footer).findByText("javascript:alert(1)")).toBeInTheDocument();
-    await expect(within(footer).queryByRole("link")).not.toBeInTheDocument();
+    await expect(within(footer).queryByRole("link", { name: "javascript:alert(1)" })).not.toBeInTheDocument();
   },
 };
 
@@ -124,7 +125,7 @@ export const PrefixNeedsANameAndTheIdentifierNeedsNoLabel: Story = {
   },
   play: async ({ canvasElement }) => {
     const footer = within(canvasElement).getByRole("contentinfo", { name: "Page footer" });
-    await waitFor(() => expect(groupTexts(footer)).toEqual(["99 888", "Version: vdev"]));
+    await waitFor(() => expect(groupTexts(footer)).toEqual(["99 888", "Policies", "Version: vdev"]));
   },
 };
 

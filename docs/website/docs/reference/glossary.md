@@ -162,6 +162,10 @@ The filled dot where a state machine diagram starts. An Active diagram needs exa
 
 A line from a note on a block diagram or a state machine diagram to what the note describes: a box or a drawn connection line (block diagram), a state or a transition (state machine diagram), or a free spot on the drawing. A note can have several. A leader can start at any attach point of the note, pass through vertices, be straight or smooth, and have an arrowhead or a dot at either end. Drag from an attach point of a note to draw one; select it to change where it ends, where it starts and how its ends look. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
+#### Licences
+
+A built-in, read-only group on the Policies page, readable without signing in: the **Product licence** (the licence the application is offered under, with links to its text and source code), the **Third-party components** (every library and program the published images contain, with its licence, where it is used and its licence text) and the **Fonts**. It is generated from the build, not written or published by an administrator, so it has no versions, audience or acceptance, and it is separate from the [policies](#policy) the page also lists.
+
 #### Lifecycle (requirement lifecycle)
 
 The fixed sequence a requirement moves through: Draft → Reviewed → Approved → Completed, with Archived available as an exit from Draft or Reviewed. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).

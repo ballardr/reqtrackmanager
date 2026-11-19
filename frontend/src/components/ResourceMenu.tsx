@@ -67,14 +67,15 @@ type VisibleRow =
  * the rows currently shown (headers and the sub-pages of open groups); landing on a link navigates, landing on a
  * header only moves focus. `Enter`/`Space` on a header (a native button) toggles it.
  *
- * When `groups.length <= 1` the menu strip itself (the `<nav>`/`<ul>` of
+ * When there is one plain group (or none) the menu strip itself (the `<nav>`/`<ul>` of
  * group links) is skipped entirely and `children` renders directly —
  * a single-entry menu has nothing to switch between, so the chrome
  * would just be a list with one link that's always already active. This
  * lets a caller declare an always-present group unconditionally (e.g.
  * `OrgOverviewPage.tsx`'s "Overview") without that caller needing to know
  * whether any other group exists — `ResourceMenu` itself decides whether
- * that's worth a visible menu.
+ * that's worth a visible menu. A single group that has sub-pages is the exception: its sub-pages are the choices, so
+ * the menu stays.
  *
  * Below `MOBILE_BREAKPOINT_PX` the vertical `<nav>`/`<ul>` link list is
  * replaced with a single native `<select>` (platform-review-2026-09,
@@ -192,7 +193,7 @@ export function ResourceMenu<K extends string>({
           {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
         </div>
       )}
-      {groups.length <= 1 ? (
+      {groups.length <= 1 && !groups[0]?.children?.length ? (
         children
       ) : (
         /* Deliberately its own "resource-menu" class, not the shared ".row"

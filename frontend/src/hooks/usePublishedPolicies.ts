@@ -1,9 +1,9 @@
 /**
  * Module: hooks/usePublishedPolicies
  *
- * Loads the published policies for the Policies page and the links to it: the server's from the public read (no
+ * Loads the published policies for the Policies page: the server's from the public read (no
  * sign-in needed) and, for a signed-in person, those of their organisations they may read. A failed read (including a
- * rate-limit refusal) yields an empty list, because a link to policies must never get in the way of the page it sits on.
+ * rate-limit refusal) yields an empty list, because the Licences group means the page still has something to show.
  */
 import { useContext, useEffect, useState } from "react";
 

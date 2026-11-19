@@ -125,7 +125,7 @@ function ProtectedRoutes() {
     <Layout>
       <Routes>
         {buildModuleRoutes(enabledModules, projectId)}
-        <Route path="/policies/:policyId?" element={<PoliciesPage />} />
+        <Route path="/policies/*" element={<PoliciesPage />} />
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
