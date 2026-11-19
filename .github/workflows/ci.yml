@@ -1,6 +1,6 @@
 # GitHub Actions CI pipeline.
 #
-# Twelve jobs, run on every push to main, every pull request, and on demand:
+# Thirteen jobs, run on every push to main, every pull request, and on demand:
 #   1. frontend          - lint, type-check, production build, then the
 #                          Storybook/Vitest suite (real Chromium) with
 #                          coverage
@@ -47,6 +47,9 @@
 #                          is judged against scripts/licence_policy.json and
 #                          the committed third-party inventory must match the
 #                          lockfiles. docker-build needs it.
+#   5a2. cla             - pull requests only: every commit author must be a
+#                          maintainer, an automation account or a signatory of
+#                          the current CLA.md (scripts/check_cla.py).
 #   5b. image-scan      - builds the production images (amd64) and scans
 #                          each with Trivy; starts with the test jobs so a
 #                          vulnerable image fails the run early.
@@ -1066,6 +1069,33 @@ jobs:
 
       - name: Check the licences of every shipped component
         run: python3 scripts/check_licences.py --live
+
+  cla:
+    name: CLA
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Maintainer and automation accounts come from the base branch's copy, so a pull request cannot exempt itself;
+      # the signatories come from the pull request, because adding the entry is how a contributor signs.
+      - name: Check that every commit author signed the CLA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          gh api -H "Accept: application/vnd.github.raw" "repos/${REPO}/contents/.github/cla-signatories.json?ref=${BASE_SHA}" > "${RUNNER_TEMP}/base-signatories.json"
+          # The person who opened the pull request is authenticated by GitHub; a commit's author is only an attribution
+          # (anyone can write another person's email into a commit), so both are checked.
+          mapfile -t AUTHORS < <({ echo "${PR_AUTHOR}"; gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" --jq '.[].author.login // ""'; } | sort -u)
+          python3 scripts/check_cla.py --base-file "${RUNNER_TEMP}/base-signatories.json" --authors "${AUTHORS[@]}"
 
   image-scan:
     name: Image build, smoke test & vulnerability scan

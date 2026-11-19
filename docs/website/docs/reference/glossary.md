@@ -62,6 +62,10 @@ A diamond in a state machine diagram. The conditions (guards) on its outgoing tr
 
 Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
 
+#### Commercial licence
+
+The second licence the product is offered under, for organisations that cannot or do not wish to meet the terms of the AGPL. Terms are agreed with the licensor. See [Licensing](licensing.md).
+
 #### Composite state
 
 A state that holds other states, drawn as a frame around them, for example "Running" holding "Warming up" and "At speed". See [State machine diagrams](../modules/system-architecture-module/state-machine-diagrams.md).
@@ -85,6 +89,10 @@ The kind of interface a connection is, such as REST API, message queue or I2C bu
 #### Cost of Delay
 
 A Pain Point scoring model that adds User/business value, Time criticality and Risk reduction / opportunity enablement with equal importance. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#the-criteria).
+
+#### Contributor licence agreement (CLA)
+
+The agreement a contributor signs before a contribution is accepted. It lets the licensor offer the contribution under both the AGPL and the commercial licence. See [Licensing](licensing.md) and [Contributing](contributing.md).
 
 #### Custom field
 
@@ -164,7 +172,7 @@ A line from a note on a block diagram or a state machine diagram to what the not
 
 #### Licences
 
-A built-in, read-only group on the Policies page, readable without signing in: the **Product licence** (the licence the application is offered under, with links to its text and source code), the **Third-party components** (every library and program the published images contain, with its licence, where it is used and its licence text) and the **Fonts**. It is generated from the build, not written or published by an administrator, so it has no versions, audience or acceptance, and it is separate from the [policies](#policy) the page also lists.
+A built-in, read-only group on the Policies page, readable without signing in: the **Product licence** (the licence the application is offered under, with links to its text, its source code and the commercial licence), the **Third-party components** (every library and program the published images contain, with its licence, where it is used and its licence text) and the **Fonts**. It is generated from the build, not written or published by an administrator, so it has no versions, audience or acceptance, and it is separate from the [policies](#policy) the page also lists.
 
 #### Lifecycle (requirement lifecycle)
 

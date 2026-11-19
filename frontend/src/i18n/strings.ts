@@ -4301,6 +4301,7 @@ const en = {
     productStatement: (name: string, spdx: string) => `ReqTrackManager is free software. It is licensed under the ${name} (${spdx}).`,
     productLicenceText: "Licence text",
     productSource: "Source code",
+    productCommercial: "Commercial licence",
     productComponentsNote: "Each third-party component keeps its own licence; see Third-party components.",
     componentsHeading: "Third-party components",
     componentsSummary: (libraries: number, programs: number) =>

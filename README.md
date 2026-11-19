@@ -244,6 +244,10 @@ flowchart LR
 
 The frontend is a single-page app talking to a REST/JSON API (I-A-01, I-A-02), documented via OpenAPI (I-A-03). The backend enforces the full permission and workflow model server-side — the frontend has no independent business logic. See [docs/solution-architecture.md](docs/solution-architecture.md) for the full domain model, ER diagrams, and deployment topology, and [docs/decisions.md](docs/decisions.md) for why specific implementation choices were made.
 
+## Licence
+
+Copyright (C) Richard Ballard. ReqTrackManager is offered under the [GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`) and, for organisations that cannot meet its terms, under a [commercial licence](COMMERCIAL-LICENSE.md). Releases published before the move to AGPLv3 remain available under the GNU General Public License, version 3. Contributions are accepted under a [contributor licence agreement](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md). The licences of everything the product ships are listed in the Licences group of the in-app Policies page.
+
 ## Known limitations
 
 Published container images are multi-arch (`linux/amd64` and `linux/arm64`, including a 64-bit Raspberry Pi); the `arm64` images are smoke tested in CI but the full test suites run on `amd64` only, and a Raspberry Pi 5 (8 GiB) ran one worker up to 20,000 requirements in 1.4 GiB of backend memory but serves only about 8 requests a second, and smaller boards and the default four workers are unmeasured (see [Supported platforms](docs/deployment.md#obtaining-container-images) and [Sizing](#sizing)).

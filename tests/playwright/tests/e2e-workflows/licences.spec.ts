@@ -18,9 +18,10 @@ test.describe("licences", () => {
     await test.step("the product licence names the licence and links to its text and source", async () => {
       await page.goto("/policies/licences/product");
       await expect(page.getByRole("heading", { name: "Product licence", level: 2 })).toBeVisible();
-      await expect(page.getByText(/GNU General Public License, version 3/).first()).toBeVisible();
+      await expect(page.getByText(/GNU Affero General Public License, version 3/).first()).toBeVisible();
       await expect(page.getByRole("link", { name: "Licence text" })).toHaveAttribute("href", /^https:\/\//);
       await expect(page.getByRole("link", { name: "Source code" })).toHaveAttribute("href", /^https:\/\//);
+      await expect(page.getByRole("link", { name: "Commercial licence" })).toHaveAttribute("href", /COMMERCIAL-LICENSE\.md$/);
     });
 
     await test.step("the component table is searchable and a row shows its licence text on request", async () => {

@@ -34,10 +34,11 @@ import { Spinner } from "./Spinner";
 
 /** The licence the product itself is offered under; the single place a change of licence is recorded for display. */
 export const PRODUCT_LICENCE = {
-  name: "GNU General Public License, version 3",
-  spdx: "GPL-3.0-only",
-  textUrl: "https://www.gnu.org/licenses/gpl-3.0.html",
+  name: "GNU Affero General Public License, version 3",
+  spdx: "AGPL-3.0-only",
+  textUrl: "https://www.gnu.org/licenses/agpl-3.0.html",
   sourceUrl: "https://github.com/ballardr/reqtrackmanager",
+  commercialUrl: "https://github.com/ballardr/reqtrackmanager/blob/main/COMMERCIAL-LICENSE.md",
 } as const;
 
 /** How many libraries the table shows before "Show more". */
@@ -257,6 +258,7 @@ function ProductSection() {
       <ul style={{ margin: 0 }}>
         <li><ExternalLink href={PRODUCT_LICENCE.textUrl}>{text.productLicenceText}</ExternalLink></li>
         <li><ExternalLink href={PRODUCT_LICENCE.sourceUrl}>{text.productSource}</ExternalLink></li>
+        <li><ExternalLink href={PRODUCT_LICENCE.commercialUrl}>{text.productCommercial}</ExternalLink></li>
       </ul>
       <p className="text-muted" style={{ margin: 0 }}>{text.productComponentsNote}</p>
     </div>

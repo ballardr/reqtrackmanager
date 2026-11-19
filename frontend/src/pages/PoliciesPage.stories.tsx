@@ -165,9 +165,10 @@ export const LicencesProductSection: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: "Product licence", level: 2 })).toBeInTheDocument();
-    await expect(canvas.getByText(/GNU General Public License, version 3 \(GPL-3.0-only\)/)).toBeInTheDocument();
+    await expect(canvas.getByText(/GNU Affero General Public License, version 3 \(AGPL-3.0-only\)/)).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Licence text" })).toHaveAttribute("rel", "noopener noreferrer");
     await expect(canvas.getByRole("link", { name: "Source code" })).toHaveAttribute("href", expect.stringMatching(/^https:\/\//));
+    await expect(canvas.getByRole("link", { name: "Commercial licence" })).toHaveAttribute("href", expect.stringMatching(/COMMERCIAL-LICENSE\.md$/));
     await expect(canvas.getByRole("link", { name: "Product licence" })).toHaveAttribute("aria-current", "page");
   },
 };

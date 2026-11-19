@@ -32,7 +32,7 @@ flowchart LR
    ```
 
    A personal instance's address does not belong in a shared repository: keep `.mcp.json` in `.gitignore` for a repository other people use.
-4. **Install the agent skill** so the agent knows the tool order and the rules. Download it from [Agent skill](./agent-skill.md) and unzip it into the repository's `.claude/skills/` folder, or build it from this repository with `python mcp-server/scripts/build_skill_zip.py <out-dir>`. Rebuild it after upgrading the server so it matches the tools.
+4. **Install the agent skill** so the agent knows the tool order and the rules. Download it from [Agent skill](./agent-skill.mdx) and unzip it into the repository's `.claude/skills/` folder, or build it from this repository with `python mcp-server/scripts/build_skill_zip.py <out-dir>`. Rebuild it after upgrading the server so it matches the tools.
 5. **Tell the agent what to record.** Put the instructions in a file the agent reads at the start of a session (for a personal setup, a git-ignored local instructions file). The table below is the content to include.
 6. Start the agent and check `claude mcp list` shows `reqtrackmanager` connected.
 

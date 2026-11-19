@@ -269,6 +269,7 @@ const sidebars: SidebarsConfig = {
         'reference/performance-testing-method',
         'reference/glossary',
         'reference/contributing',
+        'reference/licensing',
       ],
     },
   ],

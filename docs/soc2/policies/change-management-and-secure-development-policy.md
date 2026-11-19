@@ -25,6 +25,7 @@ Covers all changes to the ReqTrackManager application code, database schema, and
 5. **Every significant design or security decision is recorded with its rationale** at the time it's made, in `docs/decisions.md` — not reconstructed after the fact. This gives CC8.1's "documents changes" requirement a genuine paper trail rather than relying on commit messages alone.
 6. **Dependencies are pinned**, not left floating — `backend/requirements.txt` and `frontend/package-lock.json` fix exact versions, so a rebuild doesn't silently pull in a new (and unreviewed) dependency version.
 7. **Changes are approved before being merged/deployed.** **[Company must define the actual approval mechanism — see Known Gaps.]**
+8. **Contributions carry a licence grant.** A pull request is accepted only when every commit author is a maintainer, an automation account or has signed the contributor licence agreement (`CLA.md`, `.github/cla-signatories.json`), enforced by the `cla` CI job (`scripts/check_cla.py`). The maintainer and automation lists are read from the base branch, so a pull request cannot exempt itself. Control purpose: the provenance and the right to license each contribution under both of the product's licences.
 
 ## Diagram: change lifecycle
 
@@ -83,6 +84,7 @@ The "Main Branch" ruleset (Settings → Rules → Rulesets) was applied on 2026-
 | --- | --- | --- | --- |
 | Enforcement status | Disabled | **Active** (applied) | A disabled ruleset enforces nothing. |
 | Required status checks (applied) | `Backend tests, coverage & E2E`, `Build production container images (not published)`, `Build, version, and push production container images` | `Frontend lint, build & test`, `Backend tests & coverage`, `E2E (Playwright) suite`, `Dependency vulnerability scan`, `Build, version, and push production container images` | The first two found names no longer exist (the job was split and renamed), so enabling them as they are would block every merge forever; the frontend job was not required at all. A name must match a job's `name:` exactly. The last name is reported by the `images-gate` job, which passes only when the version job, every image build leg and (on main) the manifest job passed; splitting the original job into a matrix had left it reporting nothing, so pull requests waited on it forever. |
+| Required status check `CLA` | Not present | **Add (repository admin action, pending)** | The check runs on pull requests only; as a required check it keeps an unsigned contribution from merging. |
 | Require branches up to date | On (strict) | Keep | A merge result is the one that was tested. |
 | Required approvals | 0 | **Kept at 0 (User decision, 2026-10-23).** There is one maintainer and no second person who can approve. Revisit when a second reviewer exists: then 1 approval | A sole owner cannot approve their own pull request, so 1 with no bypass blocks every merge. With a bypass the owner can merge their own change; the bypass is itself an auditable ruleset event. |
 | Require review from Code Owners | On | Keep (needs `.github/CODEOWNERS`, now present) | Without the file the rule has nobody to ask. |
