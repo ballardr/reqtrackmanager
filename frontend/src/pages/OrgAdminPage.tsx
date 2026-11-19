@@ -87,6 +87,7 @@ import { OrgOverviewDefaultPanel } from "../components/overview/OrgOverviewDefau
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
+import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { SidePanel } from "../components/SidePanel";
@@ -2663,6 +2664,10 @@ export function OrgAdminPage() {
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.projectCodes" title={strings.orgAdmin.projectCodes} help={strings.orgAdmin.codePolicyHint}>
               <ProjectCodePolicyPanel org={org} onSaved={setOrg} />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.recordCodePrefixes" title={strings.codePrefixes.heading}>
+              <RecordCodePrefixPanel scope={{ kind: "organization", organizationId: org.id }} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.organizationCode" title={strings.orgAdmin.organizationCode} help={strings.orgAdmin.organizationCodeHint}>

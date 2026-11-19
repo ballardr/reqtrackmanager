@@ -3871,6 +3871,8 @@ const en = {
       "Sends a notification to everyone who may read the policy, so people who are not on the Policies page still learn of it. You are not notified. The send is recorded as a count in the audit log and is not repeated when you publish again unless you choose it again.",
     announcementNotify:
       "Sends the message once as a notification, so people who are not signed in at the moment still receive it. The send is recorded and cannot be repeated.",
+    recordCodePrefix:
+      "The letters new records of this type start their code with, for example ADR for ADR-006. Two to five letters; the prefix is different for every record type. Only records created after the change use it: existing codes never change and the numbering carries on without reusing a number. A {project} follows its parent {project}, then the organisation, until it sets its own; clearing it returns to that inherited value.",
     navLabelName:
       "The name shown for this entry in the navigation, as the page title and as the back link from its records. Leave it empty to use the name inherited from the parent {project} or the organisation, or the built-in name. Record names such as {requirement} are set under Terminology.",
     stageWorkflowChoice:
@@ -4354,6 +4356,22 @@ const en = {
     fontLocation: "Where",
     fontFiles: "Files",
     fontsNone: "No fonts are listed.",
+  },
+  codePrefixes: {
+    heading: "Record codes",
+    recordType: "Record type",
+    prefix: "Prefix",
+    prefixOf: (type: string) => `Prefix for ${type}`,
+    save: "Save",
+    saveAria: (type: string) => `Save the prefix for ${type}`,
+    restoreAria: (type: string) => `Use the inherited prefix for ${type}`,
+    restoreLabel: "Use inherited value",
+    custom: "Custom",
+    fromParent: "Inherited from parent {project}",
+    fromOrganisation: "Inherited from the organisation",
+    noun: "record code prefix",
+    loadFailed: "Could not load the record code prefixes.",
+    empty: "No record types are available.",
   },
   navLabels: {
     heading: "Navigation names",

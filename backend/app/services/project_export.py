@@ -107,7 +107,7 @@ from app.models.requirement import (
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks, get_all_registered_artefact_types
-from app.services import nav_labels, overview_widgets
+from app.services import code_prefixes, nav_labels, overview_widgets
 from app.services.audit import log_event
 from app.services.bundle_approval_state import count_approval_state, strip_approval_state
 from app.services.bundle_common import (
@@ -571,6 +571,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             }
             for c in components
         ],
+        "code_prefixes": code_prefixes.export_overrides(db, project),
         "custom_field_definitions": [
             {
                 "entity_kind": d.entity_kind.value, "name": d.name, "field_type": d.field_type.value,
@@ -728,6 +729,7 @@ def apply_project_data(
     # The bundle's own action types; a bundle that lists none (one written before action types were carried)
     # starts with the defaults a brand-new project gets, as `routers/projects.py::create_project` does.
     import_project_action_types(db, project, data)
+    code_prefixes.import_overrides(db, project, data.get("code_prefixes"), current_user.id, warnings.add)
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)

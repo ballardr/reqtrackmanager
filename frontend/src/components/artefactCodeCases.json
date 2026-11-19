@@ -1,0 +1,16 @@
+[
+  { "label": "DEC-003 Use PostgreSQL", "code": "DEC-003", "title": "Use PostgreSQL" },
+  { "label": "ADR-006 A renamed prefix", "code": "ADR-006", "title": "A renamed prefix" },
+  { "label": "NEED-001 Four-letter prefix", "code": "NEED-001", "title": "Four-letter prefix" },
+  { "label": "REQ-1000 Four digits", "code": "REQ-1000", "title": "Four digits" },
+  { "label": "REQ-12345 Past four digits", "code": "REQ-12345", "title": "Past four digits" },
+  { "label": "DEC-001 v2 rollout plan", "code": "DEC-001", "title": "v2 rollout plan" },
+  { "label": "ISO-27001 v2.0 · A.5.15 Logical access control", "code": null, "title": "ISO-27001 v2.0 · A.5.15 Logical access control" },
+  { "label": "ISO-9001 v2015 · 4.1 Context", "code": null, "title": "ISO-9001 v2015 · 4.1 Context" },
+  { "label": "Shared element", "code": null, "title": "Shared element" },
+  { "label": "D-001 Prefix too short", "code": null, "title": "D-001 Prefix too short" },
+  { "label": "ABCDEF-001 Prefix too long", "code": null, "title": "ABCDEF-001 Prefix too long" },
+  { "label": "DEC-01 Number too short", "code": null, "title": "DEC-01 Number too short" },
+  { "label": "dec-001 Lower case", "code": null, "title": "dec-001 Lower case" },
+  { "label": "DEC-001", "code": null, "title": "DEC-001" }
+]

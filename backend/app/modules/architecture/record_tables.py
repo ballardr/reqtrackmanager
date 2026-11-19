@@ -88,7 +88,6 @@ from app.modules.architecture.service import (
     DIAGRAM_ARTEFACT_TYPE,
     DIAGRAM_SUBCOMPONENT_KEY,
     ELEMENT_ARTEFACT_TYPE,
-    ELEMENT_CODE_PREFIX,
     ELEMENT_SUBCOMPONENT_KEY,
     ELEMENT_TYPES,
     STATE_ARTEFACT_TYPE,
@@ -233,10 +232,11 @@ def _end_parser(field_name: str) -> Callable[[RecordImportContext, str], uuid.UU
     own = _element_by_code_parser(field_name, blank_clears=False)
 
     def parse(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
-        owner_code, separator, rest = text.upper().rpartition(f"-{ELEMENT_CODE_PREFIX}-")
-        if not text or not separator or not owner_code:
+        # `PLAT-ELM-004`: the owner's code (never containing a hyphen), then the element's own code, whose prefix may
+        # be one the organisation or project chose; a bare code has one hyphen only.
+        owner_code, separator, code = text.upper().partition("-")
+        if not text or not separator or "-" not in code:
             return own(ctx, text)
-        code = f"{ELEMENT_CODE_PREFIX}-{rest}"
         organization_id = ctx.organization_id
         found = ctx.db.scalar(
             select(ArchitectureElement.id).join(Project, Project.id == ArchitectureElement.project_id).where(

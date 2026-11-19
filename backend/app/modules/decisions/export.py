@@ -50,7 +50,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.models import Decision, DecisionFile, DecisionTemplateDefinition, DecisionTypeDefinition
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
@@ -59,7 +59,6 @@ from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 from app.services.template_reset import fresh_drafts
 
-DECISION_CODE_PREFIX = "DEC"
 _TEXT_FIELDS = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints")
 _TEMPLATE_FIELDS = (
     "description", "context_prompt", "options_considered_prompt", "chosen_option_prompt", "rationale_prompt",

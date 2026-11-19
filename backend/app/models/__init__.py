@@ -16,6 +16,7 @@ from app.models.change_request import (
     ChangeRequestVote,
     ReviewComment,
 )
+from app.models.code_prefix import OrganizationCodePrefix, ProjectCodePrefix
 from app.models.credential_reset import CredentialResetToken
 from app.models.custom_field import CustomFieldDefinition
 from app.models.custom_role import (
@@ -101,6 +102,8 @@ from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "OrganizationCodePrefix",
+    "ProjectCodePrefix",
     "ArtefactPlacement",
     "RecordComment",
     "RecordCommentPin",

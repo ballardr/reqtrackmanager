@@ -89,6 +89,7 @@ from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.search import SEARCH_PROVIDERS
 from app.modules.risk_management.service import (
     RISK_ARTEFACT_TYPE,
+    RISK_CODE_PREFIX,
     RISK_MODULE_KEY,
     RISK_SUBCOMPONENT_KEY,
     RISK_TYPES,
@@ -210,6 +211,7 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.risk_management.models",
     migrations_dir="app/modules/risk_management/migrations",
     artefact_types=(RISK_ARTEFACT_TYPE,),
+    default_code_prefixes={RISK_ARTEFACT_TYPE: RISK_CODE_PREFIX},
     artefact_type_labels={RISK_ARTEFACT_TYPE: "Risk"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},

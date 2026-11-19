@@ -1683,6 +1683,24 @@ export interface PhasePlans {
 
 export type ComponentPhasesMode = "on" | "off";
 
+/** The tier that decided a record code prefix. */
+export type CodePrefixSource = "project" | "parent_project" | "organization" | "default";
+
+/** One record type's code prefix in an organisation or a project (`GET .../code-prefixes`). */
+export interface CodePrefixRow {
+  artefact_type: string;
+  label: string;
+  default_prefix: string;
+  /** The prefix this scope itself set; null when it follows the next tier. */
+  own_prefix: string | null;
+  /** What new records are numbered with here, and the tier that decided it. */
+  prefix: string;
+  source: CodePrefixSource;
+  /** What the scope would use with none of its own (what clearing returns to). */
+  inherited_prefix: string;
+  inherited_source: CodePrefixSource;
+}
+
 /** One navigation entry with the names that apply to it (`GET .../nav-labels`); `path` is absent in the organisation view. */
 export interface NavLabelItem {
   key: string;

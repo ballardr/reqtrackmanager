@@ -60,6 +60,7 @@ from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.stage_workflow import ComponentStageState, StageWorkflow
 from app.models.user import User
+from app.services import code_prefixes
 from app.services.bundle_common import BundleImportWarnings
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
@@ -195,6 +196,8 @@ def clone_project(
                 project_id=new_project.id, name=action_type.name, sort_order=action_type.sort_order
             )
         )
+
+    code_prefixes.copy_overrides(db, source, new_project, creator.id)
 
     # Old project group id -> its copy in the new project, so a requirement owned by (or assigned for review
     # to) one of the template's project groups is owned by the copy, not by a group of another project.

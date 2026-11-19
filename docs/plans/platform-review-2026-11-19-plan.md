@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 9 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 10 done 2026-11-19). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-9 / 25 phases complete.
+10 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -19,7 +19,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 7 | Org Resources: review | [Register](platform-review-2026-11-19-org-resources-register.md) classifying every Organisation Settings group and Overview section; signed off 2026-11-19: Resources holds what is shared with projects (Tags, Reports, Compliance and the module record lists) | [x] |
 | 8 | Org Resources: page and extension point | `/orgs/:orgId/resources`, registry-driven sections, redirects, navigation entry | [x] |
 | 9 | Org Resources: move sections | Move what the review approved; Organisation Settings keeps configuration only | [x] |
-| 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [ ] |
+| 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [x] |
 | 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [ ] |
 | 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [ ] |
 | 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [ ] |
@@ -187,6 +187,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - UI: a "Record codes" panel in organisation settings (beside the existing project-code policy) and an override panel in project settings using the platform-default override pattern; effective prefix shown with where it came from.
 - Bundles (organisation and project), template classification (configuration), the CSV `code` column unaffected; nested-project fallback decision recorded in `docs/decisions.md`; audit event per change; access-control and audit policies consulted.
 - Tests: resolution order including ancestors; collisions rejected; counter continuity across a prefix change; round trips; probe flatness; qualified-code lookup after a change; every record type creates with an override.
+- As built: `models/code_prefix.py` and migration 0202; `services/code_prefixes.py` (resolution memoised on the session, validation, bundle and template helpers); `ModuleDefinition.default_code_prefixes` and `no_code_prefix` (every module declares its types; a test fails for a type with neither); `routers/code_prefixes.py` (organisation and project, list, set, clear, each row with the tier and what clearing returns to); the Actions generator follows an override too; `RecordCodePrefixPanel` in Organisation Settings (Projects group) and the Project Admin overview. One code reading replaces the two regular expressions (`code_rules.split_record_label`, frontend twin held to it by shared vectors); the phase's "more than four digits" would have split a standard named `ISO-27001`, so a compliance clause label is never split. Found and fixed on the way: the Architecture connection-end import cell assumed `-ELM-`; the action bundle assumed `ACT-n`; the organisation bundle dropped the project code policy. Probe flatness needed no new test: creation adds one memoised read per owner and no list, detail or export path changed. See `docs/decisions.md`.
 
 ### Phase 11 — External references: shared table
 

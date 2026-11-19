@@ -37,7 +37,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.models import Decision
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, resolve_effective_decision_types
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX, resolve_effective_decision_types
 from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
 from app.services.principals import principal_filter_clause, validate_principal
@@ -154,7 +154,7 @@ def stage_decision(
     owner = owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)
     validate_people(db, project, owner, decision_maker)
     decision = Decision(
-        project_id=project.id, unique_code=generate_unique_code(db, project, DECISION_ARTEFACT_TYPE, "DEC"),
+        project_id=project.id, unique_code=generate_unique_code(db, project, DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX),
         title=title, decision_statement=decision_statement, decision_type_id=decision_type_id,
         status=DecisionStatus.DRAFT, decision_date=decision_date, owner_type=owner.type.value, owner_id=owner.id,
         creator_id=creator.id, **_maker_columns(decision_maker), **{k: v for k, v in text.items() if k in TEXT_FIELDS},

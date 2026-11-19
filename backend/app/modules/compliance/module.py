@@ -140,7 +140,13 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
-from app.modules.compliance.models import ComplianceRequiredActionAssessment, ComplianceReview, ComplianceStandard
+from app.modules.compliance.models import (
+    ARTEFACT_TYPE_EVIDENCE,
+    EVIDENCE_CODE_PREFIX,
+    ComplianceRequiredActionAssessment,
+    ComplianceReview,
+    ComplianceStandard,
+)
 from app.modules.compliance.perf_dataset import (
     generate_compliance_requirements,
     generate_evidence,
@@ -576,6 +582,12 @@ MODULE_DEFINITION = ModuleDefinition(
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     report_starter_sections=REPORT_STARTER_SECTIONS,
     search_scopes=SEARCH_SCOPES,
+    default_code_prefixes={ARTEFACT_TYPE_EVIDENCE: EVIDENCE_CODE_PREFIX},
+    no_code_prefix={
+        "compliance_requirement": "A compliance requirement is identified by its clause reference in the standard, not a PREFIX-nnn code.",
+        "project_compliance_requirement": "A project's compliance requirement is the standard's requirement as applied; it has no code of its own.",
+        "compliance_required_action_assessment": "An assessment belongs 1:1 to a required action and is identified through it.",
+    },
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     principal_references=_PRINCIPAL_REFERENCES,

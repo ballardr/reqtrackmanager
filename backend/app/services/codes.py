@@ -35,7 +35,6 @@ Dependencies: `app.code_rules`, the `Organization` and `Project` models.
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass
 
@@ -51,6 +50,7 @@ from app.code_rules import (
     default_code_for_name,
     normalise_code,
     policy_error,
+    split_record_label,
 )
 from app.models.change_request import ChangeRequest
 from app.models.enums import CORE_ARTEFACT_TYPES
@@ -325,16 +325,13 @@ class CodedRecord:
     label: str
 
 
-_CODE_PREFIX = re.compile(r"^[A-Z]{2,5}-\d{3,4}\s+")
-
-
 def label_title(label: str) -> str:
     """A summary label without its leading record code (`"NEED-001 Title"` -> `"Title"`).
 
     Bundles refer to a record by its title: a code is numbered afresh on import, so it cannot
     identify the record in the target project.
     """
-    return _CODE_PREFIX.sub("", label, count=1)
+    return split_record_label(label)[1]
 
 
 def _label_code(label: str) -> str:

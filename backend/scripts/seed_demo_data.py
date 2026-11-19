@@ -1912,6 +1912,15 @@ def set_pain_point_type_definitions(headers: dict, org_id: str, types_by_name: d
         r.raise_for_status()
 
 
+def set_record_code_prefix(headers: dict, project_id: str, artefact_type: str, prefix: str) -> None:
+    """Gives one project its own record code prefix for a type (`PAIN-001` where the built-in is `PP-001`);
+    it applies to records created afterwards, so call it before creating them."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/code-prefixes/{artefact_type}", json={"prefix": prefix}, headers=headers, timeout=30
+    )
+    r.raise_for_status()
+
+
 def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
@@ -3835,6 +3844,8 @@ def main() -> None:
     # `default_enabled` sub-components mean no
     # separate enable-subcomponent call is needed beyond the whole-module
     # `enable_module` call already made above for Strategy/Future State.
+    # This project names its Pain Points its own way (PAIN-001), to show a project's record code prefix.
+    set_record_code_prefix(h_pm, drone["id"], "pain_point", "PAIN")
     drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
     set_pain_point_type_definitions(h_pm, org["id"], drone_pain_point_types, PAIN_POINT_TYPE_DEFINITIONS)
     drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])

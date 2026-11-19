@@ -141,11 +141,16 @@ from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.search import SEARCH_PROVIDERS
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
+    FUTURE_STATE_CODE_PREFIX,
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
+    GUIDING_PRINCIPLE_CODE_PREFIX,
     LINK_TYPE_SEEDS,
     OPEN_QUESTION_ARTEFACT_TYPE,
+    OPEN_QUESTION_CODE_PREFIX,
     PAIN_POINT_ARTEFACT_TYPE,
+    PAIN_POINT_CODE_PREFIX,
     STRATEGY_ARTEFACT_TYPE,
+    STRATEGY_CODE_PREFIX,
 )
 from app.modules.context_strategy.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 from app.modules.registry import (
@@ -887,6 +892,11 @@ MODULE_DEFINITION = ModuleDefinition(
         FUTURE_STATE: PerfDatasetGenerator(generate=generate_future_states, order=170),
         GUIDING_PRINCIPLE: PerfDatasetGenerator(generate=generate_guiding_principles, order=175),
         OPEN_QUESTION: PerfDatasetGenerator(generate=generate_open_questions, order=180),
+    },
+    default_code_prefixes={
+        STRATEGY_ARTEFACT_TYPE: STRATEGY_CODE_PREFIX, FUTURE_STATE_ARTEFACT_TYPE: FUTURE_STATE_CODE_PREFIX,
+        PAIN_POINT_ARTEFACT_TYPE: PAIN_POINT_CODE_PREFIX, GUIDING_PRINCIPLE_ARTEFACT_TYPE: GUIDING_PRINCIPLE_CODE_PREFIX,
+        OPEN_QUESTION_ARTEFACT_TYPE: OPEN_QUESTION_CODE_PREFIX,
     },
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,

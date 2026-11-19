@@ -80,8 +80,14 @@ from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
 from app.modules.stakeholders.demand import engagement_parties, persona_parties, stakeholder_parties
-from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE, RESEARCH_SUBCOMPONENT
-from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
+from app.modules.stakeholders.engagements import (
+    ENGAGEMENT_ARTEFACT_TYPE,
+    ENGAGEMENT_CODE_PREFIX,
+    FINDING_ARTEFACT_TYPE,
+    FINDING_CODE_PREFIX,
+    RESEARCH_SUBCOMPONENT,
+)
+from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE, GROUP_CODE_PREFIX
 from app.modules.stakeholders.models import (
     Engagement,
     EngagementFacilitator,
@@ -108,9 +114,12 @@ from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME
 from app.modules.stakeholders.search import SEARCH_PROVIDERS
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
+    NEED_CODE_PREFIX,
     PERSONA_ARTEFACT_TYPE,
+    PERSONA_CODE_PREFIX,
     PERSONA_TYPES,
     STAKEHOLDER_ARTEFACT_TYPE,
+    STAKEHOLDER_CODE_PREFIX,
     STAKEHOLDER_TYPES,
     STAKEHOLDERS_MODULE_KEY,
     persona_scoring_targets,
@@ -947,6 +956,11 @@ MODULE_DEFINITION = ModuleDefinition(
         "stakeholder_group": PerfDatasetGenerator(generate=generate_groups, order=135),
         "engagement": PerfDatasetGenerator(generate=generate_engagements, order=140),
         "research_finding": PerfDatasetGenerator(generate=generate_findings, order=165),
+    },
+    default_code_prefixes={
+        PERSONA_ARTEFACT_TYPE: PERSONA_CODE_PREFIX, STAKEHOLDER_ARTEFACT_TYPE: STAKEHOLDER_CODE_PREFIX,
+        NEED_ARTEFACT_TYPE: NEED_CODE_PREFIX, GROUP_ARTEFACT_TYPE: GROUP_CODE_PREFIX,
+        ENGAGEMENT_ARTEFACT_TYPE: ENGAGEMENT_CODE_PREFIX, FINDING_ARTEFACT_TYPE: FINDING_CODE_PREFIX,
     },
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,

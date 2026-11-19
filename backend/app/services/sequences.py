@@ -47,6 +47,7 @@ from sqlalchemy.orm import Session
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
+from app.services.code_prefixes import effective_prefix
 from app.services.rbac import lock_organization_for_update, lock_project_for_update
 
 
@@ -95,6 +96,11 @@ def generate_unique_code(db: Session, owner: Project | Organization, artefact_ty
     `{prefix}-{seq:03d}` format exactly, for consistency with existing
     codes). Pass the organisation for an organisation-scoped record.
 
+    `prefix` is the type's built-in default: the prefix actually used is the one the
+    owner's project, a parent project or the organisation chose for the type
+    (`services.code_prefixes.effective_prefix`), so no call site names an override.
+    The counter is per type, not per prefix, so a change never reuses a number.
+
     Raises:
         ValueError: If `artefact_type` isn't a currently-registered
             artefact type (core built-in or a registered module's own
@@ -108,7 +114,7 @@ def generate_unique_code(db: Session, owner: Project | Organization, artefact_ty
     if artefact_type not in get_all_registered_artefact_types():
         raise ValueError(f"{artefact_type!r} is not a registered artefact type.")
     seq = _next_sequence(db, owner, artefact_type)
-    return f"{prefix}-{seq:03d}"
+    return f"{effective_prefix(db, owner, artefact_type, prefix)}-{seq:03d}"
 
 
 def code_owner(

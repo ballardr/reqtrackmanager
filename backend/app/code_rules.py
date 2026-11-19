@@ -4,10 +4,12 @@ Module: code_rules
 Pure rules for the short codes that identify a project (and an organisation)
 inside a qualified record code such as `ACME-REQ-001`: the character kinds,
 the organisation's code policy, validation, and candidate generation from a
-name.
+name. It also owns the shape of a record code itself (`PREFIX-nnn`) and of the
+prefix an organisation or project may choose for a record type.
 
 Responsibilities:
 - Describe the organisation policy (`CodePolicy`) and its defaults.
+- Define the one record-code shape (`RECORD_CODE_PATTERN`) and validate a record prefix.
 - Validate a code against a policy, returning a message rather than raising.
 - Yield candidate codes derived from a name, best first, for the caller to
   filter against codes already taken.
@@ -177,3 +179,46 @@ def default_code_for_name(name: str) -> str:
     """The first conforming code for `name` under the default policy; used as the
     organisation-code column default and the fallback for an unusable name."""
     return next(candidate_codes(name, DEFAULT_POLICY), "XX")
+
+
+# The shape of a record code, `PREFIX-nnn`: 2 to 5 capitals, a hyphen and a zero-padded number of at least three
+# digits (a counter past 999 simply gains digits). Every parser of a code, in a summary label or elsewhere, uses this
+# one rule; the frontend twin is `components/artefactCode.ts`.
+RECORD_PREFIX_MIN_LENGTH = 2
+RECORD_PREFIX_MAX_LENGTH = 5
+RECORD_CODE_PATTERN = re.compile(rf"[A-Z]{{{RECORD_PREFIX_MIN_LENGTH},{RECORD_PREFIX_MAX_LENGTH}}}-\d{{3,}}")
+# A compliance clause label is `<standard> v<version> · <clause> <title>`, where the standard's own name can look like
+# a record code (`ISO-27001 v2.0 · A.5.15 ...`); it is never split.
+_CLAUSE_LABEL = re.compile(r"\S+\s+v[\w.]+\s+·\s")
+_LABEL_CODE = re.compile(rf"({RECORD_CODE_PATTERN.pattern})\s+(?=\S)")
+_RECORD_PREFIX = re.compile(rf"[A-Z]{{{RECORD_PREFIX_MIN_LENGTH},{RECORD_PREFIX_MAX_LENGTH}}}")
+
+
+def record_prefix_error(prefix: str) -> str | None:
+    """A message describing why the (normalised) record `prefix` is not usable, or `None` when it is.
+
+    A prefix is 2 to 5 capital letters: no hyphen (a qualified code is split on its first hyphen) and no digit
+    (so a code is always read as letters, a hyphen and a number).
+    """
+    if _RECORD_PREFIX.fullmatch(prefix) is None:
+        return (
+            f"A record code prefix must be {RECORD_PREFIX_MIN_LENGTH} to {RECORD_PREFIX_MAX_LENGTH} letters A-Z, "
+            "with no digits, spaces or hyphens."
+        )
+    return None
+
+
+def split_record_label(label: str) -> tuple[str | None, str]:
+    """Splits a record's summary label (`"DEC-003 Use PostgreSQL"`) into its code and its title.
+
+    The one reading of the label shape, shared by every server parser (the frontend twin is
+    `components/artefactCode.ts`). A label with no leading code, and a compliance clause label whose standard is
+    named like a code, is all title.
+
+    Returns:
+        `(code, title)`; `code` is `None` when the label does not start with one.
+    """
+    match = _LABEL_CODE.match(label)
+    if match is None or _CLAUSE_LABEL.match(label) is not None:
+        return None, label
+    return match.group(1), label[match.end():]

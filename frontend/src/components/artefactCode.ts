@@ -8,15 +8,18 @@
  * it. A label that does not start with a code (an organisation-owned or legacy record) is all title.
  */
 
-// The generator's shape: 2-5 capitals, a hyphen, and a zero-padded number (at least three digits, at most four).
-// Deliberately narrower than "anything with a hyphen": a standard's own name ("ISO-27001 v2.0 · A.5.15 ...") must stay whole.
-const CODE_PATTERN = /^([A-Z]{2,5}-\d{3,4})\s+([\s\S]+)$/;
+// The generator's shape (`backend/app/code_rules.py`, `RECORD_CODE_PATTERN`): 2-5 capitals, a hyphen, and a zero-padded number
+// of at least three digits (a counter past 999 simply gains digits). Deliberately narrower than "anything with a hyphen".
+const CODE_PATTERN = /^([A-Z]{2,5}-\d{3,})\s+(\S[\s\S]*)$/;
+// A compliance clause label, `<standard> v<version> · <clause> <title>`, whose standard can be named like a code
+// ("ISO-27001 v2.0 · A.5.15 ..."): it is never split.
+const CLAUSE_LABEL_PATTERN = /^\S+\s+v[\w.]+\s+·\s/;
 
 /**
  * @param label The record's display label.
  * @returns The code (null when the label has none) and the label without it.
  */
 export function splitArtefactCode(label: string): { code: string | null; title: string } {
-  const match = CODE_PATTERN.exec(label);
+  const match = CLAUSE_LABEL_PATTERN.test(label) ? null : CODE_PATTERN.exec(label);
   return match ? { code: match[1], title: match[2] } : { code: null, title: label };
 }

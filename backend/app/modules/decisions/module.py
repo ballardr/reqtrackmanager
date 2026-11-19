@@ -106,6 +106,7 @@ from app.modules.decisions.search import SEARCH_PROVIDERS
 from app.modules.decisions.service import (
     DECISION_APPROVE_PERMISSION,
     DECISION_ARTEFACT_TYPE,
+    DECISION_CODE_PREFIX,
     DECISION_TEMPLATE_PACKS,
     LINK_TYPE_SEEDS,
 )
@@ -332,6 +333,7 @@ MODULE_DEFINITION = ModuleDefinition(
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
     perf_generators={DECISION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_decisions, order=110)},
+    default_code_prefixes={DECISION_ARTEFACT_TYPE: DECISION_CODE_PREFIX},
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
     link_type_seeds=LINK_TYPE_SEEDS,
     roles=(

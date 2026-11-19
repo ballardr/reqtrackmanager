@@ -35,6 +35,7 @@ from app.schemas.action import RequirementActionOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import engagement
 from app.services.audit import log_event
+from app.services.code_prefixes import effective_prefix
 from app.services.principals import label_of, principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import lock_project_for_update
@@ -57,10 +58,17 @@ def _next_sequence(project: Project) -> int:
     return seq
 
 
+ACTION_CODE_PREFIX = "ACT"
+
+
 def generate_unique_code(project: Project) -> str:
-    """Builds a unique, never-reused action identifier, e.g. "ACT-003"."""
+    """Builds a unique, never-reused action identifier, e.g. "ACT-003", with the prefix the project (or a parent
+    project or the organisation) chose for actions (`services.code_prefixes`)."""
+    db = object_session(project)
+    if db is None:
+        raise RuntimeError("The project is not attached to a session.")
     seq = _next_sequence(project)
-    return f"ACT-{seq:03d}"
+    return f"{effective_prefix(db, project, 'requirement_action', ACTION_CODE_PREFIX)}-{seq:03d}"
 
 
 def apply_outcome_transition(action: RequirementAction, new_outcome: RequirementActionOutcome, actor: User) -> None:

@@ -3018,6 +3018,13 @@ class ModuleDefinition:
             read via `get_artefact_type_label`. Lets core UI and API responses
             name a record's kind without a closed per-module map in a core
             file; a type left out gets a title-cased fallback.
+        default_code_prefixes: Maps one of this module's own `artefact_types` to the prefix its record codes
+            start with by default (`"decision"` -> `"DEC"`, 2 to 5 capitals). An organisation or a project may
+            choose another (`services.code_prefixes`); this is the value both fall back to, and what the
+            uniqueness check compares against. Read via `get_default_code_prefixes`. Registration is required
+            of every artefact type: one with no code of its own says why in `no_code_prefix`.
+        no_code_prefix: `{artefact type: reason}` for a type that has no `PREFIX-nnn` code. A backend test
+            fails for a type that has neither.
         search_providers: Maps one of this module's own `artefact_types` to an
             `ArtefactSearchProvider`, making its records findable by the global search
             (code, title, tags and the fields the provider declares). Read via
@@ -3203,6 +3210,8 @@ class ModuleDefinition:
     notification_target_kinds: tuple[str, ...] = field(default=())
     on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None
     principal_references: tuple[PrincipalReference, ...] = field(default=())
+    default_code_prefixes: dict[str, str] = field(default_factory=dict)
+    no_code_prefix: dict[str, str] = field(default_factory=dict)
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
     activity_action_kinds: dict[str, str] = field(default_factory=dict)
@@ -4960,6 +4969,23 @@ def get_activity_link_ends() -> dict[str, ActivityLinkEndsReader]:
     for definition in get_module_registry().values():
         readers.update(definition.activity_link_ends)
     return readers
+
+
+def get_default_code_prefixes() -> dict[str, str]:
+    """`{artefact type: default code prefix}` for every module-declared type with a code (core types are in
+    `services.code_prefixes.CORE_DEFAULT_PREFIXES`)."""
+    prefixes: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        prefixes.update(definition.default_code_prefixes)
+    return prefixes
+
+
+def get_types_without_code_prefix() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared as having no `PREFIX-nnn` code."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_code_prefix)
+    return reasons
 
 
 def get_not_searchable_types() -> dict[str, str]:

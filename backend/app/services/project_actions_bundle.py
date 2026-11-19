@@ -61,7 +61,7 @@ from app.services.principals import principal_columns_from_bundle, principal_to_
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 ACTION_ARTEFACT_TYPE = ArtefactType.REQUIREMENT_ACTION.value
-_CODE = re.compile(r"^ACT-(\d+)$")
+_CODE = re.compile(r"^[A-Z]{2,5}-(\d+)$")
 
 
 def _iso(value: datetime | date | None) -> str | None:

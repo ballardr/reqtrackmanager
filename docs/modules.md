@@ -388,6 +388,8 @@ class ModuleDefinition:
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    default_code_prefixes: dict[str, str] = {}  # {artefact type: built-in PREFIX of its record codes} (§4l12)
+    no_code_prefix: dict[str, str] = {}  # artefact types with no PREFIX-nnn code, with the reason (§4l12)
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
     activity_action_kinds: dict[str, str] = {}  # {audit action: kind} for the project History page's Change filter (§4l7)
@@ -1431,6 +1433,27 @@ Org Resources (`/orgs/:orgId/resources/:group?/:section?`, `pages/OrgResourcesPa
 - Keys are unique across modules and distinct from the page's own core sections (`CORE_ORG_RESOURCE_GROUP_KEYS`: `reports`, `tags`) and from every `orgAdminSections` key; a colliding section is dropped with a console error rather than shadowing another. Sections sharing a `group` become one expandable entry (`modules/adminMenu.ts`).
 - A record opened from a section links back to it with `orgResourcesPath(orgId, sectionKey)`, keeping the section keys in a small module file (`orgResourceKeys.ts`) so a detail page does not import the module definition.
 - `/orgs/:orgId/overview/<section key>` redirects to the section's Resources address, keeping the query string and hash, so bookmarks and saved links keep working. So do the earlier Organisation Settings addresses of what moved: `/orgs/:orgId/admin/reports` and `/admin/tags`, and a module section by its key alone or under its old group (`modules/orgResources.ts`, `findMovedOrgAdminPath`; it never redirects an address Settings still owns, which is why Settings and Resources keys are disjoint, and a story guards it).
+
+### 4l12. Record code prefixes
+
+An organisation, or one project, can choose the prefix new records of a type are numbered with (`ADR-006` for `DEC-006`). A module adds a type with no per-module code in core: it declares the built-in prefix on `ModuleDefinition.default_code_prefixes[type]` (2 to 5 capital letters), or gives the reason the type has no `PREFIX-nnn` code in `no_code_prefix`; `backend/tests/test_code_prefixes.py` fails for a registered type with neither, and for two types sharing a built-in prefix. Core types are in `services/code_prefixes.py`; the requirement is outside the mechanism (its code is built from the component and category prefixes).
+
+```mermaid
+flowchart LR
+    G["generate_unique_code(db, owner, type, default)"] --> E{"effective_prefix"}
+    E -->|"owner project sets one"| P["project"]
+    E -->|"else nearest parent project that does"| PP["parent project"]
+    E -->|"else the organisation sets one"| O["organisation"]
+    E -->|"else"| D["built-in default"]
+```
+
+- **No call site changes.** `generate_unique_code` resolves the prefix itself (the argument is the default), so every create path, import and the Actions generator follow an override. The counter is per type, not per prefix, so a change never reuses a number; a stored code never changes. An organisation-owned record resolves from the organisation's overrides only. One read per owner is memoised on the session and dropped at commit or rollback.
+- **Tables.** `organization_code_prefixes` and `project_code_prefixes`, a sparse `(owner, artefact_type, prefix)` map: no row follows the next tier. Resolution is per type (a child project inherits instead of silently reverting).
+- **Rules** (`code_rules.record_prefix_error`, `services/code_prefixes.set_override`): 2 to 5 letters A-Z, so a qualified code still splits on its first hyphen and a code is always letters, a hyphen and a number; not the organisation's code or a project's code; the effective prefixes of all types in a scope are unique. A write is checked in every scope it changes (the organisation and every project for an organisation change; the project and its descendants for a project change), for the type being changed only, so a collision that predates the write cannot block an unrelated edit.
+- **One reading of a code.** A code is `PREFIX-nnn` with at least three digits (`code_rules.RECORD_CODE_PATTERN`; `split_record_label` for a summary label). The frontend twin (`components/artefactCode.ts`) is held to it by shared vectors (`artefactCodeCases.json`, read by both a story and a backend test). A compliance clause label (`ISO-27001 v2.0 · A.5.15 ...`) is never split. A parser must not assume a fixed prefix: use these, never a per-type literal.
+- **API.** `GET/PUT/DELETE /api/v1/orgs/{id}/code-prefixes[/{type}]` (read by any member, written by an organisation administrator) and `/api/v1/projects/{id}/code-prefixes[/{type}]` (read by a project member, written through `require_project_manage`). A row carries the effective prefix, the tier that decided it (a parent project by tier only, never by name), and what clearing returns to. The list leaves out the types of a module the scope cannot use. Every change is audited (`code_prefix_set`, `code_prefix_cleared`: type and prefixes only).
+- **Bundles and templates.** The project bundle carries `code_prefixes` (the project's own), the organisation bundle the organisation's own (a merge adds only types the target has not set). An entry that no longer fits (a type not registered, a prefix now taken) is skipped with a warning; a project made from a template copies the template's own.
+- **UI.** `RecordCodePrefixPanel` in Organisation Settings (Projects group) and in Project Admin overview; the inherited value is the placeholder with its tier, and a restore control returns to it.
 
 ### 4l3. Components on every record
 

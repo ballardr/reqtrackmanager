@@ -121,6 +121,7 @@ DEFAULT_DECISION_TYPES: list[str] = ["Architecture", "Design", "Engineering", "S
 # generate_unique_code` for `Decision.unique_code` and for
 # Decision<->Requirement/Decision<->Decision artefact links.
 DECISION_ARTEFACT_TYPE = "decision"
+DECISION_CODE_PREFIX = "DEC"
 
 # Fine-Grained Access Control — the unscoped `(decision, approve_baseline)` permission
 # atom, declared on the `decision_approver` module role (`module.py`).

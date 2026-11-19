@@ -48,6 +48,7 @@ import { StageWorkflowEditor, type StageWorkflowValues } from "../components/Sta
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
+import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
 import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
@@ -1814,6 +1815,9 @@ export function ProjectAdminPage() {
         <FormDivider />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.navLabels.heading}</h2>
         {projectId && <NavLabelsPanel scope={{ kind: "project", projectId }} />}
+        <FormDivider />
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.codePrefixes.heading}</h2>
+        {projectId && <RecordCodePrefixPanel scope={{ kind: "project", projectId }} />}
       </div>
       )}
 

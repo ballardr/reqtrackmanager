@@ -62,6 +62,7 @@ from app.modules.product_feedback.service import (
     ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
+    REQUEST_CODE_PREFIX,
     REQUEST_SUBCOMPONENT_KEY,
 )
 from app.modules.product_feedback.summaries import REQUEST_SUMMARY_PROVIDER
@@ -147,6 +148,7 @@ MODULE_DEFINITION = ModuleDefinition(
     migrations_dir="app/modules/product_feedback/migrations",
     artefact_types=(REQUEST_ARTEFACT_TYPE,),
     link_type_seeds=(REQUESTED_BY_SEED, ADDRESSES_SEED, REALISED_BY_SEED),
+    default_code_prefixes={REQUEST_ARTEFACT_TYPE: REQUEST_CODE_PREFIX},
     artefact_type_labels={REQUEST_ARTEFACT_TYPE: "Enhancement request"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
     on_org_created=seed_org_defaults,

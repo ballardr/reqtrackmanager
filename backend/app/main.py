@@ -39,6 +39,7 @@ from app.routers import (
     auth,
     auth_oidc,
     change_requests,
+    code_prefixes,
     custom_fields,
     custom_reports,
     files,
@@ -396,6 +397,8 @@ app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
 app.include_router(placements.router)
+app.include_router(code_prefixes.org_router)
+app.include_router(code_prefixes.project_router)
 app.include_router(stage_workflows.org_router)
 app.include_router(stage_workflows.project_router)
 app.include_router(announcements.system_router)

@@ -23,9 +23,8 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from app.modules.decisions.enums import DecisionStatus
-from app.modules.decisions.export import DECISION_CODE_PREFIX
 from app.modules.decisions.models import Decision, DecisionComment, DecisionTypeDefinition
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import PerfProjectContext
 from app.services.perf_dataset.records import RecordBatch, add_comments, add_tags, created_at, link_to_earlier, pick_weighted

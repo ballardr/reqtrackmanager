@@ -106,13 +106,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.code_rules import DEFAULT_POLICY, CodePolicy, policy_error
 from app.models.enums import OrgRole
 from app.models.file import FileAsset
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
-from app.services import announcements, nav_labels, org_dashboards, org_policies, overview_widgets
+from app.services import announcements, code_prefixes, nav_labels, org_dashboards, org_policies, overview_widgets
 from app.services.audit import log_event
 from app.services.branding import FOOTER_POSITIONS
 from app.services.bundle_common import (
@@ -216,6 +217,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **announcements.export_org(db, org.id),
         **org_dashboards.export_org(db, org.id),
         **org_policies.export_org(db, org.id),
+        "code_prefixes": code_prefixes.export_overrides(db, org),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -273,6 +275,8 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "smtp_host": org.smtp_host, "smtp_port": org.smtp_port, "smtp_username": org.smtp_username,
         "smtp_use_tls": org.smtp_use_tls,
         "allow_imported_approval_state": org.allow_imported_approval_state,
+        # How project codes are formed and shown; the codes themselves are numbered afresh on import.
+        "project_code_policy": org.project_code_policy, "enforce_code_everywhere": org.enforce_code_everywhere,
         # Reference only — never re-applied on import (see module docstring).
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
@@ -560,6 +564,20 @@ def _warn_legacy_report_content(data: dict[str, Any], warnings: BundleImportWarn
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
 
 
+def _imported_code_policy(stored: Any, warnings: BundleImportWarnings) -> dict[str, str | int | bool]:
+    """The bundle's project code policy, or the default (with a warning) when it is missing or not a usable policy."""
+    if not isinstance(stored, dict):
+        return DEFAULT_POLICY.as_dict()
+    try:
+        policy = CodePolicy.from_mapping(stored)
+    except (TypeError, ValueError):
+        policy = None
+    if policy is None or policy_error(policy) is not None:
+        warnings.add("The project code policy in this bundle is not valid, so the default policy was used.")
+        return DEFAULT_POLICY.as_dict()
+    return policy.as_dict()
+
+
 def _hex_or_none(value: Any) -> str | None:
     """`value` when it is a `#rrggbb` colour, otherwise `None` (a bundle is unverified and a colour reaches style attributes)."""
     return value if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value) else None
@@ -688,6 +706,8 @@ def import_org_bundle(
         smtp_host=data.get("smtp_host"), smtp_port=data.get("smtp_port"), smtp_username=data.get("smtp_username"),
         smtp_use_tls=data.get("smtp_use_tls", True),
         allow_imported_approval_state=data.get("allow_imported_approval_state", True),
+        project_code_policy=_imported_code_policy(data.get("project_code_policy"), warnings),
+        enforce_code_everywhere=bool(data.get("enforce_code_everywhere", False)),
         # Deliberately not carried over from the bundle — see module docstring.
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
@@ -750,6 +770,7 @@ def import_org_bundle(
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
+    code_prefixes.import_overrides(db, org, data.get("code_prefixes"), acting_user.id, warnings.add)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, org, data, file_bytes_by_ref, acting_user, warnings)
@@ -904,6 +925,12 @@ def merge_org_bundle(
     announcements.import_org(db, target_org.id, data, current_user, warnings)
     org_dashboards.import_org(db, target_org.id, data, current_user, warnings)
     org_policies.import_org(db, target_org.id, data, current_user, warnings)
+    # A merge keeps the organisation's own prefixes and adds only the types it has not set.
+    own_prefixes = {entry["artefact_type"] for entry in code_prefixes.export_overrides(db, target_org)}
+    code_prefixes.import_overrides(
+        db, target_org, [e for e in data.get("code_prefixes") or [] if e.get("artefact_type") not in own_prefixes],
+        current_user.id, warnings.add,
+    )
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
