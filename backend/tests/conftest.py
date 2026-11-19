@@ -296,13 +296,16 @@ def _app_client():
 
     # The leader's polling loops would otherwise run inside the test process, racing the tests for shared rows (a
     # queued report run claimed before a test cancels it) and adding their own statements to a query count. Tests
-    # that exercise a loop's work call it directly (`report_run_jobs.run_next`, the disk and storage checks).
+    # that exercise a loop's work call it directly (`report_run_jobs.run_next`, the disk and storage checks). The
+    # daily scheduler is held back for the same reason: a job firing at its clock time (for example 02:45) inside a
+    # query-count measurement adds statements to it, so a test calls the job function directly instead.
     async def _idle() -> None:
         await asyncio.Event().wait()
 
     patch = pytest.MonkeyPatch()
     for loop_name in ("run_disk_monitor_loop", "run_storage_health_loop", "run_digest_loop", "run_job_loop"):
         patch.setattr(app_main, loop_name, _idle)
+    patch.setattr(app_main, "start_scheduler", lambda: None)
     try:
         with TestClient(app) as c:
             yield c
