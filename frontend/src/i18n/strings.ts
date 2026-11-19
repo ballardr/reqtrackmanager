@@ -16,6 +16,9 @@ const en = {
     search: "Search notifications",
     unreadOnly: "Unread only",
     markAllReadToast: "All notifications marked as read",
+    notFound: "This notification was not found.",
+    loadFailed: "Could not load the notification.",
+    subjectUnavailable: "You no longer have access to the page this notification refers to.",
     preferencesTitle: "Notification preferences",
     ui: "In-app",
     email: "Email",
@@ -4468,6 +4471,7 @@ const en = {
     componentsHeading: "By {component}",
     noStages: "This {project} has no {stage}s yet.",
     loadFailed: "Could not load the {stage} phases.",
+    settingsLink: "{Stage} and phase settings",
   },
   deliveryPlan: {
     viewAria: "Delivery status view",

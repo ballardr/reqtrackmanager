@@ -9,6 +9,9 @@ from pydantic import BaseModel
 
 
 class NotificationOut(BaseModel):
+    """A notification. `target_kinds` says where opening it leads (ordered, the first kind whose data it carries
+    wins; the browser resolves them in `modules/notificationTargets.ts`)."""
+
     model_config = {"from_attributes": True}
 
     id: UUID
@@ -20,6 +23,14 @@ class NotificationOut(BaseModel):
     entity_id: str | None
     created_at: datetime
     read_at: datetime | None
+
+    target_kinds: list[str] = []
+
+
+class NotificationDetailOut(NotificationOut):
+    """One notification with whether its subject is still reachable by the recipient (`subject_available`)."""
+
+    subject_available: bool = True
 
 
 class NotificationPreferenceOut(BaseModel):

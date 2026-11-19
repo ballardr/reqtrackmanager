@@ -19,6 +19,8 @@ export const PERSONAS = {
   stakeholderAlpha: { email: "e2e-stakeholder-a@example.com", name: "E2E Stakeholder AlphaOnly" },
   stakeholderAlpha2: { email: "e2e-stakeholder-a2@example.com", name: "E2E Stakeholder AlphaOnly Two" },
   memberAlphaBeta: { email: "e2e-member-ab@example.com", name: "E2E Member AlphaBeta" },
+  /** Holds one seeded notification of every target kind (`seed_notification_samples.py`); nothing else uses it. */
+  notified: { email: "e2e-notified@example.com", name: "E2E Notified Member" },
   orphan: { email: "e2e-orphan@example.com", name: "E2E Orphan Candidate" },
   projectMgrGamma: { email: "e2e-projectmgr-g@example.com", name: "E2E ProjectMgr Gamma Only" },
 } as const;

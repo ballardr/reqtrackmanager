@@ -572,6 +572,7 @@ export function buildNotification(overrides: Partial<Notification> = {}): Notifi
     entity_id: "requirement-1",
     created_at: "2026-02-02T10:00:00Z",
     read_at: null,
+    target_kinds: ["record"],
     ...overrides,
   };
 }

@@ -712,7 +712,7 @@ def assign_org_role(
                 db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
                 title="Organisation permission granted",
                 body=f"You were granted the '{payload.role.value}' role in an organisation.",
-                actor_id=current_user.id,
+                entity_type="organization", entity_id=str(organization_id), actor_id=current_user.id,
             )
         db.commit()
 
@@ -864,7 +864,7 @@ def assign_org_module_role(
                 db, granted_user, notification_type=NotificationType.PERMISSION_GRANTED,
                 title="Organisation permission granted",
                 body=f"You were granted the '{payload.role_key}' role in an organisation.",
-                actor_id=current_user.id,
+                entity_type="organization", entity_id=str(organization_id), actor_id=current_user.id,
             )
         db.commit()
 

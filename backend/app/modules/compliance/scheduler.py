@@ -164,12 +164,15 @@ def send_review_due_notifications(db: Session) -> None:
                 continue
             project_id = project_compliance.project_id
             recipients = get_effective_compliance_officers(db, project_id)
+            entity_type, entity_id = "compliance_review", str(review.id)
         else:
             standard = db.get(ComplianceStandard, review.standard_id)
             if standard is None:
                 continue
             organization_id = standard.organization_id
             recipients = get_effective_compliance_managers(db, organization_id)
+            # A standard-level review has no project, so it names the standard it opens.
+            entity_type, entity_id = "compliance_standard", str(standard.id)
         recipients |= principal_recipients(db, [principal_ref(review.owner_type, review.owner_id)])
 
         if review.next_due_date < today:
@@ -179,7 +182,7 @@ def send_review_due_notifications(db: Session) -> None:
                 db, recipients, notification_type=NotificationType.COMPLIANCE_REVIEW_OVERDUE,
                 title=f"Compliance review overdue: {review.frequency_label}",
                 body=f"A scheduled compliance review was due on {review.next_due_date.isoformat()}.",
-                project_id=project_id, entity_type="compliance_review", entity_id=str(review.id),
+                project_id=project_id, entity_type=entity_type, entity_id=entity_id,
             )
             review.overdue_notified_at = datetime.now(UTC)
         elif review.next_due_date <= today + timedelta(days=COMPLIANCE_REVIEW_DUE_WARNING_DAYS):
@@ -189,7 +192,7 @@ def send_review_due_notifications(db: Session) -> None:
                 db, recipients, notification_type=NotificationType.COMPLIANCE_REVIEW_DUE,
                 title=f"Compliance review due soon: {review.frequency_label}",
                 body=f"A scheduled compliance review is due on {review.next_due_date.isoformat()}.",
-                project_id=project_id, entity_type="compliance_review", entity_id=str(review.id),
+                project_id=project_id, entity_type=entity_type, entity_id=entity_id,
             )
             review.due_reminder_sent_at = datetime.now(UTC)
 

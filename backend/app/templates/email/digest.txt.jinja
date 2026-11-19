@@ -2,7 +2,7 @@
 
 {{ items | length }} new notification{{ "s" if items | length != 1 else "" }}
 {% for item in items %}
-- {{ item.title }}{% if item.body %}: {{ item.body }}{% endif %}
+- {{ item.title }}{% if item.body %}: {{ item.body }}{% endif %}{% if item.url %} ({{ item.url }}){% endif %}
 {% endfor %}
 
 View all notifications: {{ cta_url }}

@@ -27,7 +27,7 @@ import { RISK_SCORING_SCHEME, RISK_STATUS_LABEL } from "./types";
  *   through core's shared `ScoringSchemeEditor` (org) and `ProjectScoringSettings`
  *   (project), the same way Stakeholders and Pain Points configure theirs.
  * - Notifications about a risk deep-link through `artefactPaths` (the generic
- *   `getNotificationLink`), so there is no per-module case in core.
+ *   `record` notification target), so there is no per-module case in core.
  *
  * `entityAccentColor` is intentionally not set: no mixed cross-module list shows
  * a risk row yet (a risk's links are shown by the shared Links panel).

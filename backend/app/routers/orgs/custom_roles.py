@@ -497,6 +497,9 @@ def grant_custom_role_to_user(
                 title="Organisation permission granted",
                 body=f"You were granted the '{role.name}' role.",
                 project_id=payload.project_id,
+                # A grant on a project opens the project; an organisation-wide one opens the organisation.
+                entity_type="organization" if payload.project_id is None else None,
+                entity_id=str(organization_id) if payload.project_id is None else None,
                 actor_id=current_user.id,
             )
         db.commit()

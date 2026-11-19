@@ -7,7 +7,7 @@
  *
  * Design decisions: a run that is not the person's (or no longer listed) shows a short message instead of the dialog,
  * the same answer for both so a run id reveals nothing. The route is not module-specific: any notification whose
- * entity is a background report resolves here (`notificationLink`).
+ * entity is a background report resolves here (the `report_run` notification target).
  */
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";

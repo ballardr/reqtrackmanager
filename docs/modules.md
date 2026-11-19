@@ -1006,9 +1006,22 @@ flowchart LR
   to core's closed enum. `services.notifications.notify` accepts either form and
   raises `ValueError` for an unregistered key. The preferences API returns
   `label` for module types; core types are labelled by the frontend string table.
-  To make a notification clickable, send the record's registered artefact type as
-  `entity_type` and its id as `entity_id`: the frontend's `getNotificationLink`
-  opens it through the owning module's `artefactPaths`, with no core change.
+  To make a notification open something, declare **target kinds** for the type
+  (`NotificationTypeDefinition.target_kinds`, ordered) and send the record's
+  registered artefact type as `entity_type` and its id as `entity_id`. The bell,
+  the notification list and the email all open `/notifications/:id`, which calls
+  the one browser resolver (`modules/notificationTargets.ts`): it tries the
+  type's kinds in order and opens the first whose data the notification carries
+  (the `record` kind opens the record through the owning module's
+  `artefactPaths`), else shows the full message. A kind only the module can
+  open goes in `ModuleDefinition.notification_target_kinds` with a resolver on
+  `TierAModuleDefinition.notificationTargets`; kinds for a type that core's enum
+  defines but the module owns (Compliance's) go in
+  `ModuleDefinition.notification_targets`. `test_notification_targets.py` fails
+  for a type with no kind or a kind outside the vocabulary,
+  `notificationTargetKinds.json` must equal the backend vocabulary, and
+  `notificationTargets.stories.tsx` fails for a kind with no resolver or one that
+  opens no mounted route.
 - **`on_artefact_changed`** is called with an `ArtefactChange` (`artefact_type`,
   `artefact_id`, `project_id`, `kind` of `content_changed` or `archived`,
   `summary`, `actor_id`) by `services.artefact_changes.notify_artefact_changed`,

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
-import { getNotificationLink } from "../modules/artefactPaths";
+import { notificationOpenPath } from "../modules/notificationTargets";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
@@ -70,8 +70,7 @@ export function NotificationsPage() {
 
   function openNotification(n: Notification) {
     if (!n.read_at) markRead(n.id);
-    const link = getNotificationLink(n);
-    if (link) navigate(link);
+    navigate(notificationOpenPath(n));
   }
 
   const unreadCount = notifications?.filter((n) => !n.read_at).length ?? 0;
@@ -113,7 +112,7 @@ export function NotificationsPage() {
                 <div
                   key={n.id}
                   className="card"
-                  style={{ cursor: getNotificationLink(n) ? "pointer" : "default", opacity: n.read_at ? 0.7 : 1 }}
+                  style={{ cursor: "pointer", opacity: n.read_at ? 0.7 : 1 }}
                   onClick={() => openNotification(n)}
                 >
                   <div style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</div>

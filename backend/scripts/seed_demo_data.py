@@ -4707,11 +4707,19 @@ def main() -> None:
 
     seed_template_projects.seed_template_projects(h_pm, org, owner_id=demo_admin["user_id"])
 
+    # One notification of every target kind for the engineer (not the admin, so the headline persona's bell stays tidy).
+    from seed_notification_samples import seed_notification_samples
+
+    skipped_kinds = seed_notification_samples("demo.engineer@example.com", org["id"], drone["id"])
+    if skipped_kinds:
+        print(f"No record to point a sample notification at for: {', '.join(skipped_kinds)} (not seeded).")
+
     print()
     print("Done. Demo personas (all share one password: DemoDemo123! unless demo_setup.py rotated it):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
     print("  demo.engineer@example.com    - stakeholder on Falcon-3/Solstice Cloud; direct project manager"
-          " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption)")
+          " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption); holds one"
+          " notification of every target kind")
     print("  demo.stakeholder@example.com - stakeholder on Falcon-3/Solstice Cloud")
     print()
     print(f"Organisation: {ORG_NAME}")

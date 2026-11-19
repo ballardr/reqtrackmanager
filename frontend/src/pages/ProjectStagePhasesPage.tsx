@@ -12,20 +12,22 @@
  *   enabled only for the tracks the person may move (a project manager, or the track's owner) and, for a manager, the
  *   expected range of the track's current phase.
  * - Remember the table or timeline choice per person (`useUiPreference`).
+ * - Offer a settings link to project administration's stages and phases, only to a person who may change them.
  *
  * Design decisions: composed in the browser from the existing bulk reads (stages, component tracks, phase plans), so there
  * is one server definition of who may move what and no second one of progress or overdue (`utils/deliveryPlan`); the
  * server decides who may move a track (`can_move`) and set a date, this page only reflects it.
  */
-import { ChartGantt, Table2 } from "lucide-react";
+import { ChartGantt, Settings, Table2 } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Component, ComponentPhases, PhasePlans, ProjectStage, StageWorkflow } from "../api/types";
 import { ComponentTracksList } from "../components/ComponentTracksList";
 import { Spinner } from "../components/Spinner";
 import { StagePlanTable } from "../components/StagePlanTable";
+import { Tooltip } from "../components/Tooltip";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -87,6 +89,13 @@ export function ProjectStagePhasesPage() {
         <div className="row" role="group" aria-label={strings.deliveryPlan.viewAria} style={{ gap: "var(--space-1)" }}>
           {viewButton("table", strings.deliveryPlan.viewTable, <Table2 />)}
           {viewButton("timeline", strings.deliveryPlan.viewTimeline, <ChartGantt />)}
+          {canManage && (
+            <Tooltip label={t.settingsLink}>
+              <Link to={`/projects/${projectId}/admin/stagesPhases`} className="btn btn-icon" aria-label={t.settingsLink}>
+                <Settings />
+              </Link>
+            </Tooltip>
+          )}
         </div>
       </div>
       <section className="card stack">

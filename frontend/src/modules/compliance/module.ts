@@ -128,6 +128,12 @@ export const moduleDefinition: TierAModuleDefinition = {
     project_compliance_requirement: (projectId) => projectCompliancePath(projectId),
     compliance_required_action_assessment: (projectId) => projectCompliancePath(projectId),
   },
+  // Where a Compliance notification opens (the backend's `notification_target_kinds`): a project assignment, review or
+  // target date opens the project's Compliance page; a standard grant or standard-level review opens the standard.
+  notificationTargets: {
+    project_compliance: (n) => (n.project_id ? projectCompliancePath(n.project_id) : null),
+    standard: (n) => (n.entity_type === "compliance_standard" && n.entity_id ? `/standards/${n.entity_id}` : null),
+  },
   artefactListPaths: {
     compliance_evidence: (projectId) => projectCompliancePath(projectId, "evidence"),
   },

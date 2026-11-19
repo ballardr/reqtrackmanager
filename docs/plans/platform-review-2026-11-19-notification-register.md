@@ -1,6 +1,6 @@
 # Notification Target Register
 
-Output of phase 2 of [platform-review-2026-11-19-plan.md](platform-review-2026-11-19-plan.md); phase 3 implements it. **Status:** signed off by the user, 2026-11-19 (four target choices, **Decided by: User**; the classification of every other type, **Decided by: Agent**, and open to correction).
+Output of phase 2 of [platform-review-2026-11-19-plan.md](platform-review-2026-11-19-plan.md); phase 3 implements it. **Status:** signed off by the user, 2026-11-19; implemented in phase 3, with each type's kinds an ordered list (see `docs/decisions.md`) (four target choices, **Decided by: User**; the classification of every other type, **Decided by: Agent**, and open to correction).
 
 **Scope:** the 40 core `NotificationType` values (`backend/app/models/notification.py`) and the 3 kinds the Risk module declares (`ModuleDefinition.notification_types`): 43 types, about 50 creation sites found by a syntax-tree scan for `notification_type=` outside tests.
 

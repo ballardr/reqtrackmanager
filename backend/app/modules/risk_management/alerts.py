@@ -75,9 +75,9 @@ REVIEW_OVERDUE_TYPE = "risk_review_overdue"
 TREATMENT_REASSESSMENT_TYPE = "risk_treatment_needs_reassessment"
 
 NOTIFICATION_TYPES: tuple[NotificationTypeDefinition, ...] = (
-    NotificationTypeDefinition(REVIEW_DUE_TYPE, "Risk review due soon"),
-    NotificationTypeDefinition(REVIEW_OVERDUE_TYPE, "Risk review overdue"),
-    NotificationTypeDefinition(TREATMENT_REASSESSMENT_TYPE, "Risk treatment needs reassessment"),
+    NotificationTypeDefinition(REVIEW_DUE_TYPE, "Risk review due soon", target_kinds=("record",)),
+    NotificationTypeDefinition(REVIEW_OVERDUE_TYPE, "Risk review overdue", target_kinds=("record",)),
+    NotificationTypeDefinition(TREATMENT_REASSESSMENT_TYPE, "Risk treatment needs reassessment", target_kinds=("record",)),
 )
 
 #: Days before `review_date` that the "due soon" notification is sent.

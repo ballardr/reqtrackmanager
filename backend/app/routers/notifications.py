@@ -21,16 +21,37 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.notification import DigestMode, Notification, NotificationPreference
 from app.models.user import User
-from app.modules.registry import get_all_notification_types
-from app.schemas.notification import NotificationOut, NotificationPreferenceOut, NotificationPreferenceUpdate
+from app.modules.registry import get_all_notification_targets, get_all_notification_types
+from app.schemas.notification import (
+    NotificationDetailOut,
+    NotificationOut,
+    NotificationPreferenceOut,
+    NotificationPreferenceUpdate,
+)
 from app.security import decode_email_unsubscribe_token
 from app.services.audit import log_event
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_page
+from app.services.notification_targets import subject_available
 from app.services.rbac import restrict_to_session_scope
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 settings = get_settings()
+
+
+def _out(notification: Notification, targets: dict[str, tuple[str, ...]] | None = None) -> NotificationOut:
+    """The API shape of a notification, with the target kinds declared for its type.
+
+    Args:
+        notification: The row.
+        targets: The merged target table, passed by a list so it is built once per request.
+
+    Returns:
+        The notification with `target_kinds` set (empty for a type that declares none).
+    """
+    out = NotificationOut.model_validate(notification)
+    out.target_kinds = list((targets if targets is not None else get_all_notification_targets()).get(notification.type, ()))
+    return out
 
 
 @router.get("", response_model=list[NotificationOut])
@@ -76,12 +97,13 @@ def list_notifications(
         query = query.where(Notification.project_id.in_(reachable) if reachable else false())
     query = query.order_by(Notification.created_at.desc())
 
+    targets = get_all_notification_targets()
     if limit is None:
-        return db.scalars(query).all()
+        return [_out(n, targets) for n in db.scalars(query).all()]
 
     total = len(db.scalars(query).all())
     response.headers["X-Total-Count"] = str(total)
-    return db.scalars(query.offset(offset).limit(limit)).all()
+    return [_out(n, targets) for n in db.scalars(query.offset(offset).limit(limit)).all()]
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)
@@ -93,7 +115,7 @@ def mark_read(notification_id: UUID, current_user: User = Depends(get_current_us
         notification.read_at = datetime.now(UTC)
         db.commit()
         db.refresh(notification)
-    return notification
+    return _out(notification)
 
 
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
@@ -204,3 +226,34 @@ def unsubscribe(token: str, db: Session = Depends(get_db)):
         cta_url=f"{settings.frontend_base_url}/preferences",
     )
     return HTMLResponse(html)
+
+
+@router.get("/{notification_id}", response_model=NotificationDetailOut)
+def get_notification(notification_id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """One of the caller's notifications, with whether its subject is still reachable.
+
+    This is the page every notification link opens (the bell, the list, the email), so the browser can open the
+    subject, or show the full message when no page applies or the person's access to it has ended. Another
+    person's notification, and one a scoped credential may not see, answer as absent. Registered after the fixed
+    paths above so `preferences` and `unsubscribe` are not read as an id.
+
+    Args:
+        notification_id: The notification.
+
+    Returns:
+        The notification and `subject_available`.
+
+    Raises:
+        HTTPException: 404 when it is not the caller's, or the credential's scope excludes its project.
+    """
+    notification = db.get(Notification, notification_id)
+    if notification is None or notification.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    allowed_orgs, allowed_projects = db.info.get("pat_allowed_org_ids"), db.info.get("pat_allowed_project_ids")
+    if allowed_orgs is not None or allowed_projects is not None or "module_frame_project_id" in db.info:
+        reachable = restrict_to_session_scope(db, {notification.project_id} if notification.project_id else set())
+        if notification.project_id is None or notification.project_id not in reachable:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    detail = NotificationDetailOut.model_validate(_out(notification).model_dump())
+    detail.subject_available = subject_available(db, current_user.id, notification)
+    return detail

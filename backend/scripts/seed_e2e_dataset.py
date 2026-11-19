@@ -33,8 +33,12 @@ from __future__ import annotations
 
 import base64
 import sys
+from pathlib import Path
 
 import httpx
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from seed_notification_samples import seed_notification_samples  # noqa: E402
 
 BASE = "http://localhost:8000/api/v1"
 ADMIN_EMAIL = "admin@example.com"
@@ -1378,6 +1382,13 @@ def main() -> None:
     eta1 = create_project(h_g, gamma["id"], ARCHITECTURE_PROJECT_NAME, "E2E seed project — System Architecture fixture.")
     seed_architecture(h_g, gamma["id"], eta1["id"])
 
+    print("Seeding one notification of every target kind for the notified persona (notification-targets.spec.ts)...")
+    notified = create_org_user(h_admin, alpha["id"], "e2e-notified@example.com", "E2E Notified Member", "member")
+    assign_project_role(h_ab, alpha1["id"], notified["user_id"], "project_manager")
+    skipped_kinds = seed_notification_samples("e2e-notified@example.com", alpha["id"], alpha1["id"])
+    if skipped_kinds:
+        print(f"  No record to point at for: {', '.join(skipped_kinds)} (not seeded).")
+
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
     print("  e2e-orgadmin-ab@example.com   - org_admin of Alpha + Beta; PM on all 4 of those projects")
@@ -1388,6 +1399,7 @@ def main() -> None:
     print("  e2e-subscription-manager@example.com - Alpha member holding the Platform subscription manager server role")
     print("  e2e-removal-authority@example.com     - Alpha member holding the Subscription removal authority server role")
     print("  e2e-module-admin@example.com          - Alpha member holding the Module administrator server role")
+    print("  e2e-notified@example.com      - Alpha member, project manager on Alpha-1; holds one notification of every target kind")
     print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
     print("  e2e-projectmgr-g@example.com  - Gamma member only (no org-admin/project-creator); PM on Gamma-1,"
           " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")

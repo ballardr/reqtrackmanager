@@ -152,7 +152,7 @@ def assign_standard_member_role(
             db, target, notification_type=NotificationType.PERMISSION_GRANTED,
             title="Compliance standard permission granted",
             body=f"You were granted the '{payload.role_key}' role on '{standard.name}'.",
-            actor_id=current_user.id,
+            entity_type="compliance_standard", entity_id=str(standard.id), actor_id=current_user.id,
         )
         db.commit()
 

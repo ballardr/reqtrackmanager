@@ -534,6 +534,13 @@ export interface Notification {
   entity_id: string | null;
   created_at: string;
   read_at: string | null;
+  /** Where opening it leads, in order; the first kind whose data the notification carries wins (`modules/notificationTargets.ts`). */
+  target_kinds: string[];
+}
+
+/** One notification with whether the person can still open what it is about (`GET /notifications/{id}`). */
+export interface NotificationDetail extends Notification {
+  subject_available: boolean;
 }
 
 export interface NotificationPreference {
@@ -2248,27 +2255,6 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
     const name = detail && typeof detail.proposed_name === "string" ? detail.proposed_name : null;
     return { to: `/projects/${projectId}/change-requests/${entry.entity_id}`, label: name ?? entry.entity_id };
   }
-  return null;
-}
-
-/**
- * Where clicking a notification should navigate — `null` means it isn't
- * navigable (e.g. a password-changed notification about the viewer's own
- * account). Falls back to the project overview when `entity_type`/
- * `entity_id` aren't set but `project_id` is (e.g. "you were added to
- * project X" carries no specific entity, just the project itself).
- */
-export function notificationLink(n: Notification): string | null {
-  // A background report: its page offers the download, or a fresh run once the file has been removed.
-  if (n.entity_type === "generated_report" && n.entity_id) return `/report-runs/${n.entity_id}`;
-  // A policy published in the person's organisation: the Policies page opens it.
-  if (n.entity_type === "policy" && n.entity_id) return `/policies/${n.entity_id}`;
-  if (n.project_id && n.entity_type && n.entity_id) {
-    if (n.entity_type === "requirement") return `/projects/${n.project_id}/requirements/${n.entity_id}`;
-    if (n.entity_type === "change_request") return `/projects/${n.project_id}/change-requests/${n.entity_id}`;
-    if (n.entity_type === "project_stage") return `/projects/${n.project_id}/admin`;
-  }
-  if (n.project_id) return `/projects/${n.project_id}`;
   return null;
 }
 

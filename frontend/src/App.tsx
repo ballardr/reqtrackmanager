@@ -15,6 +15,7 @@ import { ChangeRequestsPage } from "./pages/ChangeRequestsPage";
 import { FavouritesPage } from "./pages/FavouritesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MyReviewsDuePage } from "./pages/MyReviewsDuePage";
+import { NotificationOpenPage } from "./pages/NotificationOpenPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OidcCompletePage } from "./pages/OidcCompletePage";
 import { OrgAdminPage } from "./pages/OrgAdminPage";
@@ -128,6 +129,7 @@ function ProtectedRoutes() {
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/notifications/:notificationId" element={<NotificationOpenPage />} />
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/org-files" element={<OrgListPage target="files" />} />

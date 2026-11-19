@@ -2266,10 +2266,15 @@ class NotificationTypeDefinition:
         key: The stored value, unique across core and all modules. Prefix it with
             the module key (`"risk_review_due"`) so two modules cannot collide.
         label: The sentence-case name shown in notification preferences.
+        target_kinds: Where opening the notification takes the person, as ordered target kinds the
+            frontend resolves (`services.notification_targets` lists the core ones; a kind only this
+            module can open goes in `ModuleDefinition.notification_target_kinds`). The first kind whose
+            data the notification carries wins. Required: a test fails for a type with none.
     """
 
     key: str
     label: str
+    target_kinds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -3120,6 +3125,12 @@ class ModuleDefinition:
             core's closed `NotificationType` enum; merged by
             `get_all_notification_types`, which `services.notifications.notify` and
             the preferences API validate against. Empty for a module that sends none.
+        notification_targets: Target kinds for notification types this module owns but core's enum
+            defines (`{type key: ordered kinds}`, as `NotificationTypeDefinition.target_kinds`); kinds
+            for a type core also declares are tried first. Empty for a module with none.
+        notification_target_kinds: Target kinds only this module's frontend can open (its
+            `TierAModuleDefinition.notificationTargets` resolves each), merged into the vocabulary
+            `get_all_notification_target_kinds` returns.
         on_artefact_changed: Optional hook `(db, ArtefactChange) -> None`, called
             synchronously inside the changing request's transaction (never commit)
             for every registered module whenever an artefact changes in a way that
@@ -3188,6 +3199,8 @@ class ModuleDefinition:
     reports: tuple[ReportDefinition, ...] = field(default=())
     link_type_seeds: tuple[LinkTypeSeed, ...] = field(default=())
     notification_types: tuple[NotificationTypeDefinition, ...] = field(default=())
+    notification_targets: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    notification_target_kinds: tuple[str, ...] = field(default=())
     on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None
     principal_references: tuple[PrincipalReference, ...] = field(default=())
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
@@ -5232,6 +5245,39 @@ def get_all_notification_types() -> dict[str, str | None]:
                 )
                 continue
             merged[declared.key] = declared.label
+    return merged
+
+
+def get_all_notification_target_kinds() -> frozenset[str]:
+    """Every notification target kind the frontend can open: core's plus each module's own."""
+    from app.services.notification_targets import CORE_TARGET_KINDS
+
+    kinds = set(CORE_TARGET_KINDS)
+    for definition in get_module_registry().values():
+        kinds.update(definition.notification_target_kinds)
+    return frozenset(kinds)
+
+
+def get_all_notification_targets() -> dict[str, tuple[str, ...]]:
+    """Every notification type's ordered target kinds, core's table merged with the modules'.
+
+    A module's `notification_targets` for a type core also declares are placed first (the module's
+    more specific case, such as a standard grant, wins over the generic project one); a module's
+    `notification_types` carry their own. A type with no entry is a defect a test reports
+    (`test_every_notification_type_declares_a_target`), not something this function hides.
+
+    Returns:
+        `{type key: kinds}`, only for types that declare at least one.
+    """
+    from app.services.notification_targets import CORE_NOTIFICATION_TARGETS
+
+    merged: dict[str, tuple[str, ...]] = dict(CORE_NOTIFICATION_TARGETS)
+    for definition in get_module_registry().values():
+        for key, kinds in definition.notification_targets.items():
+            merged[key] = tuple(dict.fromkeys((*kinds, *merged.get(key, ()))))
+        for declared in definition.notification_types:
+            if declared.target_kinds and declared.key not in merged:
+                merged[declared.key] = declared.target_kinds
     return merged
 
 

@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, within } from "storybook/test";
+import { useLocation } from "react-router-dom";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { buildNotification, withRouter, withToast } from "../testing/storybook-helpers";
@@ -43,6 +44,29 @@ export const MarkAllRead: Story = {
     await expect(api.post).toHaveBeenCalledWith("/api/v1/notifications/read-all");
     // Principle 7 — every mutation ends with feedback (sixth-pass audit).
     await expect(within(document.body).getByText("All notifications marked as read")).toBeInTheDocument();
+  },
+};
+
+function Where() {
+  return <div data-testid="where">{useLocation().pathname}</div>;
+}
+
+/** A row opens the notification address, which resolves its page; the same address the email carries. */
+export const RowOpensTheNotificationAddress: Story = {
+  render: () => (
+    <>
+      <NotificationsPage />
+      <Where />
+    </>
+  ),
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({ items: [buildNotification({ id: "n-5", title: "Password changed", read_at: null })], total: 1 });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("Password changed"));
+    await waitFor(() => expect(canvas.getByTestId("where")).toHaveTextContent("/notifications/n-5"));
   },
 };
 

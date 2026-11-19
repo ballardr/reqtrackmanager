@@ -256,6 +256,7 @@ def _grant_invite(db: Session, invite: PendingInvite, user: User) -> None:
             db, user, notification_type=NotificationType.PERMISSION_GRANTED,
             title="You've joined a new organisation",
             body="Your invite was accepted and you now have access.",
+            entity_type="organization", entity_id=str(invite.organization_id),
         )
     if invite.project_id is not None and invite.project_role is not None:
         already_has_role = db.scalar(

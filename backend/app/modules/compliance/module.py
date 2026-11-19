@@ -484,6 +484,28 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
 _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
 
 
+# Where each Compliance notification opens (`ModuleDefinition.notification_targets`). The types are members of core's
+# `NotificationType` enum (they predate the registry), so the module owns their targets rather than core naming them.
+# A project assignment, target date, review or new standard version opens the project's Compliance page, where the
+# assignment is managed; a standard-level review or a grant on a standard opens the standard; evidence opens its record.
+_NOTIFICATION_TARGETS: dict[str, tuple[str, ...]] = {
+    **{
+        key: ("project_compliance",)
+        for key in (
+            "compliance_approval_requested", "compliance_assessment_rejected", "compliance_approval_invalidated",
+            "compliance_requirement_non_compliant", "compliance_required_action_due_soon",
+            "compliance_required_action_overdue", "compliance_assignment_created",
+            "compliance_target_date_approaching", "compliance_target_date_exceeded",
+            "compliance_standard_update_review_needed",
+        )
+    },
+    "compliance_evidence_expiring_soon": ("record",),
+    "compliance_evidence_expired": ("record",),
+    "compliance_review_due": ("project_compliance", "standard"),
+    "compliance_review_overdue": ("project_compliance", "standard"),
+    "permission_granted": ("standard",),
+}
+
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
     activity_metadata_types=dict.fromkeys((
@@ -557,6 +579,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     principal_references=_PRINCIPAL_REFERENCES,
+    notification_targets=_NOTIFICATION_TARGETS,
+    notification_target_kinds=("project_compliance", "standard"),
     entity_scopes={
         "standard": EntityScopeDefinition(
             resolve_organization_id=_resolve_standard_organization_id,

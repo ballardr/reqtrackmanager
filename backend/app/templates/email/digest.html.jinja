@@ -2,7 +2,7 @@
   Daily digest email (services/notifications.py::send_daily_digests) —
   always platform-branded, never a specific org's (a digest can span
   notifications from multiple orgs; see services/email_templates.py).
-  Context: items (list of {title, body} dicts), cta_url (str).
+  Context: items (list of {title, body, url} dicts; `url` opens that notification), cta_url (str).
 #}
 {% extends "base.html.jinja" %}
 {% import "_macros.html.jinja" as macros %}
@@ -15,7 +15,7 @@
   {% for item in items %}
   <tr>
     <td style="padding: 0 0 16px;">
-      <p class="rtm-text" style="margin: 0 0 2px; font-size: 15px; font-weight: 600;">{{ item.title }}</p>
+      <p class="rtm-text" style="margin: 0 0 2px; font-size: 15px; font-weight: 600;">{% if item.url %}<a href="{{ item.url }}" style="color: inherit;">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</p>
       {% if item.body %}
       <p style="margin: 0; font-size: 14px;">{{ item.body }}</p>
       {% endif %}

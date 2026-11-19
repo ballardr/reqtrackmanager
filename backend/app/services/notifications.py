@@ -9,7 +9,7 @@ sends them by email immediately or queues them for the daily digest batch.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,6 +57,13 @@ def resolve_notification_type(notification_type: NotificationType | str) -> str:
     if key not in get_all_notification_types():
         raise ValueError(f"Unknown notification type {key!r}.")
     return key
+
+
+def notification_url(notification_id: UUID) -> str:
+    """The link an email carries for a notification: its detail route, which signs the person in if needed and
+    opens the subject (`frontend/src/pages/NotificationOpenPage.tsx`). One route for every type, so no page address
+    is copied onto the server."""
+    return f"{settings.frontend_base_url}/notifications/{notification_id}"
 
 
 def _get_preference(db: Session, user_id: UUID, notification_type: str) -> NotificationPreference | None:
@@ -124,6 +131,7 @@ def notify(
     email_enabled = pref.email_enabled if pref else True
 
     notification = Notification(
+        id=uuid4(),
         user_id=user.id,
         type=notification_type,
         title=title,
@@ -144,7 +152,7 @@ def notify(
                 project = db.get(Project, project_id)
                 organization_id = project.organization_id if project else None
             branding = resolve_email_branding(db, organization_id)
-            cta_url = f"{settings.frontend_base_url}/projects/{project_id}" if project_id else f"{settings.frontend_base_url}/notifications"
+            cta_url = notification_url(notification.id)
             html_body, text_body = render_email(
                 "notification", branding=branding, unsubscribe_url=_unsubscribe_url(user.id),
                 title=title, body_text=body, cta_url=cta_url,
@@ -231,7 +239,7 @@ async def send_daily_digests(db: Session) -> None:
         # span notifications from multiple orgs, so there's no single
         # "right" org to brand it with (see services/email_templates.py).
         branding = resolve_email_branding(db, organization_id=None)
-        items = [{"title": n.title, "body": n.body} for n in pending]
+        items = [{"title": n.title, "body": n.body, "url": notification_url(n.id)} for n in pending]
         cta_url = f"{settings.frontend_base_url}/notifications"
         html_body, text_body = render_email(
             "digest", branding=branding, unsubscribe_url=_unsubscribe_url(user.id), items=items, cta_url=cta_url,

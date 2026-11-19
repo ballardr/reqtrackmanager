@@ -3,6 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 import type { ProjectScope } from "../api/projectScope";
 import type { ReportCatalogueEntry, ReportResult, ReportRunValues } from "../api/reports";
 import type { ReportFigureActionResolver } from "../components/ReportViewer";
+import type { Notification } from "../api/types";
 
 /**
  * One route a Tier A ("installed") module contributes — a plain React
@@ -378,6 +379,11 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Where a notification kind only this module can open leads, keyed by the target kind the backend's
+   * `ModuleDefinition.notification_target_kinds` declares (e.g. `"standard"`): given the notification, the page to open,
+   * or `null` when it lacks the data (then the next kind its type lists is tried). Core never names these kinds
+   * (`modules/notificationTargets.ts` resolves them). Omitted for a module that declares none. */
+  notificationTargets?: Record<string, (notification: Notification) => string | null>;
   /** Record types this module can create from another record's Links panel, keyed by artefact type (e.g.
    * `"pain_point"`): the panel offers "Create new" for a type a link type from the page's record reaches (the
    * server has already left out types of a module or sub-component that is off), shows the module's own create
