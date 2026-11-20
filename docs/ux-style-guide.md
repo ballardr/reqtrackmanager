@@ -479,10 +479,12 @@ Use this for any free-text field where more than a couple of lines is a realisti
 
 A long text field that holds formatted prose (a decision's rationale, a dashboard note) is written in Markdown. The stored value is the Markdown source; people see it formatted.
 
-- **Edit** with `TextAreaField markdown` (the `MarkdownEditor`: Write with a formatting toolbar, and Preview). The field keeps its label, `help` and accessible name like any text area; the `help.markdown` text states what is supported (headings, lists, emphasis, code, quotations, tables, rules, links, and a `mermaid` block for a diagram).
+- **Edit** with `TextAreaField markdown` (the `MarkdownEditor`: Visual for formatted editing, Write for the source with a formatting toolbar, and Preview). The field keeps its label, `help` and accessible name like any text area; the `help.markdown` text states what is supported (headings, lists, emphasis, code, quotations, tables, rules, links, and a `mermaid` block for a diagram).
 - **Show** with `MarkdownView`, or `RecordField markdown` for a labelled read-only value, never `dangerouslySetInnerHTML` and never a per-page renderer. Headings start at the third level because the page owns the first two. Raw HTML and images are shown as the text typed; only https, http and mailto addresses are links.
 - **Diagrams** are drawn on demand as images with the source available beneath; do not import Mermaid directly (`utils/mermaidRender` is the one entry, lazily loaded and limited).
 - **Lists and notifications** show plain text (`services.markdown_text.plain_text`), never raw Markdown.
+- **Visual view.** A Markdown field opens in Visual, the person's last choice of Visual or Write is remembered (this browser only; a fallback and Preview are never remembered), and Visual edits the same Markdown source the other views show. A text the editor cannot hold without changing it (mathematics, HTML, an image, a footnote, a task list, two adjacent lists with different markers) opens in Write with the reason stated; opening never rewrites the stored text, only an edit does. Never build a second rich-text editor: the toolbar is `RichTextToolbar` (also used by the policy editor) and the extension set is `utils/visualMarkdown`.
+- **Pasted Markdown.** Pasting plain text that looks like Markdown into Visual shows a notice under the toolbar with **Convert to formatting** and **Keep as typed**; Convert replaces only the pasted text.
 - A record's long-form write-up (a Decision's Document) is a field of its own with the same editor, shown in its own detail card only when it has content.
 - A new editor toolbar button is a `ToolbarButton` (icon, tooltip and accessible name the same).
 

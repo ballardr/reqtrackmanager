@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "../../e2e-workflows/helpers";
 
@@ -6,6 +6,30 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "../..
 installCleanupHook();
 
 const API = "http://localhost:8000/api/v1";
+
+/** Creates a disposable organisation with an administrator, switches Decision Management on and returns a project in it. */
+async function setUpDecisionProject(page: Page, label: string) {
+  const suffix = Date.now();
+  const adminEmail = `e2e-dmd-${label}-admin-${suffix}@example.com`;
+  const serverToken = (
+    await (await page.request.post(`${API}/auth/login`, { data: { email: "admin@example.com", password: "ChangeMe123!" } })).json()
+  ).access_token;
+  const serverHeaders = { Authorization: `Bearer ${serverToken}` };
+  const org = await (await page.request.post(`${API}/orgs`, { headers: serverHeaders, data: { name: `E2E Decision ${label} Org ${suffix}` } })).json();
+  deleteOrgOnCleanup({ id: org.id });
+  await page.request.post(`${API}/orgs/${org.id}/users`, {
+    headers: serverHeaders, data: { email: adminEmail, display_name: `E2E ${label} Admin`, password: PASSWORD, role: "org_admin" },
+  });
+  await loginAs(page, adminEmail, PASSWORD);
+  const adminToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+  const adminHeaders = { Authorization: `Bearer ${adminToken}` };
+  expect((await page.request.put(`${API}/orgs/${org.id}/modules/decisions`, { headers: adminHeaders, data: { enabled: true } })).ok()).toBeTruthy();
+  const project = await (
+    await page.request.post(`${API}/projects`, { headers: adminHeaders, data: { organization_id: org.id, name: `E2E Decision ${label} ${suffix}`, summary: "" } })
+  ).json();
+
+  return { project, adminHeaders };
+}
 
 /**
  * Job to be done: a Decision is written in Markdown and can be a full document. The text fields and the Document
@@ -16,24 +40,7 @@ const API = "http://localhost:8000/api/v1";
  */
 test.describe("Decision Management: Markdown and the long-form Document", () => {
   test("a Decision with a document shows its formatting, table and diagram, and the document locks on approval", async ({ page }) => {
-    const suffix = Date.now();
-    const adminEmail = `e2e-dmd-admin-${suffix}@example.com`;
-    const serverToken = (
-      await (await page.request.post(`${API}/auth/login`, { data: { email: "admin@example.com", password: "ChangeMe123!" } })).json()
-    ).access_token;
-    const serverHeaders = { Authorization: `Bearer ${serverToken}` };
-    const org = await (await page.request.post(`${API}/orgs`, { headers: serverHeaders, data: { name: `E2E Decision Markdown Org ${suffix}` } })).json();
-    deleteOrgOnCleanup({ id: org.id });
-    await page.request.post(`${API}/orgs/${org.id}/users`, {
-      headers: serverHeaders, data: { email: adminEmail, display_name: "E2E Markdown Admin", password: PASSWORD, role: "org_admin" },
-    });
-    await loginAs(page, adminEmail, PASSWORD);
-    const adminToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-    const adminHeaders = { Authorization: `Bearer ${adminToken}` };
-    expect((await page.request.put(`${API}/orgs/${org.id}/modules/decisions`, { headers: adminHeaders, data: { enabled: true } })).ok()).toBeTruthy();
-    const project = await (
-      await page.request.post(`${API}/projects`, { headers: adminHeaders, data: { organization_id: org.id, name: `E2E Decision Markdown ${suffix}`, summary: "" } })
-    ).json();
+    const { project, adminHeaders } = await setUpDecisionProject(page, "markdown");
 
     const document = [
       "## Failover plan", "", "The standby board takes over within **200 ms** (quokka-marker).", "",
@@ -41,10 +48,13 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
       "```mermaid", "flowchart LR", "  A[Active] --> B[Standby]", "```",
     ].join("\n");
 
-    await test.step("create the Decision: the fields offer Write and Preview", async () => {
+    await test.step("create the Decision: the fields offer Visual, Write and Preview", async () => {
       await page.goto(`/projects/${project.id}/modules/decisions`);
       await page.getByRole("button", { name: "New decision" }).click();
       const dialog = page.getByRole("dialog", { name: "New decision" });
+      // The fields open in the Visual view; the source is typed in Write (the choice applies to every field not yet chosen).
+      await expect(dialog.getByRole("tab", { name: "Visual", selected: true }).first()).toBeVisible();
+      await dialog.getByRole("tab", { name: "Write" }).first().click();
       await dialog.getByLabel("Decision title").fill("Adopt a standby controller");
       await dialog.getByLabel("Decision statement").fill("We **adopt** a standby controller.");
       await dialog.getByRole("textbox", { name: "Document" }).fill(document);
@@ -87,6 +97,51 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
       await expect(page.getByRole("region", { name: "Document" })).toBeVisible();
+    });
+  });
+
+  test("a Decision is written in the Visual view, and pasted Markdown is converted on request", async ({ page }) => {
+    const { project } = await setUpDecisionProject(page, "visual");
+    await page.goto(`/projects/${project.id}/modules/decisions`);
+    await page.getByRole("button", { name: "New decision" }).click();
+    const dialog = page.getByRole("dialog", { name: "New decision" });
+    await dialog.getByLabel("Decision title").fill("Adopt a standby controller");
+    await expect(dialog.getByRole("tab", { name: "Visual", selected: true }).first()).toBeVisible();
+
+    await test.step("typing Markdown shortcuts formats the text and a diagram is drawn", async () => {
+      const statement = dialog.getByRole("textbox", { name: "Decision statement" });
+      await statement.click();
+      await page.keyboard.type("We **adopt** a standby controller.");
+      await expect(statement.locator("strong", { hasText: "adopt" })).toBeVisible();
+      const document = dialog.getByRole("textbox", { name: "Document" });
+      await document.click();
+      await dialog.getByRole("button", { name: "Diagram" }).last().click();
+      await expect(dialog.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
+    });
+
+    await test.step("pasted Markdown is offered for conversion", async () => {
+      const context = dialog.getByRole("textbox", { name: "Context" });
+      await context.click();
+      await context.evaluate((element) => {
+        const data = new DataTransfer();
+        data.setData("text/plain", "## Background\n\n- first point\n- second point");
+        element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+      });
+      await expect(dialog.getByText("The pasted text looks like Markdown.")).toBeVisible();
+      await dialog.getByRole("button", { name: "Convert to formatting" }).click();
+      await expect(context.getByRole("heading", { name: "Background" })).toBeVisible();
+      await expect(context.getByRole("listitem")).toHaveCount(2);
+    });
+
+    await test.step("the saved Decision shows the formatting", async () => {
+      await dialog.getByRole("button", { name: "Save" }).click();
+      await page.getByRole("button", { name: "DEC-001" }).click();
+      const quickView = page.getByRole("dialog", { name: "DEC-001" });
+      await expect(quickView.locator("strong", { hasText: "adopt" })).toBeVisible();
+      await expect(quickView).not.toContainText("**");
+      await quickView.getByRole("link", { name: "View full details" }).click();
+      await expect(page.getByRole("heading", { name: "Background" })).toBeVisible();
+      await expect(page.getByRole("listitem").filter({ hasText: "first point" })).toBeVisible();
     });
   });
 });

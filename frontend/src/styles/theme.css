@@ -4154,3 +4154,16 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .policy-editor { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); padding: var(--space-3); min-height: 12rem; }
 .policy-editor .policy-editor-content { outline: none; min-height: 10rem; }
 .policy-editor:focus-within { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.visual-markdown-editor .visual-markdown-content { outline: none; }
+.visual-markdown-content h1 { font-size: 1.17em; margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.visual-markdown-content h2 { font-size: 1em; margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.visual-markdown-content h3 { font-size: 0.83em; margin: var(--space-3) 0 var(--space-1); line-height: 1.3; }
+.visual-markdown-content .tableWrapper { overflow-x: auto; margin: 0 0 var(--space-2); }
+.visual-markdown-content table { border-collapse: collapse; width: auto; }
+.visual-markdown-content th, .visual-markdown-content td { border: 1px solid var(--color-border); padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; min-width: 4rem; }
+.visual-markdown-content th { background: var(--color-surface-alt); }
+.visual-markdown-content .selectedCell { background: var(--color-surface-alt); }
+.visual-markdown-content .visual-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; white-space: pre-wrap; outline: none; }
+.visual-markdown-content pre { background: var(--color-surface-alt); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm, 3px); overflow-x: auto; margin: 0 0 var(--space-2); }
+.visual-diagram-block { margin: 0 0 var(--space-2); }
+.visual-diagram-block pre { margin-bottom: var(--space-1); }

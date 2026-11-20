@@ -6485,6 +6485,22 @@
    "components": [
     "frontend"
    ],
+   "direct": true,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@tiptap/extension-table/v/3.33.0",
+   "name": "@tiptap/extension-table",
+   "review": "none",
+   "texts": [
+    "c96e5ecb55ac"
+   ],
+   "version": "3.33.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
    "direct": false,
    "ecosystem": "npm",
    "licence": "MIT",
@@ -6523,6 +6539,22 @@
    "licence_source": "metadata",
    "link": "https://www.npmjs.com/package/@tiptap/extensions/v/3.33.0",
    "name": "@tiptap/extensions",
+   "review": "none",
+   "texts": [
+    "c96e5ecb55ac"
+   ],
+   "version": "3.33.0"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": true,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/@tiptap/markdown/v/3.33.0",
+   "name": "@tiptap/markdown",
    "review": "none",
    "texts": [
     "c96e5ecb55ac"
@@ -16464,6 +16496,22 @@
     "8e3a3f82f59a"
    ],
    "version": "16.4.2"
+  },
+  {
+   "components": [
+    "frontend"
+   ],
+   "direct": false,
+   "ecosystem": "npm",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://www.npmjs.com/package/marked/v/17.0.6",
+   "name": "marked",
+   "review": "none",
+   "texts": [
+    "8e3a3f82f59a"
+   ],
+   "version": "17.0.6"
   },
   {
    "components": [

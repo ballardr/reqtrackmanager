@@ -283,10 +283,15 @@ function MarkdownFieldHarness() {
   return <TextAreaField label="Rationale" help="Why." value={value} onChange={setValue} markdown rows={3} />;
 }
 
-export const MarkdownTextAreaHasWriteAndPreview: Story = {
+export const MarkdownTextAreaHasVisualWriteAndPreview: Story = {
+  beforeEach: () => {
+    localStorage.setItem("reqtrack.markdownEditorView", "write");
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
   render: () => <MarkdownFieldHarness />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await expect(canvas.getByRole("tab", { name: "Visual" })).toBeInTheDocument();
     await expect(canvas.getByRole("textbox", { name: "Rationale" })).toHaveValue("**Decided**");
     await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
     await expect(canvasElement.querySelector("strong")).toHaveTextContent("Decided");

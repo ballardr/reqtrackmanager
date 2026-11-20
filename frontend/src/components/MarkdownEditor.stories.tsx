@@ -4,8 +4,17 @@ import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { MarkdownEditor } from "./MarkdownEditor";
 
-/** The Markdown editing control: Write with a toolbar, and Preview. */
-const meta: Meta = { title: "Components/MarkdownEditor" };
+const VIEW_KEY = "reqtrack.markdownEditorView";
+
+/** The Markdown editing control: Visual, Write with a toolbar, and Preview. */
+const meta: Meta = {
+  title: "Components/MarkdownEditor",
+  // The stories below that drive the source open in Write; the Visual stories choose their own view.
+  beforeEach: () => {
+    localStorage.setItem(VIEW_KEY, "write");
+    return () => localStorage.removeItem(VIEW_KEY);
+  },
+};
 export default meta;
 
 type Story = StoryObj;
@@ -76,5 +85,41 @@ export const TypingIsStoredAsSource: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(canvas.getByRole("textbox", { name: "Notes" }), "plain *text*");
     await expect(canvas.getByTestId("stored")).toHaveTextContent("plain *text*");
+  },
+};
+
+export const OpensInTheVisualViewUntilWriteIsChosen: Story = {
+  beforeEach: () => { localStorage.removeItem(VIEW_KEY); },
+  render: () => <Harness initial="Some **bold** text" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("tab", { name: "Visual", selected: true })).toBeInTheDocument();
+    await expect(await canvas.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Write" }));
+    await expect((canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement).value).toBe("Some **bold** text");
+    // The choice is remembered for the next field.
+    await expect(localStorage.getItem(VIEW_KEY)).toBe("write");
+  },
+};
+
+export const ATextTheVisualViewWouldChangeOpensInWriteWithTheReason: Story = {
+  beforeEach: () => { localStorage.setItem(VIEW_KEY, "visual"); },
+  render: () => <Harness initial={"A task list:\n\n- [ ] open\n- [x] done"} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("tab", { name: "Write", selected: true })).toBeInTheDocument());
+    await expect(canvas.getByRole("status")).toHaveTextContent("The Visual view is unavailable");
+    await expect((canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement).value).toContain("- [ ] open");
+    // A fallback is not a choice: the stored preference is unchanged.
+    await expect(localStorage.getItem(VIEW_KEY)).toBe("visual");
+  },
+};
+
+export const MathematicsKeepsTheFieldInWrite: Story = {
+  beforeEach: () => { localStorage.setItem(VIEW_KEY, "visual"); },
+  render: () => <Harness initial="Energy is $E = mc^2$." />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("status")).toHaveTextContent("contains mathematics"));
   },
 };

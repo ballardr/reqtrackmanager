@@ -62,7 +62,12 @@ const meta: Meta<typeof DecisionFormModal> = {
     decisionTypes: DECISION_TYPES, orgUsers: ORG_USERS, organizationId: "org-1", projectId: "project-1",
     currentUserId: "user-1", onCancel: fn(), onSave: fn(),
   },
-  beforeEach: mockDirectory,
+  beforeEach: () => {
+    // These stories drive the Markdown source, so the fields open in Write (they open in Visual by default).
+    localStorage.setItem("reqtrack.markdownEditorView", "write");
+    mockDirectory();
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
 };
 export default meta;
 

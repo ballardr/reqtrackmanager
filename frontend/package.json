@@ -18,6 +18,12 @@
     "test-storybook": "vitest run --project=storybook"
   },
   "dependencies": {
+    "@tiptap/extension-bold": "3.33.0",
+    "@tiptap/extension-code": "3.33.0",
+    "@tiptap/extension-italic": "3.33.0",
+    "@tiptap/extension-strike": "3.33.0",
+    "@tiptap/extension-table": "3.33.0",
+    "@tiptap/markdown": "3.33.0",
     "@tiptap/pm": "^3.33.0",
     "@tiptap/react": "^3.33.0",
     "@tiptap/starter-kit": "^3.33.0",

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 14 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 15 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-14 / 25 phases complete.
+15 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -24,7 +24,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [x] |
 | 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [x] |
 | 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [x] |
-| 15 | Visual (WYSIWYG) Markdown editing | Spike with exit criteria, then the visual editor on `@tiptap/markdown`; shared toolbar with the policy editor | [ ] |
+| 15 | Visual (WYSIWYG) Markdown editing | Spike with exit criteria, then the visual editor on `@tiptap/markdown`; shared toolbar with the policy editor | [x] |
 | 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [ ] |
 | 17 | Markdown and diagrams in reports and exports | Markdown to PDF, Word, OpenDocument and HTML; one shared browserless Mermaid renderer in the converter container, same engine version and font as the screen, confirmed by a spike | [ ] |
 | 18 | MCP tools: components and categories | List, add, edit, reorder and delete (only when empty) a project's components and categories through MCP, so a new project can be structured by an agent; skill and generated reference updated | [ ] |
@@ -239,6 +239,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - If it passes: `VisualMarkdownEditor` on `@tiptap/markdown`; a Write/Visual switch remembered per person; the toolbar extracted to a shared component and `PolicyBodyEditor` updated to use it.
 - If it fails: ship Write and Preview only; record why in `docs/decisions.md`.
 - Tests: round-trip suite over a corpus (including every seeded Decision), story, Playwright.
+- As built: the spike passed (109-text corpus, `utils/markdownRoundTripCases.json`, compared by what the reader makes of the text); three writer defects were corrected in `utils/visualMarkdown.ts`; a guard (`findVisualBlocker`) runs on every open and keeps a text the editor cannot hold (HTML, image, footnote, task list, mathematics) in Write with the reason stated. `VisualMarkdownEditor` (loaded on first use; `mermaid` block as editable source with a live diagram; tables) sits in `MarkdownEditor` as a Visual tab, the default, the last explicit choice remembered per browser (**Decided by: User**). `RichTextToolbar` is shared with `PolicyBodyEditor`. Also requested during the phase (**Decided by: User**): pasted plain text that looks like Markdown shows a notice with Convert to formatting and Keep as typed. Not done here, by design: mathematics coexistence and the other types' fields (phase 16), the website pages (phase W). See `docs/decisions.md`.
 
 ### Phase 16 — Markdown for every long-text field
 

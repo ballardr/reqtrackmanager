@@ -44,8 +44,9 @@ type Outcome = { drawing: RenderedDiagram } | { reason: string };
 
 /**
  * @param source The Mermaid text (the body of the fenced block).
+ * @param showSource Whether the expandable source block is offered (the visual editor shows the source itself).
  */
-export function MermaidDiagram({ source }: { source: string }) {
+export function MermaidDiagram({ source, showSource = true }: { source: string; showSource?: boolean }) {
   const text = useStrings().markdown;
   const theme = useDiagramTheme();
   // The outcome belongs to the text and theme it was drawn for; until it matches the current ones, the diagram is drawing.
@@ -76,7 +77,7 @@ export function MermaidDiagram({ source }: { source: string }) {
         />
       )}
       {outcome !== null && "reason" in outcome && <p className="markdown-diagram-error" role="alert">{text.diagramFailed(outcome.reason)}</p>}
-      {outcome !== null && (
+      {outcome !== null && showSource && (
         <details open={"reason" in outcome || undefined}>
           <summary>{text.diagramSource}</summary>
           <pre><code>{source}</code></pre>

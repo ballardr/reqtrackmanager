@@ -1,30 +1,40 @@
 /**
  * Module: components/MarkdownEditor
  *
- * The editing control for a Markdown field: a Write view (the source, with a formatting toolbar) and a Preview view
- * (the same rendering readers see, including diagrams). It owns no value; the caller holds the text.
+ * The editing control for a Markdown field: a Visual view (formatted editing, `VisualMarkdownEditor`), a Write view
+ * (the source, with a formatting toolbar) and a Preview view (the same rendering readers see, including diagrams).
+ * It owns no value; the caller holds the text.
  *
  * Responsibilities:
  * - Apply a toolbar action to the textarea's selection through `utils/markdownEdit` and restore the selection.
  * - Grow with the text like every long field (`AutoGrowTextarea`); `rows` is the minimum height.
  * - Switch between the views with the shared `Tabs`; Preview shows `MarkdownView`.
+ * - Open in the person's remembered view (Visual unless they chose Write), and fall back to Write with a stated
+ *   reason when the text cannot be edited visually without changing it.
  *
  * Design decisions:
  * - The stored value is always the Markdown source, so what the author sees in Write is what is saved.
+ * - The visual editor is loaded on first use (`lazy`), so a form that never shows it does not download TipTap.
+ * - Only a tab the person clicks is remembered; a fallback to Write, and Preview, are not.
  * - The textarea keeps the field's accessible name and id, so the shared field label, help and form tests treat it
  *   as the plain text field it replaces.
  */
 import { Code, Heading2, Italic, Link2, List, ListOrdered, Quote, Table, Workflow, Bold } from "lucide-react";
-import { useId, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { lazy, Suspense, useCallback, useId, useRef, useState, type TextareaHTMLAttributes } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { useMarkdownEditorView } from "../hooks/useMarkdownEditorView";
 import { applyMarkdownFormat, type MarkdownFormat } from "../utils/markdownEdit";
+import type { VisualBlocker } from "../utils/visualMarkdown";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { MarkdownView } from "./MarkdownView";
 import { Tabs, tabPanelProps } from "./Tabs";
 import { ToolbarButton } from "./ToolbarButton";
 
-type View = "write" | "preview";
+// The visual editor (and TipTap with it) is downloaded when a Visual view is first shown, not with every form.
+const VisualMarkdownEditor = lazy(() => import("./VisualMarkdownEditor").then((module) => ({ default: module.VisualMarkdownEditor })));
+
+type View = "visual" | "write" | "preview";
 
 type TextAreaExtras = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "rows" | "className" | "style">;
 
@@ -44,10 +54,26 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
   disabled?: boolean;
   textareaProps?: TextAreaExtras;
 }) {
-  const text = useStrings().markdown;
+  const strings = useStrings();
+  const text = strings.markdown;
   const idPrefix = useId();
-  const [view, setView] = useState<View>("write");
+  const [preferred, remember] = useMarkdownEditorView();
+  // Set when the text cannot be edited visually: the field falls back to Write and says why.
+  const [blocker, setBlocker] = useState<VisualBlocker | null>(null);
+  const [chosen, setChosen] = useState<View | null>(null);
+  const view: View = chosen ?? preferred;
   const area = useRef<HTMLTextAreaElement>(null);
+  const onBlocked = useCallback((reason: VisualBlocker) => {
+    setBlocker(reason);
+    setChosen("write");
+  }, []);
+
+  function choose(next: View) {
+    setChosen(next);
+    if (next !== "preview") remember(next);
+    // A new attempt at the Visual view re-checks the current text.
+    if (next === "visual") setBlocker(null);
+  }
 
   function apply(format: MarkdownFormat) {
     const el = area.current;
@@ -69,8 +95,8 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
     <div className="markdown-editor stack" style={{ gap: "var(--space-1)" }}>
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-1)" }}>
         <Tabs
-          idPrefix={idPrefix} active={view} onChange={setView}
-          tabs={[{ key: "write", label: text.write }, { key: "preview", label: text.preview }]}
+          idPrefix={idPrefix} active={view} onChange={choose}
+          tabs={[{ key: "visual", label: text.visual }, { key: "write", label: text.write }, { key: "preview", label: text.preview }]}
         />
         {view === "write" && (
           <div className="row" role="toolbar" aria-label={text.toolbar} style={{ flexWrap: "wrap", gap: "var(--space-1)" }}>
@@ -87,7 +113,21 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
           </div>
         )}
       </div>
-      {view === "write" ? (
+      {blocker && view === "write" && (
+        <p className="text-muted" role="status">
+          {blocker === "mathematics" ? strings.richText.visualUnavailableMathematics : strings.richText.visualUnavailableFormat}
+        </p>
+      )}
+      {view === "visual" ? (
+        <div {...tabPanelProps(idPrefix, "visual")}>
+          <Suspense fallback={<p className="text-muted" role="status">{text.visualLoading}</p>}>
+            <VisualMarkdownEditor
+              value={value} onChange={onChange} onBlocked={onBlocked} rows={rows} ariaLabel={ariaLabel} disabled={disabled}
+              textareaProps={textareaProps}
+            />
+          </Suspense>
+        </div>
+      ) : view === "write" ? (
         <div {...tabPanelProps(idPrefix, "write")}>
           <AutoGrowTextarea
             {...textareaProps} textareaRef={area} rows={rows} value={value} onChange={onChange} aria-label={ariaLabel} disabled={disabled}
