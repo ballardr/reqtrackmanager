@@ -54,7 +54,7 @@ export function ActionFields({
         <TextField helpNotNeeded required={!disabled} label={strings.actions.name} value={values.title} onChange={(next) => set("title", next)} disabled={disabled} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField helpNotNeeded
+        <TextAreaField markdown helpNotNeeded
           label={strings.actions.description} value={values.description} onChange={(next) => set("description", next)}
           rows={3} disabled={disabled}
         />

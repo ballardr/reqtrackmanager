@@ -322,7 +322,9 @@ export const EvidenceLinkExistingAndUploadNew: Story = {
 
     // --- Link existing.
     await userEvent.selectOptions(body.getByLabelText("Link existing evidence"), "ev-1");
-    await userEvent.click(body.getByRole("button", { name: "Link" }));
+    // The Notes field's formatting toolbar has a Link button too; the evidence form's is the one outside any toolbar.
+    const linkButton = body.getAllByRole("button", { name: "Link" }).find((button) => !button.closest('[role="toolbar"]'));
+    await userEvent.click(linkButton as HTMLElement);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1/requirement-links`,
       { project_compliance_requirement_id: "pcr-1" }

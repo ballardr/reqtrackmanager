@@ -208,10 +208,21 @@ def _tags_column() -> RecordColumn:
     return RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list")
 
 
+#: The `_text` columns whose cells are Markdown source (the rest are names, titles, roles and groups).
+_MARKDOWN_KEYS = frozenset({
+    "description", "goals", "needs", "behaviours", "context_environment", "skills_proficiency", "frequency_of_use",
+    "constraints", "interests", "responsibilities", "goals_needs", "priorities", "workflows_scenarios", "contact_info",
+    "availability_constraints", "rationale", "purpose", "summary", "notes",
+})
+
+
 def _text(
     key: str, label: str, getter: Callable[[Any, Any], str], *, required: bool = False, sensitivity: str = "none", editable: bool = True,
 ) -> RecordColumn:
-    return RecordColumn(key, label, getter, text_parser, editable=editable, required=required, sensitivity=sensitivity)
+    return RecordColumn(
+        key, label, getter, text_parser, editable=editable, required=required, sensitivity=sensitivity,
+        markdown=key in _MARKDOWN_KEYS,
+    )
 
 
 def _principal(key: str, label: str, type_attr: str, id_attr: str, source: Callable[[Any, Any], Any]) -> RecordColumn:

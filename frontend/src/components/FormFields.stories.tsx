@@ -297,3 +297,26 @@ export const MarkdownTextAreaHasVisualWriteAndPreview: Story = {
     await expect(canvasElement.querySelector("strong")).toHaveTextContent("Decided");
   },
 };
+
+/** A comment or short note is edited in Write and Preview only; an equation field is too, and previews its equations. */
+export const SimpleAndMathTextAreasHaveNoVisualTab: Story = {
+  beforeEach: () => {
+    localStorage.setItem("reqtrack.markdownEditorView", "visual");
+    return () => localStorage.removeItem("reqtrack.markdownEditorView");
+  },
+  render: () => (
+    <div className="stack">
+      <TextAreaField label="Justification" helpNotNeeded value="" onChange={() => {}} markdown="simple" />
+      <TextAreaField label="Description" helpNotNeeded value={"Gain \\( g_1 \\)"} onChange={() => {}} markdown="math" />
+      <TextAreaField label="Address" plainText="Printed as plain text in a footer" helpNotNeeded value="" onChange={() => {}} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryAllByRole("tab", { name: "Visual" })).toHaveLength(0);
+    await expect(canvas.getAllByRole("tab", { name: "Write" })).toHaveLength(2);
+    await expect(canvas.getByRole("textbox", { name: "Description" })).toHaveValue("Gain \\( g_1 \\)");
+    // A plain-text field is a plain text area with no editor tabs.
+    await expect(canvas.getByRole("textbox", { name: "Address" })).toBeInTheDocument();
+  },
+};

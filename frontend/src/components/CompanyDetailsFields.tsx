@@ -57,7 +57,7 @@ export function CompanyDetailsFields({
         inputProps={{ id: `${idPrefix}-website` }}
       />
       <FormGridFull>
-        <TextAreaField
+        <TextAreaField plainText="Printed as plain text in report and email footers"
           help={help.address} label={strings.companyDetails.address} rows={3}
           value={value.address} onChange={(text) => onChange("address", text)}
           inputProps={{ id: `${idPrefix}-address`, placeholder: placeholders?.address ?? undefined }}

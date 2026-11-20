@@ -36,7 +36,7 @@ import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Modal } from "../../components/Modal";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
-import { RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
 import { SectionOrderEditor } from "../../components/SectionOrderEditor";
@@ -88,15 +88,6 @@ function transitionLabel(from: RequestStatus, to: RequestStatus): string {
 }
 
 const FORWARD: readonly RequestStatus[] = ["under_review", "accepted", "delivered"];
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
-  );
-}
 
 export function RequestDetailPage() {
   const { projectId, organizationId, requestId } = useParams<{
@@ -364,8 +355,8 @@ export function RequestDetailPage() {
     details: (
       <>
           <DetailCard>
-            {request.description ? <Field label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
-            {request.status === "declined" && request.decline_reason && <Field label="Decline reason" value={request.decline_reason} />}
+            {request.description ? <RecordField markdown label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
+            {request.status === "declined" && request.decline_reason && <RecordField markdown label="Decline reason" value={request.decline_reason} />}
             <RecordPrincipalField
               label="Owner" ariaLabel="Request owner" principal={request.owner} orgUsers={orgUsers}
               organizationId={organization} projectId={projectId} readOnly={!canTriage} onChange={(o) => void setOwner(o)}

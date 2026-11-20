@@ -88,6 +88,7 @@ from app.modules.stakeholders.engagements import (
     RESEARCH_SUBCOMPONENT,
 )
 from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE, GROUP_CODE_PREFIX
+from app.modules.stakeholders.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.stakeholders.models import (
     Engagement,
     EngagementFacilitator,
@@ -943,6 +944,8 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,

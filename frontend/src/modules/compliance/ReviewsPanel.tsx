@@ -40,6 +40,7 @@ import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { COMPLIANCE_HELP } from "./help";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function ReviewsPanel({
   projectId, projectComplianceId, organizationId, orgUsers,
@@ -93,7 +94,7 @@ export function ReviewsPanel({
               <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", fontSize: "0.85rem" }}>
                 <span className="text-muted">Owner:</span>
                 <PrincipalBadge principal={r.owner} />
-                {r.notes && <span className="text-muted">— {r.notes}</span>}
+                {r.notes && <span className="text-muted">— {markdownPlainText(r.notes)}</span>}
               </div>
             </li>
           ))}
@@ -212,7 +213,7 @@ function ReviewFormModal({
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
           </FormGridFull>
         </FormGrid>
         <FormActions
@@ -252,7 +253,7 @@ function CompleteReviewModal({
           options={OUTCOME_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_REVIEW_OUTCOME_LABEL[opt] }))}
           placeholder={null}
         />
-        <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+        <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
         <FormActions onCancel={onCancel} onSave={() => onSave({ outcome, notes })} saveLabel="Complete" />
       </div>
     </Modal>

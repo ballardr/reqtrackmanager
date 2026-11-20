@@ -101,8 +101,9 @@ export function FieldCaption({
  * optional hint under it.
  *
  * Without help or `extra` the whole block is one `<label>`, so clicking the caption focuses the control.
- * With either, the caption is a sibling `<label htmlFor>` (a button or pill inside the label would
- * hijack it) and the control carries `controlId`.
+ * With either, or with `separateCaption` (a control that holds buttons of its own, such as the Markdown editor's
+ * tabs), the caption is a sibling `<label htmlFor>` (a button or pill inside the label would hijack it) and the
+ * control carries `controlId`.
  *
  * @param label The visible caption.
  * @param controlId The control's `id`, always set on it so the caption can point at it.
@@ -110,13 +111,17 @@ export function FieldCaption({
  * @param extra A control beside the caption (an `OverridePill`).
  * @param hint Muted text under the control.
  * @param required Adds the `*` after the caption (the control carries `required` itself).
+ * @param separateCaption Keeps the caption a sibling of the control even with no help or `extra`.
  * @param children The control.
  */
 export function FieldShell({
-  label, controlId, help, extra, hint, required, children,
-}: { label: string; controlId: string; help?: string; extra?: ReactNode; hint?: ReactNode; required?: boolean; children: ReactNode }) {
+  label, controlId, help, extra, hint, required, separateCaption, children,
+}: {
+  label: string; controlId: string; help?: string; extra?: ReactNode; hint?: ReactNode; required?: boolean;
+  separateCaption?: boolean; children: ReactNode;
+}) {
   const hintNode = hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>;
-  if (!help && !extra) {
+  if (!help && !extra && !separateCaption) {
     return (
       <label className="stack" style={{ gap: "var(--space-1)" }}>
         <span>{label}{required && <RequiredMark />}</span>

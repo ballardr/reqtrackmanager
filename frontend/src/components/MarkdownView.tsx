@@ -5,7 +5,8 @@
  *
  * Responsibilities:
  * - Turn the reader's tokens (`utils/markdownIt`) into React elements: headings, paragraphs, lists, quotations,
- *   tables, code, rules, emphasis, links, and a fenced `mermaid` block as a diagram (`MermaidDiagram`).
+ *   tables, code, rules, emphasis, links, a fenced `mermaid` block as a diagram (`MermaidDiagram`) and, when asked
+ *   (`math`), an equation (`MathEquation`).
  *
  * Design decisions:
  * - Nothing is inserted as HTML (as `PolicyBodyView`), so stored text can never run as markup; raw HTML in the text
@@ -14,10 +15,13 @@
  *   two; deeper levels stop at the sixth.
  * - A link opens in a new tab with `rel="noopener noreferrer"`.
  */
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useMemo, type ReactNode } from "react";
 
 import { isMermaidFence, parseMarkdown, type Token } from "../utils/markdownIt";
 import { MermaidDiagram } from "./MermaidDiagram";
+
+// KaTeX is downloaded when a document with an equation is first shown, not with every page that shows Markdown.
+const MathEquation = lazy(() => import("./MathEquation").then((module) => ({ default: module.MathEquation })));
 
 interface Node {
   token: Token;
@@ -66,6 +70,15 @@ function renderNode(node: Node, key: string): ReactNode {
     case "softbreak":
     case "hardbreak": return <br key={key} />;
     case "code_inline": return <code key={key}>{token.content}</code>;
+    case "math": {
+      const display = Boolean((token.meta as { display?: boolean } | null)?.display);
+      const typed = display ? `$$${token.content}$$` : `\\(${token.content}\\)`;
+      return (
+        <Suspense key={key} fallback={<>{typed}</>}>
+          <MathEquation tex={token.content} display={display} />
+        </Suspense>
+      );
+    }
     case "paragraph_open": return token.hidden ? <Fragment key={key}>{children()}</Fragment> : <p key={key}>{children()}</p>;
     case "heading_open": {
       const level = Math.min(Number(token.tag.slice(1)) + 2, 6);
@@ -104,12 +117,13 @@ function renderNode(node: Node, key: string): ReactNode {
 /**
  * @param text The Markdown source, as stored.
  * @param className Extra class for the wrapper (a page's own spacing rules).
+ * @param math Also draw `\( x \)` and `$$ x $$` as equations (the fields people write mathematics in).
  */
-export function MarkdownView({ text, className }: { text: string; className?: string }) {
+export function MarkdownView({ text, className, math }: { text: string; className?: string; math?: boolean }) {
   const content = useMemo(() => {
-    const tokens = parseMarkdown(text);
+    const tokens = parseMarkdown(text, { math });
     return tokens.length === 0 ? [] : renderNodes(buildTree(tokens), "m");
-  }, [text]);
+  }, [text, math]);
   if (content.length === 0) return null;
   return <div className={`markdown-view${className ? ` ${className}` : ""}`}>{content}</div>;
 }

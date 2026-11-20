@@ -86,7 +86,7 @@ export function FutureStateFormModal({
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded required={f.key === "desired_state"}
+              <TextAreaField markdown helpNotNeeded required={f.key === "desired_state"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

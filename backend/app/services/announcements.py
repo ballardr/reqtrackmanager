@@ -51,6 +51,7 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.services.audit import log_event
 from app.services.bundle_common import BundleImportWarnings
+from app.services.markdown_text import plain_text
 from app.services.notifications import notify
 from app.services.rate_limit import RateLimiter
 
@@ -301,7 +302,7 @@ def send_notification(db: Session, announcement_id: uuid.UUID, organization_id: 
     count = 0
     for person in recipients(db, organization_id):
         sent = notify(
-            db, person, notification_type=NotificationType.SYSTEM_ANNOUNCEMENT, title=row.title, body=row.body,
+            db, person, notification_type=NotificationType.SYSTEM_ANNOUNCEMENT, title=row.title, body=plain_text(row.body),
             entity_type="announcement", entity_id=str(row.id), actor_id=actor.id,
         )
         count += 1 if sent is not None else 0

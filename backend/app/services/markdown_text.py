@@ -48,6 +48,9 @@ DiagramMode = Literal["omit", "label", "source"]
 
 _reader = MarkdownIt("commonmark", {"html": False, "breaks": True, "maxNesting": READER_NESTING}).enable("table")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+#: Characters that open a nested block (a quotation `>`, a list marker `-`, `*`, `+`, `1.` or `1)`). A document nested
+#: `MAX_DEPTH` levels deep has at least `MAX_DEPTH // 2` of them (a list adds two levels per marker, a quotation one).
+_NESTING_MARKS = re.compile(r"[>\-*+.)]")
 _SPACE = re.compile(r"\s+")
 
 
@@ -106,6 +109,10 @@ def validate_markdown(text: str, *, max_chars: int, field: str = "text") -> str:
         raise MarkdownLimitError(f"{field} is over the limit of {max_chars} characters.")
     if _CONTROL.search(text):
         raise MarkdownLimitError(f"{field} contains a control character.")
+    if "mermaid" not in text.lower() and len(_NESTING_MARKS.findall(text)) < MAX_DEPTH // 2:
+        # No diagram can be present and too few block markers exist to nest 50 levels, so the parse (the dearest
+        # step, run on every write of every declared field) cannot change the answer.
+        return text
     tokens = parse(text)
     if any(token.level >= MAX_DEPTH for token in tokens):
         raise MarkdownLimitError(f"{field} is nested more than {MAX_DEPTH} levels deep.")

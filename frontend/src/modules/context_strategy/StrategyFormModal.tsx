@@ -86,7 +86,7 @@ export function StrategyFormModal({
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded required={f.key === "objective"}
+              <TextAreaField markdown helpNotNeeded required={f.key === "objective"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

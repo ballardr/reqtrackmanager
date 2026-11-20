@@ -27,6 +27,7 @@ import { ARCHITECTURE_HELP } from "./help";
 import type { TypesScope } from "./ArchitectureTypesPanel";
 import type { ArchitectureCollection, ArchitectureElement, CollectionMember } from "./types";
 import type { OrgUser } from "../../api/types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 type GrantTarget = "project" | "group";
 
@@ -45,7 +46,7 @@ function CollectionFormModal({
     <Modal title={initial ? `Edit ${initial.name}` : "New collection"} onClose={onCancel}>
       <div className="stack">
         <TextField helpNotNeeded required label="Name" value={name} onChange={setName} />
-        <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+        <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} />
         <FormActions error={error} onCancel={onCancel} onSave={() => onSave({ name: name.trim(), description })} saveDisabled={name.trim() === ""} />
       </div>
     </Modal>
@@ -108,7 +109,7 @@ function CollectionCard({
           <button className="btn btn-danger" onClick={onDelete}>Delete</button>
         </span>
       </div>
-      {collection.description && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{collection.description}</p>}
+      {collection.description && <MarkdownView text={collection.description} />}
 
       <div className="stack" style={{ gap: "var(--space-1)" }}>
         <FieldCaption label="Elements shared" help={ARCHITECTURE_HELP.collectionMembers} />

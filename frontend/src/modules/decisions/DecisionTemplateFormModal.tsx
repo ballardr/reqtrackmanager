@@ -62,11 +62,11 @@ export function DecisionTemplateFormModal({
             <TextField helpNotNeeded required label="Template name" value={name} onChange={setName} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+            <TextAreaField plainText="Configuration text shown in pickers and tooltips" helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           {PROMPT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown helpNotNeeded
                 label={f.label} value={prompts[f.key]}
                 onChange={(value) => setPrompts((p) => ({ ...p, [f.key]: value }))}
               />

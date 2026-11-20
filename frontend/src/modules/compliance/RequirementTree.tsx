@@ -68,6 +68,8 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { COMPLIANCE_HELP } from "./help";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 interface Props {
   orgId: string;
@@ -93,7 +95,7 @@ function ClarificationBadge({ requirement }: { requirement: ComplianceRequiremen
   return (
     <Badge
       icon={<MessageSquareText size={12} />}
-      title={`Clarified ${times}. Most recent note: ${requirement.last_clarification_note || "(no note)"}`}>
+      title={`Clarified ${times}. Most recent note: ${markdownPlainText(requirement.last_clarification_note ?? "") || "(no note)"}`}>
       Clarified
     </Badge>
   );
@@ -325,7 +327,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                 {node.name}
                 <ClarificationBadge requirement={node} />
               </strong>
-              {node.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{node.description}</span>}
+              {node.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{markdownPlainText(node.description)}</span>}
             </div>
             <div className="row">
               <button className="btn" title="View mappings" aria-label={`View mappings for ${node.name}`} onClick={() => setMappingsRequirement(node)}>
@@ -484,7 +486,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                           {req.name}
                           <ClarificationBadge requirement={req} />
                         </strong>
-                        {req.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{req.description}</span>}
+                        {req.description && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{markdownPlainText(req.description)}</span>}
                       </span>
                     </button>
                   </li>
@@ -658,10 +660,10 @@ function RequirementDetailPanel({
             <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
             <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
             <FormGridFull>
-              <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+              <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} />
             </FormGridFull>
             <FormGridFull>
-              <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
+              <TextAreaField markdown helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
             </FormGridFull>
           </FormGrid>
         ) : (
@@ -671,10 +673,10 @@ function RequirementDetailPanel({
             </RecordFieldGroup>
             <RecordFieldGroup helpNotNeeded label="Name"><span>{requirement.name}</span></RecordFieldGroup>
             <RecordFieldGroup helpNotNeeded label="Description">
-              <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
+              {requirement.description ? <MarkdownView text={requirement.description} /> : <span className="text-muted">No description.</span>}
             </RecordFieldGroup>
             <RecordFieldGroup helpNotNeeded label="Reasoning">
-              <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
+              {requirement.reasoning ? <MarkdownView text={requirement.reasoning} /> : <span className="text-muted">No reasoning recorded.</span>}
             </RecordFieldGroup>
           </>
         )}
@@ -738,10 +740,10 @@ function RequirementFormModal({
           <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
           <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
+            <TextAreaField markdown helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
           </FormGridFull>
         </FormGrid>
         <FormActions
@@ -788,7 +790,7 @@ function RequiredActionFormModal({
           />
           <TextField helpNotNeeded required label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
           </FormGridFull>
           <CheckboxField help={COMPLIANCE_HELP.complianceMandatory} label="Mandatory" checked={isMandatory} onChange={setIsMandatory} />
         </FormGrid>
@@ -839,13 +841,13 @@ function RequirementClarifyModal({
           <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
           <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
+            <TextAreaField markdown helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded required
+            <TextAreaField markdown="simple" helpNotNeeded required
               label="Clarification note" value={clarificationNote} onChange={setClarificationNote}
               inputProps={{ placeholder: "What changed, and why it is non-substantive." }}
             />

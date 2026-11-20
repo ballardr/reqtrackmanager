@@ -123,7 +123,7 @@ def _decision_type_id(ctx: RecordImportContext, name: str) -> uuid.UUID:
 
 
 def _adr_column(key: str) -> RecordColumn:
-    return RecordColumn(key, _ADR_LABELS[key], lambda t, r: getattr(r, key) or "", text_parser, editable=True)
+    return RecordColumn(key, _ADR_LABELS[key], lambda t, r: getattr(r, key) or "", text_parser, editable=True, markdown=True)
 
 
 def _decision_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -132,6 +132,7 @@ def _decision_columns(db: Session, project: Project) -> list[RecordColumn]:
         RecordColumn("title", "Title", lambda t, r: r.title, text_parser, editable=True, required=True),
         RecordColumn(
             "decision_statement", "Decision statement", lambda t, r: r.decision_statement, text_parser, editable=True, required=True,
+            markdown=True,
         ),
         RecordColumn(
             "type", "Type", lambda t, r: t.type_names.get(r.decision_type_id, ""), _decision_type_id, kind="enum",

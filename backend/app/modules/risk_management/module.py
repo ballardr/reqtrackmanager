@@ -76,6 +76,7 @@ from app.modules.registry import (
 from app.modules.risk_management import export as risk_export
 from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MANAGE_PERMISSION
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
+from app.modules.risk_management.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.models import RiskVersion
 from app.modules.risk_management.perf_dataset import generate_risks
@@ -216,6 +217,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,

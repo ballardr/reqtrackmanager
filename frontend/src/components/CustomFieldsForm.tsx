@@ -29,7 +29,7 @@ export function CustomFieldsForm({
         if (def.field_type === "long_text") {
           return (
             <FormGridFull key={def.id}>
-              <TextAreaField helpNotNeeded label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
+              <TextAreaField plainText="A custom field value is a short value shown in lists and exports" helpNotNeeded label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
             </FormGridFull>
           );
         }

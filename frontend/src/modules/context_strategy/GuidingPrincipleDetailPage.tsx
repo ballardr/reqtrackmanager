@@ -62,7 +62,7 @@ import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSectio
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
-import { RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { SupersedeAction } from "../../components/SupersedeAction";
 import { useAuth } from "../../context/AuthContext";
@@ -312,8 +312,8 @@ export function GuidingPrincipleDetailPage() {
       <div className="stack">
 
         <DetailCard>
-          <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
-          {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
+          <RecordField markdown label="Principle statement" value={guidingPrinciple.principle_statement} />
+          {guidingPrinciple.rationale && <RecordField markdown label="Rationale" value={guidingPrinciple.rationale} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
@@ -413,14 +413,5 @@ export function GuidingPrincipleDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

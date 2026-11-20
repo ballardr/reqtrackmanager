@@ -116,7 +116,7 @@ export function DiagramFormModal({
                 <TextField helpNotNeeded required label="Name" value={values.name} onChange={(value) => set("name", value)} />
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField helpNotNeeded label="Purpose" value={values.purpose} onChange={(value) => set("purpose", value)} />
+                <TextAreaField markdown helpNotNeeded label="Purpose" value={values.purpose} onChange={(value) => set("purpose", value)} />
               </FormGridFull>
               <LabeledSelect
                 help={ARCHITECTURE_HELP.diagramScope} label="Scope element" value={values.scope_element_id ?? ""}

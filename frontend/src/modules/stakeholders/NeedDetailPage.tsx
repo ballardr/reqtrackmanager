@@ -187,8 +187,8 @@ export function NeedDetailPage() {
 
       <div className="stack">
         <DetailCard>
-          {need.description && <RecordField label="Need" value={need.description} />}
-          {need.rationale && <RecordField label="Rationale" value={need.rationale} />}
+          {need.description && <RecordField markdown label="Need" value={need.description} />}
+          {need.rationale && <RecordField markdown label="Rationale" value={need.rationale} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Need owner" principal={need.owner} orgUsers={orgUsers} organizationId={organizationId}

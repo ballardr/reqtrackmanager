@@ -214,9 +214,14 @@ def _level_parser(column: str) -> Any:
     return parse
 
 
+#: The `_text` columns whose cells are Markdown source (the title is a plain name).
+_MARKDOWN_KEYS = frozenset({"statement", "cause", "risk_event", "consequence", "acceptance_criteria"})
+
+
 def _text(key: str, label: str, *, required: bool = False) -> RecordColumn:
     return RecordColumn(
         key, label, lambda t, r: getattr(t.versions[r.id], key) or "", text_parser, editable=True, required=required,
+        markdown=key in _MARKDOWN_KEYS,
     )
 
 

@@ -64,7 +64,7 @@ function PublishDialog({ title, error, organisation, onCancel, onPublish }: {
     <Modal title={text.publishTitle(title)} onClose={onCancel}>
       <div className="stack">
         <p>{organisation ? text.publishBodyOrganisation : text.publishBody}</p>
-        <TextAreaField label={text.changeNote} help={strings.help.policyChangeNote} value={note} onChange={setNote} rows={3} inputProps={{ maxLength: 1000 }} />
+        <TextAreaField plainText="A version's one-line change note, listed in version histories" label={text.changeNote} help={strings.help.policyChangeNote} value={note} onChange={setNote} rows={3} inputProps={{ maxLength: 1000 }} />
         {organisation && <CheckboxField label={text.notifyMembers} help={strings.help.policyNotifyMembers} checked={notifyMembers} onChange={setNotifyMembers} />}
         <FormActions error={error} onCancel={onCancel} saveLabel={text.publish} onSave={() => onPublish(note.trim(), notifyMembers)} />
       </div>

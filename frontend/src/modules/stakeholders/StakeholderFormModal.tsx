@@ -180,20 +180,20 @@ export function StakeholderFormModal({
           )}
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown helpNotNeeded
               label="Contact / reference information" value={contact} onChange={setContact}
               hint="Confidential personal data. Everyone who can see this stakeholder can read it."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={STAKEHOLDERS_HELP.stakeholderAvailability}
+            <TextAreaField markdown help={STAKEHOLDERS_HELP.stakeholderAvailability}
               label="Availability constraints" value={availability} onChange={setAvailability}
             />
           </FormGridFull>

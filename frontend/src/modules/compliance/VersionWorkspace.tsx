@@ -157,7 +157,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
       )}
 
       <div className="card stack" style={{ gap: "var(--space-2)" }}>
-        <TextAreaField helpNotNeeded
+        <TextAreaField markdown helpNotNeeded
           label="Version summary"
           value={summary}
           onChange={setSummary}

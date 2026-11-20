@@ -189,3 +189,21 @@ export const ShowsItsCommentsAndTheThreadsPinnedToItOnDiagrams: Story = {
     await expect(canvas.getByText("Resolved")).toBeInTheDocument();
   },
 };
+
+/** An element's description is Markdown, while its display note (text drawn in the box) stays plain. */
+export const DescriptionIsFormattedAndTheDisplayNoteIsPlain: Story = {
+  beforeEach: () => {
+    const marked = buildElement({
+      parent_id: "el-0", version: 3, description: "Handles **all** inbound traffic:\n\n- auth\n- routing", display_note: "Use **as is**",
+    });
+    const get = mockArchitectureReads({ elements: [PARENT, marked], element: marked, connections: [] });
+    return () => get.mockRestore();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: /Gateway/ })).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".markdown-view strong")).toHaveTextContent("all");
+    await expect(canvasElement.querySelectorAll(".markdown-view li")).toHaveLength(2);
+    await expect(canvas.getByText("Use **as is**")).toBeInTheDocument();
+  },
+};

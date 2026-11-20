@@ -12,6 +12,7 @@ import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import { RecordListView, type RecordListPage } from "./RecordListView";
 import type { Need, NeedFieldValues } from "./types";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function NeedListView({
   needs,
@@ -57,7 +58,7 @@ export function NeedListView({
       statusLabel={NEED_STATUS_LABEL}
       statusTone={NEED_STATUS_TONE}
       searchText={(n) => `${n.unique_code} ${n.name} ${n.description}`}
-      columnsBeforeType={[{ key: "need", label: "Need", sortable: true, sortValue: (n) => n.description || null, render: (n) => n.description || "—" }]}
+      columnsBeforeType={[{ key: "need", label: "Need", sortable: true, sortValue: (n) => n.description || null, render: (n) => markdownPlainText(n.description) || "—" }]}
       columnsAfterScope={[]}
       includeArchived={includeArchived}
       onIncludeArchivedChange={onIncludeArchivedChange}

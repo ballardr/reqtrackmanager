@@ -40,6 +40,7 @@ export function AutoGrowTextarea({
   className = "input",
   style,
   textareaRef,
+  plainText: _plainText,
   ...rest
 }: {
   value: string;
@@ -50,6 +51,9 @@ export function AutoGrowTextarea({
   maxVisibleLines?: number;
   /** The underlying element, for a caller that needs the selection (a toolbar inserting at the cursor). */
   textareaRef?: Ref<HTMLTextAreaElement>;
+  /** Why this long text is plain text, not Markdown (never rendered; `scripts/check_markdown_fields.py` requires it of a caller that
+   * is not `MarkdownEditor` or `TextAreaField`). */
+  plainText?: string;
 } & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useImperativeHandle(textareaRef, () => ref.current as HTMLTextAreaElement, []);

@@ -16,6 +16,7 @@ ReqTrackManager tracks requirements, change requests and module artefacts per or
 - **Never paste, log or store the access token** (personal access token or bearer token). The connection supplies it; you never need to see it.
 - **You can only do what the caller's own account can.** A 403 or 404 means no access or not found. Do not look for a way around it.
 - **Confirm before writing.** State what you will create or change and in which project, then write. Do not batch many writes without the user agreeing to the batch.
+- **Long text is Markdown.** Descriptions, rationale, notes, comments and the other free-text fields hold Markdown source (lists, tables, code; a fenced `mermaid` block is a diagram, and a requirement's description, reasoning and clarification also hold equations written `\( x \)` and `$$ x $$`). Write Markdown when you create or change them, quote or summarise what you read and do not rewrite its marks. Titles, names and a version's one-line change note are plain text. A write over a field's size limit (50,000 characters, 20,000 for a comment or note) is refused with 422.
 - **Quote identifiers exactly.** IDs are UUIDs from earlier tool output, never guessed. Requirement codes (for example `SW-PERF-014`) are found with `list_requirements` using `search`.
 
 ## Finding your scope

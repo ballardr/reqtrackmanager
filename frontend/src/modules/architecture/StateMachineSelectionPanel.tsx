@@ -17,7 +17,6 @@
  * - The actions are icon buttons from the shared `SelectionActions`, the same set the block diagram's card uses.
  * - The card stores nothing: every action is a callback onto the page, which stores content at once and the drawing on Save.
  */
-import { ActivityNote } from "../../components/ActivityNote";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { DetailCard } from "../../components/DetailCard";
 import { FieldCaption } from "../../components/FieldHelp";
@@ -42,6 +41,7 @@ import { StateMachineNoteCards, type StateMachineNoteHandlers } from "./StateMac
 import { useStateLabel } from "./useStateLabel";
 import { descendantIds, issuesFor, isMarkerKind, type StateMachineLayout } from "./stateMachineModel";
 import { markerAttachPoints, markerFrame } from "./stateShapes";
+import { MarkdownView } from "../../components/MarkdownView";
 import {
   LABEL_POSITION_LABEL, STATE_KIND_LABEL, type ArchitectureState, type LineRouteChange, type LineWaypoint, type StateFieldValues, type StateMachineModel, type StateTransition, type TransitionFieldValues,
 } from "./types";
@@ -141,7 +141,7 @@ export function StateMachineSelectionPanel({
             {state.description && (
               <div className="stack" style={{ gap: "var(--space-1)" }}>
                 <FieldCaption label="Description" help={ARCHITECTURE_HELP.elementDescription} />
-                <ActivityNote text={state.description} />
+                <MarkdownView text={state.description} />
               </div>
             )}
             {isMarkerKind(state.kind) && state.label && (
@@ -209,7 +209,7 @@ export function StateMachineSelectionPanel({
               {transition.guard && <><dt><TermCaption term="Condition (guard)" /></dt><dd style={{ margin: 0 }}>{transition.guard}</dd></>}
               {transition.action && <><dt><TermCaption term="Action" /></dt><dd style={{ margin: 0 }}>{transition.action}</dd></>}
             </dl>
-            {transition.description && <ActivityNote text={transition.description} />}
+            {transition.description && <MarkdownView text={transition.description} />}
           </>
         )}
         <ValidationNote issues={issues} subject={transition.source_state_code} onOpen={onOpenValidation} />

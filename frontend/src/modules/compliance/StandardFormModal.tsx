@@ -160,7 +160,7 @@ export function StandardFormModal({
           )}
           <TextField helpNotNeeded required label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
           <TextField help={COMPLIANCE_HELP.standardIssuer} label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
           {initial && (
@@ -184,7 +184,7 @@ export function StandardFormModal({
               <TextField help={COMPLIANCE_HELP.standardInitialVersion} required label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
               <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
               <FormGridFull>
-                <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+                <TextAreaField plainText="A version's one-line change note, listed in version histories" helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
               </FormGridFull>
             </>
           )}

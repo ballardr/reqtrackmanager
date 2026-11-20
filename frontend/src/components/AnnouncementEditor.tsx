@@ -64,7 +64,7 @@ export function AnnouncementEditor({
           helpNotNeeded required label={text.title} value={title} onChange={setTitle}
           inputProps={{ maxLength: MAX_TITLE_LENGTH, autoFocus: true }}
         />
-        <TextAreaField
+        <TextAreaField markdown
           helpNotNeeded label={text.body} value={body} onChange={setBody} rows={3}
           hint={organisationScope ? text.organisationBodyHint : text.bodyHint} inputProps={{ maxLength: MAX_BODY_LENGTH }}
         />

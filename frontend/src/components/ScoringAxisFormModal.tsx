@@ -78,7 +78,7 @@ export function ScoringAxisFormModal({
     <Modal title={initial ? "Edit scoring axis" : "Add a scoring axis"} onClose={onCancel}>
       <div className="stack">
         <TextField label="Name" required value={label} onChange={setLabel} help={strings.help.scoringAxisName} inputProps={{ maxLength: 100 }} />
-        <TextAreaField label="Guidance" value={description} onChange={setDescription} help={strings.help.scoringAxisDescription} />
+        <TextAreaField plainText="Configuration text shown in pickers and tooltips" label="Guidance" value={description} onChange={setDescription} help={strings.help.scoringAxisDescription} />
         {!initial && targetLabel && (
           <LabeledSelect
             label="Scored" value={perTarget ? "target" : "whole"} placeholder={null} help={strings.help.scoringAxisScope}

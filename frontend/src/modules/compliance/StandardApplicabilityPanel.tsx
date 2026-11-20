@@ -44,6 +44,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useTableSort } from "../../hooks/useTableSort";
 import { useStrings } from "../../context/TerminologyContext";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const NO_EXCLUSIONS: ComplianceStandardDefaultExclusion[] = [];
 
@@ -116,7 +117,7 @@ export function StandardApplicabilityPanel({
 
   const columns: DirectoryColumn<ComplianceStandardDefaultExclusion>[] = [
     { key: "project", label: "Project", sortable: true, render: (row) => projectName(row.project_id) },
-    { key: "reason", label: "Reason", sortable: true, render: (row) => row.reason },
+    { key: "reason", label: "Reason", sortable: true, render: (row) => markdownPlainText(row.reason) },
     { key: "excluded_by", label: "Excluded by", sortable: true, render: (row) => userDisplayName(orgUsers, row.excluded_by) },
     {
       key: "actions",
@@ -213,7 +214,7 @@ function ExcludeProjectModal({
             placeholder="Select a project…"
           />
         )}
-        <TextAreaField helpNotNeeded required label="Reason" value={reason} onChange={setReason} rows={2} />
+        <TextAreaField markdown="simple" helpNotNeeded required label="Reason" value={reason} onChange={setReason} rows={2} />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ project_id: projectId, reason })}

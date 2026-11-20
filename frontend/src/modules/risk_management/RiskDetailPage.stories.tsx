@@ -149,3 +149,20 @@ export const MissingRiskShowsAnError: Story = {
 };
 
 export const DarkTheme: Story = { ...ShowsFieldsRatingsTreatmentsReviewsAndHistory, globals: { theme: "dark" } };
+
+/** Every long field of a Risk is Markdown: formatted on the page, never shown as typed marks. */
+export const ShowsItsTextFieldsFormatted: Story = {
+  beforeEach: () => mockApis(buildRisk({
+    statement: "The **supplier** may deliver late.", cause: "- no second source\n- long lead time", risk_event: "Delivery slips.",
+    consequence: "| Phase | Slip |\n| --- | --- |\n| Test | 3 weeks |", acceptance_criteria: "Accepted when:\n\n1. dates agreed\n2. buffer held",
+  })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Supplier firmware may be late" })).toBeInTheDocument());
+    await expect(canvasElement.querySelector(".markdown-view strong")).toHaveTextContent("supplier");
+    await expect(canvas.getByText("no second source").closest("li")).not.toBeNull();
+    await expect(canvas.getByRole("cell", { name: "3 weeks" })).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".markdown-view ol")).toHaveTextContent("buffer held");
+    await expect(canvasElement).not.toHaveTextContent("**supplier**");
+  },
+};

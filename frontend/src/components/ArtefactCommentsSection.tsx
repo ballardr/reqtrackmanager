@@ -29,10 +29,11 @@ import { useState, type ReactNode } from "react";
 import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { DetailCard } from "./DetailCard";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ItemRow } from "./ItemRow";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownView } from "./MarkdownView";
 import { RemovableChip } from "./RemovableChip";
 
 /** The structural shape of a comment this thread can render. */
@@ -120,7 +121,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             {renderMeta?.(c)}
             {isEditing ? (
               <div className="stack" style={{ gap: "var(--space-2)" }}>
-                <AutoGrowTextarea rows={2} value={editBody} onChange={setEditBody} aria-label="Edit comment" />
+                <MarkdownEditor simple rows={2} value={editBody} onChange={setEditBody} ariaLabel="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -137,7 +138,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
               </div>
             ) : (
               <>
-                <div>{c.body}</div>
+                <MarkdownView text={c.body} />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -177,12 +178,9 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             </>
           }
         >
-          <input
-            className="input"
-            placeholder="Add a comment…"
-            aria-label="Add a comment"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
+          <MarkdownEditor
+            simple rows={1} value={newComment} onChange={setNewComment} ariaLabel="Add a comment"
+            textareaProps={{ placeholder: "Add a comment…" }}
           />
         </ItemRow>
         {pendingFiles.length > 0 && (

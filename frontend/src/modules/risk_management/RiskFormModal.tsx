@@ -83,7 +83,7 @@ export function RiskFormModal({
   function textField(key: "statement" | "cause" | "risk_event" | "consequence" | "acceptance_criteria", label: string, disabled = false) {
     return (
       <FormGridFull>
-        <TextAreaField helpNotNeeded label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
+        <TextAreaField markdown helpNotNeeded label={label} value={values[key]} onChange={(value) => set(key, value)} disabled={disabled} />
       </FormGridFull>
     );
   }

@@ -300,9 +300,9 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
             "category", "Category", lambda t, r: t.categories[r.category_id].prefix, text_parser, kind="enum", required=True,
             choices=tuple(category_prefixes),
         ),
-        RecordColumn("reasoning", "Reasoning", lambda t, r: version(t, r).reasoning, text_parser, editable=True),
-        RecordColumn("clarification", "Clarification", lambda t, r: version(t, r).clarification, text_parser, editable=True),
-        RecordColumn("description", "Description", lambda t, r: version(t, r).description, text_parser, editable=True),
+        RecordColumn("reasoning", "Reasoning", lambda t, r: version(t, r).reasoning, text_parser, editable=True, markdown=True),
+        RecordColumn("clarification", "Clarification", lambda t, r: version(t, r).clarification, text_parser, editable=True, markdown=True),
+        RecordColumn("description", "Description", lambda t, r: version(t, r).description, text_parser, editable=True, markdown=True),
         RecordColumn(
             "level", "Level", lambda t, r: levels[version(t, r).level.value],
             enum_parser(RequirementLevel, "Level", blank=RequirementLevel.REQUIREMENT), kind="enum", editable=True,
@@ -554,7 +554,7 @@ def _action_columns(db: Session, project: Project) -> list[RecordColumn]:
     type_names = tuple(t.name for t in resolve_effective_action_types(db, project.id))
     return [
         RecordColumn("title", "Title", lambda t, a: a.title, text_parser, editable=True, required=True),
-        RecordColumn("description", "Description", lambda t, a: a.description, text_parser, editable=True),
+        RecordColumn("description", "Description", lambda t, a: a.description, text_parser, editable=True, markdown=True),
         RecordColumn(
             "action_type", "Action type", lambda t, a: t.types.get(a.action_type_id, ""), text_parser, kind="enum", required=True,
             choices=type_names,
@@ -709,9 +709,9 @@ def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]
             "changed_fields", "Changed fields",
             lambda t, cr: list_cell([CHANGED_FIELD_LABEL.get(f, f) for f in t.version(cr).changed_fields]), kind="list",
         ),
-        RecordColumn("proposed_reasoning", "Proposed reasoning", lambda t, cr: t.version(cr).proposed_reasoning or ""),
-        RecordColumn("proposed_clarification", "Proposed clarification", lambda t, cr: t.version(cr).proposed_clarification or ""),
-        RecordColumn("proposed_description", "Proposed description", lambda t, cr: t.version(cr).proposed_description or ""),
+        RecordColumn("proposed_reasoning", "Proposed reasoning", lambda t, cr: t.version(cr).proposed_reasoning or "", markdown=True),
+        RecordColumn("proposed_clarification", "Proposed clarification", lambda t, cr: t.version(cr).proposed_clarification or "", markdown=True),
+        RecordColumn("proposed_description", "Proposed description", lambda t, cr: t.version(cr).proposed_description or "", markdown=True),
         RecordColumn(
             "proposed_level", "Proposed level", lambda t, cr: levels[t.version(cr).proposed_level.value] if t.version(cr).proposed_level else "",
             kind="enum",

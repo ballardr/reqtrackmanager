@@ -36,6 +36,7 @@ from app.modules.compliance.service import (
 )
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.markdown_text import plain_text
 from app.services.tags import TagFilter
 
 router = APIRouter(tags=["compliance-project-applicability"])
@@ -171,7 +172,7 @@ def update_requirement_assessment(
             notifications.notify(
                 db, recipient, notification_type=NotificationType.COMPLIANCE_REQUIREMENT_NON_COMPLIANT,
                 title="Compliance requirement is Non-Compliant",
-                body=f"A requirement was assessed Non-Compliant: {payload.justification}",
+                body=f"A requirement was assessed Non-Compliant: {plain_text(payload.justification)}",
                 project_id=project_id, entity_type="project_compliance_requirement", entity_id=str(pcr.id),
                 actor_id=current_user.id,
             )

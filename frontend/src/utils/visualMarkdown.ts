@@ -133,9 +133,9 @@ export function readerSignature(source: string): string {
   return lines.join("\n");
 }
 
-/** Whether the text holds dollar-delimited mathematics, which the editor's writer would change. */
+/** Whether the text holds mathematics (`$$ x $$`, `$x$` or `\( x \)`), which the editor's writer would change. */
 export function containsMathematics(source: string): boolean {
-  return /\$\$|\$[^$\n]+\$/.test(source);
+  return /\$\$|\$[^$\n]+\$|\\\(/.test(source);
 }
 
 /**

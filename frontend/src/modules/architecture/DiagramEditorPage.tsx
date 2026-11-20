@@ -95,6 +95,7 @@ import { useArchitectureReference } from "./useArchitectureReference";
 import { useCreateConnection } from "./useCreateConnection";
 import { useDiagramEditor } from "./useDiagramEditor";
 import { useSymbolSvgs } from "./useSymbolSvgs";
+import { markdownPlainText } from "../../utils/markdownPlain";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureConnection, type ArchitectureElement,
   type ArchitectureRecordStatus, type ConnectionFieldValues, type ModelStateMachine, type DiagramViewEdge, type LineRouteChange, type DiagramFieldValues, type DiagramToggle, type DiagramToggleValues, type ElementFieldValues, type PortValues, isOutOfUse,
@@ -878,7 +879,7 @@ export function DiagramEditorPage() {
           </>
         }
         version={diagram.version}
-        subtitle={diagram.purpose || undefined}
+        subtitle={diagram.purpose ? markdownPlainText(diagram.purpose) : undefined}
         onEdit={editable ? () => setEditingDiagram(true) : undefined}
         actions={[archive.item, remove.item]}
         stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}

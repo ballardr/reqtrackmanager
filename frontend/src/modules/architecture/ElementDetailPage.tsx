@@ -48,6 +48,7 @@ import { PortList } from "./PortList";
 import { RecordDiagramsCard } from "./RecordDiagramsCard";
 import { SymbolImage } from "./SymbolImage";
 import { useArchitectureReference } from "./useArchitectureReference";
+import { MarkdownView } from "../../components/MarkdownView";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE,
   type ArchitectureConnection, type ArchitectureElement, type ArchitectureRecordStatus, type ElementFieldValues,
@@ -195,7 +196,7 @@ export function ElementDetailPage() {
       {remove.dialog}
       <div className="stack">
         <DetailCard>
-          {element.description && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{element.description}</p>}
+          {element.description && <MarkdownView text={element.description} />}
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup help={ARCHITECTURE_HELP.elementDisplayNote} label="Display note">
               {element.display_note ? <span style={{ whiteSpace: "pre-wrap" }}>{element.display_note}</span> : <span className="text-muted">None</span>}

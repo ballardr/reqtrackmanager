@@ -15,6 +15,7 @@ import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import { RecordListView, type ExportRecords, type RecordListPage } from "./RecordListView";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function PeopleListView({
   rows,
@@ -64,7 +65,7 @@ export function PeopleListView({
       searchText={(r) => `${r.unique_code} ${r.name} ${r.summary} ${PEOPLE_KIND_LABEL[r.kind]}`}
       columnsBeforeType={[
         { key: "kind", label: "Kind", sortable: true, sortValue: (r) => PEOPLE_KIND_LABEL[r.kind], render: (r) => <Badge>{PEOPLE_KIND_LABEL[r.kind]}</Badge> },
-        { key: "summary", label: "Details", sortable: true, sortValue: (r) => r.summary || null, render: (r) => r.summary || "—" },
+        { key: "summary", label: "Details", sortable: true, sortValue: (r) => r.summary || null, render: (r) => markdownPlainText(r.summary) || "—" },
       ]}
       columnsAfterScope={[]}
       includeArchived={includeArchived}

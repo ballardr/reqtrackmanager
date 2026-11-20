@@ -38,6 +38,7 @@ import type {
 } from "./types";
 import { STAKEHOLDER_SCOPE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
+import { MarkdownView } from "../../components/MarkdownView";
 
 type FormState = { initial?: StakeholderGroup; parentId?: string | null } | null;
 
@@ -222,7 +223,7 @@ export function StakeholderGroupsPanel({
       {selected && (
         <div className="stack" style={{ gap: "var(--space-3)" }} aria-label={`Members of ${selected.name}`} role="region">
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Members of {selected.name}</h2>
-          {selected.description && <p className="text-muted" style={{ margin: 0 }}>{selected.description}</p>}
+          {selected.description && <MarkdownView className="text-muted" text={selected.description} />}
           {members === null ? <Spinner /> : members.length === 0 ? (
             <p className="text-muted" style={{ margin: 0 }}>No stakeholders in this group yet.</p>
           ) : (

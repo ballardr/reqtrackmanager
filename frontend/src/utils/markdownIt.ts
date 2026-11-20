@@ -6,6 +6,7 @@
  * Responsibilities:
  * - Parse Markdown source into tokens for `MarkdownView`, which turns them into React elements.
  * - Decide what may be a link and which fenced block is a Mermaid diagram.
+ * - Optionally read equations (`utils/markdownMath`), for the fields that hold mathematics.
  *
  * Design decisions:
  * - Raw HTML is off (it is read as text), and nothing here produces HTML: the reader's tokens are the only output,
@@ -17,20 +18,31 @@
  *
  * Dependencies: `markdown-it` (MIT).
  */
-import MarkdownIt, { type Token } from "markdown-it";
+import MarkdownItReader, { type MarkdownIt, type Token } from "markdown-it";
+
+import { mathPlugin } from "./markdownMath";
 
 /** Addresses that may be a link. */
 export const SAFE_LINK = /^(https?:|mailto:)/i;
 
-const reader = new MarkdownIt({ html: false, linkify: false, breaks: true, typographer: false, maxNesting: 100 });
-reader.validateLink = (url) => SAFE_LINK.test(url.trim());
+function createReader(): MarkdownIt {
+  const instance = new MarkdownItReader({ html: false, linkify: false, breaks: true, typographer: false, maxNesting: 100 });
+  instance.validateLink = (url) => SAFE_LINK.test(url.trim());
+  return instance;
+}
+
+const reader = createReader();
+// A second reader that also reads equations, for the fields where people write them (`MarkdownField.math`).
+const mathReader = createReader();
+mathReader.use(mathPlugin);
 
 /**
  * @param source Markdown text, as stored.
+ * @param options `math`: also read `\( x \)` and `$$ x $$` as equations (`math` tokens).
  * @returns The block tokens of the document (inline content is in each `inline` token's `children`).
  */
-export function parseMarkdown(source: string): Token[] {
-  return reader.parse(source.replace(/\r\n?/g, "\n"), {});
+export function parseMarkdown(source: string, options: { math?: boolean } = {}): Token[] {
+  return (options.math ? mathReader : reader).parse(source.replace(/\r\n?/g, "\n"), {});
 }
 
 /** Whether a fenced block is a Mermaid diagram (its info string starts with `mermaid`). */

@@ -56,6 +56,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { RecordField } from "../../components/RecordDetailParts";
 import { orgResourcesPath } from "../orgResources";
 import { ORG_STRATEGIES_SECTION_KEY } from "./orgResourceKeys";
 
@@ -263,13 +264,13 @@ export function StrategyDetailPage() {
       <div className="stack">
 
         <DetailCard>
-          <Field label="Objective / strategic theme" value={strategy.objective} />
-          {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
-          {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
-          {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
-          {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
-          {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
-          {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
+          <RecordField markdown label="Objective / strategic theme" value={strategy.objective} />
+          {strategy.current_state && <RecordField markdown label="Current state" value={strategy.current_state} />}
+          {strategy.desired_future_state && <RecordField markdown label="Desired future state" value={strategy.desired_future_state} />}
+          {strategy.rationale && <RecordField markdown label="Rationale" value={strategy.rationale} />}
+          {strategy.expected_outcomes && <RecordField markdown label="Expected outcomes" value={strategy.expected_outcomes} />}
+          {strategy.constraints && <RecordField markdown label="Constraints" value={strategy.constraints} />}
+          {strategy.measures_of_success && <RecordField markdown label="Measures of success" value={strategy.measures_of_success} />}
         </DetailCard>
 
 
@@ -373,14 +374,5 @@ export function StrategyDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

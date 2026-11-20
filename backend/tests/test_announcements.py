@@ -307,6 +307,19 @@ def test_a_server_message_notifies_every_active_user_once_except_the_sender(clie
     assert listed["notified_count"] == expected and listed["notified_at"] is not None
 
 
+def test_a_notification_carries_the_plain_text_of_a_markdown_message(client, admin_token, org_id):
+    user_id = create_org_user(client, admin_token, org_id, "ann-plain@example.com")
+    row = _create(client, admin_token, SERVER, title="Formatted", body="**Maintenance** tonight:\n\n- 22:00 start\n- 23:00 end")
+    assert row["body"].startswith("**Maintenance**"), "the stored message is the Markdown source"
+    assert client.post(f"{SERVER}/{row['id']}/notify", headers=auth_headers(admin_token)).status_code == 200
+    with SessionLocal() as db:
+        notification = db.scalars(
+            select(Notification).where(Notification.user_id == user_id, Notification.type == "system_announcement")
+        ).one()
+        assert "**" not in notification.body and "- " not in notification.body
+        assert "Maintenance" in notification.body and "22:00 start" in notification.body
+
+
 def test_an_organisation_message_notifies_only_that_organisations_members(client, admin_token):
     org, org_token = create_org_admin_in(client, admin_token, "Notify org")
     other, _other_token = create_org_admin_in(client, admin_token, "Not notified org")

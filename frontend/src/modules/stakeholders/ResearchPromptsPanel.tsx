@@ -22,6 +22,7 @@ import { projectResearchApi } from "./api";
 import { TextAreaField, TextField } from "../../components/FormFields";
 import type { EngagementPrompt } from "./types";
 import { FormActions } from "../../components/FormActions";
+import { MarkdownView } from "../../components/MarkdownView";
 
 function PromptEditModal({
   prompt, onCancel, onSave,
@@ -35,8 +36,8 @@ function PromptEditModal({
   return (
     <Modal title="Edit session prompt" onClose={onCancel} size="lg">
       <div className="stack">
-        <TextAreaField helpNotNeeded required label="Prompt" rows={2} value={text} onChange={setText} />
-        <TextAreaField helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
+        <TextAreaField markdown helpNotNeeded required label="Prompt" rows={2} value={text} onChange={setText} />
+        <TextAreaField markdown helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ prompt: text.trim(), response_notes: notes })}
@@ -116,7 +117,7 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
                 <button className="btn btn-sm btn-icon" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 /></button>
               </>
             ),
-            detail: p.response_notes ? <span style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</span> : undefined,
+            detail: p.response_notes ? <MarkdownView text={p.response_notes} /> : undefined,
           }))}
         />
       )}

@@ -47,6 +47,7 @@ from sqlalchemy.orm import Session
 from app.modules.product_feedback import export as bundle_export
 from app.modules.product_feedback._shared import REQUEST_MANAGE_PERMISSION
 from app.modules.product_feedback.demand import REQUESTED_BY_SEED
+from app.modules.product_feedback.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.product_feedback.mcp_tools import build_mcp_tools
 from app.modules.product_feedback.models import EnhancementRequestVersion
 from app.modules.product_feedback.perf_dataset import generate_requests
@@ -155,6 +156,8 @@ MODULE_DEFINITION = ModuleDefinition(
     on_org_created=seed_org_defaults,
     artefact_summary_providers={REQUEST_ARTEFACT_TYPE: REQUEST_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     scoring_schemes=(REQUEST_SCORING_SCHEME,),
     report_fields=REPORT_FIELDS,
     reports=REPORT_DEFINITIONS,

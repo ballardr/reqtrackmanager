@@ -131,16 +131,23 @@ export function TextAreaField({
   fixedHeight?: string;
   /** A control beside the label (an `OverridePill`); the label is then a sibling of the control, not its wrapper. */
   labelExtra?: ReactNode;
-  /** The text is Markdown: edited with the Write and Preview views (`MarkdownEditor`), formatted where it is shown. */
-  markdown?: boolean;
+  /**
+   * The text is Markdown, edited with the Visual, Write and Preview views (`MarkdownEditor`) and formatted where it is
+   * shown. `"simple"` offers Write and Preview only (a comment); `"math"` is `"simple"` with equations drawn in Preview
+   * (a requirement's description, reasoning and clarification).
+   */
+  markdown?: boolean | "simple" | "math";
+  /** Why this long text stays plain text (never empty); a field with neither this nor `markdown` fails `scripts/check_markdown_fields.py`. */
+  plainText?: string;
 }) {
   const id = useId();
   const controlId = inputProps?.id ?? id;
   return (
-    <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required}>
+    <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required} separateCaption={Boolean(markdown)}>
       {markdown ? (
         <MarkdownEditor
           value={value} onChange={onChange} rows={rows} ariaLabel={ariaLabel ?? label} disabled={disabled}
+          simple={markdown === "simple"} math={markdown === "math"}
           textareaProps={{ ...inputProps, id: controlId, required: required ?? inputProps?.required, "aria-required": required || undefined }}
         />
       ) : !fixedHeight ? (

@@ -48,7 +48,8 @@ import { Badge } from "../components/Badge";
 import { TextField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { DetailCard } from "../components/DetailCard";
-import { MathText } from "../components/MathText";
+import { MarkdownView } from "../components/MarkdownView";
+import { markdownPlainText } from "../utils/markdownPlain";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -392,31 +393,31 @@ export function ChangeRequestDetailPage() {
           </div>
         ) : (
           <div className="stack" style={{ gap: "var(--space-3)" }}>
-            <p>
-              <strong>{strings.requirements.reasoning}:</strong> <MathText text={cr.proposed_reasoning ?? ""} />
-            </p>
+            <div>
+              <strong>{strings.requirements.reasoning}:</strong> <MarkdownView math text={cr.proposed_reasoning ?? ""} />
+            </div>
             {cr.proposed_clarification && (
-              <p>
-                <strong>{strings.requirements.clarification}:</strong> <MathText text={cr.proposed_clarification} />
-              </p>
+              <div>
+                <strong>{strings.requirements.clarification}:</strong> <MarkdownView math text={cr.proposed_clarification} />
+              </div>
             )}
             {cr.proposed_description && (
-              <p>
-                <strong>{strings.requirements.description}:</strong> <MathText text={cr.proposed_description} />
-              </p>
+              <div>
+                <strong>{strings.requirements.description}:</strong> <MarkdownView math text={cr.proposed_description} />
+              </div>
             )}
           </div>
         )}
 
         {cr.kind !== "add_link" && cr.proposed_links.length > 0 && <ProposedLinksSection links={cr.proposed_links} />}
 
-        <p>
-          <strong>{strings.changeRequests.reason}:</strong> {cr.reason}
-        </p>
+        <div>
+          <strong>{strings.changeRequests.reason}:</strong> <MarkdownView text={cr.reason} />
+        </div>
         {cr.decision_note && (
-          <p>
-            <strong>{strings.changeRequests.decisionNote}:</strong> {cr.decision_note}
-          </p>
+          <div>
+            <strong>{strings.changeRequests.decisionNote}:</strong> <MarkdownView text={cr.decision_note} />
+          </div>
         )}
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
         <div className="row" style={{ alignItems: "flex-end" }}>
@@ -527,7 +528,7 @@ export function ChangeRequestDetailPage() {
               disabled={!(canManageTasks || task.can_mark_done)}
               onChange={() => toggleTaskDone(task)}
             />
-            <span style={{ textDecoration: task.is_done ? "line-through" : "none" }}>{task.description}</span>
+            <span style={{ textDecoration: task.is_done ? "line-through" : "none" }}>{markdownPlainText(task.description)}</span>
             {task.assignee && <PrincipalBadge principal={task.assignee} />}
             {task.due_date && <span className="text-muted">({task.due_date})</span>}
           </label>
@@ -613,7 +614,7 @@ export function ChangeRequestDetailPage() {
                     {v.vote === "approve" ? strings.changeRequests.voteApproveCount : strings.changeRequests.voteRejectCount}
                   </Badge>
                 </div>
-                <div>{v.comment}</div>
+                <MarkdownView text={v.comment ?? ""} />
                 <span className="text-muted" style={{ fontSize: "0.8rem" }}>
                   {new Date(v.voted_at).toLocaleString()}
                 </span>

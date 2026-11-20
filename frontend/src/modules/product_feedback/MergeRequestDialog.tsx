@@ -45,7 +45,7 @@ export function MergeRequestDialog({
             placeholder={candidates.length === 0 ? "No other open requests" : "Choose a request…"}
             disabled={candidates.length === 0}
           />
-          <TextAreaField help={PRODUCT_FEEDBACK_HELP.mergeNote} label="Note" value={note} onChange={setNote} rows={2} />
+          <TextAreaField markdown="simple" help={PRODUCT_FEEDBACK_HELP.mergeNote} label="Note" value={note} onChange={setNote} rows={2} />
         </span>
       }
       confirmLabel="Merge"

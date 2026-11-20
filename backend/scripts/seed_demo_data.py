@@ -3794,7 +3794,7 @@ def main() -> None:
     org_strategy = create_org_strategy(
         h_pm, org["id"], title="Lead the market in autonomous aerial inspection",
         objective="Become the preferred aerial-inspection platform for critical infrastructure operators.",
-        current_state="A capable but early-stage entrant with two live product lines and a small install base.",
+        current_state="A capable but early-stage entrant with:\n\n- two live product lines\n- a small install base",
         desired_future_state="The default choice for utility/infrastructure operators evaluating autonomous"
         " inspection within three years.",
         rationale="Infrastructure operators are moving from manual to autonomous inspection faster than"
@@ -4340,8 +4340,8 @@ def main() -> None:
         title="Flight controller fails in flight",
         statement="If the flight controller fails during a flight over people, the drone falls uncontrolled.",
         cause="Single flight controller board with no in-flight redundancy.", risk_event="Loss of flight control.",
-        consequence="Injury to bystanders and loss of the airframe.", treatment_strategy="mitigate",
-        acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
+        consequence="**Injury** to bystanders and loss of the airframe.", treatment_strategy="mitigate",
+        acceptance_criteria="Accepted when both hold:\n\n- A dual-redundant architecture is certified.\n- No single fault leads to loss of control.",
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
     for picture in (BENCH_RIG_PICTURE, ARCHITECTURE_DIAGRAM):

@@ -15,6 +15,7 @@ Responsibilities:
 Design decisions:
 - One report with a `record_type` parameter, not one per type: the catalogue and the MCP tool stay one entry each
   while every type that gains a provider gains the report with no further code.
+- A Markdown column's cell shows its plain text here (`RecordColumn.markdown`); the CSV format keeps the source.
 - The rows, the columns and the access rule are the export's, produced by the same functions
   (`build_table`, `resolve_export_columns`, `require_view`), so the report can never show a column or a record
   the CSV export would not; the CSV format of the report is the export's import file, byte for byte.
@@ -37,6 +38,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import artefact_type_enabled_for_project, get_record_table_providers
 from app.services.link_nesting import ProjectRelation, related_projects
+from app.services.markdown_text import plain_text
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, permission_satisfied
 from app.services.record_tables import RecordTable
@@ -144,6 +146,11 @@ def collect(scope_label: str, label: str, table: RecordTable, *, scope_name: str
         A one-section report; the first column of every row is the record's code.
     """
     keys = [key for key, _ in table.columns]
+    markdown_keys = {column.key for column in table.kept if column.markdown}
+    rows = [
+        [plain_text(cell) if key in markdown_keys and cell else cell for key, cell in zip(keys, row, strict=True)]
+        for row in table.rows
+    ]
     tone_grid = [
         [table.tones[key].get(cell) if key in table.tones else None for key, cell in zip(keys, row, strict=True)]
         for row in table.rows
@@ -156,7 +163,7 @@ def collect(scope_label: str, label: str, table: RecordTable, *, scope_name: str
     if table.omitted:
         notes.append(PERSONAL_DATA_NOTE)
     section = ReportSection(
-        key="records", title=label, columns=[column_label for _, column_label in table.columns], rows=table.rows,
+        key="records", title=label, columns=[column_label for _, column_label in table.columns], rows=rows,
         tones=tone_grid if any(tone is not None for row in tone_grid for tone in row) else None,
     )
     return ReportResult(

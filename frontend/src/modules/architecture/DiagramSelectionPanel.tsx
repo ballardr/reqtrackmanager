@@ -72,6 +72,7 @@ import type {
   DiagramViewEdge, ElementFieldValues, ElementType, ModelStateMachine, PortValues, ArchitectureDomain,
 } from "./types";
 import type { OrgUser } from "../../api/types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /** What an element's in-place fields need beyond the element itself (the owner's vocabularies and people). */
 export interface ElementEditorReference {
@@ -258,7 +259,7 @@ export function DiagramSelectionPanel({
         {!(editorFields && element) && !box.locked && element?.description && (
           <div className="stack" style={{ gap: "var(--space-1)" }}>
             <FieldCaption label="Description" help={ARCHITECTURE_HELP.elementDescription} />
-            <ActivityNote text={element.description} />
+            <MarkdownView text={element.description} />
           </div>
         )}
         <SelectionActions

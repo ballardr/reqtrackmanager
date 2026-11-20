@@ -75,7 +75,7 @@ export function StateFieldGroup({
       />
       {marker && (
         <FormGridFull>
-          <TextAreaField
+          <TextAreaField plainText="Text drawn inside the state's symbol"
             help={ARCHITECTURE_HELP.stateLabel} label="Symbol label" value={values.label} rows={1} hint={symbolLabelHint(values)}
             inputProps={{ maxLength: SYMBOL_LABEL_MAX }} onChange={(value) => onChange("label", value)}
           />
@@ -90,7 +90,7 @@ export function StateFieldGroup({
       {!marker && (
         <>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
           </FormGridFull>
           <TextField help={ARCHITECTURE_HELP.stateEntry} label="Entry action" value={values.entry_action} onChange={(value) => onChange("entry_action", value)} />
           <TextField help={ARCHITECTURE_HELP.stateExit} label="Exit action" value={values.exit_action} onChange={(value) => onChange("exit_action", value)} />

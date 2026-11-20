@@ -50,6 +50,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { RecordField } from "../../components/RecordDetailParts";
 import { orgResourcesPath } from "../orgResources";
 import { ORG_FUTURE_STATES_SECTION_KEY } from "./orgResourceKeys";
 
@@ -258,12 +259,12 @@ export function FutureStateDetailPage() {
       <div className="stack">
 
         <DetailCard>
-          {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
-          <Field label="Desired state" value={futureState.desired_state} />
-          {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
-          {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
-          {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
-          {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
+          {futureState.current_state && <RecordField markdown label="Current state" value={futureState.current_state} />}
+          <RecordField markdown label="Desired state" value={futureState.desired_state} />
+          {futureState.outcomes && <RecordField markdown label="Outcomes" value={futureState.outcomes} />}
+          {futureState.success_measures && <RecordField markdown label="Success measures" value={futureState.success_measures} />}
+          {futureState.constraints && <RecordField markdown label="Constraints" value={futureState.constraints} />}
+          {futureState.assumptions && <RecordField markdown label="Assumptions" value={futureState.assumptions} />}
         </DetailCard>
 
 
@@ -367,14 +368,5 @@ export function FutureStateDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

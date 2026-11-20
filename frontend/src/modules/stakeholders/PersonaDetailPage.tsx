@@ -265,14 +265,14 @@ export function PersonaDetailPage() {
         )}
 
         <DetailCard>
-          {persona.description && <RecordField label="Description" value={persona.description} />}
-          {persona.goals && <RecordField label="Goals" value={persona.goals} />}
-          {persona.needs && <RecordField label="Needs" value={persona.needs} />}
-          {persona.behaviours && <RecordField label="Behaviours" value={persona.behaviours} />}
-          {persona.context_environment && <RecordField label="Context / environment" value={persona.context_environment} />}
-          {persona.skills_proficiency && <RecordField label="Skills / proficiency" value={persona.skills_proficiency} />}
-          {persona.frequency_of_use && <RecordField label="Frequency of use" value={persona.frequency_of_use} />}
-          {persona.constraints && <RecordField label="Constraints" value={persona.constraints} />}
+          {persona.description && <RecordField markdown label="Description" value={persona.description} />}
+          {persona.goals && <RecordField markdown label="Goals" value={persona.goals} />}
+          {persona.needs && <RecordField markdown label="Needs" value={persona.needs} />}
+          {persona.behaviours && <RecordField markdown label="Behaviours" value={persona.behaviours} />}
+          {persona.context_environment && <RecordField markdown label="Context / environment" value={persona.context_environment} />}
+          {persona.skills_proficiency && <RecordField markdown label="Skills / proficiency" value={persona.skills_proficiency} />}
+          {persona.frequency_of_use && <RecordField markdown label="Frequency of use" value={persona.frequency_of_use} />}
+          {persona.constraints && <RecordField markdown label="Constraints" value={persona.constraints} />}
 
           <RecordFieldGroup help={STAKEHOLDERS_HELP.personaImportanceWeight} label="Importance weight" gap="0.35rem">
             {projectId ? (

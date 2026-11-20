@@ -24,6 +24,7 @@ import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { FindingFormModal } from "./FindingFormModal";
 import type { ResearchFinding } from "./types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /** A finding sits in its engagement's page, so its link list leaves the engagement out (the trace still shows it). */
 const HIDE_ENGAGEMENT = ["engagement"] as const;
@@ -115,7 +116,7 @@ export function ResearchFindingsPanel({
               <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 /></button>
             </span>
           </div>
-          {f.description && <div style={{ whiteSpace: "pre-wrap" }}>{f.description}</div>}
+          {f.description && <MarkdownView text={f.description} />}
           <ArtefactLinksPanel projectId={projectId} artefactType="research_finding" artefactId={f.id} compact hideLinkedTypes={HIDE_ENGAGEMENT} />
         </div>
       ))}

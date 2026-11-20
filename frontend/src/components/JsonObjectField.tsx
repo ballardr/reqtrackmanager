@@ -62,7 +62,7 @@ export function JsonObjectField({
 
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <TextAreaField
+      <TextAreaField plainText="JSON, not prose"
         label={label} value={draft} onChange={change} hint={hint} help={help}
         inputProps={{ spellCheck: false, style: { fontFamily: "var(--font-mono, monospace)" } }}
       />

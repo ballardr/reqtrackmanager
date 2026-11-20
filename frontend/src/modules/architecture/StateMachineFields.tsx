@@ -42,7 +42,7 @@ export function StateMachineFields({
         />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
+        <TextAreaField markdown helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
       </FormGridFull>
     </>
   );

@@ -84,6 +84,7 @@ import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useStrings } from "../../context/TerminologyContext";
 import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 type Category = "" | "non_compliant" | "pending" | "actions" | "evidence" | "reviews";
 type EvidenceValidityFilter = "" | Extract<ComplianceEvidenceValidityState, "expired" | "expiring_soon">;
@@ -285,7 +286,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
                 {filteredNonCompliant.map((row) => (
                   <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                     <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
-                    {row.justification && <span className="text-muted"> — {row.justification}</span>}
+                    {row.justification && <span className="text-muted"> — {markdownPlainText(row.justification)}</span>}
                   </li>
                 ))}
               </ul>

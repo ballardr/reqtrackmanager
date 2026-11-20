@@ -64,6 +64,7 @@ import { STAKEHOLDERS_HELP } from "./help";
 import { DetailCard } from "../../components/DetailCard";
 import { orgResourcesPath } from "../orgResources";
 import { ORG_STAKEHOLDERS_SECTION_KEY } from "./orgResourceKeys";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -308,14 +309,14 @@ export function StakeholderDetailPage() {
         )}
 
         <DetailCard>
-          {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}
-          {stakeholder.interests && <RecordField label="Interests" value={stakeholder.interests} />}
-          {stakeholder.responsibilities && <RecordField label="Responsibilities" value={stakeholder.responsibilities} />}
-          {stakeholder.goals_needs && <RecordField label="Goals and needs" value={stakeholder.goals_needs} />}
-          {stakeholder.priorities && <RecordField label="Priorities" value={stakeholder.priorities} />}
-          {stakeholder.constraints && <RecordField label="Constraints" value={stakeholder.constraints} />}
-          {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
-          {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
+          {stakeholder.description && <RecordField markdown label="Description" value={stakeholder.description} />}
+          {stakeholder.interests && <RecordField markdown label="Interests" value={stakeholder.interests} />}
+          {stakeholder.responsibilities && <RecordField markdown label="Responsibilities" value={stakeholder.responsibilities} />}
+          {stakeholder.goals_needs && <RecordField markdown label="Goals and needs" value={stakeholder.goals_needs} />}
+          {stakeholder.priorities && <RecordField markdown label="Priorities" value={stakeholder.priorities} />}
+          {stakeholder.constraints && <RecordField markdown label="Constraints" value={stakeholder.constraints} />}
+          {stakeholder.workflows_scenarios && <RecordField markdown label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
+          {stakeholder.contact_info && <RecordField markdown label="Contact / reference information" value={stakeholder.contact_info} />}
 
           <RecordFieldGroup help={STAKEHOLDERS_HELP.stakeholderInfluenceInterest} label="Influence and interest">
             <span data-testid="grid-position">
@@ -331,7 +332,7 @@ export function StakeholderDetailPage() {
                 ` (suggested by their position: ${TARGET_CADENCE_LABEL[hint.suggested_cadence]})`}
             </span>
             {stakeholder.availability_constraints && (
-              <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
+              <span className="text-muted">Their availability: {markdownPlainText(stakeholder.availability_constraints)}</span>
             )}
             {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
           </RecordFieldGroup>

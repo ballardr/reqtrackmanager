@@ -81,7 +81,7 @@ export function RiskLifecycleControls({
                 rating and acceptance criteria.
               </p>
             )}
-            <TextAreaField helpNotNeeded
+            <TextAreaField plainText="A status change's comment is stored in the audit event and shown as one line in the activity list" helpNotNeeded
               label="Comment"
               ariaLabel="Status change comment"
               value={comment}

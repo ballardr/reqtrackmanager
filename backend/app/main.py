@@ -81,7 +81,7 @@ from app.routers import (
     tags,
     ws,
 )
-from app.services import pubsub, report_font_catalogue, secret_keys
+from app.services import markdown_fields, pubsub, report_font_catalogue, secret_keys
 from app.services.bootstrap import run_bootstrap
 from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
@@ -190,6 +190,8 @@ async def lifespan(_: FastAPI):
     stop_singletons()
     pubsub.stop_listener()
 
+
+markdown_fields.install()
 
 app = FastAPI(
     title="ReqTrackManager API",

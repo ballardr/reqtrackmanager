@@ -1576,6 +1576,46 @@ class SearchField:
     markdown: bool = False
 
 
+#: The longest value, in characters, a Markdown field may hold unless its declaration says otherwise.
+DEFAULT_MARKDOWN_LIMIT = 50_000
+
+
+@dataclass(frozen=True)
+class MarkdownField:
+    """One long free-text column whose stored value is Markdown source.
+
+    Every long-text column (a `Text` column, or a string of 1,000 characters or more) is declared here or named in a
+    `plain_text_fields` map with a reason, and a backend test fails for one that is neither. The declaration is also
+    what limits the value: the ORM refuses a write that breaks the size, nesting or diagram limits
+    (`services.markdown_fields`), so the endpoints, an import, a bundle and an MCP tool all store what the others do.
+
+    Attributes:
+        column: The ORM attribute (`Risk.statement`); its table and name identify the field.
+        limit: The most characters the value may hold.
+        math: Whether people write equations in it (`\\( x \\)` and `$$ x $$`); the screen draws them and the
+            visual editor leaves such a text in Write.
+    """
+
+    column: Any
+    limit: int = DEFAULT_MARKDOWN_LIMIT
+    math: bool = False
+
+
+def markdown_columns(model: Any, *names: str, limit: int = DEFAULT_MARKDOWN_LIMIT, math: bool = False) -> tuple[MarkdownField, ...]:
+    """`MarkdownField`s for several columns of one model that share a limit.
+
+    Args:
+        model: The ORM class.
+        names: Attribute names on `model`.
+        limit: The character limit of each.
+        math: Whether each holds equations.
+
+    Returns:
+        One declaration per name, in order.
+    """
+    return tuple(MarkdownField(getattr(model, name), limit, math) for name in names)
+
+
 @dataclass(frozen=True)
 class SearchColumns:
     """The SQL expressions a provider exposes for every record, read by the search service.
@@ -1884,6 +1924,9 @@ class RecordColumn:
         tones: Badge tone per cell text (`{"Approved": "accent"}`, tone names as `report_model.TONE_FILL`), so the
             record-list report's PDF and Word fill the cell as the screen's badge does. A cell text not listed is
             left plain; the text itself still names the value, so a greyscale print reads.
+        markdown: The cell holds Markdown source. The CSV carries the source both ways (it is the import file); the
+            record-list report's screen, PDF and Word show its plain text (`services.markdown_text.plain_text`), so a
+            cell never shows `**` or a pipe table.
     """
 
     key: str
@@ -1897,6 +1940,7 @@ class RecordColumn:
     choices: tuple[str, ...] | None = None
     cell_lock: Callable[[Any, Any], str | None] | None = field(default=None, compare=False)
     tones: Mapping[str, str] = field(default_factory=dict, compare=False)
+    markdown: bool = False
 
     @property
     def importable(self) -> bool:
@@ -3035,6 +3079,12 @@ class ModuleDefinition:
             that is not searchable says why in `not_searchable`.
         not_searchable: `{artefact type: reason}` for a type deliberately left out of the
             global search. A backend test fails for a type that has neither.
+        markdown_fields: The long free-text columns of this module's own tables whose value is Markdown
+            (`MarkdownField`, `markdown_columns`). Read via `get_markdown_fields`. Every long-text column of a table
+            the module owns is here or in `plain_text_fields`; a backend test fails for one that is neither.
+        plain_text_fields: `{"table.column": reason}` for a long-text column of this module's tables that stays plain
+            text (a label drawn inside a diagram shape, configuration text shown in a picker or tooltip). The reason
+            is printed by `backend/scripts/generate_long_text_inventory.py`.
         activity_action_kinds: `{audit action: kind}` classifying the actions this module writes for the project
             History page's Event filter (`services.activity_kinds`); a kind is one of its keys (`created`, `edited`,
             `status`, `links`, `tags`, `access`, `comments`, `deleted`). An action left out shows under Other.
@@ -3217,6 +3267,8 @@ class ModuleDefinition:
     no_code_prefix: dict[str, str] = field(default_factory=dict)
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
+    markdown_fields: tuple[MarkdownField, ...] = field(default=())
+    plain_text_fields: dict[str, str] = field(default_factory=dict)
     activity_action_kinds: dict[str, str] = field(default_factory=dict)
     activity_link_ends: dict[str, ActivityLinkEndsReader] = field(default_factory=dict)
     activity_metadata_types: dict[str, str] = field(default_factory=dict)
@@ -4999,6 +5051,26 @@ def get_not_searchable_types() -> dict[str, str]:
     reasons: dict[str, str] = {}
     for definition in get_module_registry().values():
         reasons.update(definition.not_searchable)
+    return reasons
+
+
+def get_markdown_fields() -> list[MarkdownField]:
+    """Every Markdown field: the core tables' (`services.long_text_core`) plus each module's `markdown_fields`."""
+    from app.services.long_text_core import CORE_MARKDOWN_FIELDS
+
+    fields = list(CORE_MARKDOWN_FIELDS)
+    for definition in get_module_registry().values():
+        fields.extend(definition.markdown_fields)
+    return fields
+
+
+def get_plain_text_fields() -> dict[str, str]:
+    """`{"table.column": reason}` for every long-text column declared to stay plain text, core and module."""
+    from app.services.long_text_core import CORE_PLAIN_TEXT_FIELDS
+
+    reasons = dict(CORE_PLAIN_TEXT_FIELDS)
+    for definition in get_module_registry().values():
+        reasons.update(definition.plain_text_fields)
     return reasons
 
 

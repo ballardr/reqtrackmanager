@@ -192,7 +192,7 @@ export function ReportLayoutBlockField({
       break;
     case "longtext":
       control = (
-        <TextAreaField
+        <TextAreaField plainText="Report layout content is read by the report engine's own inline reader"
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required} rows={4}
           labelExtra={beside} inputProps={{ maxLength: field.max_length ?? undefined, ...selectionProps }}
         />

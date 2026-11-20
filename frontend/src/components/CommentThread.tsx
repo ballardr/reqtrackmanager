@@ -5,8 +5,9 @@ import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type { Comment } from "../api/types";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FileUploadTrigger } from "./FileUploadTrigger";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownView } from "./MarkdownView";
 import { t } from "../i18n/strings";
 import { ItemRow } from "./ItemRow";
 import { RemovableChip } from "./RemovableChip";
@@ -113,7 +114,7 @@ export function CommentThread({
 
             {isEditing ? (
               <div className="stack" style={{ gap: "var(--space-2)" }}>
-                <AutoGrowTextarea rows={2} value={editBody} onChange={setEditBody} aria-label="Edit comment" />
+                <MarkdownEditor simple rows={2} value={editBody} onChange={setEditBody} ariaLabel="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -148,7 +149,7 @@ export function CommentThread({
               </div>
             ) : (
               <>
-                <div>{c.body}</div>
+                <MarkdownView text={c.body} />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
@@ -207,12 +208,9 @@ export function CommentThread({
             </>
           }
         >
-          <input
-            className="input"
-            placeholder={strings.requirements.addComment}
-            aria-label={strings.requirements.addComment}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
+          <MarkdownEditor
+            simple rows={1} value={newComment} onChange={setNewComment} ariaLabel={strings.requirements.addComment}
+            textareaProps={{ placeholder: strings.requirements.addComment }}
           />
         </ItemRow>
         {pendingFiles.length > 0 && (

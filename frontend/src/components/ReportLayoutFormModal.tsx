@@ -38,7 +38,7 @@ export function ReportLayoutFields({
       <TextField helpNotNeeded required
         label={strings.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
-      <TextAreaField helpNotNeeded label={strings.descriptionLabel} value={description} onChange={onDescription} />
+      <TextAreaField plainText="Configuration text shown in pickers and tooltips" helpNotNeeded label={strings.descriptionLabel} value={description} onChange={onDescription} />
       <ReportFolderField value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
     </>
   );

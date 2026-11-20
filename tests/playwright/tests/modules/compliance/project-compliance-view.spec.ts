@@ -202,7 +202,8 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(requirementName).click();
     await page.getByLabel("Link existing evidence").selectOption({ label: evidenceTitle });
-    await page.getByRole("button", { name: "Link", exact: true }).click();
+    // The Notes field has an icon-only Link button in its formatting toolbar; the evidence form's Link button has text.
+    await page.getByRole("button", { name: "Link", exact: true }).filter({ hasText: "Link" }).click();
     await expect(page.getByRole("button", { name: `Unlink ${evidenceTitle}` })).toBeVisible();
 
     // --- "Upload new evidence" creates a new evidence record and

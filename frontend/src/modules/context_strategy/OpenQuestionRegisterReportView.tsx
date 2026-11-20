@@ -16,6 +16,7 @@ import type { ReportViewProps } from "../types";
 import type { OpenQuestionRegisterData } from "./reportTypes";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import { Badge } from "../../components/Badge";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 /** Sections replaced by the ageing table (the register and the two gap lists it highlights). */
 const REPLACED_SECTIONS = new Set(["open", "overdue", "unowned"]);
@@ -56,7 +57,7 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
                   <tr key={item.id} data-overdue={item.is_overdue || undefined}>
                     <td className="text-muted">{item.code}</td>
                     <td>
-                      <Link to={`/projects/${item.project_id}/modules/context_strategy/open-questions/${item.id}`}>{item.question}</Link>
+                      <Link to={`/projects/${item.project_id}/modules/context_strategy/open-questions/${item.id}`}>{markdownPlainText(item.question)}</Link>
                     </td>
                     {showProject && <td>{item.project_name}</td>}
                     <td>{OPEN_QUESTION_PRIORITY_LABEL[item.priority]}</td>

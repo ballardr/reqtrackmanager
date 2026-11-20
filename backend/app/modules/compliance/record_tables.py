@@ -201,7 +201,7 @@ def _date_cell(value: date | None) -> str:
 def _evidence_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("title", "Title", lambda t, r: r.title, text_parser, editable=True, required=True),
-        RecordColumn("description", "Description", lambda t, r: r.description or "", text_parser, editable=True),
+        RecordColumn("description", "Description", lambda t, r: r.description or "", text_parser, editable=True, markdown=True),
         RecordColumn(
             "issuing_organisation", "Issuing organisation", lambda t, r: r.issuing_organisation or "", text_parser, editable=True,
         ),
@@ -209,7 +209,7 @@ def _evidence_columns(db: Session, project: Project) -> list[RecordColumn]:
             "issued_date", "Issued date", lambda t, r: _date_cell(r.issued_date), date_parser("Issued date"), kind="date", editable=True,
         ),
         RecordColumn("expiry_date", "Expiry date", lambda t, r: _date_cell(r.expiry_date), date_parser("Expiry date"), kind="date"),
-        RecordColumn("notes", "Notes", lambda t, r: r.notes or "", text_parser, editable=True),
+        RecordColumn("notes", "Notes", lambda t, r: r.notes or "", text_parser, editable=True, markdown=True),
         RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list"),
         RecordColumn(
             "validity", "Validity", lambda t, r: COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[t.validity[r.id].value], kind="enum",
@@ -380,7 +380,7 @@ def _assessment_columns(db: Session, project: Project) -> list[RecordColumn]:
             "approval_state", "Approval", lambda t, r: COMPLIANCE_APPROVAL_STATE_LABEL[r.record.approval_state.value], kind="enum",
         ),
         RecordColumn("justification", "Justification", lambda t, r: r.record.justification or "", kind="text"),
-        RecordColumn("notes", "Notes", lambda t, r: r.record.notes or "", kind="text"),
+        RecordColumn("notes", "Notes", lambda t, r: r.record.notes or "", kind="text", markdown=True),
         RecordColumn("assessed_at", "Assessed at", lambda t, r: instant_cell(r.record.assessed_at), kind="instant"),
         RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list"),
     ]
@@ -465,7 +465,7 @@ def _action_assessment_columns(db: Session, project: Project) -> list[RecordColu
         RecordColumn("completed", "Completed", lambda t, r: bool_cell(r.record.is_completed), kind="bool"),
         RecordColumn("completed_at", "Completed at", lambda t, r: instant_cell(r.record.completed_at), kind="instant"),
         RecordColumn("applicability", "Applicability", lambda t, r: COMPLIANCE_APPLICABILITY_LABEL[r.effective.value], kind="enum"),
-        RecordColumn("notes", "Notes", lambda t, r: r.record.notes or "", kind="text"),
+        RecordColumn("notes", "Notes", lambda t, r: r.record.notes or "", kind="text", markdown=True),
         RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list"),
     ]
 
@@ -536,8 +536,8 @@ def _list_project_requirements(db: Session, user: User, project_id: uuid.UUID, f
 def _requirement_columns(db: Session, scope: Any) -> list[RecordColumn]:
     return [
         *_clause_columns(),
-        RecordColumn("description", "Description", lambda t, r: r.requirement.description or "", kind="text"),
-        RecordColumn("reasoning", "Reasoning", lambda t, r: r.requirement.reasoning or "", kind="text"),
+        RecordColumn("description", "Description", lambda t, r: r.requirement.description or "", kind="text", markdown=True),
+        RecordColumn("reasoning", "Reasoning", lambda t, r: r.requirement.reasoning or "", kind="text", markdown=True),
         RecordColumn(
             "version_status", "Version status", lambda t, r: COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[r.version.status.value],
             kind="enum",

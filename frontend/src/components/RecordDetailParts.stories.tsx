@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { OrgUser, Principal } from "../api/types";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "./RecordDetailParts";
@@ -108,3 +108,19 @@ export const VersionHistoryHiddenForASingleVersion: Story = {
 };
 
 export const DarkTheme: Story = { ...VersionHistoryNewestFirstWithKindColumns, globals: { theme: "dark" } };
+
+export const FieldShowsMarkdownAndEquationsWhenAsked: Story = {
+  render: () => (
+    <div className="stack">
+      <RecordField label="Rationale" markdown value={"The **hub** carries:\n\n- power\n- data"} />
+      <RecordField label="Description" math value={"Gain \\( g_1 \\) is **fixed**"} />
+      <RecordField label="Plain" value={"Typed **as is**"} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvasElement.querySelectorAll("li")).toHaveLength(2);
+    await waitFor(() => expect(canvasElement.querySelectorAll(".math-text")).toHaveLength(1));
+    await expect(canvas.getByText("Typed **as is**")).toBeInTheDocument();
+  },
+};

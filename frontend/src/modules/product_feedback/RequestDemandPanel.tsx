@@ -28,6 +28,7 @@ import { RequesterChannelEdit } from "./RequesterChannelEdit";
 import { REQUEST_STATUS_LABEL, REQUESTER_WEIGHT_SOURCE_LABEL } from "./types";
 import type { Demand, Requester, RequestMerge } from "./types";
 import type { ListChoice } from "./useFeedbackLists";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /** `stakeholder_group` becomes "Stakeholder group". */
 function kindLabel(artefactType: string): string {
@@ -210,7 +211,7 @@ export function RequestDemandPanel({
                   <td>{m.duplicate.unique_code}</td>
                   <td>{m.canonical.unique_code}</td>
                   <td>{new Date(m.merged_at).toLocaleString()}</td>
-                  <td style={{ whiteSpace: "pre-wrap" }}>{m.note || <span className="text-muted">—</span>}</td>
+                  <td>{m.note ? <MarkdownView text={m.note} /> : <span className="text-muted">—</span>}</td>
                   <td>
                     {m.active ? "Merged" : `Undone ${m.unmerged_at ? new Date(m.unmerged_at).toLocaleDateString() : ""} (back to ${REQUEST_STATUS_LABEL[m.prior_status]})`}
                   </td>

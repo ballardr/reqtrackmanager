@@ -57,6 +57,7 @@ import {
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -211,7 +212,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
               {filteredNonCompliant.map((row) => (
                 <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                   <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
-                  {row.justification && <span className="text-muted"> — {row.justification}</span>}
+                  {row.justification && <span className="text-muted"> — {markdownPlainText(row.justification)}</span>}
                 </li>
               ))}
             </ul>

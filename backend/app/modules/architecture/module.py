@@ -66,6 +66,7 @@ from app.modules.architecture.allocation_metrics import OVERVIEW_METRICS
 from app.modules.architecture.baseline_snapshot import SNAPSHOT_PROVIDERS
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
 from app.modules.architecture.comments import RECORD_COMMENTS
+from app.modules.architecture.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.architecture.mcp_tools import build_mcp_tools
 from app.modules.architecture.models import (
     ArchitectureCollectionGrant,
@@ -229,6 +230,8 @@ MODULE_DEFINITION = ModuleDefinition(
         STATE_ARTEFACT_TYPE: STATE_SUMMARY_PROVIDER,
     },
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     reports=REPORT_DEFINITIONS,
     mcp_tools=build_mcp_tools(_PROJECT_ROUTER_PREFIX)
     + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PROJECT_ROUTER_PREFIX),

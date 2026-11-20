@@ -123,3 +123,68 @@ export const MathematicsKeepsTheFieldInWrite: Story = {
     await waitFor(() => expect(canvas.getByRole("status")).toHaveTextContent("contains mathematics"));
   },
 };
+
+/** A comment box and a short note offer Write and Preview only. */
+export const SimpleEditorHasNoVisualTab: Story = {
+  render: () => {
+    function Simple() {
+      const [value, setValue] = useState("");
+      return <MarkdownEditor simple value={value} onChange={setValue} ariaLabel="Comment" rows={2} />;
+    }
+    return <Simple />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("tab", { name: "Visual" })).toBeNull();
+    await expect(canvas.getByRole("tab", { name: "Write" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.type(canvas.getByRole("textbox", { name: "Comment" }), "Needs **review**");
+    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(canvasElement.querySelector("strong")).toHaveTextContent("review"));
+  },
+};
+
+/** A field that holds equations is edited as source and previewed with the equations drawn. */
+export const MathEditorDrawsEquationsInPreview: Story = {
+  render: () => {
+    function Math() {
+      const [value, setValue] = useState("The gain is \\( g_1 \\) at **all** times.");
+      return <MarkdownEditor math value={value} onChange={setValue} ariaLabel="Description" rows={2} />;
+    }
+    return <Math />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("tab", { name: "Visual" })).toBeNull();
+    // The visual writer would escape the underscore, so the source stays exactly as stored.
+    await expect(canvas.getByRole("textbox", { name: "Description" })).toHaveValue("The gain is \\( g_1 \\) at **all** times.");
+    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => expect(canvasElement.querySelector(".math-text")).not.toBeNull());
+    await expect(canvasElement.querySelector("strong")).toHaveTextContent("all");
+  },
+};
+
+/** A remembered Visual choice never changes a simple editor, and a simple editor never changes the remembered choice. */
+export const SimpleEditorLeavesTheRememberedViewAlone: Story = {
+  beforeEach: () => {
+    localStorage.setItem(VIEW_KEY, "visual");
+    return () => localStorage.removeItem(VIEW_KEY);
+  },
+  render: () => <MarkdownEditor simple value="" onChange={() => {}} ariaLabel="Comment" rows={2} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("tab", { name: "Write" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await userEvent.click(canvas.getByRole("tab", { name: "Write" }));
+    await expect(localStorage.getItem(VIEW_KEY)).toBe("visual");
+  },
+};
+
+/** A narrow pop-over leaves the formatting buttons out; the Write and Preview tabs stay. */
+export const ToolbarCanBeLeftOut: Story = {
+  render: () => <MarkdownEditor simple toolbar={false} value="" onChange={() => {}} ariaLabel="Reply" rows={2} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("toolbar")).toBeNull();
+    await expect(canvas.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+  },
+};

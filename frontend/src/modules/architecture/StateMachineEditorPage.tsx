@@ -86,6 +86,8 @@ import { blankTransitionValues, diffTransitionFields, valuesFromTransition } fro
 import { useStateLabel } from "./useStateLabel";
 import { useStateMachineEditor } from "./useStateMachineEditor";
 import { ValidationButton } from "./ValidationButton";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureState, type StateFieldValues,
   type StateKind, type StateMachineFieldValues, type StateTransition, type TransitionFieldValues,
@@ -555,7 +557,7 @@ export function StateMachineEditorPage() {
           </>
         }
         version={diagram.version}
-        subtitle={<>Describes <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>{diagram.description ? ` · ${diagram.description}` : ""}</>}
+        subtitle={<>Describes <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>{diagram.description ? ` · ${markdownPlainText(diagram.description)}` : ""}</>}
         onEdit={editable ? () => { setFormError(null); setEditingDiagram(true); } : undefined}
         actions={[archive.item, remove.item]}
         stateMenu={<ArchitectureStatusControls status={diagram.status} moves={diagram.allowed_status_moves} onMove={moveTo} />}
@@ -662,7 +664,7 @@ export function StateMachineEditorPage() {
                 <Link to={`/projects/${projectId}/modules/architecture/elements/${diagram.element_id}`}>{elementLabel}</Link>
               </dd>
               <dt className="text-muted">Description</dt>
-              <dd style={{ margin: 0, whiteSpace: "pre-line" }}>{diagram.description || "—"}</dd>
+              <dd style={{ margin: 0 }}>{diagram.description ? <MarkdownView text={diagram.description} /> : "—"}</dd>
             </dl>
             {editable && (
               <button type="button" className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => { setFormError(null); setEditingDiagram(true); }}>

@@ -112,3 +112,19 @@ export const ResolvedThreadOffersReopen: Story = {
     await expect(within(canvasElement).getByRole("button", { name: "Reopen" })).toHaveClass("btn-icon");
   },
 };
+
+/** A comment is Markdown: it is shown formatted, and its reply box offers Write and Preview only. */
+export const CommentsAreFormattedAndRepliesAreWrittenInSimpleMarkdown: Story = {
+  args: {
+    ...args,
+    comments: [buildComment({ id: "c-9", pin_id: "p-1", body: "Please **check** the wiring:\n\n- left rail\n- right rail" })],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvasElement.querySelector("strong")).toHaveTextContent("check");
+    await expect(canvasElement.querySelectorAll("li")).toHaveLength(2);
+    await expect(canvas.queryByRole("tab", { name: "Visual" })).toBeNull();
+    await expect(canvas.getByRole("tab", { name: "Write" })).toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+  },
+};

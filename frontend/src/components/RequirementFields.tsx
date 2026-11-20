@@ -62,13 +62,13 @@ export function RequirementFields({
         <TextField helpNotNeeded required label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField help={strings.help.requirementReasoning} label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
+        <TextAreaField markdown="math" help={strings.help.requirementReasoning} label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField help={strings.help.requirementClarification} label={strings.requirements.clarification} rows={2} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
+        <TextAreaField markdown="math" help={strings.help.requirementClarification} label={strings.requirements.clarification} rows={2} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField helpNotNeeded label={strings.requirements.description} rows={2} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
+        <TextAreaField markdown="math" helpNotNeeded label={strings.requirements.description} rows={2} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
       </FormGridFull>
       {afterDescription}
       <LabeledSelect help={strings.help.requirementTargetVersion} required

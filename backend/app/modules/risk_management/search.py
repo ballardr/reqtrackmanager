@@ -27,11 +27,11 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         Risk, RiskVersion, "risk_id", title=RiskVersion.title, status_labels=RISK_STATUS_LABEL,
         comments=comments_of(RiskComment, RiskComment.risk_id),
         fields=(
-            SearchField("statement", "Statement", RiskVersion.statement),
-            SearchField("cause", "Cause", RiskVersion.cause),
-            SearchField("risk_event", "Risk event", RiskVersion.risk_event),
-            SearchField("consequence", "Consequence", RiskVersion.consequence),
-            SearchField("acceptance_criteria", "Acceptance criteria", RiskVersion.acceptance_criteria),
+            SearchField("statement", "Statement", RiskVersion.statement, markdown=True),
+            SearchField("cause", "Cause", RiskVersion.cause, markdown=True),
+            SearchField("risk_event", "Risk event", RiskVersion.risk_event, markdown=True),
+            SearchField("consequence", "Consequence", RiskVersion.consequence, markdown=True),
+            SearchField("acceptance_criteria", "Acceptance criteria", RiskVersion.acceptance_criteria, markdown=True),
         ),
     ),
 }

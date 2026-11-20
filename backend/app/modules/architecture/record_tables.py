@@ -385,7 +385,7 @@ def _list_org_elements(db: Session, user: User, organization: Organization, filt
 def _element_columns(db: Session, project: Project | Organization) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False, required=True),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         RecordColumn("display_note", "Display note", lambda t, r: r.display_note, text_parser),
         RecordColumn(
             "type", "Type", lambda t, r: t.element_types.get(r.element_type_id, ""), _type_parser(ELEMENT_TYPES, "element"),
@@ -569,7 +569,7 @@ def _connection_columns(db: Session, project: Project) -> list[RecordColumn]:
         ),
         end("source"), port("source"), end("target"), port("target"),
         RecordColumn("protocol", "Protocol", lambda t, r: r.protocol, text_parser),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         _folder_column("connection"),
         _status_column(),
         _tags_column(),
@@ -681,7 +681,7 @@ def _list_diagrams(db: Session, user: User, project_id: uuid.UUID, filters: Reco
 def _diagram_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
-        RecordColumn("purpose", "Purpose", lambda t, r: r.purpose, text_parser),
+        RecordColumn("purpose", "Purpose", lambda t, r: r.purpose, text_parser, markdown=True),
         RecordColumn("scope", "Scope element", lambda t, r: t.scopes.get(r.scope_element_id, "") if r.scope_element_id else "", text_parser),
         RecordColumn(
             "connection_detail", "Connection detail", lambda t, r: "Yes" if r.connection_detail else "No", text_parser,
@@ -780,7 +780,7 @@ def _list_machines(
 def _machine_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         RecordColumn("element", "Element", lambda t, r: t.outs[r.id].element_code or "", text_parser),
         RecordColumn("states", "States", lambda t, r: str(t.outs[r.id].state_count), text_parser),
         RecordColumn("transitions", "Transitions", lambda t, r: str(t.outs[r.id].transition_count), text_parser),
@@ -832,7 +832,7 @@ def _list_states(db: Session, user: User, project_id: uuid.UUID, filters: Record
 def _state_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         RecordColumn("name", "Name", lambda t, r: r.name, text_parser, editable=False),
-        RecordColumn("description", "Description", lambda t, r: r.description, text_parser),
+        RecordColumn("description", "Description", lambda t, r: r.description, text_parser, markdown=True),
         RecordColumn(
             "kind", "Kind", lambda t, r: STATE_KIND_LABEL[r.kind], text_parser, kind="enum",
             choices=tuple(STATE_KIND_LABEL.values()),

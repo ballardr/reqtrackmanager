@@ -187,7 +187,7 @@ export function ConnectionDetailPage() {
               <span>{connection.directional ? "One-way, source to target" : "Two-way"}</span>
             </RecordFieldGroup>
           </div>
-          <RecordField label="Description" value={connection.description || "—"} />
+          <RecordField markdown label="Description" value={connection.description || "—"} />
         </DetailCard>
         <RecordDiagramsCard projectId={projectId} record={{ kind: "connection", id: connection.id }} />
         {(connection.realises.length > 0 || connection.realised_by.length > 0) && (

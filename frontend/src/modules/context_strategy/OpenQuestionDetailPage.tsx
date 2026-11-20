@@ -64,7 +64,7 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
-import { RecordPrincipalField } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -81,6 +81,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -216,7 +217,7 @@ export function OpenQuestionDetailPage() {
     >
       <RecordHeader
         recordLabel="Open Question"
-        title={openQuestion.question}
+        title={markdownPlainText(openQuestion.question)}
         code={openQuestion.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "Open Questions" }}
@@ -265,8 +266,8 @@ export function OpenQuestionDetailPage() {
       <div className="stack">
 
         <DetailCard>
-          {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
-          {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
+          {openQuestion.context && <RecordField markdown label="Context" value={openQuestion.context} />}
+          {openQuestion.evidence && <RecordField markdown label="Evidence" value={openQuestion.evidence} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
@@ -364,14 +365,5 @@ export function OpenQuestionDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

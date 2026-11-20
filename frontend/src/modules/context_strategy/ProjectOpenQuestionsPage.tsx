@@ -60,6 +60,7 @@ import { useCommitTags } from "../../hooks/useCommitTags";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
 import { labelOptions } from "../../utils/labelOptions";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 export function ProjectOpenQuestionsPage() {
   const strings = useStrings();
@@ -138,7 +139,7 @@ export function ProjectOpenQuestionsPage() {
   const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && openQuestions.some((q) => matches(q, false));
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", sortable: true, render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
+    { key: "question", label: "Question", sortable: true, render: (q) => <>{markdownPlainText(q.question)}<ProjectScopeLabel row={q} /></> },
     { key: "code", label: "Code", sortable: true, render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
     { key: "priority", label: "Priority", sortable: true, render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {

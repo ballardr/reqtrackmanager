@@ -187,3 +187,84 @@ export const RunawayDiagramIsRefused: Story = {
     await expect(alert).toHaveTextContent("could not be drawn");
   },
 };
+
+export const EquationsAreDrawnBesideFormatting: Story = {
+  args: {
+    math: true,
+    text: "The **range** shall satisfy \\( x_1 + y_2 \\) at all times:\n\n$$ \\frac{a}{b} = c_1 * c_2 $$\n\n- item with \\( z^2 \\)",
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelectorAll(".math-text")).toHaveLength(3));
+    // The underscores and asterisk inside an equation are TeX, not emphasis, and the text around it is still Markdown.
+    await expect(canvasElement.querySelector("strong")).toHaveTextContent("range");
+    await expect(canvasElement.querySelectorAll("em")).toHaveLength(0);
+    await expect(canvasElement.querySelectorAll(".math-text--display")).toHaveLength(1);
+    await expect(canvasElement.querySelectorAll("li .math-text")).toHaveLength(1);
+  },
+};
+
+export const EquationDelimitersAreOrdinaryTextUnlessAsked: Story = {
+  args: { text: "Cost is \\( x \\) or $$ y $$ here" },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector(".math-text")).toBeNull();
+    // Without the option the reader's own rules apply: `\\(` is an escaped bracket.
+    await expect(canvasElement).toHaveTextContent("Cost is ( x ) or $$ y $$ here");
+  },
+};
+
+export const EquationsInCodeStayCode: Story = {
+  args: { math: true, text: "Write `\\( x \\)` for an inline equation.\n\n```\n$$ not drawn $$\n```" },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector(".math-text")).toBeNull();
+    await expect(canvasElement.querySelector("code")).toHaveTextContent("\\( x \\)");
+    await expect(canvasElement.querySelector("pre code")).toHaveTextContent("$$ not drawn $$");
+  },
+};
+
+export const AnUnclosedOrEmptyEquationStaysText: Story = {
+  args: { math: true, text: "Open \\( never closed and $$ $$ empty" },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector(".math-text")).toBeNull();
+    await expect(canvasElement).toHaveTextContent("never closed");
+  },
+};
+
+export const AnEquationTheReportsRefuseIsShownAsTyped: Story = {
+  args: { math: true, text: "Bad \\( \\href{u}{v} \\) equation" },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement).toHaveTextContent("\\( \\href{u}{v} \\)"));
+    await expect(canvasElement.querySelector(".math-text")).toBeNull();
+  },
+};
+
+/** Text written before the fields were Markdown: each shape a person plausibly typed must read sensibly. */
+export const LegacyPlainTextRegression: Story = {
+  args: {
+    text: [
+      "Applies to file_name_1 and my_variable_name",
+      "Cost: 3 * 4 = 12 and 5*6",
+      "1. First step",
+      "2. Second step",
+      "",
+      "* not really a list but typed with stars",
+      "Tag #urgent and a price of $5 or $10",
+      "Use <b>tags</b> & ampersands",
+      "Line one",
+      "Line two",
+    ].join("\n"),
+  },
+  play: async ({ canvasElement }) => {
+    // Underscores inside a word are not emphasis; the words stay as written.
+    await expect(canvasElement).toHaveTextContent("file_name_1 and my_variable_name");
+    await expect(canvasElement.querySelectorAll("em")).toHaveLength(0);
+    // A numbered line is a list item, a starred line a list item, and nothing is lost.
+    await expect(canvasElement.querySelector("ol")).toHaveTextContent("First step");
+    await expect(canvasElement.querySelector("ul")).toHaveTextContent("not really a list but typed with stars");
+    // Raw HTML is text, a hash is not a heading, dollars are not equations, a single line break stays.
+    await expect(canvasElement).toHaveTextContent("Use <b>tags</b> & ampersands");
+    await expect(canvasElement.querySelector("h3")).toBeNull();
+    await expect(canvasElement.querySelector("b")).toBeNull();
+    await expect(canvasElement).toHaveTextContent("$5 or $10");
+    await expect(canvasElement.querySelectorAll("p br").length).toBeGreaterThan(0);
+  },
+};

@@ -35,7 +35,7 @@ export function ReportPackFields({
       <TextField helpNotNeeded required
         label={text.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
-      <TextAreaField helpNotNeeded label={text.descriptionLabel} value={description} onChange={onDescription} />
+      <TextAreaField plainText="Configuration text shown in pickers and tooltips" helpNotNeeded label={text.descriptionLabel} value={description} onChange={onDescription} />
       <ReportFolderField value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
     </>
   );

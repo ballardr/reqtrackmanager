@@ -36,6 +36,8 @@ import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import * as complianceApi from "./api";
 import { EvidenceFormModal, RevalidateModal } from "./EvidenceFormModals";
 import { projectCompliancePath } from "./paths";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 import {
   COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE,
   type ComplianceEvidence, type ComplianceEvidenceRevalidation,
@@ -121,10 +123,10 @@ export function EvidenceDetailPage() {
       {archive.dialog}
       <div className="stack">
         <DetailCard>
-          <p style={{ margin: 0 }}>{evidence.description || <span className="text-muted">No description.</span>}</p>
+          {evidence.description ? <MarkdownView text={evidence.description} /> : <p style={{ margin: 0 }}><span className="text-muted">No description.</span></p>}
           {evidence.issuing_organisation && <RecordField label="Issuing organisation" value={evidence.issuing_organisation} />}
           {evidence.issued_date && <RecordField label="Issued" value={evidence.issued_date} />}
-          {evidence.notes && <RecordField label="Notes" value={evidence.notes} />}
+          {evidence.notes && <RecordField markdown label="Notes" value={evidence.notes} />}
         </DetailCard>
 
         {revalidations.length > 0 && (
@@ -133,7 +135,7 @@ export function EvidenceDetailPage() {
               {revalidations.map((r) => (
                 <li key={r.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                   {new Date(r.revalidated_at).toLocaleDateString()}: {r.previous_expiry_date ?? "no expiry"} → {r.new_expiry_date ?? "no expiry"}
-                  {r.justification && ` — ${r.justification}`}
+                  {r.justification && ` — ${markdownPlainText(r.justification)}`}
                 </li>
               ))}
             </ul>

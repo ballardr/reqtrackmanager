@@ -64,6 +64,8 @@ import { InlineSelect, LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { COMPLIANCE_HELP } from "./help";
+import { MarkdownView } from "../../components/MarkdownView";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const APPLICABILITY_OPTIONS: ComplianceApplicability[] = ["applicable", "not_applicable"];
 const STATUS_OPTIONS: ComplianceStatus[] = [
@@ -311,7 +313,7 @@ export function RequirementAssessmentPanel({
       onClose={onClose}
     >
       <div className="stack">
-        {requirement.description && <p className="text-muted" style={{ margin: 0 }}>{requirement.description}</p>}
+        {requirement.description && <MarkdownView className="text-muted" text={requirement.description} />}
 
         <section className="stack">
           <h3 style={{ margin: 0 }}>Applicability</h3>
@@ -328,7 +330,7 @@ export function RequirementAssessmentPanel({
             placeholder={null}
           />
           {applicability === "not_applicable" && (
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown="simple" helpNotNeeded
               required
               label="Justification"
               value={applicabilityJustification}
@@ -356,7 +358,7 @@ export function RequirementAssessmentPanel({
               placeholder={null}
             />
             {status === "non_compliant" && (
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown="simple" helpNotNeeded
                 required
                 label="Justification"
                 value={statusJustification}
@@ -364,7 +366,7 @@ export function RequirementAssessmentPanel({
                 rows={2}
               />
             )}
-            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
               disabled={status === "non_compliant" && !statusJustification.trim()}
@@ -486,7 +488,7 @@ export function RequirementAssessmentPanel({
           )}
           {pcr.approval_state === "pending_approval" && (
             <div className="stack">
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown="simple" helpNotNeeded
                 label="Decision note"
                 hint="Required to reject."
                 value={decisionNote}
@@ -502,7 +504,7 @@ export function RequirementAssessmentPanel({
           {pcr.approval_decided_at && (
             <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
               Decided {new Date(pcr.approval_decided_at).toLocaleString()} by {userDisplayName(orgUsers, pcr.approval_decided_by)}
-              {pcr.decision_note && ` — "${pcr.decision_note}"`}
+              {pcr.decision_note && ` — "${markdownPlainText(pcr.decision_note)}"`}
             </p>
           )}
         </section>
@@ -582,7 +584,7 @@ export function RequirementAssessmentPanel({
       {rejecting && (
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>
           <div className="stack">
-            <TextAreaField helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
+            <TextAreaField markdown="simple" helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
             <FormActions
               onCancel={() => setRejecting(false)} onSave={reject} saveLabel="Reject" saveTone="danger"
               saveDisabled={!decisionNote.trim()}

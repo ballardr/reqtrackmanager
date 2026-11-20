@@ -30,6 +30,7 @@ import { Badge } from "../../components/Badge";
 import { FormActions } from "../../components/FormActions";
 import { TextAreaField } from "../../components/FormFields";
 import { DetailCard } from "../../components/DetailCard";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /** The verdicts a person can record; "Needs reassessment" is only ever set by the system. */
 const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "proposed"];
@@ -130,7 +131,7 @@ export function RiskTreatmentsPanel({
                   <td>
                     {t.rationale || "—"}
                     {t.status === "needs_reassessment" && t.reassessment_reason && (
-                      <div className="text-muted">{t.reassessment_reason}</div>
+                      <MarkdownView className="text-muted" text={t.reassessment_reason} />
                     )}
                   </td>
                   <td>
@@ -158,7 +159,7 @@ export function RiskTreatmentsPanel({
               options={ASSESSABLE.map((s) => ({ value: s, label: TREATMENT_ASSESSMENT_STATUS_LABEL[s] }))}
               placeholder={null}
             />
-            <TextAreaField helpNotNeeded required={status !== "proposed"} label="Rationale" value={rationale} onChange={setRationale} rows={3} />
+            <TextAreaField markdown="simple" helpNotNeeded required={status !== "proposed"} label="Rationale" value={rationale} onChange={setRationale} rows={3} />
             <p className="text-muted" style={{ margin: 0 }}>A rationale is needed to mark a treatment Effective or Ineffective.</p>
             <FormActions error={error} onCancel={() => setAssessing(null)} onSave={save} />
           </div>

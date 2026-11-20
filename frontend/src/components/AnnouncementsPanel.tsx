@@ -31,6 +31,7 @@ import { TextField } from "./FormFields";
 import { InlineMessage } from "./InlineMessage";
 import { cycleSort, type SortState } from "./sortState";
 import { Tabs, tabPanelProps } from "./Tabs";
+import { MarkdownView } from "./MarkdownView";
 
 type View = "current" | "previous";
 
@@ -123,7 +124,7 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
       render: (item) => (
         <>
           <strong>{item.title}</strong>
-          {item.body && <div className="text-muted" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.body}</div>}
+          {item.body && <MarkdownView className="text-muted" text={item.body} />}
         </>
       ),
     },

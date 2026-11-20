@@ -1590,7 +1590,7 @@ export function ProjectAdminPage() {
             inputProps={{ maxLength: MAX_PROJECT_REPORT_NAME_LENGTH }}
           />
           <FormGridFull>
-          <TextAreaField helpNotNeeded
+          <TextAreaField plainText="Shown in project cards and pickers, which are one-line plain-text surfaces" helpNotNeeded
             label={strings.admin.summary}
             value={settingsSummary}
             onChange={(next) => {

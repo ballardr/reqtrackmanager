@@ -170,7 +170,7 @@ function VersionFormModal({
           />
           <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+            <TextAreaField plainText="A version's one-line change note, listed in version histories" helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
           </FormGridFull>
           {versions.length > 0 && (
             <LabeledSelect help={COMPLIANCE_HELP.complianceCloneFrom}

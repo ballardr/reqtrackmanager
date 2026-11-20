@@ -140,6 +140,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.compliance.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
     EVIDENCE_CODE_PREFIX,
@@ -577,6 +578,8 @@ MODULE_DEFINITION = ModuleDefinition(
     not_placeable=NOT_PLACEABLE,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,

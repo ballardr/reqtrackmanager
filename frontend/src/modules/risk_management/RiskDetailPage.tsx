@@ -30,6 +30,7 @@ import { RecordDiscussion } from "../../components/RecordDiscussion";
 import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
+import { MarkdownView } from "../../components/MarkdownView";
 import { RecordField, RecordFieldGroup, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -205,11 +206,11 @@ export function RiskDetailPage() {
       {archive.dialog}
       <div className="stack">
         <DetailCard>
-          {risk.statement && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{risk.statement}</p>}
-          {risk.cause && <RecordField label="Cause" value={risk.cause} />}
-          {risk.risk_event && <RecordField label="Risk event" value={risk.risk_event} />}
-          {risk.consequence && <RecordField label="Consequence" value={risk.consequence} />}
-          {risk.acceptance_criteria && <RecordField label="Acceptance criteria" value={risk.acceptance_criteria} />}
+          {risk.statement && <MarkdownView text={risk.statement} />}
+          {risk.cause && <RecordField markdown label="Cause" value={risk.cause} />}
+          {risk.risk_event && <RecordField markdown label="Risk event" value={risk.risk_event} />}
+          {risk.consequence && <RecordField markdown label="Consequence" value={risk.consequence} />}
+          {risk.acceptance_criteria && <RecordField markdown label="Acceptance criteria" value={risk.acceptance_criteria} />}
         </DetailCard>
 
         <DetailCard heading="Rating">

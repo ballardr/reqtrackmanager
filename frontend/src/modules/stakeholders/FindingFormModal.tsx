@@ -62,7 +62,7 @@ export function FindingFormModal({
           />
         )}
         <TextField helpNotNeeded required label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
-        <TextAreaField helpNotNeeded label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
+        <TextAreaField markdown helpNotNeeded label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
         {!initial && projectId && (
           <div className="stack">
             <QuickLinkField projectId={projectId} artefactType="research_finding" value={quickLinks} onChange={setQuickLinks} />

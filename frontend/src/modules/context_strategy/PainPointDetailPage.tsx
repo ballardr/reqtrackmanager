@@ -60,7 +60,7 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
-import { RecordPrincipalField } from "../../components/RecordDetailParts";
+import { RecordField, RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -289,10 +289,10 @@ export function PainPointDetailPage() {
       <div className="stack">
 
         <DetailCard>
-          {painPoint.description && <Field label="Description" value={painPoint.description} />}
-          {painPoint.source && <Field label="Source" value={painPoint.source} />}
-          {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
-          {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
+          {painPoint.description && <RecordField markdown label="Description" value={painPoint.description} />}
+          {painPoint.source && <RecordField markdown label="Source" value={painPoint.source} />}
+          {painPoint.impact && <RecordField markdown label="Impact" value={painPoint.impact} />}
+          {painPoint.evidence && <RecordField markdown label="Evidence" value={painPoint.evidence} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
@@ -391,14 +391,5 @@ export function PainPointDetailPage() {
       )}
 
     </DetailLayout>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stack" style={{ gap: "0.15rem" }}>
-      <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
-    </div>
   );
 }

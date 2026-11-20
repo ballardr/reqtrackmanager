@@ -22,6 +22,7 @@ import { recordCommentsApi, type AnchoredThread, type RecordCommentsApi } from "
 import { useStrings } from "../context/TerminologyContext";
 import { useRecordComments } from "../hooks/useRecordComments";
 import { getArtefactPath } from "../modules/artefactPaths";
+import { markdownPlainText } from "../utils/markdownPlain";
 import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import { Badge } from "./Badge";
 import { DetailCard } from "./DetailCard";
@@ -84,7 +85,7 @@ export function RecordCommentsCards({
                 </div>
                 {t.comments.map((c) => (
                   <div key={c.id} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                    <strong>{c.author_display_name}</strong>{" "}{c.body}
+                    <strong>{c.author_display_name}</strong>{" "}{markdownPlainText(c.body)}
                   </div>
                 ))}
               </div>

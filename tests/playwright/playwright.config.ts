@@ -92,6 +92,12 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:3000",
+    // A Markdown field opens in Visual by default; specs type the source, so every browser starts remembering Write
+    // (a spec that tests the default clears the key first).
+    storageState: {
+      cookies: [],
+      origins: [{ origin: "http://localhost:3000", localStorage: [{ name: "reqtrack.markdownEditorView", value: "write" }] }],
+    },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

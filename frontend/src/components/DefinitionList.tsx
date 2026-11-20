@@ -276,7 +276,7 @@ export function DefinitionList<T extends { id: string }>({
     const ariaLabel = adding ? (addName ?? f.ariaLabel ?? f.key) : (f.ariaLabel ?? f.placeholder ?? f.key);
     const placeholder = adding ? f.placeholder : undefined;
     return f.multiline ? (
-      <AutoGrowTextarea rows={1} aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
+      <AutoGrowTextarea plainText="Configuration text shown in pickers and tooltips" rows={1} aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
     ) : (
       <InlineTextInput type={f.inputType ?? "text"} ariaLabel={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} />
     );
@@ -374,6 +374,7 @@ export function DefinitionList<T extends { id: string }>({
                   f.multiline ? (
                     <AutoGrowTextarea
                       key={f.key}
+                      plainText="Configuration text shown in pickers and tooltips"
                       rows={2}
                       style={{ width: f.maxWidth ?? 360, maxWidth: "100%" }}
                       aria-label={f.ariaLabel ?? f.placeholder ?? f.key}
@@ -480,7 +481,7 @@ export function DefinitionList<T extends { id: string }>({
       <div className="row" style={{ alignItems: "flex-end" }}>
         {fields.map((f) =>
           f.multiline ? (
-            <TextAreaField helpNotNeeded
+            <TextAreaField plainText="Configuration text shown in pickers and tooltips" helpNotNeeded
               key={f.key}
               label={f.placeholder ?? f.ariaLabel ?? f.key}
               value={newDraft[f.key]}

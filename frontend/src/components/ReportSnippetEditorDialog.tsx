@@ -271,6 +271,7 @@ export function ReportSnippetEditorDialog({
             {view === "text" && (
               <div {...tabPanelProps("snippet-editor-view", "text")} className="stack">
                 <AutoGrowTextarea
+                  plainText="The snippet's layout source text, read by the layout parser"
                   className="input layout-editor" value={draft} onChange={setDraft} rows={12} maxVisibleLines={EDITOR_MAX_LINES}
                   aria-label={text.textLabel} spellCheck={false}
                 />

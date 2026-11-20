@@ -33,6 +33,7 @@ import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { DetailCard } from "../../components/DetailCard";
+import { MarkdownView } from "../../components/MarkdownView";
 
 /**
  * @param risk The risk being reviewed.
@@ -118,7 +119,7 @@ export function RiskReviewsPanel({
                 <td>
                   <Badge tone={RISK_REVIEW_OUTCOME_TONE[r.outcome]}>{RISK_REVIEW_OUTCOME_LABEL[r.outcome]}</Badge>
                 </td>
-                <td style={{ whiteSpace: "pre-wrap" }}>{r.notes}</td>
+                <td><MarkdownView text={r.notes} /></td>
                 <td>{RISK_STATUS_LABEL[r.risk_status]}</td>
                 <td><RiskRatingBadge label={r.inherent_rating_label} tone={bandTone(scheme, r.inherent_rating_label)} /></td>
                 <td><RiskRatingBadge label={r.residual_rating_label} tone={bandTone(scheme, r.residual_rating_label)} /></td>
@@ -147,7 +148,7 @@ export function RiskReviewsPanel({
                 </p>
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField helpNotNeeded required label="Review notes" value={notes} onChange={setNotes} rows={3} />
+                <TextAreaField markdown="simple" helpNotNeeded required label="Review notes" value={notes} onChange={setNotes} rows={3} />
               </FormGridFull>
               <DateField helpNotNeeded label="Next review date" value={nextDate} onChange={setNextDate} />
               <FormGridFull>

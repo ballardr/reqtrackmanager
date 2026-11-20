@@ -45,7 +45,7 @@ export function TextListField({
     if (JSON.stringify(linesToList(draft)) !== JSON.stringify(value)) setDraft(value.join("\n"));
   }
   return (
-    <TextAreaField
+    <TextAreaField plainText="One entry per line, not prose"
       label={label} value={draft} disabled={disabled} hint={hint} help={help} required={required} rows={2}
       inputProps={{ spellCheck: false }}
       onChange={(text) => {

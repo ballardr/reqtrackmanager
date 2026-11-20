@@ -87,6 +87,7 @@ import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
 import { useStrings } from "../../context/TerminologyContext";
+import { MarkdownView } from "../../components/MarkdownView";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -275,7 +276,7 @@ export function StandardWorkspacePage() {
             />
           </div>
           <DetailCard>
-            <p>{standard.description || <span className="text-muted">No description.</span>}</p>
+            {standard.description ? <MarkdownView text={standard.description} /> : <p><span className="text-muted">No description.</span></p>}
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
             <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
               <span className="text-muted">Owner:</span>

@@ -253,6 +253,7 @@ def _reference_inputs(ctx: RecordImportContext, entries: list[tuple[str, str, st
 def _text(key: str, label: str, *, required: bool = False, parser: Any = text_parser) -> RecordColumn:
     return RecordColumn(
         key, label, lambda t, r: getattr(t.versions[r.id], key) or "", parser, editable=True, required=required,
+        markdown=key == "description",
     )
 
 

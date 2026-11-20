@@ -177,7 +177,7 @@ export function RunningBandEditor({
               const summary = text.cellSettingsSummary(width, valign ? text.valignChoices[valign] : undefined);
               return (
                 <div key={slot}>
-                  <TextAreaField
+                  <TextAreaField plainText="A report's running header and footer, which are fixed plain text"
                     label={cell} ariaLabel={text.cellAria(title, cell)} value={band[slot] ?? ""}
                     disabled={disabled} help={strings.help.bandCell} onChange={(next) => set({ [slot]: next })}
                     inputProps={{ onSelect: remember(slot), onBlur: remember(slot) }}

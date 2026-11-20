@@ -214,9 +214,9 @@ export function EngagementDetailPage() {
 
       <div className="stack">
         <DetailCard>
-          {engagement.purpose && <RecordField label="Purpose" value={engagement.purpose} />}
-          {engagement.summary && <RecordField label="Summary" value={engagement.summary} />}
-          {engagement.notes && <RecordField label="Notes" value={engagement.notes} />}
+          {engagement.purpose && <RecordField markdown label="Purpose" value={engagement.purpose} />}
+          {engagement.summary && <RecordField markdown label="Summary" value={engagement.summary} />}
+          {engagement.notes && <RecordField markdown label="Notes" value={engagement.notes} />}
 
           <FormGrid>
             <PrincipalListField

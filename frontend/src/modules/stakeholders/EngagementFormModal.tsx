@@ -90,16 +90,16 @@ export function EngagementFormModal({
           <DateField helpNotNeeded required label="Date" value={date} onChange={setDate} />
           {!compact && (
             <FormGridFull>
-              <TextAreaField help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" rows={2} value={purpose} onChange={setPurpose} />
+              <TextAreaField markdown help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" rows={2} value={purpose} onChange={setPurpose} />
             </FormGridFull>
           )}
           <FormGridFull>
-            <TextAreaField help={STAKEHOLDERS_HELP.engagementSummary} label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} />
+            <TextAreaField markdown help={STAKEHOLDERS_HELP.engagementSummary} label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} />
           </FormGridFull>
           {!compact && (
             <>
               <FormGridFull>
-                <TextAreaField helpNotNeeded
+                <TextAreaField markdown helpNotNeeded
                   label="Notes" rows={5} value={notes} onChange={setNotes}
                   hint="Notes can name people and are personal data: they are deleted with the engagement."
                 />

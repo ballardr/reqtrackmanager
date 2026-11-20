@@ -64,7 +64,7 @@ import { ActionFields } from "../components/ActionFields";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { DetailCard } from "../components/DetailCard";
-import { MathText } from "../components/MathText";
+import { MarkdownView } from "../components/MarkdownView";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -688,18 +688,18 @@ export function RequirementDetailPage() {
           )}
           <div>
             <div className="text-muted">{strings.requirements.reasoning}</div>
-            <p style={{ marginTop: "var(--space-1)" }}><MathText text={requirement.reasoning} /></p>
+            <MarkdownView math text={requirement.reasoning} />
           </div>
           {requirement.clarification && (
             <div>
               <div className="text-muted">{strings.requirements.clarification}</div>
-              <p style={{ marginTop: "var(--space-1)" }}><MathText text={requirement.clarification} /></p>
+              <MarkdownView math text={requirement.clarification} />
             </div>
           )}
           {requirement.description && (
             <div>
               <div className="text-muted">{strings.requirements.description}</div>
-              <p style={{ marginTop: "var(--space-1)" }}><MathText text={requirement.description} /></p>
+              <MarkdownView math text={requirement.description} />
             </div>
           )}
           <div className="row">
@@ -776,7 +776,7 @@ export function RequirementDetailPage() {
             placeholder={null}
           />
           {reviewOutcome === "failed" && (
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown="simple" helpNotNeeded
               label={strings.requirements.reviewComment}
               value={reviewComment}
               onChange={setReviewComment}
@@ -890,7 +890,7 @@ export function RequirementDetailPage() {
                   placeholder={strings.requirements.selectAnActionToLink}
                 />
                 {requirement.is_locked && (
-                  <TextAreaField helpNotNeeded
+                  <TextAreaField markdown="simple" helpNotNeeded
                     label={strings.changeRequests.reason}
                     value={addActionReason}
                     onChange={setAddActionReason}
@@ -947,7 +947,7 @@ export function RequirementDetailPage() {
               requirement.is_locked ? (
                 <span className="stack" style={{ gap: "var(--space-3)" }}>
                   <span>{strings.requirements.unlinkActionViaChangeRequestConfirm}</span>
-                  <TextAreaField helpNotNeeded
+                  <TextAreaField markdown="simple" helpNotNeeded
                     label={strings.changeRequests.reason}
                     value={unlinkActionReason}
                     onChange={setUnlinkActionReason}
@@ -990,7 +990,7 @@ export function RequirementDetailPage() {
               projectId={projectId}
             />
             {requirement.is_locked && (
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown="simple" helpNotNeeded
                 label={strings.changeRequests.reason}
                 value={addActionReason}
                 onChange={setAddActionReason}

@@ -135,3 +135,18 @@ export const LinksPanelShowsLinks: Story = {
     await expect(canvas.getByRole("button", { name: "Supersede another Strategy" })).toBeInTheDocument();
   },
 };
+
+/** Every long field of a Strategy is Markdown: formatted on the page, never shown as typed marks. */
+export const ShowsItsTextFieldsFormatted: Story = {
+  beforeEach: () => mockDetailApis(strategy({
+    objective: "Become the **top** provider.", current_state: "- ranked third\n- two products", rationale: "Because of `data`.",
+  })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Lead the regional market" })).toBeInTheDocument());
+    await expect(canvasElement.querySelector(".markdown-view strong")).toHaveTextContent("top");
+    await expect(canvasElement.querySelectorAll(".markdown-view li")).toHaveLength(2);
+    await expect(canvasElement.querySelector(".markdown-view code")).toHaveTextContent("data");
+    await expect(canvasElement).not.toHaveTextContent("**top**");
+  },
+};

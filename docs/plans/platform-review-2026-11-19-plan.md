@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 15 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 16 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-15 / 25 phases complete.
+16 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -25,7 +25,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [x] |
 | 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [x] |
 | 15 | Visual (WYSIWYG) Markdown editing | Spike with exit criteria, then the visual editor on `@tiptap/markdown`; shared toolbar with the policy editor | [x] |
-| 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [ ] |
+| 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [x] |
 | 17 | Markdown and diagrams in reports and exports | Markdown to PDF, Word, OpenDocument and HTML; one shared browserless Mermaid renderer in the converter container, same engine version and font as the screen, confirmed by a spike | [ ] |
 | 18 | MCP tools: components and categories | List, add, edit, reorder and delete (only when empty) a project's components and categories through MCP, so a new project can be structured by an agent; skill and generated reference updated | [ ] |
 | 19 | Requirements in several components | A requirement can sit in more than one component and category, with an alias code in each and a Make independent action; decision gate first | [ ] |
@@ -250,6 +250,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Lists and notifications show plain text through the server's extraction, never raw Markdown.
 - Comments (every comment table) are included or exempted with a reason in the inventory.
 - Tests: per-type render and edit stories, the declaration guard, a regression suite of legacy plain text (underscores, asterisks, numbered lines) rendering sensibly.
+- As built: 159 long-text columns inventoried (a script prints the table): 129 Markdown, 30 plain with reasons. The declaration is `MarkdownField(Model.column, limit, math)` on `ModuleDefinition.markdown_fields` (`markdown_columns`; core in `services/long_text_core.py`, each module's in `long_text.py`) or a reason in `plain_text_fields`, not the record-table and search providers themselves (a provider's column is not a table column; search is opt-in), which keep only a `markdown` flag a test ties to the declaration. The declaration is also the write limit through a session `before_flush` hook (`services/markdown_fields.py`). Mathematics coexist through a markdown-it rule (`utils/markdownMath`) rather than splitting the text first; an equation field is edited in Write and Preview. Comments are Markdown with the simple editor and a version change note stays plain (**Decided by: User**). Frontend: `TextAreaField markdown | "simple" | "math"` or `plainText="<reason>"` (`scripts/check_markdown_fields.py`), `RecordField math`, six per-page `Field` copies replaced by `RecordField`, `markdownPlainText` for one-line places, the comment boxes on `MarkdownEditor simple`. Server plain text in the compliance and announcement notifications and the record-list report cell. See `docs/decisions.md`.
 
 ### Phase 17 — Markdown in reports and exports
 

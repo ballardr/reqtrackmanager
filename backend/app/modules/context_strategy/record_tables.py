@@ -223,11 +223,25 @@ def _tags_column() -> RecordColumn:
     return RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list")
 
 
+#: The `_text` columns whose cells are Markdown source (the rest are titles and names).
+_MARKDOWN_KEYS = frozenset({
+    "objective", "current_state", "desired_future_state", "rationale", "expected_outcomes", "constraints",
+    "measures_of_success", "desired_state", "outcomes", "success_measures", "assumptions", "principle_statement",
+    "description", "source", "impact", "evidence", "question", "context",
+})
+
+
 def _text(key: str, label: str, attr: str, *, required: bool = False, versioned: bool = True) -> RecordColumn:
     """An editable text column read from the current version (or the record itself)."""
+    markdown = key in _MARKDOWN_KEYS
     if versioned:
-        return RecordColumn(key, label, lambda t, r: getattr(t.versions[r.id], attr) or "", text_parser, editable=True, required=required)
-    return RecordColumn(key, label, lambda t, r: getattr(r, attr) or "", text_parser, editable=True, required=required)
+        return RecordColumn(
+            key, label, lambda t, r: getattr(t.versions[r.id], attr) or "", text_parser, editable=True, required=required,
+            markdown=markdown,
+        )
+    return RecordColumn(
+        key, label, lambda t, r: getattr(r, attr) or "", text_parser, editable=True, required=required, markdown=markdown,
+    )
 
 
 def _enum(key: str, label: str, attr: str, enum_class: Any, labels: Mapping[str, str], default: Any, *, versioned: bool = True) -> RecordColumn:

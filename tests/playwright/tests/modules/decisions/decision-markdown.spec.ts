@@ -49,6 +49,8 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
     ].join("\n");
 
     await test.step("create the Decision: the fields offer Visual, Write and Preview", async () => {
+      // The run starts remembering Write (playwright.config.ts); this step tests the default, so the choice is cleared.
+      await page.evaluate(() => localStorage.removeItem("reqtrack.markdownEditorView"));
       await page.goto(`/projects/${project.id}/modules/decisions`);
       await page.getByRole("button", { name: "New decision" }).click();
       const dialog = page.getByRole("dialog", { name: "New decision" });
@@ -102,6 +104,7 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
 
   test("a Decision is written in the Visual view, and pasted Markdown is converted on request", async ({ page }) => {
     const { project } = await setUpDecisionProject(page, "visual");
+    await page.evaluate(() => localStorage.removeItem("reqtrack.markdownEditorView"));
     await page.goto(`/projects/${project.id}/modules/decisions`);
     await page.getByRole("button", { name: "New decision" }).click();
     const dialog = page.getByRole("dialog", { name: "New decision" });

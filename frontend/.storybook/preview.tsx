@@ -32,7 +32,28 @@ const withToasts: Decorator = (Story) => (
   </ToastProvider>
 );
 
+/**
+ * A Markdown field opens in Visual by default (a per-person choice kept in `localStorage`); stories that type the
+ * source open in Write, so every story starts from Write and one that tests the Visual default or a remembered choice
+ * sets its own in its own `beforeEach`, which runs after this one.
+ */
+const MARKDOWN_VIEW_KEY = "reqtrack.markdownEditorView";
+
 const preview: Preview = {
+  beforeEach: () => {
+    try {
+      localStorage.setItem(MARKDOWN_VIEW_KEY, "write");
+    } catch {
+      // Blocked storage: the editor's own default applies.
+    }
+    return () => {
+      try {
+        localStorage.removeItem(MARKDOWN_VIEW_KEY);
+      } catch {
+        // Nothing to clean up.
+      }
+    };
+  },
   parameters: {
     controls: {
       matchers: {

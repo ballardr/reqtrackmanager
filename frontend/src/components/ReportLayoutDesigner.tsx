@@ -846,6 +846,7 @@ export function ReportLayoutDesigner({
                 </div>
               )}
               <AutoGrowTextarea
+                plainText="The report layout's source text, read by the layout parser"
                 textareaRef={editor}
                 className="input layout-editor"
                 value={draft}
@@ -885,6 +886,7 @@ export function ReportLayoutDesigner({
               <div {...tabPanelProps("layout-view", "json")} className="stack">
                 <p className="text-muted" role="note" style={{ margin: 0 }}>{outline.jsonNote}</p>
                 <AutoGrowTextarea
+                  plainText="The report layout as JSON, not prose"
                   className="input layout-editor"
                   value={jsonText}
                   onChange={setJsonText}

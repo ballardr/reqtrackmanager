@@ -39,6 +39,7 @@ import {
 } from "./diagramOutlineModel";
 import type { DiagramAnchor, DiagramViewEdge, ModelStateMachine } from "./types";
 import { ARCHITECTURE_HELP } from "./help";
+import { markdownPlainText } from "../../utils/markdownPlain";
 
 const ROUTE_LABEL: Record<ConnectionRow["route"], string> = { direct: "Direct", rolled_up: "Rolled up", bridged: "Bridged" };
 
@@ -150,7 +151,7 @@ export function DiagramOutline({
                       <td>{row.box.locked ? "—" : row.box.element_type_name}</td>
                       <td>{row.parent ?? "—"}</td>
                       <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : row.box.display_note || "—"}</td>
-                      <td style={{ whiteSpace: "pre-line" }}>{row.box.locked ? "—" : descriptions.get(row.id) || "—"}</td>
+                      <td>{row.box.locked ? "—" : markdownPlainText(descriptions.get(row.id) ?? "") || "—"}</td>
                       <td>{row.box.locked ? "—" : machineButtons(row.id)}</td>
                     </tr>
                   ))}

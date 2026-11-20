@@ -111,3 +111,36 @@ def test_mermaid_sources_in_order() -> None:
 def test_empty_text() -> None:
     assert md.plain_text("") == ""
     assert md.mermaid_sources("") == []
+
+
+def _full_check_refuses(text: str) -> bool:
+    """The limits as a full parse sees them (what `validate_markdown` must agree with without parsing when it can)."""
+    tokens = md.parse(text)
+    diagrams = [token.content for token in tokens if md.is_mermaid_fence(token)]
+    return (
+        any(token.level >= md.MAX_DEPTH for token in tokens)
+        or len(diagrams) > md.MAX_MERMAID_BLOCKS
+        or any(len(source) > md.MAX_MERMAID_SOURCE_CHARS for source in diagrams)
+    )
+
+
+@pytest.mark.parametrize("depth", range(1, 60))
+def test_the_parse_free_shortcut_never_disagrees_with_a_full_parse_on_nesting(depth: int) -> None:
+    quotes = "> " * depth + "text"
+    lists = "".join("  " * level + "- item\n" for level in range(depth))
+    for text in (quotes, lists, ">" * depth + "text", "1. " * depth + "x"):
+        try:
+            md.validate_markdown(text, max_chars=50_000)
+            refused = False
+        except md.MarkdownLimitError:
+            refused = True
+        assert refused == _full_check_refuses(text), (depth, text[:40])
+
+
+def test_the_parse_free_shortcut_still_counts_diagrams_and_sizes() -> None:
+    diagram = "```mermaid\nflowchart LR\n  A --> B\n```\n"
+    with pytest.raises(md.MarkdownLimitError):
+        md.validate_markdown(diagram * (md.MAX_MERMAID_BLOCKS + 1), max_chars=50_000)
+    with pytest.raises(md.MarkdownLimitError):
+        md.validate_markdown("x" * 11, max_chars=10)
+    assert md.validate_markdown("plain words with no marks at all", max_chars=100) == "plain words with no marks at all"

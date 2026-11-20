@@ -37,7 +37,7 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         status_labels=REQUEST_STATUS_LABEL, organization_subcomponent=ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
         comments=comments_of(EnhancementRequestComment, EnhancementRequestComment.request_id),
         fields=(
-            SearchField("description", "Description", EnhancementRequestVersion.description),
+            SearchField("description", "Description", EnhancementRequestVersion.description, markdown=True),
             # The keys of the request's external references (PROJ-123), so a ticket number finds the request.
             SearchField("references", "External references", select(func.string_agg(
                 ExternalReference.key, " ",

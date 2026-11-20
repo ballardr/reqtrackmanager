@@ -83,7 +83,7 @@ export function GuidingPrincipleFormModal({
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded required={f.key === "principle_statement"}
+              <TextAreaField markdown helpNotNeeded required={f.key === "principle_statement"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

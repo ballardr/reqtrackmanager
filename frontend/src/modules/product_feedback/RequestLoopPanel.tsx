@@ -16,6 +16,7 @@ import { DetailCard } from "../../components/DetailCard";
 import { CheckboxField, TextField } from "../../components/FormFields";
 import { PRODUCT_FEEDBACK_HELP } from "./help";
 import type { CloseTheLoop, LoopRequester } from "./types";
+import { MarkdownView } from "../../components/MarkdownView";
 
 const key = (r: LoopRequester) => `${r.artefact_type}:${r.id}`;
 
@@ -34,7 +35,7 @@ export function RequestLoopPanel({
   return (
     <DetailCard heading="Closing the loop">
       {loop.status === "declined" && loop.decline_reason && (
-        <p style={{ margin: 0 }}><span className="text-muted">Reason given: </span>{loop.decline_reason}</p>
+        <div><span className="text-muted">Reason given: </span><MarkdownView text={loop.decline_reason} /></div>
       )}
       {loop.requesters.length === 0 ? (
         <p className="text-muted">No one is recorded as having asked for this, so there is no one to tell.</p>
@@ -73,7 +74,7 @@ export function RequestLoopPanel({
                       />
                     </td>
                     <td>{r.informed_at ? new Date(r.informed_at).toLocaleDateString() : "–"}</td>
-                    <td className="text-muted">{r.note || "–"}</td>
+                    <td className="text-muted">{r.note ? <MarkdownView text={r.note} /> : "–"}</td>
                   </tr>
                 );
               })}

@@ -89,7 +89,7 @@ export function OpenQuestionFormModal({
         <FormGrid minColumn="18rem">
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded required={f.key === "question"}
+              <TextAreaField markdown helpNotNeeded required={f.key === "question"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

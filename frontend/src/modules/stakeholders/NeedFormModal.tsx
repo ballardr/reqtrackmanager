@@ -50,12 +50,12 @@ export function NeedFormModal({
             <TextField helpNotNeeded required label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={STAKEHOLDERS_HELP.needDescription}
+            <TextAreaField markdown help={STAKEHOLDERS_HELP.needDescription}
               label="Need" rows={3} value={description} onChange={setDescription}
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={STAKEHOLDERS_HELP.needRationale} label="Rationale" rows={3} value={rationale} onChange={setRationale} />
+            <TextAreaField markdown help={STAKEHOLDERS_HELP.needRationale} label="Rationale" rows={3} value={rationale} onChange={setRationale} />
           </FormGridFull>
           {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (

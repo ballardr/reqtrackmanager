@@ -22,6 +22,7 @@ import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useStrings } from "../../context/TerminologyContext";
 import { COMPLIANCE_HELP } from "./help";
+import { MarkdownView } from "../../components/MarkdownView";
 
 interface Props {
   orgId: string;
@@ -141,7 +142,7 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
                 <tr key={m.id} style={m.is_archived ? { opacity: 0.55 } : undefined}>
                   <td>{relationshipTypeName(m.relationship_type_id)}</td>
                   <td className="text-muted" style={{ fontSize: "0.8rem" }}>{otherSideId(m)}</td>
-                  <td>{m.notes}</td>
+                  <td><MarkdownView text={m.notes} /></td>
                   <td>
                     <button className="btn" onClick={() => handleArchiveToggle(m)}>
                       {m.is_archived ? "Unarchive" : "Archive"}

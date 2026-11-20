@@ -36,12 +36,12 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useCommitTags } from "../hooks/useCommitTags";
 import { useRecordCode } from "../hooks/useRecordCode";
 import { useResetOnChange } from "../hooks/useResetOnChange";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { CustomFieldsForm } from "./CustomFieldsForm";
 import { FormActions } from "./FormActions";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { FormGrid, FormGridFull } from "./FormGrid";
 import { InlineSelect, LabeledSelect } from "./LabeledSelect";
+import { MarkdownEditor } from "./MarkdownEditor";
 import { Modal } from "./Modal";
 import { PrincipalPicker } from "./PrincipalPicker";
 import { ProposedLinksEditor } from "./ProposedLinksEditor";
@@ -267,25 +267,22 @@ export function ChangeRequestCreateModal({
         );
       case "reasoning":
         return (
-          <AutoGrowTextarea
-            rows={2}
-            value={proposed.reasoning}
+          <MarkdownEditor
+            math rows={2} value={proposed.reasoning} ariaLabel={strings.requirements.reasoning}
             onChange={(value) => setProposed((p) => ({ ...p, reasoning: value }))}
           />
         );
       case "clarification":
         return (
-          <AutoGrowTextarea
-            rows={2}
-            value={proposed.clarification}
+          <MarkdownEditor
+            math rows={2} value={proposed.clarification} ariaLabel={strings.requirements.clarification}
             onChange={(value) => setProposed((p) => ({ ...p, clarification: value }))}
           />
         );
       case "description":
         return (
-          <AutoGrowTextarea
-            rows={2}
-            value={proposed.description}
+          <MarkdownEditor
+            math rows={2} value={proposed.description} ariaLabel={strings.requirements.description}
             onChange={(value) => setProposed((p) => ({ ...p, description: value }))}
           />
         );
@@ -440,21 +437,21 @@ export function ChangeRequestCreateModal({
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={strings.help.proposedRequirementReasoning}
+            <TextAreaField markdown="math" help={strings.help.proposedRequirementReasoning}
               label={strings.changeRequests.proposedReasoning}
               value={proposed.reasoning}
               onChange={(next) => setProposed((p) => ({ ...p, reasoning: next }))}
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField help={strings.help.requirementClarification}
+            <TextAreaField markdown="math" help={strings.help.requirementClarification}
               label={strings.requirements.clarification}
               value={proposed.clarification}
               onChange={(next) => setProposed((p) => ({ ...p, clarification: next }))}
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField markdown="math" helpNotNeeded
               label={strings.requirements.description}
               value={proposed.description}
               onChange={(next) => setProposed((p) => ({ ...p, description: next }))}
@@ -497,7 +494,7 @@ export function ChangeRequestCreateModal({
         />
       )}
 
-      <TextAreaField helpNotNeeded required label={strings.changeRequests.reason} value={reason} onChange={setReason} />
+      <TextAreaField markdown="simple" helpNotNeeded required label={strings.changeRequests.reason} value={reason} onChange={setReason} />
       <FormActions
         error={error} onCancel={onClose} onSave={createCr} saveLabel={strings.common.create}
         saveDisabled={

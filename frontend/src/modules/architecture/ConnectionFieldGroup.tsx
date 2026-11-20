@@ -125,7 +125,7 @@ export function ConnectionFieldGroup({
       )}
       <FolderField kind="connection" owner={{ projectId }} value={values.folder_id} onChange={(next) => onChange("folder_id", next)} />
       <FormGridFull>
-        <TextAreaField helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
+        <TextAreaField markdown helpNotNeeded label="Description" value={values.description} onChange={(value) => onChange("description", value)} />
       </FormGridFull>
     </>
   );

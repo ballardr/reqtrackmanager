@@ -375,7 +375,7 @@ export function AddArtefactLinkModal({
           </>
         )}
         {changeRequest && (
-          <TextAreaField helpNotNeeded label={strings.artefactLinks.reasonLabel} value={reason} onChange={setReason} rows={2} />
+          <TextAreaField plainText="A link's reason is one line shown beside the link" helpNotNeeded label={strings.artefactLinks.reasonLabel} value={reason} onChange={setReason} rows={2} />
         )}
         <FormActions
           onCancel={onClose}

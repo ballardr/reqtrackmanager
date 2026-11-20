@@ -94,6 +94,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.decisions import activity_links as _activity_links
 from app.modules.decisions import export as bundle_export
+from app.modules.decisions.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.decisions.models import Decision
 from app.modules.decisions.perf_dataset import generate_decisions
 from app.modules.decisions.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
@@ -326,6 +327,8 @@ MODULE_DEFINITION = ModuleDefinition(
     },
     activity_link_ends={_activity_links.LINK_EVENT_TYPE: _activity_links.link_ends},
     search_providers=SEARCH_PROVIDERS,
+    markdown_fields=MARKDOWN_FIELDS,
+    plain_text_fields=PLAIN_TEXT_FIELDS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,

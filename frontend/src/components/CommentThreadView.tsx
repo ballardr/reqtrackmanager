@@ -22,10 +22,11 @@ import { useState } from "react";
 
 import type { RecordComment, RecordCommentPin } from "../api/recordComments";
 import { useStrings } from "../context/TerminologyContext";
-import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { IconAction } from "./IconAction";
 import { ItemRow } from "./ItemRow";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownView } from "./MarkdownView";
 
 /**
  * @param pin The thread's pin (its resolved state and what the viewer may do with it).
@@ -115,7 +116,7 @@ export function CommentThreadView({
           </ItemRow>
           {editing?.id === c.id ? (
             <div className="stack" style={{ gap: "var(--space-1)" }}>
-              <AutoGrowTextarea rows={2} value={editing.body} onChange={(body) => setEditing({ id: c.id, body })} aria-label={text.edit} />
+              <MarkdownEditor simple toolbar={false} rows={2} value={editing.body} onChange={(body) => setEditing({ id: c.id, body })} ariaLabel={text.edit} />
               <div className="row">
                 <button type="button" className="btn btn-sm btn-primary" disabled={busy || !editing.body.trim()} onClick={() => void saveEdit()}>
                   {text.save}
@@ -124,7 +125,7 @@ export function CommentThreadView({
               </div>
             </div>
           ) : (
-            <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{c.body}</div>
+            <MarkdownView text={c.body} />
           )}
         </div>
         );
@@ -132,7 +133,10 @@ export function CommentThreadView({
       {error && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{error}</p>}
       {canReply && onReply && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>
-          <AutoGrowTextarea rows={2} value={reply} onChange={setReply} placeholder={text.replyPlaceholder} aria-label={text.reply} />
+          <MarkdownEditor
+            simple toolbar={false} rows={2} value={reply} onChange={setReply} ariaLabel={text.reply}
+            textareaProps={{ placeholder: text.replyPlaceholder }}
+          />
           <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
             <button type="button" className="btn btn-sm btn-primary" disabled={busy || !reply.trim()} onClick={() => void post()}>
               {text.reply}

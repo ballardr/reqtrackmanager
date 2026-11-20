@@ -14,6 +14,7 @@ import type { AnnouncementNotice } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { AnnouncementSeverityMark } from "./AnnouncementSeverityMark";
 import { Badge } from "./Badge";
+import { MarkdownView } from "./MarkdownView";
 
 /**
  * @param notices The active notices, most severe first.
@@ -45,7 +46,7 @@ export function AnnouncementNotices({
                 {showScope && <Badge>{notice.scope === "server" ? strings.scopeServer : strings.scopeOrganisation}</Badge>}
                 <strong>{notice.title}</strong>
               </div>
-              {notice.body && <p className="announcement__body">{notice.body}</p>}
+              {notice.body && <MarkdownView className="announcement__body" text={notice.body} />}
             </div>
             {onDismiss && notice.dismissible && (
               <button

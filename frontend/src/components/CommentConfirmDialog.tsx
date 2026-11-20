@@ -53,7 +53,7 @@ export function CommentConfirmDialog({
       message={
         <span className="stack" style={{ gap: "var(--space-3)" }}>
           <span>{intro}</span>
-          <TextAreaField
+          <TextAreaField plainText="A workflow step's comment is stored in the audit event and shown as one line in the activity list"
             helpNotNeeded
             required={commentRequired}
             label={commentLabel}
