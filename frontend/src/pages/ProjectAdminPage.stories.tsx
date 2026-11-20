@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type {
   ActionTypeDefinition,
   Category,
@@ -592,8 +592,30 @@ export const StagesTabDeleteReassignsViaDialog: Story = {
   },
 };
 
-/** The same dialog serves categories, listing the others as "Component / Category". */
-export const StructureTabDeleteCategoryReassignsViaDialog: Story = {
+/** A category is deleted with no target first, after a plain confirmation; an empty one (here the project's
+ * only category) goes in one step. */
+export const StructureTabDeleteEmptyCategoryNeedsNoTarget: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Login")).toBeInTheDocument());
+    const row = canvas.getByDisplayValue("Login").closest<HTMLElement>(".stack")!;
+    await userEvent.click(within(row).getByTitle("Delete this category"));
+
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete this category" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/categories/cat1`));
+    await expect(api.delete).toHaveBeenCalledTimes(1);
+  },
+};
+
+/** A 409 from the plain delete opens the reassignment dialog with the server's own message; the second delete
+ * carries `reassign_to`, and the other categories are listed as "Component / Category". */
+export const StructureTabDeleteCategoryInUseReassignsViaDialog: Story = {
   beforeEach: () => {
     mockProjectAdminApis({
       categories: [
@@ -601,7 +623,9 @@ export const StructureTabDeleteCategoryReassignsViaDialog: Story = {
         { id: "cat2", project_id: PROJECT_ID, component_id: "c1", name: "Logout", prefix: "OUT", sort_order: 1 },
       ],
     });
-    spyOn(api, "delete").mockResolvedValue(undefined);
+    spyOn(api, "delete")
+      .mockRejectedValueOnce(new ApiError(409, "This category is still in use (requirements: 2, placed records: 0) — move them first."))
+      .mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -609,10 +633,15 @@ export const StructureTabDeleteCategoryReassignsViaDialog: Story = {
     await waitFor(() => expect(canvas.getByDisplayValue("Logout")).toBeInTheDocument());
     const row = canvas.getByDisplayValue("Logout").closest<HTMLElement>(".stack")!;
     await userEvent.click(within(row).getByTitle("Delete this category"));
+    await userEvent.click(within(await within(document.body).findByRole("dialog", { name: "Delete this category" })).getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/categories/cat2`));
 
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete “Logout”?" }));
+    await expect(dialog.getByText(/requirements: 2, placed records: 0/)).toBeInTheDocument();
+    const confirm = dialog.getByRole("button", { name: "Confirm delete" });
+    await expect(confirm).toBeDisabled();
     await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Reassign existing items to" }), "Authentication / Login");
-    await userEvent.click(dialog.getByRole("button", { name: "Confirm delete" }));
+    await userEvent.click(confirm);
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/categories/cat2?reassign_to=cat1`));
   },
 };

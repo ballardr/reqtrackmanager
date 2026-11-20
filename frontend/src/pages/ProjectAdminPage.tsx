@@ -265,7 +265,10 @@ export function ProjectAdminPage() {
   const [componentEdits, setComponentEdits] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deletingComponentId, setDeletingComponentId] = useState<string | null>(null);
   const [categoryEdits, setCategoryEdits] = useState<Record<string, { name: string; prefix: string }>>({});
-  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  // The category whose plain delete is awaiting confirmation, and the one a plain delete found in use (with
+  // the server's message), which opens the reassignment dialog.
+  const [confirmingCategoryId, setConfirmingCategoryId] = useState<string | null>(null);
+  const [categoryInUse, setCategoryInUse] = useState<{ id: string; message: string } | null>(null);
   const [structureError, setStructureError] = useState<string | null>(null);
 
   const [settingsName, setSettingsName] = useState("");
@@ -959,12 +962,24 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** Deletes a category, moving its requirements to `reassignTo`. Throws on failure so
-   * `DeleteInUseDialog` can show the error in place. */
-  async function deleteCategory(categoryId: string, reassignTo: string) {
-    await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}?reassign_to=${reassignTo}`);
+  /** Deletes a category. Without `reassignTo` the server removes it only when nothing is attached and answers
+   * 409 with the counts otherwise (the plain-delete-first contract Action Types use), which opens the
+   * reassignment dialog. Throws on a failure of the reassigning delete so `DeleteInUseDialog` can show the
+   * error in place; a failure of the plain delete is shown with the other structure errors. */
+  async function deleteCategory(categoryId: string, reassignTo?: string) {
+    await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}${reassignTo ? `?reassign_to=${reassignTo}` : ""}`);
     showToast(strings.mutation.success("{category}", strings.mutation.past.delete));
     reload();
+  }
+
+  async function attemptDeleteCategory(categoryId: string) {
+    setStructureError(null);
+    try {
+      await deleteCategory(categoryId);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) setCategoryInUse({ id: categoryId, message: err.message });
+      else setStructureError(err instanceof Error ? err.message : strings.common.error);
+    }
   }
 
   async function addActionType(name: string) {
@@ -2037,7 +2052,6 @@ export function ProjectAdminPage() {
                 {ownCategories.map((cat, catIdx) => {
                   const categoryEdit = categoryEdits[cat.id] ?? { name: cat.name, prefix: cat.prefix };
                   const categoryDirty = categoryEdit.name !== cat.name || categoryEdit.prefix !== cat.prefix;
-                  const otherCategories = categories.filter((other) => other.id !== cat.id);
                   return (
                   <div key={cat.id} className="stack" style={{ gap: "0.3rem" }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
@@ -2082,10 +2096,9 @@ export function ProjectAdminPage() {
                         </button>
                         <button
                           className="btn btn-danger"
-                          disabled={otherCategories.length === 0}
-                          title={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
-                          aria-label={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
-                          onClick={() => setDeletingCategoryId(cat.id)}
+                          title={strings.admin.deleteCategory}
+                          aria-label={strings.admin.deleteCategory}
+                          onClick={() => setConfirmingCategoryId(cat.id)}
                         >
                           <Trash2 />
                         </button>
@@ -2839,18 +2852,31 @@ export function ProjectAdminPage() {
           onClose={() => setDeletingStageId(null)}
         />
       )}
-      {deletingCategoryId && categories.some((cat) => cat.id === deletingCategoryId) && (
+      {confirmingCategoryId && categories.some((cat) => cat.id === confirmingCategoryId) && (
+        <ConfirmDialog
+          title={strings.admin.deleteCategory}
+          message={strings.admin.deleteCategoryConfirm(categories.find((cat) => cat.id === confirmingCategoryId)!.name)}
+          confirmLabel={strings.admin.confirmDelete}
+          onConfirm={() => {
+            const id = confirmingCategoryId;
+            setConfirmingCategoryId(null);
+            void attemptDeleteCategory(id);
+          }}
+          onCancel={() => setConfirmingCategoryId(null)}
+        />
+      )}
+      {categoryInUse && categories.some((cat) => cat.id === categoryInUse.id) && (
         <DeleteInUseDialog
-          title={strings.admin.deleteInUseTitle(categories.find((cat) => cat.id === deletingCategoryId)!.name)}
-          summary={strings.admin.deleteCategoryReassignSummary}
+          title={strings.admin.deleteInUseTitle(categories.find((cat) => cat.id === categoryInUse.id)!.name)}
+          summary={categoryInUse.message}
           candidates={categories
-            .filter((other) => other.id !== deletingCategoryId)
+            .filter((other) => other.id !== categoryInUse.id)
             .map((other) => {
               const otherComponent = components.find((comp) => comp.id === other.component_id);
               return { id: other.id, label: `${otherComponent ? `${otherComponent.name} / ` : ""}${other.name}` };
             })}
-          onMove={(replacementId) => deleteCategory(deletingCategoryId, replacementId)}
-          onClose={() => setDeletingCategoryId(null)}
+          onMove={(replacementId) => deleteCategory(categoryInUse.id, replacementId)}
+          onClose={() => setCategoryInUse(null)}
         />
       )}
       </ResourceMenu>

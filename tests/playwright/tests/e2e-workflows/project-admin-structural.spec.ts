@@ -6,7 +6,8 @@ import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs
  * Job to be done: a project's structural admin — stages, and the
  * component/category tree — supports renaming and deleting existing items,
  * with deletion requiring reassignment of whatever the item currently
- * governs to another existing one (C-G-07/C-E-01/C-E-02), except a stage
+ * governs to another existing one (C-G-07/C-E-01/C-E-02; a category that
+ * governs nothing is deleted with no target), except a stage
  * with an approved baseline, which is refused outright rather than
  * reassigned (a baseline is an immutable historical snapshot, C-G-10).
  * Also covers project archiving (C-P-01).
@@ -51,6 +52,11 @@ async function openStructuralProject(page: Page, label: string) {
   return { projectId, projectName, authHeaders };
 }
 
+/** Confirms the plain delete's confirmation (the first step of every category delete). */
+async function confirmDelete(page: Page) {
+  await page.getByRole("dialog", { name: "Delete this category" }).getByRole("button", { name: "Confirm delete" }).click();
+}
+
 /** Picks the reassignment target in the in-use delete dialog (`DeleteInUseDialog`) and confirms. */
 async function reassignTo(page: Page, label: string) {
   const dialog = page.getByRole("dialog");
@@ -70,7 +76,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
   installCleanupHook();
 
   test("components and categories can be renamed and deleted with reassignment", async ({ page }) => {
-    await openStructuralProject(page, "Components");
+    const { projectId, authHeaders } = await openStructuralProject(page, "Components");
     const componentsSection = componentsSectionOf(page);
 
     // Before any additions there are 3 "Name"-placeholder fields in
@@ -126,11 +132,26 @@ test.describe("project admin: structural rename/delete and archiving", () => {
     });
 
     // Category order is Functional(HW,0)/Performance(SW,1)/Timing(FW,2)/
-    // Safety(FW,3)/Calibration(SEN,4) — every category's delete button is
-    // enabled (the "at least one other category exists" check is
-    // project-wide, not per-component), so this needs explicit indices too.
-    await test.step("deleting a category reassigns whatever it governs, first within then across components", async () => {
+    // Safety(FW,3)/Calibration(SEN,4); every category's delete button is
+    // always enabled, so this needs explicit indices too. A delete is plain
+    // first: only a category that still governs something opens the
+    // reassignment dialog.
+    await test.step("deleting a category that governs a requirement offers a reassignment, first within then across components", async () => {
+      const base = `http://localhost:8000/api/v1/projects/${projectId}`;
+      const components: { id: string; prefix: string }[] = await (await page.request.get(`${base}/components`, { headers: authHeaders })).json();
+      const categories: { id: string; prefix: string }[] = await (await page.request.get(`${base}/categories`, { headers: authHeaders })).json();
+      const created = await page.request.post(`${base}/requirements`, {
+        headers: authHeaders,
+        data: {
+          name: "Governed by Timing",
+          component_id: components.find((c) => c.prefix === "FW")!.id,
+          category_id: categories.find((c) => c.prefix === "TIM")!.id,
+        },
+      });
+      expect(created.ok()).toBeTruthy();
+
       await componentsSection.getByTitle("Delete this category").nth(2).click(); // Timing
+      await confirmDelete(page);
       // The reassign dropdown always prefixes a category option with its
       // owning component's name ("ComponentName / CategoryName"), even
       // within the same component.
@@ -139,6 +160,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
 
       // Timing's removal shifted Safety from index 3 to index 2.
       await componentsSection.getByTitle("Delete this category").nth(2).click(); // Safety
+      await confirmDelete(page);
       await reassignTo(page, "Sensors / Calibration");
       await expect(page.locator('input.input[value="Safety"]:not([placeholder])')).toHaveCount(0);
     });
@@ -150,6 +172,14 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await componentsSection.getByTitle("Delete this component").click();
       await page.getByRole("button", { name: "Confirm delete" }).click();
       await expect(page.locator('input.input[value="Firmware"]:not([placeholder])')).toHaveCount(0);
+    });
+
+    await test.step("an empty category is deleted with no replacement to choose", async () => {
+      // Hardware's seeded Functional category is still first and holds nothing.
+      await componentsSection.getByTitle("Delete this category").nth(0).click();
+      await confirmDelete(page);
+      await expect(page.locator('input.input[value="Functional"]:not([placeholder])')).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     });
   });
 

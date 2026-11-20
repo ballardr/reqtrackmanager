@@ -62,6 +62,18 @@ Links an artefact to another record of the same project, or of a parent or child
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_type_id*` (string), `direction*` (string), `other_type*` (string), `other_id*` (string), `other_project_id` (string)
 
+## `create_category` (write)
+
+Creates a category under one component, at the end of that component's list. Needs the project manager role. A category cannot be moved to another component afterwards.
+
+Parameters: `project_id` (string), `component_id*` (string), `name*` (string), `prefix*` (string)
+
+## `create_component` (write)
+
+Creates a component (the top level of a project's structure) at the end of the list. Needs the project manager role.
+
+Parameters: `project_id` (string), `name*` (string), `prefix*` (string)
+
 ## `create_report_layout` (write)
 
 Creates a custom report layout and its version 1. Needs the layout-management permission for the scope.
@@ -85,6 +97,18 @@ Parameters: `project_id` (string), `change_request_id*` (string), `approve*` (bo
 Removes a link touching an artefact. Irreversible: confirm with the user first.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_id*` (string)
+
+## `delete_category` (write)
+
+Deletes an empty category. Refused (409, with the counts) while any requirement or placed record is in it: move those to another category first (`update_requirement` with a new `category_id`). The check is made by the server in the same step as the delete, so nothing can be lost. A project's only category can be deleted once it is empty. Needs the project manager role.
+
+Parameters: `project_id` (string), `category_id*` (string)
+
+## `delete_component` (write)
+
+Deletes an empty component. Refused (409) while it still has categories or records placed in it: delete or move those first. Needs the project manager role.
+
+Parameters: `project_id` (string), `component_id*` (string)
 
 ## `delete_report_layout` (write)
 
@@ -236,6 +260,12 @@ Lists the link types usable from an artefact, and what can sit at the other end:
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `other_type` (string), `other_project_id` (string)
 
+## `list_categories` (read)
+
+Lists a project's categories, each nested under one component, in display order.
+
+Parameters: `project_id` (string), `component_id` (string)
+
 ## `list_change_request_comments` (read)
 
 Lists the discussion thread on a change request.
@@ -259,6 +289,12 @@ Parameters: `project_id` (string), `change_request_id*` (string)
 Lists change requests in a project.
 
 Parameters: `project_id` (string), `status` (string)
+
+## `list_components` (read)
+
+Lists a project's components, in display order. A requirement belongs to one component and, within it, one category; `create_requirement` and `list_requirements` take these ids.
+
+Parameters: `project_id` (string)
 
 ## `list_custom_roles` (read)
 
@@ -358,11 +394,29 @@ Lists the report snippets authors have saved for a scope, to manage them: the pr
 
 Parameters: `project_id` (string), `organization_id` (string)
 
+## `list_stages` (read)
+
+Lists a project's stages, in order: the `target_stage_id` that `create_requirement` and `update_requirement` take.
+
+Parameters: `project_id` (string)
+
 ## `list_tags` (read)
 
 Lists the tags a project offers and how new tags are treated.
 
 Parameters: `project_id` (string)
+
+## `move_category` (write)
+
+Moves a category one place up or down among the categories of its component (never to another component). Needs the project manager role.
+
+Parameters: `project_id` (string), `category_id*` (string), `direction*` (string)
+
+## `move_component` (write)
+
+Moves a component one place up or down in the display order. Needs the project manager role.
+
+Parameters: `project_id` (string), `component_id*` (string), `direction*` (string)
 
 ## `parse_report_layout_text` (read)
 
@@ -447,6 +501,18 @@ Parameters: `snippet_id*` (string), `hidden*` (boolean), `project_id` (string)
 Changes one external reference: only the fields you pass change.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `reference_id*` (string), `system_id` (string), `key` (string), `url` (string), `clear_url` (boolean), `note` (string), `role` (string), `clear_role` (boolean)
+
+## `update_category` (write)
+
+Renames a category and/or changes its prefix. Needs the project manager role.
+
+Parameters: `project_id` (string), `category_id*` (string), `name*` (string), `prefix*` (string)
+
+## `update_component` (write)
+
+Renames a component and/or changes its prefix. Needs the project manager role.
+
+Parameters: `project_id` (string), `component_id*` (string), `name*` (string), `prefix*` (string)
 
 ## `update_report_layout` (write)
 

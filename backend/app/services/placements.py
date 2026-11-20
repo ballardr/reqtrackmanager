@@ -11,7 +11,8 @@ Responsibilities:
   events the record's Activity tab reads.
 - Answer "which records sit in these components or categories" for list endpoints (`PlacementFilter`).
 - Keep the tree and the placements consistent when the tree changes: a deleted category's placements move to
-  the replacement (`reassign_category`), and a component that records still sit in cannot be deleted
+  the replacement (`reassign_category`), a category that records still sit in cannot be deleted without one
+  (`category_placement_count`), and a component that records still sit in cannot be deleted
   (`component_placement_count`).
 
 Design decisions:
@@ -335,6 +336,13 @@ def reassign_category(db: Session, category_id: uuid.UUID, target: ProjectCatego
         .values(category_id=target.id, component_id=target.component_id)
     ))
     return dropped + moved
+
+
+def category_placement_count(db: Session, category_id: uuid.UUID) -> int:
+    """How many placements name the category; a category with any cannot be deleted without a replacement."""
+    return db.scalar(
+        select(func.count()).select_from(ArtefactPlacement).where(ArtefactPlacement.category_id == category_id)
+    ) or 0
 
 
 def component_placement_count(db: Session, component_id: uuid.UUID) -> int:

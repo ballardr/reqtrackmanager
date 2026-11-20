@@ -150,7 +150,9 @@ _WRITE_MODE_INSTRUCTIONS = (
     "that point a change request is required instead, and decide_change_request only *decides* an "
     "already-submitted one; there is no tool to create or submit one. create/save/update/delete_report_layout "
     "author custom report layouts (configuration, subject to the layout-management permission). run_report_pack "
-    "queues a report pack to be produced in the background as a zip, as the caller."
+    "queues a report pack to be produced in the background as a zip, as the caller. create/update/move/delete_component "
+    "and _category structure a project: a requirement needs a component and a category, so a new project is set up "
+    "with components, then categories, then requirements (delete only removes an empty one)."
 )
 
 mcp = FastMCP(
@@ -238,6 +240,29 @@ def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str
 
 # A record's own code (`REQ-001`, `SYS-PERF-014`); a clause reference such as `A.5.15` is not one.
 _RECORD_CODE = re.compile(r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+")
+
+
+def _require_direction(value: str) -> str:
+    """Validates a reorder direction: "up" or "down".
+
+    Raises:
+        ValueError: For anything else, before a request is made.
+    """
+    if value not in ("up", "down"):
+        raise ValueError("'direction' must be \"up\" or \"down\".")
+    return value
+
+
+def _require_structure_text(value: str, field_name: str) -> str:
+    """Trims a component or category name or prefix and rejects a blank one.
+
+    Raises:
+        ValueError: If the value is empty after trimming.
+    """
+    cleaned = value.strip() if isinstance(value, str) else ""
+    if not cleaned:
+        raise ValueError(f"'{field_name}' must not be empty.")
+    return cleaned
 
 
 def _require_snippet_key(value: str) -> str:
@@ -611,8 +636,8 @@ async def list_requirements(
             requirement's name or its unique code (e.g. "SW-PERF-014") —
             use this to find a specific requirement by code.
         keyword: Optional match against one of a requirement's tags (its keywords).
-        component_id: Optional UUID to filter to one component.
-        category_id: Optional UUID to filter to one category.
+        component_id: Optional UUID to filter to one component (from `list_components`).
+        category_id: Optional UUID to filter to one category (from `list_categories`).
         include_archived: Whether to include archived requirements (excluded by default).
         tags: Optional tag names; only requirements carrying them are listed
             (case-insensitive). `tag_mode` "any" (default) needs one of them,
@@ -971,6 +996,61 @@ async def list_link_candidate_projects(project_id: str | None = None) -> dict:
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/link-candidate-projects")
+    return response.json()
+
+
+@mcp.tool
+async def list_components(project_id: str | None = None) -> list[dict]:
+    """Lists a project's components, in display order. A requirement belongs to one component and, within it, one
+    category; `create_requirement` and `list_requirements` take these ids.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        Each component's `id`, `name`, `prefix` (the first part of the code of every requirement created in it, for
+        example `SW` in `SW-PERF-014`) and `sort_order`. An empty list means the project has no structure yet: add
+        components with `create_component`, then categories with `create_category`.
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/components")
+    return response.json()
+
+
+@mcp.tool
+async def list_categories(project_id: str | None = None, component_id: str | None = None) -> list[dict]:
+    """Lists a project's categories, each nested under one component, in display order.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        component_id: Optional component UUID (from `list_components`); only that component's categories.
+
+    Returns:
+        Each category's `id`, `component_id`, `name`, `prefix` (the second part of a requirement's code, for example
+        `PERF` in `SW-PERF-014`) and `sort_order`.
+    """
+    pid = _require_project_id(project_id)
+    wanted = _require_uuid(component_id, "component_id") if component_id else None
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/categories")
+    rows = response.json()
+    if wanted is None:
+        return rows
+    return [row for row in rows if str(row.get("component_id")).lower() == wanted.lower()]
+
+
+@mcp.tool
+async def list_stages(project_id: str | None = None) -> list[dict]:
+    """Lists a project's stages, in order: the `target_stage_id` that `create_requirement` and
+    `update_requirement` take.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        Each stage's `id`, `name`, its phase and order.
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/stages")
     return response.json()
 
 
@@ -1920,8 +2000,9 @@ if MCP_WRITES_ENABLED:
         Args:
             project_id: The project's UUID (from `list_projects`).
             name: The requirement's title.
-            component_id: UUID of an existing component in this project.
-            category_id: UUID of an existing category nested under that component.
+            component_id: UUID of an existing component in this project (from `list_components`; a new
+                project has none until `create_component`).
+            category_id: UUID of an existing category nested under that component (from `list_categories`).
             reasoning: Why this requirement exists.
             clarification: Additional clarifying detail.
             description: Free-form long-form description.
@@ -1929,7 +2010,7 @@ if MCP_WRITES_ENABLED:
                 "project_group", "id": uuid}`; defaults to the caller's own
                 account if omitted. A group stands for all its members.
             target_stage_id: UUID of the project stage this requirement
-                targets; defaults to the project's earliest stage if omitted.
+                targets (from `list_stages`); defaults to the project's earliest stage if omitted.
             level: "requirement", "recommended", or "optional".
             keywords: Optional list of search keywords (C-M-01).
             custom_fields: Optional map of this project's custom field ids
@@ -2011,10 +2092,10 @@ if MCP_WRITES_ENABLED:
             requirement_id: The requirement's UUID (from `list_requirements`).
             name / reasoning / clarification / description: Content fields; omit any you're not changing.
             component_id / category_id: Move the requirement to a different
-                component/category; omit to leave it where it is.
+                component/category (ids from `list_components` / `list_categories`); omit to leave it where it is.
             owner: Reassign the requirement's owner (`{"type": "user" | "org_group" |
                 "project_group", "id": uuid}`); omit to leave unchanged.
-            target_stage_id: Retarget which project stage this requirement is for; omit to leave unchanged.
+            target_stage_id: Retarget which project stage this requirement is for (from `list_stages`); omit to leave unchanged.
             level: "requirement", "recommended", or "optional"; omit to leave unchanged.
             keywords: Replaces the requirement's tags (its keywords) if given; omit to leave them unchanged.
             custom_fields: Replaces the full custom field value map if given; omit to leave unchanged.
@@ -2057,6 +2138,176 @@ if MCP_WRITES_ENABLED:
             body["keywords"] = keywords
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
         return response.json()
+
+    # --- Project structure (components and categories) ---------------------
+    #
+    # Each is a thin call to the existing endpoint, so the project-manage
+    # permission, the duplicate-prefix checks, the audit events and the
+    # category-under-its-component rule apply unchanged. A requirement cannot
+    # be created without a component and a category, so these let an agent
+    # structure a new project. Deleting is limited to an empty item; moving
+    # requirements to another category is done with `update_requirement`.
+
+    @mcp.tool
+    async def create_component(project_id: str | None = None, *, name: str, prefix: str) -> dict:
+        """Creates a component (the top level of a project's structure) at the end of the list. Needs the project
+        manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            name: The component's name, for example "Software".
+            prefix: A short code, upper-cased for you, unique among the project's components. It forms the start of
+                the code of every requirement created in it (`SW` gives `SW-PERF-014`). Renaming a prefix later
+                affects only requirements created afterwards; existing codes never change.
+
+        Returns:
+            The new component's `id`, `name`, `prefix` and `sort_order`. Next: `create_category` under it.
+        """
+        pid = _require_project_id(project_id)
+        body = {"name": _require_structure_text(name, "name"), "prefix": _require_structure_text(prefix, "prefix").upper()}
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/components", json=body)
+        return response.json()
+
+    @mcp.tool
+    async def update_component(project_id: str | None = None, *, component_id: str, name: str, prefix: str) -> dict:
+        """Renames a component and/or changes its prefix. Needs the project manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            component_id: The component's UUID (from `list_components`).
+            name: The component's name (pass the current one to keep it).
+            prefix: The prefix, upper-cased for you and unique among the components (pass the current one to keep
+                it). Existing requirement codes never change; only requirements created afterwards use the new one.
+
+        Returns:
+            The component after the change.
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(component_id, "component_id")
+        body = {"name": _require_structure_text(name, "name"), "prefix": _require_structure_text(prefix, "prefix").upper()}
+        response = await _call_backend("PATCH", f"/api/v1/projects/{pid}/components/{cid}", json=body)
+        return response.json()
+
+    @mcp.tool
+    async def move_component(project_id: str | None = None, *, component_id: str, direction: str) -> dict:
+        """Moves a component one place up or down in the display order. Needs the project manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            component_id: The component's UUID (from `list_components`).
+            direction: "up" or "down".
+
+        Returns:
+            The component after the move (its new `sort_order`).
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(component_id, "component_id")
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/components/{cid}/move", json={"direction": _require_direction(direction)}
+        )
+        return response.json()
+
+    @mcp.tool
+    async def delete_component(project_id: str | None = None, *, component_id: str) -> dict:
+        """Deletes an empty component. Refused (409) while it still has categories or records placed in it: delete
+        or move those first. Needs the project manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            component_id: The component's UUID (from `list_components`).
+
+        Returns:
+            `{"deleted": true, "component_id": ...}`.
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(component_id, "component_id")
+        await _call_backend("DELETE", f"/api/v1/projects/{pid}/components/{cid}")
+        return {"deleted": True, "component_id": cid}
+
+    @mcp.tool
+    async def create_category(project_id: str | None = None, *, component_id: str, name: str, prefix: str) -> dict:
+        """Creates a category under one component, at the end of that component's list. Needs the project manager
+        role. A category cannot be moved to another component afterwards.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            component_id: The parent component's UUID (from `list_components`); it must belong to this project.
+            name: The category's name, for example "Performance".
+            prefix: A short code, upper-cased for you, unique within the component. It forms the second part of the
+                code of every requirement created in it (`PERF` gives `SW-PERF-014`). Renaming a prefix later
+                affects only requirements created afterwards.
+
+        Returns:
+            The new category's `id`, `component_id`, `name`, `prefix` and `sort_order`: the `category_id` that
+            `create_requirement` takes.
+        """
+        pid = _require_project_id(project_id)
+        body = {
+            "component_id": _require_uuid(component_id, "component_id"),
+            "name": _require_structure_text(name, "name"),
+            "prefix": _require_structure_text(prefix, "prefix").upper(),
+        }
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/categories", json=body)
+        return response.json()
+
+    @mcp.tool
+    async def update_category(project_id: str | None = None, *, category_id: str, name: str, prefix: str) -> dict:
+        """Renames a category and/or changes its prefix. Needs the project manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            category_id: The category's UUID (from `list_categories`).
+            name: The category's name (pass the current one to keep it).
+            prefix: The prefix, upper-cased for you and unique within its component (pass the current one to keep
+                it). Existing requirement codes never change; only requirements created afterwards use the new one.
+
+        Returns:
+            The category after the change.
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(category_id, "category_id")
+        body = {"name": _require_structure_text(name, "name"), "prefix": _require_structure_text(prefix, "prefix").upper()}
+        response = await _call_backend("PATCH", f"/api/v1/projects/{pid}/categories/{cid}", json=body)
+        return response.json()
+
+    @mcp.tool
+    async def move_category(project_id: str | None = None, *, category_id: str, direction: str) -> dict:
+        """Moves a category one place up or down among the categories of its component (never to another
+        component). Needs the project manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            category_id: The category's UUID (from `list_categories`).
+            direction: "up" or "down".
+
+        Returns:
+            The category after the move (its new `sort_order`).
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(category_id, "category_id")
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/categories/{cid}/move", json={"direction": _require_direction(direction)}
+        )
+        return response.json()
+
+    @mcp.tool
+    async def delete_category(project_id: str | None = None, *, category_id: str) -> dict:
+        """Deletes an empty category. Refused (409, with the counts) while any requirement or placed record is in
+        it: move those to another category first (`update_requirement` with a new `category_id`). The check is
+        made by the server in the same step as the delete, so nothing can be lost. A project's only category can
+        be deleted once it is empty. Needs the project manager role.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            category_id: The category's UUID (from `list_categories`).
+
+        Returns:
+            `{"deleted": true, "category_id": ...}`.
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(category_id, "category_id")
+        await _call_backend("DELETE", f"/api/v1/projects/{pid}/categories/{cid}")
+        return {"deleted": True, "category_id": cid}
 
     # --- Approval-type tools (AI approval via MCP) --------------------------
     #

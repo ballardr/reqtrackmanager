@@ -38,6 +38,7 @@ Twenty-two read tools, always available:
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, parent projects and child projects the caller can open (siblings and unrelated projects never appear) |
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
+| `list_components` / `list_categories` / `list_stages` | The project's components, categories (optionally one component's) and stages in display order, with the ids that `create_requirement` and `list_requirements` take; an empty `list_components` means the project has no structure yet |
 | `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
 | `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
 | `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
@@ -55,12 +56,14 @@ Twenty-two read tools, always available:
 | `list_my_reviews_due` | Requirements assigned to the caller with a review date that has passed, across every project |
 | `list_project_reviews_due` | Every requirement in a project with a review date that has passed, regardless of assigned reviewer |
 
-Plus seven write tools, only when [write mode](#write-mode) is enabled:
+Plus these write tools, only when [write mode](#write-mode) is enabled:
 
 | Tool | Purpose |
 | --- | --- |
 | `create_requirement` | Creates a new requirement (always starts in "draft") |
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `create_component` / `update_component` / `move_component` / `delete_component` | Structures a project: adds, renames or re-prefixes, reorders (`up` or `down`) and deletes a component. Delete only when it has no categories and no placed records (409 otherwise). Needs the project manager role; the prefix is unique and forms the requirement code |
+| `create_category` / `update_category` / `move_category` / `delete_category` | The same for a category under one component (never moved to another component). `delete_category` takes no replacement: it succeeds only when no requirement and no placed record is in the category, checked by the server in the same step (409 with the counts otherwise), so move requirements first with `update_requirement` |
 | `create_artefact_link` | Links an artefact to another record of the same project, or of a parent or child project (`other_project_id`), from either end — subject to the organisation's link restrictions, each link type's nesting scope and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
@@ -82,7 +85,7 @@ A backend module can also contribute its own tools here, prefixed with that modu
 
 ## Write mode
 
-On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the seven write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
+On by default (`MCP_WRITES_ENABLED` unset or anything other than `false`/`0`/`no`/`off` — set it to `false` explicitly to opt a deployment back into read-only-only) — the bundled dev/test stack and the production `docker-compose.yml` at the repo root both default it to `true`. When it's off, none of the write tools below exist at all: an MCP client's tool list never mentions them, rather than seeing them fail at call time.
 
 **`create_requirement`/`update_requirement`: requirement content only, never workflow state.** `update_requirement` has no `status` parameter at all — there is no way to make it approve, complete, or otherwise transition a requirement through either tool, regardless of what the calling account's own role could do directly via the API. Attempting to edit an already-approved (locked) requirement is rejected with a clear error telling the caller a change request is needed instead.
 

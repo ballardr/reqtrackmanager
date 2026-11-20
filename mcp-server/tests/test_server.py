@@ -53,6 +53,7 @@ READ_ONLY_TOOLS = {
     # Fine-Grained Access Control — read-only permission-vocabulary and
     # custom-role-definition tools; no grant-roster tool exists (see docs/decisions.md).
     "list_permissions", "list_custom_roles", "get_custom_role",
+    "list_components", "list_categories", "list_stages",
     "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "list_external_systems", "list_organization_external_systems",
     "get_artefact_external_references", "find_artefacts_by_external_reference", "get_record_by_code", "search_records",
     "get_record_list_report",
@@ -68,6 +69,8 @@ READ_ONLY_TOOLS = {
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
+    "create_component", "update_component", "move_component", "delete_component",
+    "create_category", "update_category", "move_category", "delete_category",
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
     "add_artefact_external_reference", "update_artefact_external_reference", "remove_artefact_external_reference",
     "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",
@@ -436,6 +439,76 @@ async def test_create_requirement_creates_a_real_draft_requirement(admin_token):
     # Always starts in draft — no way to create pre-approved (see this
     # tool's own docstring).
     assert created.data["status"] == "draft"
+
+
+def _create_empty_test_project(admin_token: str) -> str:
+    """Creates a throwaway project with no components or categories (a project is not something the MCP
+    server creates)."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    org_id = httpx.get(f"{REQTRACK_API_URL}/api/v1/orgs", params={"mine": "true"}, headers=headers, timeout=10).json()[0]["id"]
+    project = httpx.post(
+        f"{REQTRACK_API_URL}/api/v1/projects",
+        json={"organization_id": org_id, "name": f"MCP Structure Test {uuid.uuid4().hex[:8]}", "summary": ""},
+        headers=headers, timeout=10,
+    )
+    project.raise_for_status()
+    return project.json()["id"]
+
+
+@pytest.mark.asyncio
+@requires_write_mode
+async def test_a_new_project_is_structured_and_a_requirement_created_using_only_mcp_tools(admin_token):
+    """Components, categories and a requirement through the tools alone; reorder, rename, and the delete rules
+    (an empty item only, and the only category once it is empty)."""
+    project_id = _create_empty_test_project(admin_token)
+    base = {"project_id": project_id}
+    async with _client(admin_token) as client:
+        assert (await client.call_tool("list_components", base)).data == []
+
+        software = (await client.call_tool("create_component", {**base, "name": "Software", "prefix": "sw"})).data
+        hardware = (await client.call_tool("create_component", {**base, "name": "Hardware", "prefix": "HW"})).data
+        assert software["prefix"] == "SW"
+        with pytest.raises(ToolError, match="prefix already exists"):
+            await client.call_tool("create_component", {**base, "name": "Again", "prefix": "SW"})
+
+        perf = (await client.call_tool("create_category", {**base, "component_id": software["id"], "name": "Performance", "prefix": "perf"})).data
+        safe = (await client.call_tool("create_category", {**base, "component_id": software["id"], "name": "Safety", "prefix": "SAF"})).data
+        assert perf["component_id"] == software["id"]
+        with pytest.raises(ToolError, match="prefix already exists"):
+            await client.call_tool("create_category", {**base, "component_id": software["id"], "name": "Dup", "prefix": "PERF"})
+        with pytest.raises(ToolError):
+            await client.call_tool("create_category", {**base, "component_id": str(uuid.uuid4()), "name": "Orphan", "prefix": "ORP"})
+
+        await client.call_tool("move_component", {**base, "component_id": hardware["id"], "direction": "up"})
+        assert [c["name"] for c in (await client.call_tool("list_components", base)).data] == ["Hardware", "Software"]
+        await client.call_tool("move_category", {**base, "category_id": safe["id"], "direction": "up"})
+        assert [c["name"] for c in (await client.call_tool("list_categories", {**base, "component_id": software["id"]})).data] == [
+            "Safety", "Performance",
+        ]
+        assert (await client.call_tool("list_categories", {**base, "component_id": hardware["id"]})).data == []
+        renamed = (await client.call_tool("update_category", {**base, "category_id": perf["id"], "name": "Perf", "prefix": "prf"})).data
+        assert (renamed["name"], renamed["prefix"]) == ("Perf", "PRF")
+        assert (await client.call_tool("list_stages", base)).data
+
+        requirement = (
+            await client.call_tool(
+                "create_requirement",
+                {**base, "name": "Boots quickly", "component_id": software["id"], "category_id": perf["id"]},
+            )
+        ).data
+        assert requirement["unique_code"].startswith("SW-PRF-")
+
+        # A category or component that is in use is refused, and nothing is lost.
+        with pytest.raises(ToolError, match="requirements: 1"):
+            await client.call_tool("delete_category", {**base, "category_id": perf["id"]})
+        with pytest.raises(ToolError):
+            await client.call_tool("delete_component", {**base, "component_id": software["id"]})
+        await client.call_tool("update_requirement", {**base, "requirement_id": requirement["id"], "category_id": safe["id"]})
+        assert (await client.call_tool("delete_category", {**base, "category_id": perf["id"]})).data == {
+            "deleted": True, "category_id": perf["id"],
+        }
+        assert (await client.call_tool("delete_component", {**base, "component_id": hardware["id"]})).data["deleted"] is True
+        assert [c["name"] for c in (await client.call_tool("list_categories", base)).data] == ["Safety"]
 
 
 @pytest.mark.asyncio

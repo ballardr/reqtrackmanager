@@ -1,6 +1,7 @@
 """Tests for renaming and deleting project stages/components/categories:
 rename validation (name/prefix collisions), delete-with-reassignment
-(mandatory `reassign_to`, blocked when no valid target exists), the stage
+(`reassign_to` optional for a category: refused with 409 while it holds anything,
+and a supplied target must exist), the stage
 delete's baseline-immutability guard and multi-version/change-request
 reassignment, the component delete's "must be empty of categories" guard,
 and the category delete's cross-component reassignment (which also fixes up
@@ -330,6 +331,53 @@ def test_delete_category_requires_a_different_existing_reassign_target(client, a
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 400, resp.text
+
+
+def test_delete_category_without_a_target_succeeds_when_empty_including_the_only_category(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    _component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+
+    resp = client.delete(f"/api/v1/projects/{project['id']}/categories/{category_id}", headers=auth_headers(admin_token))
+    assert resp.status_code == 204, resp.text
+
+    categories = client.get(f"/api/v1/projects/{project['id']}/categories", headers=auth_headers(admin_token)).json()
+    assert categories == []
+
+
+def test_delete_category_without_a_target_is_refused_while_a_requirement_is_in_it(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    requirement = _create_requirement(client, admin_token, project["id"], component_id, category_id)
+
+    resp = client.delete(f"/api/v1/projects/{project['id']}/categories/{category_id}", headers=auth_headers(admin_token))
+    assert resp.status_code == 409, resp.text
+    assert "requirements: 1" in resp.json()["detail"]
+
+    # Nothing moved or was lost.
+    kept = client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}", headers=auth_headers(admin_token)
+    ).json()
+    assert kept["category_id"] == category_id
+    categories = client.get(f"/api/v1/projects/{project['id']}/categories", headers=auth_headers(admin_token)).json()
+    assert category_id in [c["id"] for c in categories]
+
+
+def test_delete_category_without_a_target_requires_manage_role(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    _component_id, category_id = create_component_and_category(client, admin_token, project["id"])
+    token = _make_project_member(client, admin_token, org_id, project["id"], "member_plain_delete_cat@example.com", "member")
+
+    resp = client.delete(f"/api/v1/projects/{project['id']}/categories/{category_id}", headers=auth_headers(token))
+    assert resp.status_code == 403
+
+
+def test_delete_category_in_another_project_is_not_found(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id)
+    other = create_project(client, admin_token, org_id, name="Other project")
+    _component_id, category_id = create_component_and_category(client, admin_token, other["id"])
+
+    resp = client.delete(f"/api/v1/projects/{project['id']}/categories/{category_id}", headers=auth_headers(admin_token))
+    assert resp.status_code == 404
 
 
 def test_delete_category_cross_component_reassignment_fixes_up_requirement_component_id(client, admin_token, org_id):

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 18 done 2026-11-21). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 19 done 2026-11-21). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-18 / 26 phases complete.
+19 / 26 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -28,7 +28,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [x] |
 | 17 | Markdown and diagrams in reports and exports | Markdown to PDF, Word, OpenDocument and HTML; one shared browserless Mermaid renderer in the converter container, same engine version and font as the screen, confirmed by a spike | [x] |
 | 18 | Faster test suites and git hooks | Measure first, then shorten the backend, Playwright and Storybook runs, the pipeline around them and the pre-commit hook without removing or weakening a test or a check; targets agreed with the user from the measured baseline; may be built at any point, sooner is better | [x] |
-| 19 | MCP tools: components and categories | List, add, edit, reorder and delete (only when empty) a project's components and categories through MCP, so a new project can be structured by an agent; skill and generated reference updated | [ ] |
+| 19 | MCP tools: components and categories | List, add, edit, reorder and delete (only when empty) a project's components and categories through MCP, so a new project can be structured by an agent; skill and generated reference updated | [x] |
 | 20 | Requirements in several components | A requirement can sit in more than one component and category, with an alias code in each and a Make independent action; decision gate first | [ ] |
 | 21 | Service users with administrator-issued tokens | An organisation administrator creates a service user with no password and no sign-in, then issues and revokes its personal access tokens on its behalf; decision gate first | [ ] |
 | 22 | Components and categories: prefix suggestion and a folder-tree page | Prefix suggested from the name and editable; the Structure page rebuilt as a collapsible tree like the report folders; the requirement component and category choice through the shared tree selector; UI review first | [ ] |
@@ -298,6 +298,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Agent skill: `mcp-server/skill/reqtrack-mcp/SKILL.md` gains the set-up-a-new-project workflow (create components, then categories, then requirements); run `python scripts/generate_skill_reference.py` in `mcp-server/`. `docs/mcp-server.md` tool table updated.
 - Backend tests for the optional `reassign_to` (empty category deleted with none, including a project's only category; refused with a requirement; refused with a placed record; supplied target unchanged), and the UI's category delete dialog and `docs/website/` page checked for wording that assumes a target is always required. Audit event unchanged.
 - Tests: `mcp-server/tests` for each tool (request path, body and error pass-through, including a duplicate prefix and a category under a component of another project); `mcp-server/tests/test_skill.py` stays green; an end-to-end check against the running stack that a new project is structured and a requirement created using only MCP tools.
+- As built: `list_components`, `list_categories` (optionally by component), `list_stages` and the eight write tools in `mcp-server/server.py`; `reassign_to` optional on `DELETE …/categories/{id}` (409 with the counts while anything is attached, a row lock before the counts); the category delete in `ProjectAdminPage` asks one confirmation and opens the reassignment dialog only on a 409; `list_stages` added because `target_stage_id` had no source of ids; skill, generated reference, `docs/mcp-server.md` and the two website pages updated; backend, MCP (unit and against the stack), Storybook and Playwright tests. Not done: an MCP way to list people and groups for `owner` (the description points at the groups lists). See `docs/decisions.md`.
 
 ### Phase 20 — Requirements in several components
 

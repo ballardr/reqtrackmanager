@@ -795,7 +795,7 @@ const en = {
     deleteComponentConfirm: (name: string) => `Delete the component "${name}"? This cannot be undone.`,
     deleteInUseTitle: (name: string) => `Delete “${name}”?`,
     deleteStageReassignSummary: "Every {requirement} and pending {changeRequest} targeting this {stage} moves to the one you choose, with its full history.",
-    deleteCategoryReassignSummary: "Every {requirement} in this {category} moves to the one you choose.",
+    deleteCategoryConfirm: (name: string) => `Delete the {category} "${name}"? This cannot be undone.`,
     deleteInUseMoveHeading: "Move what uses it to another one",
     deleteInUseMoveHint: "Everything that uses it is switched to the one you choose, then it is deleted.",
     deleteInUseNoCandidates: "There is nothing to move them to — create another first.",

@@ -13,7 +13,7 @@ sidebar_position: 12
 
 ## Components and categories
 
-**Project Admin → Categories** shows the two-level tree — each category belongs to exactly one component, and its prefix only needs to be unique within that component. Both can be renamed inline (renaming never changes already-issued requirement IDs, only new ones going forward). Deleting a category requires picking another to reassign its requirements to; deleting a component requires it to have no categories left under it first.
+**Project Admin → Categories** shows the two-level tree — each category belongs to exactly one component, and its prefix only needs to be unique within that component. Both can be renamed inline (renaming never changes already-issued requirement IDs, only new ones going forward). Deleting a category that holds nothing needs only a confirmation; if requirements or other placed records are in it, the dialog asks which category to move them to. Deleting a component requires it to have no categories left under it first.
 
 ## Custom fields
 

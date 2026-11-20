@@ -12,7 +12,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -23,7 +23,7 @@ from app.models.user import User
 from app.schemas.project import CategoryCreate, CategoryOut, CategoryUpdate, ComponentCreate, ComponentOut, ComponentUpdate, MoveDirection
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
-from app.services.placements import component_placement_count
+from app.services.placements import category_placement_count, component_placement_count
 from app.services.placements import reassign_category as reassign_category_placements
 from app.services.rbac import require_project_manage, require_project_view
 
@@ -233,37 +233,57 @@ def rename_category(
 
 @router.delete("/{project_id}/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category(
-    project_id: UUID, category_id: UUID, reassign_to: UUID,
+    project_id: UUID, category_id: UUID, reassign_to: UUID | None = None,
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Deletes a category, reassigning every requirement that belonged to it
-    to `reassign_to` — which may be a category under a *different*
-    component (unlike moving a category's display position, which stays
-    within one component). Crossing components on reassignment also moves
-    the affected requirements' `component_id` to match, preserving the
-    invariant that a requirement's component always matches its category's
-    component. `reassign_to` must be a different, existing category in the
-    same project — if this is the project's only remaining category, no
-    valid target exists and deletion is refused. Placements of other record
+    """Deletes a category.
+
+    Without `reassign_to` the delete succeeds only while nothing is attached: no requirement and no placed
+    record of another type. Otherwise it is refused with 409 naming the counts, so a caller can offer a
+    replacement. The category row is locked before the counts are read, so a requirement or placement being
+    added at the same moment either is counted or waits and then fails its foreign key; nothing is lost. This
+    also lets a project's only category, once empty, be deleted.
+
+    With `reassign_to`, every requirement that belonged to the category moves to it — which may be a category
+    under a *different* component (unlike moving a category's display position, which stays within one
+    component). Crossing components on reassignment also moves the affected requirements' `component_id` to
+    match, preserving the invariant that a requirement's component always matches its category's component.
+    `reassign_to` must be a different, existing category in the same project. Placements of other record
     types in the category move to `reassign_to` the same way.
     """
-    category = db.get(ProjectCategory, category_id)
+    category = db.scalar(
+        select(ProjectCategory).where(ProjectCategory.id == category_id).with_for_update()
+    )
     if category is None or category.project_id != project.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found.")
-    if reassign_to == category_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be a different category.")
-    target = db.get(ProjectCategory, reassign_to)
-    if target is None or target.project_id != project.id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be an existing category in this project.")
-    db.execute(
-        update(Requirement)
-        .where(Requirement.category_id == category_id)
-        .values(category_id=reassign_to, component_id=target.component_id)
-    )
-    reassign_category_placements(db, category_id, target)
+    if reassign_to is None:
+        requirement_count = db.scalar(
+            select(func.count()).select_from(Requirement).where(Requirement.category_id == category_id)
+        ) or 0
+        placement_count = category_placement_count(db, category_id)
+        if requirement_count or placement_count:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"This category is still in use (requirements: {requirement_count}, placed records: {placement_count}) "
+                "— move them to another category first, or delete it with a replacement.",
+            )
+        detail: dict[str, str] | None = None
+    else:
+        if reassign_to == category_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be a different category.")
+        target = db.get(ProjectCategory, reassign_to)
+        if target is None or target.project_id != project.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be an existing category in this project.")
+        db.execute(
+            update(Requirement)
+            .where(Requirement.category_id == category_id)
+            .values(category_id=reassign_to, component_id=target.component_id)
+        )
+        reassign_category_placements(db, category_id, target)
+        detail = {"reassigned_to": str(reassign_to)}
     log_event(db, entity_type="project_category", entity_id=category_id, action="deleted",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
-              detail={"reassigned_to": str(reassign_to)})
+              detail=detail)
     db.delete(category)
     db.commit()
