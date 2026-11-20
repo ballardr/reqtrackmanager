@@ -136,7 +136,20 @@ def _roles_to_try() -> list[tuple[str, str, str]]:
     ]
 
 
-def test_can_create_flag_equals_the_create_endpoint_for_every_creatable_type_and_person(client, admin_token):
+# The type-by-person matrix is split into this many interleaved groups of types, each with its own organisation, so the
+# parallel workers share the run instead of one worker holding the whole matrix; together the groups cover every type.
+MATRIX_GROUPS = 8
+
+
+def test_the_matrix_groups_cover_every_creatable_type():
+    creatable = sorted(set(get_scaling_probes()) - set(get_not_creatable_from_links_types()))
+    covered = [t for group in range(MATRIX_GROUPS) for t in creatable[group::MATRIX_GROUPS]]
+    assert sorted(covered) == creatable and len(covered) == len(creatable)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("group", range(MATRIX_GROUPS))
+def test_can_create_flag_equals_the_create_endpoint_for_every_creatable_type_and_person(client, admin_token, group):
     org, admin = create_org_admin_in(client, admin_token, "Creatable Gate Co")
     _enable_every_module(client, admin, org["id"])
     project = create_project(client, admin, org["id"], "Creatable Gate Project")
@@ -152,7 +165,7 @@ def test_can_create_flag_equals_the_create_endpoint_for_every_creatable_type_and
         _grant_module_role(client, admin, org["id"], project_id, user_id, module_key, role_key, scope)
         people[f"{module_key}.{role_key}"] = (user_id, token)
 
-    creatable = sorted(set(get_scaling_probes()) - set(get_not_creatable_from_links_types()))
+    creatable = sorted(set(get_scaling_probes()) - set(get_not_creatable_from_links_types()))[group::MATRIX_GROUPS]
     mismatches: list[str] = []
     db = SessionLocal()
     try:

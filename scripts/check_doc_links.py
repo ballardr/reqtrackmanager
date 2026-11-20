@@ -30,13 +30,16 @@ Design notes:
 - Intentional references to files that do not exist (historical notes about a
   deleted doc) belong in ALLOWED_MISSING with a reason, not in a loosened rule.
 
-Usage: python scripts/check_doc_links.py   (exit 1 and a list on failure)
+Usage: python scripts/check_doc_links.py            (exit 1 and a list on failure)
+       python scripts/check_doc_links.py --staged   (the pre-commit form: only the staged files, unless the commit
+                                                     could break another file; see `staged_scope`)
 Dependencies: standard library and `git` only. Also run by
 backend/tests/test_doc_links.py when the repository is available.
 """
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import subprocess
@@ -102,10 +105,17 @@ def plan_name_pattern() -> re.Pattern[str]:
 
     Returns:
         A regex matching `docs/plans/<anything but a non-plan>` or the bare
-        basename of any plan under docs/plans/ (live or completed).
+        basename of any plan under docs/plans/ (live or completed). Built once per repository root, because
+        every scanned file asks for it.
     """
+    return _plan_name_pattern(ROOT)
+
+
+@functools.cache
+def _plan_name_pattern(root: Path) -> re.Pattern[str]:
+    """Builds `plan_name_pattern` for one repository root (cached by it)."""
     names = sorted(
-        {p.stem for p in (ROOT / "docs" / "plans").rglob("*.md")} - NOT_A_PLAN,
+        {p.stem for p in (root / "docs" / "plans").rglob("*.md")} - NOT_A_PLAN,
         key=len,
         reverse=True,
     )
@@ -168,12 +178,13 @@ def check_file(rel: str) -> list[str]:
                 problems.append(
                     f"{rel}:{line_of(m.start(1))}: link target missing: {target}"
                 )
-    if is_plan_free(rel):
+    plan_free = is_plan_free(rel)
+    if plan_free:
         for m in plan_name_pattern().finditer(text):
             problems.append(
                 f"{rel}:{line_of(m.start())}: names a plan document: {m.group(0)}"
             )
-    if is_plan_free(rel):
+    if plan_free:
         for m in PHASE_TAG.finditer(text):
             problems.append(
                 f"{rel}:{line_of(m.start())}: cites a plan phase: {m.group(0).strip()}"
@@ -185,27 +196,78 @@ def check_file(rel: str) -> list[str]:
     return list(dict.fromkeys(problems))
 
 
-def find_problems() -> list[str]:
+def find_problems(only: list[str] | None = None) -> list[str]:
     """
-    Scans every tracked text file.
+    Scans tracked text files.
+
+    Args:
+        only: Repo-relative paths to scan instead of every tracked file (paths this check does not scan are
+            ignored); None scans everything.
 
     Returns:
         All broken-reference messages, in file order.
     """
+    wanted = tracked_files() if only is None else [f for f in tracked_files() if f in set(only)]
     problems: list[str] = []
-    for rel in tracked_files():
+    for rel in wanted:
         problems.extend(check_file(rel))
     return problems
 
 
-def main() -> int:
+def staged_scope(changes: list[tuple[str, str]]) -> list[str] | None:
+    """
+    Decides which files a commit's check has to scan.
+
+    A modified or added file can only break its own references: a link or mention is checked for the target's
+    existence, never its content. A commit can break another file only by removing or renaming a file (its
+    referrers now dangle), by adding or removing a plan (the set of plan names a source file must not mention
+    changes), or by changing this script (its rules and exceptions).
+
+    Args:
+        changes: (status letter, repo-relative path) for each staged change, as `git diff --cached --name-status`
+            reports them (a rename or copy contributes its old and new path with status R or C).
+
+    Returns:
+        The paths to scan, or None when the whole repository has to be scanned.
+    """
+    for status, path in changes:
+        if status not in ("A", "M"):
+            return None
+        if path == "scripts/check_doc_links.py":
+            return None
+        if status == "A" and path.startswith("docs/plans/") and path.endswith(".md"):
+            return None
+    return [path for _, path in changes]
+
+
+def staged_changes() -> list[tuple[str, str]]:
+    """Returns the staged changes as (status letter, path); a rename or copy gives both paths with its letter."""
+    out = subprocess.check_output(["git", "diff", "--cached", "--name-status", "-z"], cwd=ROOT, text=True)
+    fields = out.split("\0")
+    changes: list[tuple[str, str]] = []
+    i = 0
+    while i < len(fields) and fields[i]:
+        status = fields[i][0]
+        paths = 2 if status in ("R", "C") else 1
+        changes.extend((status, p) for p in fields[i + 1 : i + 1 + paths])
+        i += 1 + paths
+    return changes
+
+
+def main(argv: list[str] | None = None) -> int:
     """
     CLI entry point.
+
+    Args:
+        argv: Command-line arguments (default `sys.argv[1:]`); `--staged` limits the scan to the staged files
+            when the commit cannot break any other file.
 
     Returns:
         Process exit code: 0 when every reference resolves, 1 otherwise.
     """
-    problems = find_problems()
+    args = sys.argv[1:] if argv is None else argv
+    only = staged_scope(staged_changes()) if "--staged" in args else None
+    problems = find_problems(only)
     for p in problems:
         print(p)
     if problems:

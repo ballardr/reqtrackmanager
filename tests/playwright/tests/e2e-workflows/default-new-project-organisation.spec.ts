@@ -44,7 +44,10 @@ test.describe("default organisation for new projects", () => {
 
     await test.step("choosing the second organisation in Preferences makes New project start there", async () => {
       await page.goto("/preferences");
+      // The choice is saved by a request after the change; opening the list before it lands would read the old value.
+      const saved = page.waitForResponse((r) => r.url().endsWith("/auth/me/preferences") && r.request().method() === "PATCH");
       await preference.selectOption(second.id);
+      await saved;
       await expect(preference).toHaveValue(second.id);
       const picker = await startingOrganisation();
       await expect(picker).toHaveValue(second.id);
@@ -55,7 +58,9 @@ test.describe("default organisation for new projects", () => {
     });
 
     await test.step("None restores the first organisation", async () => {
+      const cleared = page.waitForResponse((r) => r.url().endsWith("/auth/me/preferences") && r.request().method() === "PATCH");
       await preference.selectOption("");
+      await cleared;
       const picker = await startingOrganisation();
       await expect(picker).toHaveValue(first.id);
     });

@@ -146,6 +146,11 @@ def _ensure_test_database() -> None:
 _ensure_test_database()
 
 
+def pytest_configure(config):
+    """Registers the `slow` marker: the files and tests that take 10 s or more, so `-m "not slow"` is the quick run."""
+    config.addinivalue_line("markers", "slow: one of the slowest tests; leave out of a quick local run with -m 'not slow'")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _schema():
     # Drop and recreate the whole schema (rather than Base.metadata.drop_all)
@@ -313,18 +318,73 @@ def _app_client():
         patch.undo()
 
 
+_BASELINE_SCHEMA = "pytest_baseline"
+# A copy is named differently from its table: schema tests read `information_schema` by table name alone.
+_BASELINE_PREFIX = "copy_of_"
+_BASELINE_TABLES: dict[str, list[str]] | None = None
+
+
+def _capture_baseline(conn) -> dict[str, list[str]]:
+    """Copies the tables `run_bootstrap` filled into the `pytest_baseline` schema, so later tests restore them.
+
+    Args:
+        conn: An open connection to the test database, which holds exactly the bootstrap's rows.
+
+    Returns:
+        The copied tables and their column names (a migration test can change a table's column order, so the
+        restore names its columns instead of relying on position).
+    """
+    tables = _non_empty_tables(conn)
+    conn.execute(text(f"DROP SCHEMA IF EXISTS {_BASELINE_SCHEMA} CASCADE"))
+    conn.execute(text(f"CREATE SCHEMA {_BASELINE_SCHEMA}"))
+    copied: dict[str, list[str]] = {}
+    for name in tables:
+        conn.execute(text(f'CREATE TABLE {_BASELINE_SCHEMA}."{_BASELINE_PREFIX}{name}" AS TABLE public."{name}"'))
+        copied[name] = [
+            row[0]
+            for row in conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_schema = :s AND table_name = :t"),
+                {"s": _BASELINE_SCHEMA, "t": _BASELINE_PREFIX + name},
+            )
+        ]
+    return copied
+
+
+def _restore_baseline(conn, tables: dict[str, list[str]]) -> None:
+    """Writes the bootstrap's rows back into the (empty) model tables, as `run_bootstrap` would have created them."""
+    conn.execute(text("SET LOCAL session_replication_role = replica"))
+    for name, columns in tables.items():
+        listed = ", ".join(f'"{c}"' for c in columns)
+        conn.execute(text(f'INSERT INTO public."{name}" ({listed}) SELECT {listed} FROM {_BASELINE_SCHEMA}."{_BASELINE_PREFIX}{name}"'))
+
+
 @pytest.fixture
 def client(_app_client):
-    # `_clean_tables` truncates every table (including `users`) after each
-    # test, so the server admin the session-scoped lifespan bootstrapped
-    # once at startup won't exist for the next test. Re-run just the
-    # bootstrap (a cheap idempotency check, only paying bcrypt's cost when
-    # it actually needs to recreate the admin) rather than the whole
-    # lifespan, since only tests that request `client` need an admin to be
-    # present.
+    # `_clean_tables` truncates every table (including `users`) after each test, so the server admin and default
+    # organisation the session-scoped lifespan bootstrapped once at startup won't exist for the next test, and only
+    # tests that request `client` need them. Running `run_bootstrap` again costs about 0.14 s per test (an
+    # organisation, its vocabularies and the starter report layouts), so the first run's rows are copied aside once
+    # per worker and written back instead: the same rows an empty database gets from the bootstrap. When a fixture
+    # has already written rows ahead of this one the database is not the empty one the copy was taken from, and when
+    # a test has changed the schema (a migration test) the copy no longer fits; in both cases the real bootstrap runs
+    # (it is idempotent and adds only what is missing) and, once the database is empty again, a fresh copy is taken.
+    global _BASELINE_TABLES
     db = SessionLocal()
     try:
+        with app_engine.begin() as conn:
+            was_empty = not _non_empty_tables(conn)
+            can_copy = _can_skip_fk_triggers(conn)
+        if was_empty and can_copy and _BASELINE_TABLES is not None:
+            try:
+                with app_engine.begin() as conn:
+                    _restore_baseline(conn, _BASELINE_TABLES)
+                return _app_client
+            except Exception:
+                _BASELINE_TABLES = None
         run_bootstrap(db)
+        if was_empty and can_copy and _BASELINE_TABLES is None:
+            with app_engine.begin() as conn:
+                _BASELINE_TABLES = _capture_baseline(conn)
     finally:
         db.close()
     return _app_client

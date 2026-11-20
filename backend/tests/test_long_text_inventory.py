@@ -29,11 +29,11 @@ def test_the_application_installs_the_write_limit_hook() -> None:
     assert event.contains(Session, "before_flush", markdown_fields._before_flush)
 
 
-ROOT = Path(__file__).resolve().parents[2]
+BACKEND = Path(__file__).resolve().parents[1]
 
 
 def _generator():
-    script = ROOT / "backend" / "scripts" / "generate_long_text_inventory.py"
+    script = BACKEND / "scripts" / "generate_long_text_inventory.py"
     spec = importlib.util.spec_from_file_location("generate_long_text_inventory", script)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

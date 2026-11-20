@@ -27,6 +27,9 @@ from app.services.perf_dataset.context import insert_rows, uuid_from
 from app.services.perf_dataset.spec import ProfileError, build_spec
 from tests.conftest import auth_headers, create_component_and_category, create_project
 
+# One of the slowest files of the suite; a quick local run leaves it out with `-m "not slow"` (CI runs everything).
+pytestmark = pytest.mark.slow
+
 _PROFILES_FILE = Path(__file__).resolve().parents[2] / "perf" / "datasets" / "profiles.yaml"
 
 #: Registered artefact types whose generator is still to be written. Shrinks only: a type that gains a generator

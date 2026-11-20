@@ -3,18 +3,22 @@
 # Thirteen jobs, run on every push to main, every pull request, and on demand:
 #   1. frontend          - lint, type-check, production build, then the
 #                          Storybook/Vitest suite (real Chromium) with
-#                          coverage
+#                          coverage, run as three `frontend-shard` jobs whose
+#                          blob reports `frontend` merges (it keeps the
+#                          required check name)
 #   2. backend-tests     - the same dev/test Docker Compose stack developers
 #                          run locally, but only the services backend pytest
 #                          actually needs (db, storage, mailhog, backend — not
 #                          frontend/mcp-server/keycloak, which only
 #                          e2e-tests below exercises); backend pytest with
 #                          coverage + JUnit reporting, ruff lint, mypy.
-#   3. e2e-tests         - the full dev/test stack (adds frontend, mcp-server,
-#                          keycloak on top of backend-tests' subset), the
-#                          mcp-server's own integration test suite, then the
-#                          full Playwright E2E suite against the running
-#                          containers. Split out from backend-tests (was one
+#   3. e2e-tests         - three shards, each the full dev/test stack (adds
+#                          frontend, mcp-server, keycloak on top of
+#                          backend-tests' subset), the mcp-server's own
+#                          integration test suite (shard 1), then its share of
+#                          the Playwright E2E suite against the running
+#                          containers; `e2e-suite` reports their combined
+#                          result under the required check name. Split out from backend-tests (was one
 #                          "backend-and-e2e" job) specifically so the two
 #                          largest chunks of what used to be a single ~26min
 #                          job — pytest at ~12min, Playwright at ~9min — run
@@ -154,8 +158,12 @@ jobs:
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 dir /repo \
             --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
 
-  frontend:
-    name: Frontend lint, build & test
+  # The Storybook suite (616 files, ~5k tests, each a real Chromium test) is split over three jobs; each writes a
+  # blob report and the `frontend` job below merges them into the one coverage report and JUnit file the badges and
+  # the check read. Shard 1 also runs the lint, the type-check and build and the lazy-loading check (about two
+  # minutes), so they run beside the other shards and not after them.
+  frontend-shard:
+    name: Storybook shard ${{ matrix.shard }} of 3
     runs-on: ubuntu-latest
     # 2026-08-19: running this job inside Playwright's own image instead of
     # bare `ubuntu-latest` + `playwright install --with-deps` (see the
@@ -178,17 +186,13 @@ jobs:
     # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
     container:
       image: mcr.microsoft.com/playwright:v1.65.0-noble
-    # The story suite (400 files, ~3.3k tests, ~1,900 CPU-seconds) takes
-    # ~7 minutes on a 5-core laptop and longer on a 4-vCPU runner; the rest of
-    # the job is ~2 minutes. This is headroom — see backend-tests'/e2e-tests'
-    # timeout-minutes comments for why every job/step here has one. If it is
-    # outgrown again, shard the suite (`vitest --shard`) instead of raising it.
-    timeout-minutes: 35
-    # checks: write is for the "Publish frontend test results" step below
-    # (dorny/test-reporter creating a check run) — same reasoning as
-    # backend-tests'/e2e-tests' identical permission.
-    permissions:
-      checks: write
+    # A shard is ~2 minutes of set-up and ~5 of tests on a 4-vCPU runner (the whole suite was 13 to 19 minutes in
+    # one job). If one is outgrown, raise the shard count here and in `--shard`, never the ceiling.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: frontend
@@ -201,16 +205,8 @@ jobs:
       - name: Check Playwright image matches lockfile
         run: python3 "$GITHUB_WORKSPACE/scripts/check-playwright-image-sync.py"
 
-      # actions/checkout sets `safe.directory` via a temporarily-overridden
-      # HOME (see its own log output), which doesn't persist into this
-      # job's real container HOME for later steps — dorny/test-reporter's
-      # own `git ls-files` call below ("Publish frontend test results")
-      # then hits "dubious ownership" and errors out (harmless:
-      # continue-on-error: true means it doesn't fail the job, but it does
-      # surface a red X annotation on every run). Only needed here, not in
-      # backend-tests/e2e-tests: those jobs run directly on the bare
-      # runner, not inside a `container:`, so checkout's own safe.directory
-      # config already persists correctly for them.
+      # actions/checkout sets `safe.directory` via a temporarily-overridden HOME, which doesn't persist into this job's
+      # container HOME for later steps (see git's "dubious ownership" error).
       - name: Fix git safe.directory for containerized steps
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
@@ -224,38 +220,116 @@ jobs:
         run: npm ci
 
       - name: Lint
+        if: matrix.shard == 1
         run: npm run lint
 
       - name: Type-check and build
+        if: matrix.shard == 1
         run: npm run build
 
       # The diagram library (Mermaid) must stay a lazily loaded chunk, never part of the files every page loads.
       - name: Mermaid is lazy-loaded
+        if: matrix.shard == 1
         run: python3 ../scripts/check_mermaid_lazy.py
 
-      # test-storybook (vite.config.ts) runs every Storybook story as a real
-      # Chromium test via Vitest's browser mode. No separate browser-install
-      # step needed: the job container (see `container:` above) already has
-      # a matching Chromium build baked in.
-      #
-      # `timeout` + the JUnit check below work around a real @vitest/browser
-      # + Playwright-provider quirk (reproduced locally via `act`, not
-      # specific to this container): the process can finish the actual run
-      # — tests execute, the coverage report and vitest-report.xml are both
-      # written correctly — and then simply never call process.exit(),
-      # hanging indefinitely instead of returning. A bare `npm run` with no
-      # timeout would hang this step (and the whole job) forever on a run
-      # that already succeeded. 1500s is headroom over the full 400-file
-      # suite on a CI runner (a 600s cap killed a healthy, still-running suite
-      # before it could write a report; the suite is ~7 minutes locally on 5
-      # cores); a genuine hang before producing a report
-      # still fails loudly (no vitest-report.xml to check, so the raw exit
-      # status propagates), and a real per-test failure is caught explicitly
-      # by parsing the JUnit output rather than assumed away.
-      - name: Run frontend tests with coverage
+      # Runs this shard's share of the stories as real Chromium tests (vite.config.ts) and writes a blob report.
+      # `timeout` works around a real @vitest/browser + Playwright-provider quirk: the process can finish the run and
+      # write its report and then never call process.exit(), hanging for ever. The blob's presence shows the run
+      # finished; whether every test passed is judged on the merged JUnit report by the `frontend` job, so a failing
+      # story does not stop the other shards' reports from being merged.
+      - name: Run this shard's stories with coverage
         run: |
           set +e
-          timeout 1500 npm run test-storybook -- --coverage
+          timeout 1200 npx vitest run --project=storybook --coverage --shard=${{ matrix.shard }}/3 --reporter=blob
+          status=$?
+          set -e
+          if [ ! -f ".vitest/blob/blob-${{ matrix.shard }}-3.json" ]; then
+            echo "vitest failed before producing a report (exit $status)." >&2
+            exit 1
+          fi
+
+      # `.vitest` is a hidden directory, which upload-artifact leaves out unless told otherwise.
+      - name: Upload the blob report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: storybook-blob-${{ matrix.shard }}
+          path: frontend/.vitest/blob
+          include-hidden-files: true
+          retention-days: 2
+
+  # The one check the repository requires for the front end: it passes only when every shard ran and the merged report
+  # shows every story passing. It keeps the name a ruleset already lists, so splitting the suite changes no rule.
+  frontend:
+    name: Frontend lint, build & test
+    runs-on: ubuntu-latest
+    needs: [frontend-shard]
+    if: always()
+    # 2026-08-19: running this job inside Playwright's own image instead of
+    # bare `ubuntu-latest` + `playwright install --with-deps` (see the
+    # deleted "Install Playwright browsers" step this replaced, and its
+    # e2e-tests counterpart) — that install step ran `apt-get` on the
+    # runner for Chromium's OS deps, which stalled inside `apt-get update`
+    # against a flaky archive.ubuntu.com/security.ubuntu.com mirror twice in
+    # one day (PR #9, then this same job again on PR #10; see
+    # docs/decisions.md). This image ships Chromium and every OS dep
+    # preinstalled, so there's no `apt-get` in the job at all — the stall
+    # can't recur, not just fail faster.
+    #
+    # The tag's version MUST match frontend/package-lock.json's resolved
+    # `playwright` version exactly (the e2e-tests job's `docker run` image
+    # below tracks tests/playwright/package-lock.json instead — a separate
+    # lockfile that can legitimately sit on a different release) (Playwright requires the npm package and
+    # browser build to be the same release) — bump this tag in the same
+    # change as any `playwright` version bump, the same way Node's version is
+    # kept in lockstep across ci.yml/Dockerfile/.nvmrc (see CLAUDE.md).
+    # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
+    timeout-minutes: 20
+    # checks: write is for the "Publish frontend test results" step below
+    # (dorny/test-reporter creating a check run) — same reasoning as
+    # backend-tests'/e2e-tests' identical permission.
+    permissions:
+      checks: write
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Every shard produced a report
+        working-directory: .
+        env:
+          SHARDS: ${{ needs.frontend-shard.result }}
+        run: |
+          echo "Storybook shards: $SHARDS"
+          [ "$SHARDS" = "success" ]
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Fix git safe.directory for containerized steps
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download the shards' blob reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: storybook-blob-*
+          merge-multiple: true
+          path: frontend/.vitest/blob
+
+      # Merges the shards' blob reports into one run: the combined coverage report (coverage/) and the JUnit file
+      # (vitest-report.xml), exactly what a single run wrote before. No story runs here.
+      - name: Merge the shards' reports
+        run: |
+          set +e
+          timeout 600 npx vitest run --project=storybook --merge-reports --coverage
           status=$?
           set -e
           if [ $status -eq 0 ]; then
@@ -314,6 +388,11 @@ jobs:
       # if: always()) is the real pass/fail gate via its own exit code;
       # these three are reporting/artifact-attachment conveniences layered
       # on top.
+      - name: Storybook timing
+        if: always()
+        continue-on-error: true
+        run: python3 ../scripts/junit_timing_summary.py vitest-report.xml --title "Storybook" --budget-minutes 8 >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish frontend test results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
@@ -417,8 +496,13 @@ jobs:
       # needs them. No `--build`: the step above already built (and
       # cached) the backend image; passing `--build` here would rebuild it
       # a second time with none of buildx's GHA cache wired in.
+      # One API process, not the default four: this job only runs pytest inside the container, nothing calls the
+      # served API, and four idle processes hold about 1.5 GB that the four pytest workers need (a pytest worker was
+      # killed by the out-of-memory killer mid-run, which fails whichever test it was running).
       - name: Start the dev/test stack (backend + its dependencies)
         working-directory: tests/container
+        env:
+          BACKEND_WORKERS: "1"
         run: docker compose up -d db storage mailhog converter backend
 
       # Diagnostic only: `docker compose up -d` above fails outright (exit 1)
@@ -479,6 +563,13 @@ jobs:
           docker compose cp backend:/app/coverage.xml ./coverage.xml
           docker compose cp backend:/app/pytest-report.xml ./pytest-report.xml
           docker compose cp backend:/app/htmlcov ./htmlcov
+
+      # Duration and slowest tests in the job summary, so a slower suite is seen on the run that slowed it. The budget is
+      # the target, a warning and never a failure (see scripts/junit_timing_summary.py).
+      - name: Backend test timing
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/junit_timing_summary.py tests/container/pytest-report.xml --title "Backend tests" --budget-minutes 20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Lint backend (ruff)
         working-directory: tests/container
@@ -596,12 +687,18 @@ jobs:
         run: docker compose down -v
 
   e2e-tests:
-    name: E2E (Playwright) suite
+    name: E2E (Playwright) shard ${{ matrix.shard }} of 3
     runs-on: ubuntu-latest
-    # Setup (docker build x3 + stack startup + seeding + mcp-server tests) takes
-    # ~9 minutes and the full Playwright suite (~510 tests on 2 workers) ~30
-    # more; a 30-minute ceiling cancelled a healthy run mid-suite. If this is
-    # outgrown again, shard the suite across jobs instead of raising it.
+    # The suite is split over three shards, each with a stack and database of its own, so nothing a spec changes on the
+    # deployment (the `global-state-mutators` project) can reach another shard. Shard 1 first runs that serial
+    # project (about 5 minutes) and then its third of the parallel project; the others run a third each. A shard takes
+    # ~9 minutes of setup (docker build x3 + stack startup + seeding) and 11 to 17 of Playwright (the whole suite was
+    # ~32 on 2 workers); the `e2e-suite` job below reports their combined result under the required check name. If a
+    # shard is outgrown, raise the count here, in `--shard` and in `e2e-suite`'s comment, never the ceiling.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     # Without a ceiling
     # here a stalled step (see docs/decisions.md for a real instance of
     # this: an 18-minute apt-get mirror hang with no output, in what was
@@ -768,16 +865,24 @@ jobs:
       # get_requirement_history) has real data to exercise instead of
       # skipping — see mcp-server/tests/test_server.py.
       - name: Run MCP server tests
+        if: matrix.shard == 1
         working-directory: tests/container
         run: docker compose exec -T mcp-server python -m pytest -q
 
       - name: Lint mcp-server (ruff)
+        if: matrix.shard == 1
         working-directory: tests/container
         run: docker compose exec -T mcp-server ruff check .
 
       - name: Install npm dependencies
         working-directory: tests/playwright
         run: npm ci
+
+      # Lists the suite sharded and unsharded and fails if a test would run in no shard or in two (the shard count and
+      # project names are in this file; a change to either could drop a test without any run noticing).
+      - name: Every E2E test is in exactly one shard
+        if: matrix.shard == 1
+        run: python3 scripts/check_playwright_shards.py
 
       # This job can't switch to running entirely inside Playwright's Docker
       # image the way the frontend job does (see that job's `container:`
@@ -821,24 +926,40 @@ jobs:
       - name: Run Playwright E2E suite
         working-directory: tests/playwright
         run: |
-          docker run --rm --network host \
-            -e CI=true \
-            -e PLAYWRIGHT_JUNIT_OUTPUT_NAME=playwright-report.xml \
-            -v "$(git rev-parse --show-toplevel)":/work -w /work/tests/playwright \
-            mcr.microsoft.com/playwright:v1.65.1-noble \
-            npx playwright test --reporter=list,junit
+          run_playwright() {
+            report="$1"; shift
+            docker run --rm --network host \
+              -e CI=true \
+              -e PLAYWRIGHT_JUNIT_OUTPUT_NAME="$report" \
+              -v "$(git rev-parse --show-toplevel)":/work -w /work/tests/playwright \
+              mcr.microsoft.com/playwright:v1.65.1-noble \
+              npx playwright test --reporter=list,junit "$@"
+          }
+          status=0
+          # The serial project that changes deployment-wide settings runs once, in shard 1, before that shard's
+          # parallel tests (Playwright would otherwise run it in every shard). The parallel project is sharded.
+          if [ "${{ matrix.shard }}" = "1" ]; then
+            run_playwright playwright-report-serial.xml --project=global-state-mutators || status=1
+          fi
+          run_playwright playwright-report.xml --project=default --no-deps --shard=${{ matrix.shard }}/3 || status=1
+          exit $status
 
       # Same continue-on-error reasoning as backend-tests' Publish/Upload
       # steps: "Run Playwright E2E suite" (no if: always()) is the real
       # pass/fail gate via its own exit code; these two are reporting
       # conveniences that must not be able to mask whether it actually ran.
+      - name: E2E shard timing
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/junit_timing_summary.py tests/playwright/playwright-report*.xml --title "E2E shard ${{ matrix.shard }}" --budget-minutes 25 >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish E2E test results
         uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
         continue-on-error: true
         with:
-          name: E2E (Playwright) test results
-          path: tests/playwright/playwright-report.xml
+          name: E2E (Playwright) test results (shard ${{ matrix.shard }} of 3)
+          path: tests/playwright/playwright-report*.xml
           reporter: java-junit
           fail-on-error: true
 
@@ -847,9 +968,9 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: |
-            tests/playwright/playwright-report.xml
+            tests/playwright/playwright-report*.xml
             tests/playwright/test-results
           retention-days: 14
 
@@ -857,6 +978,22 @@ jobs:
         if: always()
         working-directory: tests/container
         run: docker compose down -v
+
+  # The one check the repository requires for the end-to-end suite: it passes only when every shard passed, and keeps
+  # the name a ruleset or a branch rule already lists, so splitting the suite changes no rule.
+  e2e-suite:
+    name: E2E (Playwright) suite
+    runs-on: ubuntu-latest
+    needs: [e2e-tests]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Every E2E shard passed
+        env:
+          SHARDS: ${{ needs.e2e-tests.result }}
+        run: |
+          echo "E2E shards: $SHARDS"
+          [ "$SHARDS" = "success" ]
 
   publish-badges:
     name: Publish coverage/test badges
@@ -1298,7 +1435,7 @@ jobs:
   docker-build:
     name: Build ${{ matrix.image }} (${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: [frontend, backend-tests, e2e-tests, dependency-scan, licences, image-scan, restore-test, static-analysis, secret-scan, version]
+    needs: [frontend, backend-tests, e2e-suite, dependency-scan, licences, image-scan, restore-test, static-analysis, secret-scan, version]
     # Normal runs finish in ~5 minutes; the arm64 backend leg adds the smoke test (a database, migrations, a login).
     timeout-minutes: 30
     # Pushes digests to ghcr.io only when this isn't a pull_request run — a same-repo PR's GITHUB_TOKEN could

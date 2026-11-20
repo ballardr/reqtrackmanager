@@ -18,6 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import seed_demo_data  # noqa: E402
 import seed_template_projects  # noqa: E402
 
+# One of the slowest files of the suite; a quick local run leaves it out with `-m "not slow"` (CI runs everything).
+pytestmark = pytest.mark.slow
+
 TEMPLATE_NAMES = {spec.name for spec in seed_template_projects.SPECS}
 
 

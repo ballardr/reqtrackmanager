@@ -25,6 +25,9 @@ from app.services.report_model import Image, ImageCell
 from tests.conftest import auth_headers
 from tests.link_world import World
 
+# One of the slowest files of the suite; a quick local run leaves it out with `-m "not slow"` (CI runs everything).
+pytestmark = pytest.mark.slow
+
 
 def png(colour: Any = "red", size: tuple[int, int] = (200, 100)) -> bytes:
     out = io.BytesIO()

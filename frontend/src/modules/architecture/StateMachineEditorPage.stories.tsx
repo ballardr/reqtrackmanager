@@ -1242,57 +1242,71 @@ async function dragNode(canvasElement: HTMLElement, id: string, dx: number, dy: 
 }
 
 /**
+ * Symbols dragged with Snap to grid off: the rule is stated on the stories below. They are split in two so each story drags few
+ * enough symbols to finish within a test's time under load.
+ */
+const SNAP_OFF_GROUPS = {
+  choicesAndInitials: ["a", "b", "c", "d", "h"],
+  finalsAndStates: ["i", "j", "f", "g"],
+} as const;
+
+function snapOffStory(group: keyof typeof SNAP_OFF_GROUPS): Story {
+  return {
+    beforeEach: () => {
+      mockArchitectureReads({
+        stateMachineModel: buildStateMachineModel({
+          states: [
+            buildState({ id: "a", unique_code: "STE-010", name: "Plain choice", kind: "choice", x: 40, y: 40, width: 36, height: 36 }),
+            buildState({ id: "b", unique_code: "STE-011", name: "Inside choice", kind: "choice", x: 240, y: 40, width: 36, height: 36, label: "Battery low?" }),
+            buildState({ id: "c", unique_code: "STE-012", name: "Right choice", kind: "choice", x: 440, y: 40, width: 36, height: 36, label: "Battery low?", label_position: "right" }),
+            buildState({ id: "d", unique_code: "STE-013", name: "Inside initial", kind: "initial", x: 40, y: 240, width: 20, height: 20, label: "Go" }),
+            buildState({ id: "h", unique_code: "STE-017", name: "Plain initial", kind: "initial", x: 120, y: 240, width: 20, height: 20 }),
+            buildState({ id: "i", unique_code: "STE-018", name: "Plain final", kind: "final", x: 160, y: 240, width: 28, height: 28 }),
+            buildState({ id: "e", unique_code: "STE-014", name: "Frame", x: 240, y: 200, width: 720, height: 420 }),
+            buildState({ id: "f", unique_code: "STE-015", name: "Inner", x: 280, y: 260, parent_state_id: "e", parent_state_code: "STE-014" }),
+            buildState({ id: "g", unique_code: "STE-016", name: "Inner final", kind: "final", x: 460, y: 300, width: 28, height: 28, parent_state_id: "e", parent_state_code: "STE-014" }),
+            buildState({ id: "j", unique_code: "STE-019", name: "Loose", x: 40, y: 340 }),
+          ],
+          transitions: [],
+        }),
+      });
+      spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never);
+    },
+    play: async ({ canvasElement }) => {
+      const ids = SNAP_OFF_GROUPS[group];
+      const canvas = within(canvasElement);
+      await canvas.findByLabelText("Frame, node");
+      // The view fits itself to the nodes once they are measured; drag only after it has settled. The frame is large enough that
+      // no drag reaches its edge (a state inside a frame cannot be dragged out of it).
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+          for (const id of ids) await dragNode(canvasElement, id, 37, 31);
+      await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
+      await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${MACHINE}/layout`, expect.anything()));
+      const sent = (api.put as unknown as ReturnType<typeof fn>).mock.calls.find((call) => call[0] === `${MACHINE}/layout`)![1] as { states: { id: string; x: number; y: number }[] };
+      for (const id of ids) {
+        const stored = sent.states.find((s) => s.id === id)!;
+        // Moved by about the pointer's distance (less the first step React Flow spends starting the drag), never onto a grid line.
+        await expect(stored.x % 20).not.toBe(0);
+        await expect(stored.y % 20).not.toBe(0);
+      }
+      // Every symbol moved by the same amount: the kind makes no difference.
+      const moved = ids.map((id) => {
+        const stored = sent.states.find((s) => s.id === id)!;
+        const start = { a: [40, 40], b: [240, 40], c: [440, 40], d: [40, 240], h: [120, 240], i: [160, 240], j: [40, 340], f: [280, 260], g: [460, 300] }[id]!;
+        return [stored.x - start[0], stored.y - start[1]];
+      });
+      for (const delta of moved) await expect(delta).toEqual(moved[0]);
+    },
+  };
+}
+
+/**
  * With Snap to grid off, a dropped symbol is stored where the pointer put it: the one rule for a choice, an initial and a final
  * symbol (plain, labelled inside and labelled beside), an ordinary state and a state inside a frame. Every box starts on the
  * grid and is moved by an amount that is not a grid step, so a snapped result would be a multiple of 20.
  */
-export const WithSnapOffEverySymbolIsStoredWhereItIsDropped: Story = {
-  beforeEach: () => {
-    mockArchitectureReads({
-      stateMachineModel: buildStateMachineModel({
-        states: [
-          buildState({ id: "a", unique_code: "STE-010", name: "Plain choice", kind: "choice", x: 40, y: 40, width: 36, height: 36 }),
-          buildState({ id: "b", unique_code: "STE-011", name: "Inside choice", kind: "choice", x: 240, y: 40, width: 36, height: 36, label: "Battery low?" }),
-          buildState({ id: "c", unique_code: "STE-012", name: "Right choice", kind: "choice", x: 440, y: 40, width: 36, height: 36, label: "Battery low?", label_position: "right" }),
-          buildState({ id: "d", unique_code: "STE-013", name: "Inside initial", kind: "initial", x: 40, y: 240, width: 20, height: 20, label: "Go" }),
-          buildState({ id: "h", unique_code: "STE-017", name: "Plain initial", kind: "initial", x: 120, y: 240, width: 20, height: 20 }),
-          buildState({ id: "i", unique_code: "STE-018", name: "Plain final", kind: "final", x: 160, y: 240, width: 28, height: 28 }),
-          buildState({ id: "e", unique_code: "STE-014", name: "Frame", x: 240, y: 200, width: 720, height: 420 }),
-          buildState({ id: "f", unique_code: "STE-015", name: "Inner", x: 280, y: 260, parent_state_id: "e", parent_state_code: "STE-014" }),
-          buildState({ id: "g", unique_code: "STE-016", name: "Inner final", kind: "final", x: 460, y: 300, width: 28, height: 28, parent_state_id: "e", parent_state_code: "STE-014" }),
-          buildState({ id: "j", unique_code: "STE-019", name: "Loose", x: 40, y: 340 }),
-        ],
-        transitions: [],
-      }),
-    });
-    spyOn(api, "put").mockResolvedValue(buildStateMachine({ version: 6 }) as never);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await canvas.findByLabelText("Frame, node");
-    // The view fits itself to the nodes once they are measured; drag only after it has settled. The frame is large enough that
-    // no drag reaches its edge (a state inside a frame cannot be dragged out of it).
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const ids = ["a", "b", "c", "d", "h", "i", "j", "f", "g"];
-    for (const id of ids) await dragNode(canvasElement, id, 37, 31);
-    await userEvent.click(canvas.getByRole("button", { name: "Save diagram" }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${MACHINE}/layout`, expect.anything()));
-    const sent = (api.put as unknown as ReturnType<typeof fn>).mock.calls.find((call) => call[0] === `${MACHINE}/layout`)![1] as { states: { id: string; x: number; y: number }[] };
-    for (const id of ids) {
-      const stored = sent.states.find((s) => s.id === id)!;
-      // Moved by about the pointer's distance (less the first step React Flow spends starting the drag), never onto a grid line.
-      await expect(stored.x % 20).not.toBe(0);
-      await expect(stored.y % 20).not.toBe(0);
-    }
-    // Every symbol moved by the same amount: the kind makes no difference.
-    const moved = ids.map((id) => {
-      const stored = sent.states.find((s) => s.id === id)!;
-      const start = { a: [40, 40], b: [240, 40], c: [440, 40], d: [40, 240], h: [120, 240], i: [160, 240], j: [40, 340], f: [280, 260], g: [460, 300] }[id]!;
-      return [stored.x - start[0], stored.y - start[1]];
-    });
-    for (const delta of moved) await expect(delta).toEqual(moved[0]);
-  },
-};
+export const WithSnapOffChoicesAndInitialsAreStoredWhereTheyAreDropped: Story = snapOffStory("choicesAndInitials");
+export const WithSnapOffFinalsAndStatesAreStoredWhereTheyAreDropped: Story = snapOffStory("finalsAndStates");
 
 /**
  * A symbol whose label inside it makes its drawn frame larger than its stored box (the frame grows around the box's centre) is

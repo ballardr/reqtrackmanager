@@ -17,12 +17,18 @@ from app.services import markdown_text as md
 CONFIG = Path(__file__).resolve().parents[2] / "frontend" / "src" / "utils" / "mermaidRenderConfig.json"
 PACKAGE = Path(__file__).resolve().parents[2] / "frontend" / "package.json"
 
+needs_interface = pytest.mark.skipif(
+    not CONFIG.is_file() or not PACKAGE.is_file(), reason="repository checkout not available (the interface files are outside backend/)"
+)
 
+
+@needs_interface
 def test_diagram_limit_equals_the_interface_limit() -> None:
     config = json.loads(CONFIG.read_text())
     assert md.MAX_MERMAID_SOURCE_CHARS == config["limits"]["sourceChars"]
 
 
+@needs_interface
 def test_interface_diagram_version_is_the_exact_package_pin() -> None:
     config = json.loads(CONFIG.read_text())
     assert json.loads(PACKAGE.read_text())["dependencies"]["mermaid"] == config["version"]

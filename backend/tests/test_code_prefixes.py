@@ -98,9 +98,13 @@ def test_record_code_shape_accepts_a_counter_past_999():
     assert label_title("ISO-27001 v2.0 · A.5.15 Access") == "ISO-27001 v2.0 · A.5.15 Access"
 
 
+FRONTEND_CASES = Path(__file__).resolve().parents[2] / "frontend/src/components/artefactCodeCases.json"
+
+
+@pytest.mark.skipif(not FRONTEND_CASES.is_file(), reason="repository checkout not available (the cases are outside backend/)")
 def test_the_label_reader_agrees_with_the_frontend_on_shared_vectors():
     """`components/artefactCode.ts` reads the same cases (`artefactCodeCases.json`); both must give the same split."""
-    cases = json.loads((Path(__file__).resolve().parents[2] / "frontend/src/components/artefactCodeCases.json").read_text())
+    cases = json.loads(FRONTEND_CASES.read_text())
     for case in cases:
         assert split_record_label(case["label"]) == (case["code"], case["title"]), case["label"]
 

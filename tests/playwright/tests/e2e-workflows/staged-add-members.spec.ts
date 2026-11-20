@@ -86,9 +86,14 @@ test.describe("staged multi-add member flow", () => {
       ).toBeChecked();
       await page.keyboard.press("Escape");
 
-      const groupRow = page.getByRole("row", { name: new RegExp(groupName) });
-      await expect(groupRow).toBeVisible();
-      await expect(groupRow).toContainText("Project administrator");
+      await expect(page.getByRole("row", { name: new RegExp(groupName) })).toBeVisible();
+      await page.getByRole("button", { name: `${groupName}'s roles` }).click();
+      await expect(
+        page
+          .getByRole("group", { name: `${groupName}'s roles` })
+          .getByRole("checkbox", { name: new RegExp(`Revoke Project administrator from ${groupName}`) })
+      ).toBeChecked();
+      await page.keyboard.press("Escape");
     });
   });
 

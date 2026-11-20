@@ -111,22 +111,26 @@ test.describe("org admin: Manage users from the project list", () => {
       await expect(modal.getByRole("cell", { name: PERSONAS.orgAdminGamma.name, exact: true })).toBeVisible();
     });
 
-    await test.step("toggling that same direct role off calls DELETE .../roles, same as Project Admin's own Members page", async () => {
-      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
-      await rolesButton.click();
-      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
-      const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Member from ${PERSONAS.orgAdminGamma.name}`) });
-      await expect(checkbox).toBeEnabled();
-      await checkbox.click();
-      // Revoking the user's only role removes their row — and its dropdown
-      // with it. An unconditional Escape raced that: if the row had already
-      // unmounted, Escape closed the whole modal instead (making the
-      // row-gone check pass vacuously and the "Close" step below hang).
-      // Wait for the row to go, and only press Escape if the dropdown
-      // survived.
-      await expect(modal.getByRole("cell", { name: PERSONAS.orgAdminGamma.name, exact: true })).toHaveCount(0);
-      if (await rolesGroup.isVisible()) await page.keyboard.press("Escape");
+    await test.step("a person's only role cannot be cleared; with another granted, toggling the direct role off calls DELETE .../roles", async () => {
+      const name = PERSONAS.orgAdminGamma.name;
+      await modal.getByRole("button", { name: `${name}'s roles` }).click();
+      const rolesGroup = page.getByRole("group", { name: `${name}'s roles` });
+      const revoke = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Member from ${name}`) });
+      await expect(revoke).toBeDisabled();
+      await rolesGroup.getByRole("checkbox", { name: new RegExp(`Grant Stakeholder to ${name}`) }).click();
+      await expect(revoke).toBeEnabled();
+      await revoke.click();
+      await expect(rolesGroup.getByRole("checkbox", { name: new RegExp(`Grant Member to ${name}`) })).toBeVisible();
+      await page.keyboard.press("Escape");
       await expect(modal).toBeVisible();
+    });
+
+    await test.step("Remove all access takes the person off the project, as the shared members table does", async () => {
+      const name = PERSONAS.orgAdminGamma.name;
+      await modal.getByRole("button", { name: `${name}'s actions` }).click();
+      await page.getByRole("menuitem", { name: "Remove all access" }).click();
+      await page.getByRole("button", { name: "Remove access", exact: true }).click();
+      await expect(modal.getByRole("cell", { name, exact: true })).toHaveCount(0);
     });
 
     await test.step("closing the dialog returns to the list; the project is still not a link", async () => {

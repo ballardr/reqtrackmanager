@@ -18,7 +18,9 @@ Used by: the `docs` CI job, .githooks/pre-commit and
 backend/tests/test_health_probes.py. Standard library only.
 """
 
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -28,10 +30,27 @@ PROBE_TOOL = re.compile(r"\b(curl|wget)\b")
 LOCALHOST_URL = re.compile(r"https?://localhost\b")
 
 
+def _candidate_paths() -> list[Path]:
+    """Returns the repository's files: tracked and untracked-but-not-ignored through git (never walking ignored
+    directories such as `node_modules`), or a pruned directory walk when git is unavailable."""
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout
+        return [ROOT / name for name in listed.split("\0") if name]
+    except (OSError, subprocess.CalledProcessError):
+        found = []
+        for directory, dirs, files in os.walk(ROOT):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            found.extend(Path(directory) / name for name in files)
+        return found
+
+
 def probe_files() -> list[Path]:
     """Returns every Dockerfile and Compose file in the repository."""
     found = []
-    for path in ROOT.rglob("*"):
+    for path in _candidate_paths():
         if SKIP_DIRS & set(path.relative_to(ROOT).parts) or not path.is_file():
             continue
         if path.name.startswith("Dockerfile") or re.fullmatch(r"docker-compose[\w.-]*\.ya?ml", path.name):

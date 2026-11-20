@@ -27,6 +27,9 @@ from app.modules.registry import (
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 
+# One of the slowest files of the suite; a quick local run leaves it out with `-m "not slow"` (CI runs everything).
+pytestmark = pytest.mark.slow
+
 #: Records in the project when the first count is taken, and after the second batch is added.
 SMALL, LARGE = 3, 9
 #: Comments on the first record at each count.

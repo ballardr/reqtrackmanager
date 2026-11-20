@@ -16,7 +16,7 @@ Responsibilities:
   (JOB_LOCKFILES) and compare it with that job's lockfile.
 - Print an actionable message per mismatch; exit non-zero if any.
 
-Used by: the `frontend` and `e2e-tests` CI jobs (first step) and
+Used by: the `frontend-shard` and `e2e-tests` CI jobs (first step) and
 .githooks/pre-commit. Standard library only, so it runs in the bare
 Playwright container. Run from anywhere: paths resolve from the repo root.
 """
@@ -32,6 +32,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 # CI job key -> lockfile of the project whose tests run in that job's image.
 JOB_LOCKFILES = {
     "frontend": ROOT / "frontend" / "package-lock.json",
+    "frontend-shard": ROOT / "frontend" / "package-lock.json",
     "e2e-tests": ROOT / "tests" / "playwright" / "package-lock.json",
 }
 

@@ -45,22 +45,33 @@ function structure(svg: string): { width: number; height: number; words: Record<
   return { width: box[2], height: box[3], words };
 }
 
-export const EveryDiagramTypeAgreesWithTheReference: Story = {
-  play: async () => {
-    const entries = reference as unknown as Entry[]; // the JSON's inferred type is one shape per entry
-    await expect(corpus.map((entry) => entry.name)).toEqual(entries.map((entry) => entry.name));
-    for (const entry of corpus) {
-      const expected = entries.find((candidate) => candidate.name === entry.name);
-      if (expected === undefined) throw new Error(`${entry.name} is not in the reference`);
-      const drawn = await renderDiagram(entry.source, "light");
-      const svg = decodeURIComponent(drawn.src.slice(drawn.src.indexOf(",") + 1));
-      const actual = structure(svg);
-      await expect(actual.words, `${entry.name}: the words printed`).toEqual(expected.words);
-      const tolerance = TOLERANCE[entry.size];
-      if (tolerance !== undefined && expected.width > 0) {
-        await expect(Math.abs(actual.width / expected.width - 1), `${entry.name}: width`).toBeLessThanOrEqual(tolerance);
-        await expect(Math.abs(actual.height / expected.height - 1), `${entry.name}: height`).toBeLessThanOrEqual(tolerance);
+/** The corpus is compared in this many stories, each drawing every Nth entry, so one story draws few enough diagrams to finish within a test's time under load. */
+const GROUPS = 4;
+
+/** A story comparing every `GROUPS`th corpus entry, starting at `group`, with the reference; together the stories cover every entry once. */
+function agreesWithTheReference(group: number): Story {
+  return {
+    play: async () => {
+      const entries = reference as unknown as Entry[]; // the JSON's inferred type is one shape per entry
+      await expect(corpus.map((entry) => entry.name)).toEqual(entries.map((entry) => entry.name));
+      for (const entry of corpus.filter((_, index) => index % GROUPS === group)) {
+        const expected = entries.find((candidate) => candidate.name === entry.name);
+        if (expected === undefined) throw new Error(`${entry.name} is not in the reference`);
+        const drawn = await renderDiagram(entry.source, "light");
+        const svg = decodeURIComponent(drawn.src.slice(drawn.src.indexOf(",") + 1));
+        const actual = structure(svg);
+        await expect(actual.words, `${entry.name}: the words printed`).toEqual(expected.words);
+        const tolerance = TOLERANCE[entry.size];
+        if (tolerance !== undefined && expected.width > 0) {
+          await expect(Math.abs(actual.width / expected.width - 1), `${entry.name}: width`).toBeLessThanOrEqual(tolerance);
+          await expect(Math.abs(actual.height / expected.height - 1), `${entry.name}: height`).toBeLessThanOrEqual(tolerance);
+        }
       }
-    }
-  },
-};
+    },
+  };
+}
+
+export const EveryFirstDiagramTypeAgreesWithTheReference: Story = agreesWithTheReference(0);
+export const EverySecondDiagramTypeAgreesWithTheReference: Story = agreesWithTheReference(1);
+export const EveryThirdDiagramTypeAgreesWithTheReference: Story = agreesWithTheReference(2);
+export const EveryFourthDiagramTypeAgreesWithTheReference: Story = agreesWithTheReference(3);

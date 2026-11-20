@@ -228,7 +228,9 @@ export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
   args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
   play: async () => {
     const body = within(document.body);
-    await userEvent.type(body.getByLabelText("Decision title"), "W".repeat(200));
+    // One paste, not 200 keystrokes: every keystroke re-renders the whole form, which timed out under load.
+    await userEvent.click(body.getByLabelText("Decision title"));
+    await userEvent.paste("W".repeat(200));
     await expect(body.getByText(/Could not save:/)).toBeVisible();
     await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
     const dialog = body.getByRole("dialog");

@@ -410,12 +410,36 @@ def parse_dockerfile_packages(text: str) -> set[str]:
     return packages
 
 
+_SKIPPED_DOCKERFILE_DIRS = {"node_modules", ".git", "build", "graphify-out", "perf"}
+
+
+def dockerfiles() -> list[Path]:
+    """Returns every Dockerfile in the repository (perf tooling excluded), sorted.
+
+    Asks git for tracked and untracked-but-not-ignored files, so ignored directories such as `node_modules` are never
+    walked (a recursive glob through them took most of this check's time); falls back to the glob outside a checkout.
+    """
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout
+        candidates = [ROOT / name for name in listed.split("\0") if name]
+    except (OSError, subprocess.CalledProcessError):
+        candidates = list(ROOT.rglob("Dockerfile*"))
+    return sorted(
+        path
+        for path in candidates
+        if path.name.startswith("Dockerfile")
+        and not set(path.relative_to(ROOT).parts) & _SKIPPED_DOCKERFILE_DIRS
+        and path.is_file()
+    )
+
+
 def dockerfile_system_packages() -> dict[str, set[str]]:
     """Returns the operating-system packages each Dockerfile installs, by Dockerfile path (perf tooling excluded)."""
     found: dict[str, set[str]] = {}
-    for path in sorted(ROOT.rglob("Dockerfile*")):
-        if set(path.relative_to(ROOT).parts) & {"node_modules", ".git", "build", "graphify-out", "perf"}:
-            continue
+    for path in dockerfiles():
         packages = parse_dockerfile_packages(path.read_text(encoding="utf-8"))
         if packages:
             found[str(path.relative_to(ROOT))] = packages
@@ -467,9 +491,7 @@ def judge_system_component(component: dict) -> str:
 def dockerfile_base_images() -> set[str]:
     """Returns every external image a Dockerfile builds from (stage aliases such as `FROM base` are skipped)."""
     images: set[str] = set()
-    for path in sorted(ROOT.rglob("Dockerfile*")):
-        if set(path.relative_to(ROOT).parts) & {"node_modules", ".git", "build", "graphify-out", "perf"}:
-            continue
+    for path in dockerfiles():
         text = path.read_text(encoding="utf-8")
         aliases = {m.group(2).lower() for m in FROM_LINE.finditer(text) if m.group(2)}
         for match in FROM_LINE.finditer(text):

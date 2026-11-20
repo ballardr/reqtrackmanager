@@ -36,8 +36,9 @@ def _load():
     return module
 
 
-cla = _load()
-VERSION = cla.current_version((ROOT / "CLA.md").read_text(encoding="utf-8"))
+# The module-level skip above cannot stop this import-time read, so it is guarded too.
+cla = _load() if SCRIPT.is_file() else None
+VERSION = cla.current_version((ROOT / "CLA.md").read_text(encoding="utf-8")) if cla else ""
 BASE = {
     "maintainers": ["owner"],
     "automation": ["bot[bot]"],
