@@ -39,11 +39,13 @@ from app.services.report_image_layout import place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     MAX_CONTENTS_LEVELS,
+    MAX_LIST_LEVEL,
     TONE_FILL,
     BottomEnd,
     BottomStart,
     BulletList,
     Cell,
+    CodeBlock,
     Contents,
     DocumentStyles,
     Equation,
@@ -58,11 +60,13 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     Styled,
     Table,
     VerticalSpace,
     finalize_links,
+    list_entries,
     text_on,
     text_runs,
 )
@@ -189,6 +193,33 @@ def _heading_text(styles: DocumentStyles, size: float | None = None) -> str:
     return props
 
 
+def _list_style(name: str, *, numbered: bool) -> str:
+    """A list style with a definition for each of the four depths a list may nest to (a deeper item is drawn at the fourth)."""
+    levels = []
+    for level in range(1, MAX_LIST_LEVEL + 2):
+        margin = 0.9 * level
+        indent = -0.6 if numbered else -0.5
+        properties = (
+            '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
+            f'<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="{margin:g}cm" '
+            f'fo:text-indent="{indent:g}cm" fo:margin-left="{margin:g}cm"/></style:list-level-properties>'
+        )
+        if numbered:
+            levels.append(
+                f'<text:list-level-style-number text:level="{level}" style:num-suffix="." style:num-format="1">{properties}'
+                "</text:list-level-style-number>"
+            )
+        else:
+            char = "•" if level == 1 else "–"
+            levels.append(f'<text:list-level-style-bullet text:level="{level}" text:bullet-char="{char}">{properties}</text:list-level-style-bullet>')
+    return f'<text:list-style style:name="{name}">{"".join(levels)}</text:list-style>'
+
+
+def _preformatted(text: str) -> str:
+    """Paragraph content that keeps a code block's line breaks and spaces (`xml_text` writes them as elements)."""
+    return xml_text(text.expandtabs(4))
+
+
 def _named_styles(styles: DocumentStyles) -> str:
     """The `office:styles` content that does not depend on the page styles: default text, headings, notes, the list.
 
@@ -245,6 +276,16 @@ def _named_styles(styles: DocumentStyles) -> str:
         + _paragraph_style("List_20_Bullet", extra=' style:display-name="List Bullet"', para='fo:margin-bottom="0.05cm"')
         + _paragraph_style("List_20_Number", extra=' style:display-name="List Number"', para='fo:margin-bottom="0.05cm"')
         + _paragraph_style("Display_20_Equation", para='fo:text-align="center"')
+        + _paragraph_style(
+            "Code_20_Block", extra=' style:display-name="Code Block"',
+            para='fo:background-color="#f3f3f3" fo:padding="0.15cm" fo:margin-top="0.1cm" fo:margin-bottom="0.2cm" fo:border="none"',
+            text='fo:font-family="\'Courier New\'" style:font-family-generic="modern" fo:font-size="9pt"',
+        )
+        + _paragraph_style(
+            "Quote_20_Block", extra=' style:display-name="Quote Block"',
+            para='fo:margin-left="0.6cm" fo:margin-top="0.1cm" fo:margin-bottom="0.1cm" fo:padding-left="0.3cm" fo:border-left="1.5pt solid #bbbbbb"',
+            text='fo:color="#444444"',
+        )
         + "".join(
             _paragraph_style(f"P_Image_{align}", para=f'fo:text-align="{align}" fo:keep-with-next="always" fo:margin-bottom="0cm"')
             + _paragraph_style(f"P_Caption_{align}", para=f'fo:text-align="{align}"', text='fo:font-size="9pt" fo:color="#444444"')
@@ -256,14 +297,8 @@ def _named_styles(styles: DocumentStyles) -> str:
             for align in ("left", "center", "right")
         )
         + "".join(_text_style(name, props) for name, props in _SPAN_STYLES.items())
-        + '<text:list-style style:name="L_Number"><text:list-level-style-number text:level="1" style:num-suffix="." style:num-format="1">'
-        '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
-        '<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.9cm" '
-        'fo:text-indent="-0.6cm" fo:margin-left="0.9cm"/></style:list-level-properties></text:list-level-style-number></text:list-style>'
-        + '<text:list-style style:name="L_Bullet"><text:list-level-style-bullet text:level="1" text:bullet-char="•">'
-        '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
-        '<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.9cm" '
-        'fo:text-indent="-0.5cm" fo:margin-left="0.9cm"/></style:list-level-properties></text:list-level-style-bullet></text:list-style>'
+        + _list_style("L_Number", numbered=True)
+        + _list_style("L_Bullet", numbered=False)
     )
 
 
@@ -533,6 +568,31 @@ class _Body:
             self.styles.append(_paragraph_style(name, parent=parent, text=props.strip()))
         return self._own_styles[key]
 
+    def _list(self, block: BulletList | NumberedList) -> str:
+        """A list (nested to the depth the block holds) as `text:list`; a list inside an item sits in that item."""
+        entries = list_entries(block)
+        styles: dict[bool, str] = {}  # the paragraph style of each kind of list, made when an item first needs it
+
+        def build(position: int, level: int) -> tuple[str, int]:
+            """The list of the entries from `position` at `level`, and the position after it."""
+            ordered = entries[position].ordered
+            items: list[str] = []
+            while position < len(entries) and entries[position].level >= level:
+                entry = entries[position]
+                if entry.level > level:  # a list the previous item holds
+                    nested, position = build(position, entry.level)
+                    items[-1:] = [items[-1] + nested] if items else [nested]
+                    continue
+                if entry.ordered not in styles:
+                    styles[entry.ordered] = self._own_style("List_20_Number" if entry.ordered else "List_20_Bullet", block.font, block.size)
+                items.append(f'<text:p text:style-name="{styles[entry.ordered]}">{self._inline(entry.text)}</text:p>')
+                position += 1
+            name = "L_Number" if ordered else "L_Bullet"
+            body = "".join(f"<text:list-item>{item}</text:list-item>" for item in items)
+            return f'<text:list text:style-name="{name}">{body}</text:list>', position
+
+        return build(0, 0)[0] if entries else ""
+
     def _paragraph(self, style: str, content: str) -> None:
         self.chunks.append(f'<text:p text:style-name="{style}">{content}</text:p>')
 
@@ -643,20 +703,16 @@ class _Body:
             self._paragraph("Display_20_Equation", self._equation_frame(block) or xml_text(block.text))
         elif isinstance(block, Note):
             self._paragraph("Note", xml_text(block.text))
-        elif isinstance(block, BulletList):
-            style = self._own_style("List_20_Bullet", block.font, block.size)
-            items = "".join(
-                f'<text:list-item><text:p text:style-name="{style}">{self._inline(item)}</text:p></text:list-item>' for item in block.items
-            )
-            if items:
-                self.chunks.append(f'<text:list text:style-name="L_Bullet">{items}</text:list>')
-        elif isinstance(block, NumberedList):
-            style = self._own_style("List_20_Number", block.font, block.size)
-            items = "".join(
-                f'<text:list-item><text:p text:style-name="{style}">{self._inline(item)}</text:p></text:list-item>' for item in block.items
-            )
-            if items:
-                self.chunks.append(f'<text:list text:style-name="L_Number">{items}</text:list>')
+        elif isinstance(block, BulletList | NumberedList):
+            listing = self._list(block)
+            if listing:
+                self.chunks.append(listing)
+        elif isinstance(block, CodeBlock):
+            if block.label:
+                self._paragraph("Note", xml_text(block.label))
+            self._paragraph("Code_20_Block", _preformatted(block.text))
+        elif isinstance(block, Quote):
+            self._paragraph("Quote_20_Block", self._inline(block.text))
         elif isinstance(block, Image):
             data = block.data
             if block.svg is not None:

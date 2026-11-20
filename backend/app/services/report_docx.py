@@ -70,6 +70,7 @@ from app.services.report_model import (
     BottomEnd,
     BottomStart,
     BulletList,
+    CodeBlock,
     Contents,
     DocumentStyles,
     Equation,
@@ -85,12 +86,14 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     RunningBand,
     Styled,
     Table,
     VerticalSpace,
     finalize_links,
+    list_entries,
     text_on,
     text_runs,
 )
@@ -585,6 +588,38 @@ def _bookmark(paragraph, anchor: str, number: int) -> None:
     paragraph._p.append(end)
 
 
+def _code_block(doc: DocxDocument, block: CodeBlock) -> None:
+    """A code block: an optional label, then the text in one shaded paragraph in a monospace font (lines and spaces kept)."""
+    if block.label:
+        run = doc.add_paragraph().add_run(clean_text(block.label))
+        run.italic = True
+        run.font.size = Pt(8.5)
+        run.font.color.rgb = _NOTE_GREY
+    paragraph = doc.add_paragraph()
+    shading = OxmlElement("w:shd")  # added before the spacing, so the properties stay in the order Word's schema requires
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), "F3F3F3")
+    paragraph._p.get_or_add_pPr().append(shading)
+    paragraph.paragraph_format.space_after = Pt(6)
+    run = paragraph.add_run(clean_text(block.text.expandtabs(4)))
+    run.font.name = _CODE_FONT
+    run.font.size = Pt(9)
+
+
+def _quote(doc: DocxDocument, block: Quote) -> None:
+    """A quoted paragraph: indented, grey, with a bar down its left edge."""
+    paragraph = doc.add_paragraph()
+    border = OxmlElement("w:pBdr")  # added before the indent, so the properties stay in the order Word's schema requires
+    left = OxmlElement("w:left")
+    for name, value in (("val", "single"), ("sz", "18"), ("space", "8"), ("color", "BBBBBB")):
+        left.set(qn(f"w:{name}"), value)
+    border.append(left)
+    paragraph._p.get_or_add_pPr().append(border)
+    paragraph.paragraph_format.left_indent = Cm(0.6)
+    _add_text(paragraph, block.text, lambda run: setattr(run.font.color, "rgb", RGBColor(0x44, 0x44, 0x44)))
+
+
 def _contents_styles(doc: DocxDocument, usable_cm: float) -> None:
     """Adds Word's `TOC Heading` and `toc 1` to `toc 3` styles (the default template has none), once.
 
@@ -988,14 +1023,16 @@ def render_docx_document(document: ReportDocument) -> bytes:
             run.italic = True
             run.font.size = Pt(8.5)
             run.font.color.rgb = _NOTE_GREY
-        elif isinstance(block, BulletList):
+        elif isinstance(block, BulletList | NumberedList):
             look = _block_look(block.font, block.size)
-            for item in block.items:
-                _add_text(doc.add_paragraph(style="List Bullet"), item, look)
-        elif isinstance(block, NumberedList):
-            look = _block_look(block.font, block.size)
-            for item in block.items:
-                _add_text(doc.add_paragraph(style="List Number"), item, look)
+            for entry in list_entries(block):
+                level = min(entry.level, 2)  # Word's built-in list styles go three deep
+                name = ("List Number" if entry.ordered else "List Bullet") + ("" if level == 0 else f" {level + 1}")
+                _add_text(doc.add_paragraph(style=name), entry.text, look)
+        elif isinstance(block, CodeBlock):
+            _code_block(doc, block)
+        elif isinstance(block, Quote):
+            _quote(doc, block)
         elif isinstance(block, Image):
             _image_block(doc, block, usable_cm)
         elif isinstance(block, Table):

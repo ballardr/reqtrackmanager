@@ -188,12 +188,14 @@ services:
       timeout: 5s
       retries: 10
 
-  # Picture converter (optional: `docker compose --profile converter up`, or COMPOSE_PROFILES=converter; leave it
-  # off and EPS and PDF logo upload is simply not offered). Runs Ghostscript and poppler on uploaded EPS and PDF
-  # logos so the backend never does (docs/solution-architecture.md). It is the sandbox: only on the `converter`
+  # Converter (optional: `docker compose --profile converter up`, or COMPOSE_PROFILES=converter; leave it off and EPS and
+  # PDF logo upload is not offered and a Mermaid diagram in a report prints as its source text). Runs Ghostscript and
+  # poppler on uploaded EPS and PDF logos, and draws Mermaid diagrams for reports (the real Mermaid library in an embedded
+  # JavaScript engine, one process per diagram, ended at a time limit), so the backend never does
+  # (docs/solution-architecture.md). It is the sandbox: only on the `converter`
   # network, which is `internal` (no route out, no published port) and shared with the backend alone; no secrets and
   # no application code; non-root, read-only root filesystem with a small scratch `tmpfs`, no Linux capabilities, and
-  # CPU, memory and process ceilings. Nothing is stored.
+  # CPU, memory and process ceilings (two drawings of up to 1.5 GiB each fit the 2.5 GiB limit). Nothing is stored.
   converter:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-converter:${IMAGE_TAG:-latest}
     profiles: ["converter"]

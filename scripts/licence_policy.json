@@ -17,6 +17,7 @@
   },
   "denied_prefixes": ["GPL", "AGPL", "LGPL", "SSPL", "BUSL", "Commons-Clause", "Elastic", "LicenseRef", "SEE LICENSE", "UNLICENSED"],
   "overrides": {
+    "python:quickjs-ng": {"licence": "MIT", "evidence": "Packaged LICENSE is the MIT text (quickjs-ng and the binding's author); the metadata names no licence."},
     "python:cssselect2": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE file is the BSD 3-Clause text; the metadata names no clause count."},
     "python:jinja2": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE.txt is the BSD 3-Clause text (Pallets); the metadata gives only the BSD classifier."},
     "python:passlib": {"licence": "BSD-3-Clause", "evidence": "Packaged LICENSE states the BSD licence with a no-endorsement clause (three clauses); the metadata says only BSD."},
@@ -67,12 +68,21 @@
     {"name": "GnuPG", "packages": ["gnupg"], "images": [], "licence": "GPL-3.0-or-later", "source": "https://gnupg.org/", "use": "build-tool",
      "role": "Verifies the PostgreSQL repository key while the backup image is built.", "reason": "Removed again in the same layer, so it is not in the published image."},
     {"name": "nginx", "packages": ["nginx"], "images": ["frontend", "docs"], "licence": "BSD-2-Clause", "source": "https://nginx.org/", "use": "program",
-     "role": "Web server for the front end and the documentation site.", "reason": "Permissive; comes with the base image (the documentation image also upgrades the package itself so a security release is taken)."}
+     "role": "Web server for the front end and the documentation site.", "reason": "Permissive; comes with the base image (the documentation image also upgrades the package itself so a security release is taken)."},
+    {"name": "Mermaid (bundled in mermaidx)", "packages": [], "images": ["converter"], "licence": "MIT", "source": "https://github.com/mermaid-js/mermaid", "use": "library",
+     "role": "Draws diagrams for reports, in the same version as the interface (12.3.0). Ships inside the `mermaidx` package as one bundled file, with the libraries it contains (d3, dagre-d3-es, dayjs, lodash-es, KaTeX: MIT, ISC or BSD-3-Clause; DOMPurify: MPL-2.0 OR Apache-2.0).",
+     "reason": "Permissive, used unmodified as mermaidx ships it; the package's NOTICES.md lists each bundled component and the licence texts are in the installed package."},
+    {"name": "elkjs and @mermaid-js/layout-elk (bundled in mermaidx)", "packages": [], "images": ["converter"], "licence": "EPL-2.0", "source": "https://github.com/kieler/elkjs", "use": "library",
+     "role": "The Eclipse Layout Kernel, compiled to JavaScript, which Mermaid's optional ELK layout uses (the @mermaid-js/layout-elk wrapper is MIT).",
+     "reason": "File-level (weak) copyleft: the file is used unmodified as mermaidx ships it, so the licence's obligations are the notice and the source link (elkjs and the `elkjs` npm package; `tools/build_layout_elk.sh` in mermaidx rebuilds the exact file). Nothing of this product is a modification of it."},
+    {"name": "pele and ZenUML renderer (bundled in mermaidx)", "packages": [], "images": ["converter"], "licence": "MIT AND BSD-3-Clause", "source": "https://github.com/mermaid-js/zenuml-core", "use": "library",
+     "role": "Alternative diagram engines mermaidx can use (pele; the ZenUML sequence renderer with antlr4 BSD-3-Clause and marked MIT).",
+     "reason": "Permissive, used unmodified; this product draws with Mermaid only."}
   ],
   "fonts": [
     {"name": "Liberation Sans, Serif and Mono", "licence": "OFL-1.1", "where": "backend: report fonts", "files": "backend/app/assets/report_fonts/",
      "text": "backend/app/assets/report_fonts/LICENSE_LIBERATION", "note": "Liberation 2 (Red Hat; digitised data copyright Google), used as the default report fonts."},
-    {"name": "DejaVu Sans", "licence": "Bitstream-Vera", "where": "backend: diagrams and mathematics in reports; frontend: diagram labels (Latin subset, WOFF2)", "files": "backend/app/assets/fonts/, frontend/src/assets/fonts/",
+    {"name": "DejaVu Sans", "licence": "Bitstream-Vera", "where": "backend: diagrams and mathematics in reports; converter: diagram labels (the full font, bundled in mermaidx); frontend: diagram labels (Latin subset, WOFF2)", "files": "backend/app/assets/fonts/, frontend/src/assets/fonts/",
      "text": "backend/app/assets/fonts/LICENSE_DEJAVU", "note": "Bitstream Vera licence; DejaVu's own changes are in the public domain. The frontend file is a Latin subset of the same font (glyph designs unchanged), shipped with the licence text beside it."},
     {"name": "KaTeX fonts", "licence": "OFL-1.1", "where": "frontend: mathematics", "files": "bundled by the katex package",
      "text": null, "note": "Computer Modern and AMS derived fonts; KaTeX's font sources carry the SIL Open Font License 1.1 notice."}

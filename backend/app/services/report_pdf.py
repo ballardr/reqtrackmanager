@@ -28,6 +28,7 @@ from __future__ import annotations
 import html
 import io
 import math
+import re
 import tempfile
 from contextlib import nullcontext
 from pathlib import Path
@@ -68,12 +69,13 @@ from app.services.report_document import (
 )
 from app.services.report_fonts import FontFamily, draw_centred, pdf_face, using_family
 from app.services.report_grid_render import pdf_grid
-from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
+from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     BottomEnd,
     BottomStart,
     BulletList,
+    CodeBlock,
     Contents,
     DocumentStyles,
     Equation,
@@ -88,11 +90,13 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     Styled,
     Table,
     VerticalSpace,
     finalize_links,
+    list_entries,
     text_runs,
 )
 from app.services.report_pdf_floating import FloatingPicture
@@ -285,26 +289,93 @@ def _markup(value: str, images: _InlineImages, *, bold: bool = False, italic: bo
 
     `bold` and `italic` say the paragraph's own style already is, so fallback characters take the same weight and slant.
     """
-    return "".join(
+    marked = "".join(
         safe(run, bold=bold, italic=italic) if isinstance(run, str)
         else _styled_markup(run, bold=bold, italic=italic) if isinstance(run, Styled)
         else _inline_equation(run, images)
         for run in text_runs(value)
     )
+    return marked.replace("\n", "<br/>")  # a line break in the text stays one, as in Word, OpenDocument and HTML
 
 
-def _list(
-    items: list[str], images: _InlineImages, bullet_type: str, look: _Look, font: FontFamily | None = None, size: float | None = None,
-) -> ListFlowable:
-    """A bulleted (`"bullet"`) or numbered (`"1"`) list of marked-up items, in the list's own font and size when it sets them."""
+#: The bullet of a list at each depth: Helvetica has no hollow bullet, so a nested level uses a dash.
+_BULLETS = ("\u2022", "\u2013", "\u2013", "\u2013")
+
+
+def _list(block: BulletList | NumberedList, images: _InlineImages, look: _Look) -> ListFlowable:
+    """A bulleted or numbered list (nested to the depth the block holds) of marked-up items, in the list's own font and size
+    when it sets them."""
+    font, size = block.font, block.size
     style = look.body_for(font, size)
-    with using_family(font.key) if font else nullcontext():
-        flowables: list[Any] = [ListItem(RlParagraph(_markup(item, images), style)) for item in items]
+    entries = list_entries(block)
     bullet_font = pdf_face(font.key) if font else look.bullet_font
     options: dict[str, Any] = {} if bullet_font == "Helvetica" else {"bulletFontName": bullet_font}
     if size is not None:
         options["bulletFontSize"] = size
-    return ListFlowable(flowables, bulletType=bullet_type, bulletFormat="%s." if bullet_type == "1" else None, **options)
+
+    def build(position: int, level: int) -> tuple[ListFlowable, int]:
+        """The list of the entries from `position` at `level`, and the position after it."""
+        ordered = entries[position].ordered
+        bodies: list[list[Flowable]] = []  # the content of each item: its paragraph, then any list it holds
+        while position < len(entries) and entries[position].level >= level:
+            entry = entries[position]
+            if entry.level > level:  # a list the previous item holds: it is built into that item
+                nested, position = build(position, entry.level)
+                if bodies:
+                    bodies[-1].append(nested)
+                else:
+                    bodies.append([nested])
+                continue
+            with using_family(font.key) if font else nullcontext():
+                bodies.append([RlParagraph(_markup(entry.text, images), style)])
+            position += 1
+        kind: dict[str, Any] = (
+            {"bulletType": "1", "bulletFormat": "%s."} if ordered else {"bulletType": "bullet", "start": _BULLETS[min(level, 3)]}
+        )
+        items: list[Any] = [ListItem(body) for body in bodies]
+        return ListFlowable(items, **kind, **options), position
+
+    flowable, _ = build(0, 0)
+    return flowable
+
+
+def _code_markup(text: str) -> str:
+    """Paragraph markup that keeps a code block's line breaks and indentation: a break per line, a space per indent step.
+
+    Single spaces between words stay breakable so a long line wraps instead of running off the page.
+    """
+    lines = []
+    for line in text.expandtabs(4).split("\n"):
+        indent = len(line) - len(line.lstrip(" "))
+        body = re.sub(r" {2,}", lambda run: "&nbsp;" * len(run.group()), safe(line.lstrip(" ")))
+        lines.append("&nbsp;" * indent + body)
+    return "<br/>".join(lines)
+
+
+def _code_flowables(block: CodeBlock, look: _Look) -> list:
+    """A code block as flowables: an optional label, then the text in the monospace family on a light panel."""
+    style = _derive(
+        "report_code", look.body, fontName=pdf_face("mono"), fontSize=8, leading=10, backColor=colors.HexColor("#f3f3f3"),
+        borderPadding=(4, 4, 4, 4), spaceBefore=4, spaceAfter=6, leftIndent=4, rightIndent=4,
+    )
+    out: list = [RlParagraph(safe(block.label), look.note)] if block.label else []
+    out.append(RlParagraph(_code_markup(block.text), style))
+    return out
+
+
+def _quote_flowable(block: Quote, images: _InlineImages, look: _Look, usable_width: float) -> Flowable:
+    """A quoted paragraph: indented, in grey, with a bar down its left edge."""
+    style = _derive("report_quote", look.body, textColor=colors.HexColor("#444444"))
+    table = RlTable(
+        [[RlParagraph(_markup(block.text, images), style)]], colWidths=[usable_width], splitInRow=1,
+        style=TableStyle([
+            ("LINEBEFORE", (0, 0), (0, 0), 2.5, colors.HexColor("#bbbbbb")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]),
+    )
+    table.hAlign = "LEFT"
+    table.spaceBefore, table.spaceAfter = 4, 4
+    return table
 
 
 def _display_equation(block: Equation, usable_width: float, look: _Look) -> list:
@@ -341,13 +412,35 @@ def _content_widths(block: Table, usable_width: float) -> list[float]:
     return [need + spare * need / sum(needs) for need in needs]
 
 
+def _svg_picture(block: Image, width: float, usable_cm: float) -> Any:
+    """The flowable of an SVG picture: a vector drawing, or for a `raster` picture (a diagram) a picture drawn from the SVG at
+    print resolution, because `svglib` mis-places the text and markers of a diagram.
+
+    Args:
+        block: An image block whose `svg` is set.
+        width: The width it is placed at, in points.
+        usable_cm: The width of the text on the page, in cm.
+
+    Returns:
+        The flowable, or `None` when it cannot be drawn.
+    """
+    assert block.svg is not None
+    if not block.raster:
+        return svg_flowable(block.svg, width)
+    try:
+        png = svg_block_png(block, usable_cm)
+    except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
+        return None
+    return image_flowable(png) if png else None
+
+
 def _sized_picture(block: Image, usable_width: float) -> Any:
     """The picture as a flowable at its placed size, or `None` when it cannot be drawn."""
     size = placed_size_cm(block, usable_width / cm)
     if size is None:
         return None
     width, height = size[0] * cm, size[1] * cm
-    flowable: Any = svg_flowable(block.svg, width) if block.svg is not None else image_flowable(block.data)
+    flowable: Any = _svg_picture(block, width, usable_width / cm) if block.svg is not None else image_flowable(block.data)
     if flowable is None:
         return None
     if block.svg is not None and hasattr(flowable, "scale"):  # a vector drawing is scaled to the placed size
@@ -415,7 +508,7 @@ def _anchored_to_bottom(flowables: list, usable_width: float, usable_height: flo
 
 # Blocks the text of a wrapped picture can run through: anything that is a run of text. A table, an equation, another
 # picture or a page or style change ends the wrap, as the text cannot flow around it.
-_WRAPPABLE = (Heading, Paragraph, Note, BulletList, NumberedList, Gap)
+_WRAPPABLE = (Heading, Paragraph, Note, BulletList, NumberedList, CodeBlock, Quote, Gap)
 
 
 def _wrapped(block: Image, following: list, usable_width: float) -> list:
@@ -440,7 +533,7 @@ def _placed_flowable(placed: PlacedPicture) -> Any:
     """A table-cell picture as a flowable at its placed size, or `None` when it cannot be drawn."""
     width, height = placed.width_cm * cm, placed.height_cm * cm
     image = placed.image
-    flowable: Any = svg_flowable(image.svg, width) if image.svg is not None else image_flowable(image.data)
+    flowable: Any = _svg_picture(image, width, placed.width_cm) if image.svg is not None else image_flowable(image.data)
     if flowable is None:
         return None
     if image.svg is not None and hasattr(flowable, "scale"):
@@ -780,10 +873,12 @@ def _pdf_bytes(document: ReportDocument, look: _Look, pages: dict[str, int], fou
             story.extend(_display_equation(block, usable_width, look))
         elif isinstance(block, Note):
             out.append(RlParagraph(safe(block.text), look.note))
-        elif isinstance(block, NumberedList):
-            out.append(_list(block.items, images, "1", look, block.font, block.size))
-        elif isinstance(block, BulletList):
-            out.append(_list(block.items, images, "bullet", look, block.font, block.size))
+        elif isinstance(block, NumberedList | BulletList):
+            out.append(_list(block, images, look))
+        elif isinstance(block, CodeBlock):
+            out.extend(_code_flowables(block, look))
+        elif isinstance(block, Quote):
+            out.append(_quote_flowable(block, images, look, usable_width))
         elif isinstance(block, Image):
             if block.placement == "wrap":
                 wrap = (block, [])

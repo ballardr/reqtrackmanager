@@ -1731,6 +1731,9 @@ class ReportField:
         id_column: For a `principal` field, the `<name>_id` column (a user or a group).
         math: For a `text` field, whether people write equations in it (`\\( x \\)`, `$$ x $$`), so a layout's
             text block that prints it draws them. Opt-in per field; any other text stays literal.
+        markdown: For a `text` field, whether it holds Markdown (declared for the column in `markdown_fields`; a search field
+            that is Markdown makes its report field so), so a layout's text block that prints only this field draws its
+            headings, lists, tables, code and diagrams, and a cell or a sentence shows its words.
         domain: For a field whose values come from a closed list a project defines (a component's name, a type
             definition's name), `(db, project ids) -> the values on offer`, so a run-time variable can offer them as
             options. An `enum` needs none (its `labels` are the domain); a field with neither takes free input.
@@ -1747,6 +1750,7 @@ class ReportField:
     labels: Mapping[str, str] = field(default_factory=dict)
     id_column: Any | None = None
     math: bool = False
+    markdown: bool = False
     domain: Callable[[Session, Sequence[uuid.UUID]], list[str]] | None = None
     core: bool = False
 

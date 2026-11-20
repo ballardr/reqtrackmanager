@@ -29,6 +29,7 @@ from itertools import groupby
 from app.models.report_layout import FAMILY_TABLE
 from app.services.csv_safety import csv_safe
 from app.services.labels import REQUIREMENT_STATUS_TONE, requirement_status_label
+from app.services.report_diagram import DiagramBudget
 from app.services.report_document import ReportBranding
 from app.services.report_docx import render_docx_document
 from app.services.report_html import render_html_document
@@ -133,7 +134,8 @@ def build_requirement_document(
             page (with the org logo if provided), and an optional footer.
         images: Pre-resolved `attachment:<id>` -> image bytes mapping for
             any images referenced in `post_markdown` — see
-            `report_model.markdown_to_blocks`'s docstring.
+            `report_model.markdown_to_blocks`'s docstring. A Mermaid block in `post_markdown` is drawn when the converter
+            service is configured, else printed as its source.
         chapters_per_component: When `True` (the default), each component
             gets its own chapter heading and starts on a fresh page, with a
             sub-section per category underneath. When `False`, the
@@ -176,7 +178,7 @@ def build_requirement_document(
                 Gap(0.5),
             ]
 
-    blocks += markdown_to_blocks(post_markdown, images)
+    blocks += markdown_to_blocks(post_markdown, images, diagrams=DiagramBudget())
     return ReportDocument(title=project_name, blocks=blocks, branding=branding)
 
 

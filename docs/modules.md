@@ -2145,6 +2145,32 @@ flowchart LR
 - **Extending.** A new renderer (ODT) calls `typeset`, `omml`, `png_of`, `source_of` and `report_model.text_runs`; nothing
   else in the layout needs to change. A provider marks a field math-capable with `text_field(..., math=True)` or `from_search(..., math_fields=)`.
 
+### 4r2. Custom reports: Markdown and diagrams
+
+A record's Markdown field, and the Markdown a layout's author writes, print formatted in every format: headings, emphasis, links, nested lists, quotations, code, tables and Mermaid diagrams.
+
+```mermaid
+flowchart LR
+    T["Markdown text<br/>(record field or layout text)"] --> R{"which reader"}
+    R -->|"author text"| A["narrow inline reading<br/>(existing layouts print as before)"]
+    R -->|"record field"| S["the screen's reading<br/>(CommonMark, tables, HTML as text)"]
+    A --> W["report_markdown walk"]
+    S --> W
+    W --> B["blocks: Heading, Paragraph, lists,<br/>Quote, CodeBlock, Grid, Image"]
+    W -->|"mermaid fence"| D["DiagramBudget → converter /diagram"]
+    D -->|"SVG"| F["svg_styles flatten → sanitise"]
+    F --> B
+    D -.->|"cannot be drawn"| C["CodeBlock of the source + warning"]
+    C --> B
+    B --> O["PDF · Word · OpenDocument · HTML"]
+```
+
+- **Where a field prints formatted.** A text-block paragraph that is only `{{alias.field}}`, where the field is declared Markdown (`ReportField.markdown`; `from_search` takes it from the search declaration, which `test_long_text_inventory.py` ties to the column declaration, so a new Markdown column needs nothing here). Headings in the value are shifted two levels. A value is read as the screen reads it and is never filled in or scanned for placeholders. In a sentence or a table cell the field shows its words (`markdown_text.plain_text`); a spreadsheet keeps the source; a math-capable field keeps its text as written in those places.
+- **Blocks.** `CodeBlock` (text, language, optional label), `Quote`, and `levels` and `ordered` on `BulletList` and `NumberedList` (read through `report_model.list_entries`; flat lists are unchanged). A Markdown table is a `Grid`. A renderer that handles a list, a code block or a quotation handles it for every format; `tests/test_report_markdown_formats.py` asserts each from the written file.
+- **Diagrams.** `report_diagram.DiagramBudget.draw` asks the converter (`POST /diagram`, internal network only) for the SVG of the text, with the Mermaid version, font and limits of the screen (`converter/diagram_config.json`, held equal to `frontend/src/utils/mermaidRenderConfig.json` by `tests/test_diagram_config.py`). The reply is untrusted: `svg_styles.flatten_styles` turns the drawing's style sheet into attributes (the sanitiser removes style elements), then `report_svg.sanitize_svg` allow-lists it. The drawing is sized from its `viewBox`, given its own identifiers and cached by the hash of the Mermaid version, theme and text. PDF, Word and OpenDocument print it as a picture at print resolution (`Image.raster`); HTML keeps the vector inline.
+- **Bounds and failure.** At most 40 diagrams and 150 seconds of drawing per run; after the converter itself fails, the rest of the run does not try again. A diagram that cannot be drawn (no converter, a refused diagram, a timeout, an exhausted budget) prints as a labelled block of its source and adds one warning; the run never fails for it.
+- **Extending.** A module report that prints long text calls `record_markdown_blocks(text, diagrams=..., warn=...)`; nothing else changes. A new diagram type needs nothing: add one to `converter/tests/diagram_corpus.json` and regenerate the reference (`frontend/scripts/generate-diagram-reference.mjs`). Raising the Mermaid version is one change in five places, each checked: the `mermaid` pin in `frontend/package.json`, `mermaidRenderConfig.json`, `converter/diagram_config.json`, `converter/requirements.txt` (the `mermaidx` release that bundles it) and `report_diagram.MERMAID_VERSION`.
+
 ### 4s. Custom reports: background runs (Module 10 Phase 10)
 
 A file run that passes the synchronous limits is produced in the background, stored for a limited time and announced

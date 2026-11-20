@@ -246,15 +246,17 @@ def svg_png(svg: str, *, width_px: int = 1200, zoom: float | None = None, backgr
         ValueError: `resvg` could not render it.
     """
     clean = sanitize_svg(svg)
+    # The generic families a drawing may name (a diagram writes `font-family="sans-serif"` on some labels) map to the
+    # bundled font too, because no system font is loaded and the rasteriser's own default would be one it does not have.
     font_dirs = [str(FONT_DIR)]
     if zoom is not None:
         return resvg_py.svg_to_bytes(
             svg_string=clean, zoom=zoom, skip_system_fonts=True, font_dirs=font_dirs, font_family="DejaVu Sans",
-            background=background,
+            sans_serif_family="DejaVu Sans", serif_family="DejaVu Sans", monospace_family="DejaVu Sans", background=background,
         )
     return resvg_py.svg_to_bytes(
         svg_string=clean, width=width_px, skip_system_fonts=True, font_dirs=font_dirs, font_family="DejaVu Sans",
-        background=background,
+        sans_serif_family="DejaVu Sans", serif_family="DejaVu Sans", monospace_family="DejaVu Sans", background=background,
     )
 
 

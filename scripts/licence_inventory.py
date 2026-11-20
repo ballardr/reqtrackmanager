@@ -7,7 +7,7 @@ Collects the licence of every third-party component this product ships and judge
 
 Responsibilities:
 - Read the npm lockfiles (frontend, documentation site) and resolve each Python requirements file (backend,
-  mcp-server) in a throwaway virtual environment, so the Python inventory is the same closure an image build installs.
+  mcp-server, converter) in a throwaway virtual environment, so the Python inventory is the same closure an image build installs.
 - Normalise each component's licence to an SPDX expression (declared expression, then the licence field, then the
   trove classifier, then a named override in the policy that records the evidence).
 - Judge an SPDX expression against the policy: permissive and file-level copyleft licences pass, library copyleft
@@ -39,6 +39,7 @@ POLICY_PATH = ROOT / "scripts" / "licence_policy.json"
 PYTHON_COMPONENTS = {
     "backend": "backend/requirements.txt",
     "mcp-server": "mcp-server/requirements.txt",
+    "converter": "converter/requirements.txt",
 }
 NPM_COMPONENTS = {
     "frontend": "frontend",

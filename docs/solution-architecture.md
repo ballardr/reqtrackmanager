@@ -507,8 +507,8 @@ Files such as supporting documents and uploaded attachments are stored in a conf
 
 **Server-tier roles:** `ServerRole` carries `MODULE_ADMINISTRATOR`, `SUBSCRIPTION_MANAGER` and `SUBSCRIPTION_REMOVAL_AUTHORITY` as rows in `server_roles`, checked per request by `require_server_role` (a server administrator always passes, a personal access token never does). The subscription roles take over the organisation lifecycle routes in `routers/orgs/core.py`: the manager creates, imports, suspends and enables and sets module entitlements; the removal authority deletes; both read the thin organisation directory. Joining an organisation as its administrator and all deployment-wide settings stay with the server administrator. `GET /system/access` returns the caller's roles and the sections they unlock, which the navigation and the server pages follow. Actions under a role are audited with `role_used`.
 
-### Picture Converter (optional)
-EPS and PDF logos uploaded to the report image library are converted to SVG once, at upload, by a separate `converter` container (`converter/`, a Compose profile that is off unless chosen). It exists so the backend never runs a PostScript interpreter (Ghostscript) or a PDF parser: both read hostile input and have a history of sandbox bypasses, so they run where an escape finds nothing to take.
+### Picture and Diagram Converter (optional)
+A separate `converter` container (`converter/`, a Compose profile that is off unless chosen) runs the two things the backend must never run itself, because both read content a person supplies: a PostScript interpreter and PDF parser (Ghostscript, poppler) on uploaded EPS and PDF logos, and a JavaScript engine (the Mermaid library, through `mermaidx`, with no browser) on diagram text. Both have a history of sandbox bypasses or run arbitrary layout code, so they run where an escape finds nothing to take.
 
 ```mermaid
 flowchart LR
@@ -516,10 +516,14 @@ flowchart LR
     BE -->|"POST /convert/eps<br/>internal network only"| CV["converter<br/>no secrets, no egress,<br/>read-only, non-root"]
     CV -->|"SVG (untrusted)"| BE
     BE -->|"sanitise, store SVG"| ST[(storage)]
-    BE -.->|"report run: SVG only,<br/>converter never called"| R[Report]
+    BE -->|"report run: POST /diagram<br/>(Mermaid text, theme)"| CV
+    CV -->|"SVG (untrusted)"| BE
+    BE -->|"flatten styles, sanitise,<br/>cache by text, theme, version"| R[Report: PDF, Word,<br/>OpenDocument, HTML]
 ```
 
-Read left to right: the backend sends the file over a Compose network marked `internal` (shared with nothing but the backend, no route out), the converter replies with an SVG that the backend treats as untrusted and sanitises, and only that SVG is stored. A report run never calls the converter. Without the service, `REPORT_CONVERTER_URL` is empty and EPS and PDF are simply not offered; the rest of the product is unchanged. See [deployment.md](deployment.md#optional-eps-and-pdf-logos-the-converter) and `docs/decisions.md`'s "Custom reports: the converter service".
+Read left to right: the backend sends the file or the diagram text over a Compose network marked `internal` (shared with nothing but the backend, no route out), the converter replies with an SVG that the backend treats as untrusted, and the backend sanitises it. A logo is converted once, at upload, and only the SVG is stored. A diagram is drawn at report time, in a process that the converter starts for that one diagram and ends at a time limit, because the embedded engine cannot be interrupted from inside. The backend turns the drawing's style sheet into attributes (`services.svg_styles`), so the colours survive the sanitiser and an HTML page is not restyled by it, sets its size, and remembers it. A diagram that cannot be drawn (no converter, a refused diagram, a timeout, an exhausted run budget) prints as a labelled block of its source text, never as a failed report. Without the service, `REPORT_CONVERTER_URL` is empty, EPS and PDF are not offered and diagrams print as source; the rest of the product is unchanged.
+
+The screen and a report draw with the same Mermaid version, font (DejaVu Sans) and limits: `frontend/src/utils/mermaidRenderConfig.json` and `converter/diagram_config.json` are held equal by `backend/tests/test_diagram_config.py`, and one reference of what each diagram type draws (`converter/tests/diagram_reference.json`) is checked against the browser (a story) and against the converter (its tests). See [deployment.md](deployment.md#optional-logos-and-report-diagrams-the-converter) and `docs/decisions.md`'s "Custom reports: the converter service" and "Markdown and diagrams in reports and exports".
 
 ### Stateful Components and Backup Verification
 

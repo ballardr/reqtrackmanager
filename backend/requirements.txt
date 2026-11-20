@@ -30,6 +30,10 @@ prometheus-client==0.26.0
 markdown-it-py==3.0.0
 reportlab==5.1.0
 svglib==2.4.0
+# Read directly by `services.svg_styles` (a drawing's style sheet applied as attributes); both are also what svglib reads style
+# sheets with, so these pins are the versions it already resolved to.
+tinycss2==1.5.1
+cssselect2==0.10.1
 resvg-py==0.5.0
 ziamath==0.13
 ziafont==0.11
@@ -81,3 +85,4 @@ types-psycopg2==2.9.21.20261030
 types-openpyxl==3.1.5.20261017
 lxml-stubs==0.5.1
 types-reportlab==5.0.0.20261008
+types-tinycss2==1.5.1.20260414

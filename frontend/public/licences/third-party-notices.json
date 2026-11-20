@@ -46,6 +46,10 @@
    "title": "MCP server image"
   },
   {
+   "id": "converter",
+   "title": "Picture and diagram converter image"
+  },
+  {
    "id": "frontend",
    "title": "Front-end application (bundled)"
   },
@@ -73,7 +77,7 @@
    "texts": [
     "7a083b136e64"
    ],
-   "where": "backend: diagrams and mathematics in reports; frontend: diagram labels (Latin subset, WOFF2)"
+   "where": "backend: diagrams and mathematics in reports; converter: diagram labels (the full font, bundled in mermaidx); frontend: diagram labels (Latin subset, WOFF2)"
   },
   {
    "files": "bundled by the katex package",
@@ -6165,7 +6169,7 @@
    "components": [
     "frontend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "npm",
    "licence": "MIT",
    "licence_source": "metadata",
@@ -6213,7 +6217,7 @@
    "components": [
     "frontend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "npm",
    "licence": "MIT",
    "licence_source": "metadata",
@@ -6357,7 +6361,7 @@
    "components": [
     "frontend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "npm",
    "licence": "MIT",
    "licence_source": "metadata",
@@ -6469,7 +6473,7 @@
    "components": [
     "frontend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "npm",
    "licence": "MIT",
    "licence_source": "metadata",
@@ -24795,7 +24799,7 @@
    "components": [
     "backend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "python",
    "licence": "BSD-3-Clause",
    "licence_source": "override",
@@ -25523,6 +25527,23 @@
   },
   {
    "components": [
+    "converter"
+   ],
+   "direct": true,
+   "ecosystem": "python",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/mermaidx/0.11.1/",
+   "name": "mermaidx",
+   "review": "none",
+   "texts": [
+    "b2bdaa4d1b9b",
+    "e15dbe19a8a6"
+   ],
+   "version": "0.11.1"
+  },
+  {
+   "components": [
     "backend"
    ],
    "direct": true,
@@ -25553,6 +25574,22 @@
     "a50450da1d53"
    ],
    "version": "1.2.0"
+  },
+  {
+   "components": [
+    "converter"
+   ],
+   "direct": true,
+   "ecosystem": "python",
+   "licence": "MIT",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/novasvg/0.11.5/",
+   "name": "novasvg",
+   "review": "none",
+   "texts": [
+    "b2bdaa4d1b9b"
+   ],
+   "version": "0.11.5"
   },
   {
    "components": [
@@ -26193,6 +26230,22 @@
   },
   {
    "components": [
+    "converter"
+   ],
+   "direct": true,
+   "ecosystem": "python",
+   "licence": "MIT",
+   "licence_source": "override",
+   "link": "https://pypi.org/project/quickjs-ng/0.18.0.1/",
+   "name": "quickjs-ng",
+   "review": "none",
+   "texts": [
+    "1d98bbf860c3"
+   ],
+   "version": "0.18.0.1"
+  },
+  {
+   "components": [
     "mcp-server"
    ],
    "direct": false,
@@ -26457,7 +26510,7 @@
    "components": [
     "backend"
    ],
-   "direct": false,
+   "direct": true,
    "ecosystem": "python",
    "licence": "BSD-3-Clause",
    "licence_source": "override",
@@ -26613,6 +26666,38 @@
     "60875427f705"
    ],
    "version": "0.19.3"
+  },
+  {
+   "components": [
+    "backend"
+   ],
+   "direct": true,
+   "ecosystem": "python",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/types-tinycss2/1.5.1.20260414/",
+   "name": "types-tinycss2",
+   "review": "none",
+   "texts": [
+    "295f8538c94a"
+   ],
+   "version": "1.5.1.20260414"
+  },
+  {
+   "components": [
+    "backend"
+   ],
+   "direct": false,
+   "ecosystem": "python",
+   "licence": "Apache-2.0",
+   "licence_source": "metadata",
+   "link": "https://pypi.org/project/types-webencodings/0.6.0.20261104/",
+   "name": "types-webencodings",
+   "review": "none",
+   "texts": [
+    "295f8538c94a"
+   ],
+   "version": "0.6.0.20261104"
   },
   {
    "components": [
@@ -27021,6 +27106,42 @@
    "role": "Web server for the front end and the documentation site.",
    "source": "https://nginx.org/",
    "use": "program"
+  },
+  {
+   "images": [
+    "converter"
+   ],
+   "licence": "MIT",
+   "name": "Mermaid (bundled in mermaidx)",
+   "packages": [],
+   "reason": "Permissive, used unmodified as mermaidx ships it; the package's NOTICES.md lists each bundled component and the licence texts are in the installed package.",
+   "role": "Draws diagrams for reports, in the same version as the interface (12.3.0). Ships inside the `mermaidx` package as one bundled file, with the libraries it contains (d3, dagre-d3-es, dayjs, lodash-es, KaTeX: MIT, ISC or BSD-3-Clause; DOMPurify: MPL-2.0 OR Apache-2.0).",
+   "source": "https://github.com/mermaid-js/mermaid",
+   "use": "library"
+  },
+  {
+   "images": [
+    "converter"
+   ],
+   "licence": "EPL-2.0",
+   "name": "elkjs and @mermaid-js/layout-elk (bundled in mermaidx)",
+   "packages": [],
+   "reason": "File-level (weak) copyleft: the file is used unmodified as mermaidx ships it, so the licence's obligations are the notice and the source link (elkjs and the `elkjs` npm package; `tools/build_layout_elk.sh` in mermaidx rebuilds the exact file). Nothing of this product is a modification of it.",
+   "role": "The Eclipse Layout Kernel, compiled to JavaScript, which Mermaid's optional ELK layout uses (the @mermaid-js/layout-elk wrapper is MIT).",
+   "source": "https://github.com/kieler/elkjs",
+   "use": "library"
+  },
+  {
+   "images": [
+    "converter"
+   ],
+   "licence": "MIT AND BSD-3-Clause",
+   "name": "pele and ZenUML renderer (bundled in mermaidx)",
+   "packages": [],
+   "reason": "Permissive, used unmodified; this product draws with Mermaid only.",
+   "role": "Alternative diagram engines mermaidx can use (pele; the ZenUML sequence renderer with antlr4 BSD-3-Clause and marked MIT).",
+   "source": "https://github.com/mermaid-js/zenuml-core",
+   "use": "library"
   }
  ]
 }

@@ -29,7 +29,7 @@ flowchart TD
     BE --> FE[frontend]
     BE --> MCP[mcp-server]
     SMTP[external SMTP provider] -.->|outgoing mail| BE
-    CV["converter (optional)"] -.->|EPS and PDF logos| BE
+    CV["converter (optional)"] -.->|EPS and PDF logos, report diagrams| BE
 ```
 
 | Service | Purpose | In root (prod) stack? | In tests/container stack? |
@@ -39,7 +39,7 @@ flowchart TD
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
 | `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes | Yes |
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
-| `converter` | Converts uploaded EPS and PDF logos to SVG in an isolated container (see [below](#optional-eps-and-pdf-logos-the-converter)) | Opt-in (`--profile converter`) | Yes |
+| `converter` | Converts uploaded EPS and PDF logos to SVG and draws Mermaid diagrams for reports, in an isolated container (see [below](#optional-logos-and-report-diagrams-the-converter)) | Opt-in (`--profile converter`) | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy`, `cadvisor` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
@@ -90,6 +90,8 @@ The full list of backend environment variables, with defaults, is documented in 
 
 CI (`.github/workflows/ci.yml`) builds the production `backend`, `backup`, `frontend`, `mcp-server`, `converter` and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once the `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan` and `restore-test` jobs pass on a push to `main`, publishes all six to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
+An image that names no release inside it (`mcp-server`, `converter` and `docs`) is published again only when its sources changed. CI tags each published one with `src-<tree>` (the git tree of its build directory); when that tag already exists, the new `latest`, commit and SemVer tags are put on the existing image instead of building and pushing another. A host that pulls the new tag finds the digest it already has, so it downloads nothing and has no extra image to prune. The `backend`, `backup` and `frontend` images carry the version and commit they were built from, so each release has its own.
+
 Each image is tagged three ways:
 
 - **`latest`** — always the most recent build from `main`. What `IMAGE_TAG` defaults to below.
@@ -114,11 +116,16 @@ If your images live in a different registry/namespace (e.g. a private mirror), o
 
 CI runners use 4 KB memory pages while a Raspberry Pi 5 uses 16 KB, which some native libraries mishandle; CI cannot catch that, so check a first run on a Pi with `docker compose ps` and the backend logs. The optional MailHog mail catcher in the development stack ([tests/container/](../tests/container/docker-compose.yml)) is amd64-only upstream and is not part of the production stack.
 
-### Optional: EPS and PDF logos (the converter)
+### Optional: logos and report diagrams (the converter)
 
-The report image library accepts PNG, JPEG, GIF, WebP and SVG out of the box. EPS and PDF logos (what Illustrator and Affinity users often hold) are converted to SVG by a separate container, because reading them means running Ghostscript and poppler on uploaded files. It is **off by default**: if you do not want the extra container, do nothing and the upload dialog does not offer EPS or PDF.
+One separate container does the two jobs that run an interpreter on content a person supplies:
 
-To turn it on, add to `.env`:
+| Job | What it runs | Without it |
+| --- | --- | --- |
+| EPS and PDF logos to SVG, once, at upload | Ghostscript and poppler | The report image library does not offer EPS or PDF; PNG, JPEG, GIF, WebP and SVG work as before. |
+| Mermaid diagrams drawn for reports and exports, at run time | The Mermaid library in an embedded JavaScript engine (no browser), in the same version and font as the screen | A diagram prints as a labelled block of its source text and the run reports a warning; nothing else changes. |
+
+It is **off by default**. To turn it on, add to `.env`:
 
 ```bash
 COMPOSE_PROFILES=converter
@@ -130,7 +137,8 @@ then `docker compose up -d`. The backend waits for the converter to be healthy w
 - The service has no route to the network outside Compose (the `converter` network is `internal` and shared only with the backend), no secrets, a read-only filesystem, no Linux capabilities and a non-root user. Do not attach it to another network or publish its port.
 - Running the image another way (Kubernetes, say)? Reproduce that isolation: deny all egress from the pod, drop all capabilities, read-only root with a small scratch volume, and reach it only from the backend.
 - A PDF contributes its first page; an EPS is cropped to its bounding box. Both are stored as `<name>.eps.svg` / `<name>.pdf.svg`. Text becomes shapes, so no font is needed when a report is run.
-- The image is published with the others (`ghcr.io/<owner>/<repo>-converter`).
+- A diagram is drawn in a process of its own, ended after 30 seconds, with a memory ceiling of 1.5 GiB; two drawings run at once, and a third request waits up to ten seconds. The container limit of 2.5 GiB and two CPUs covers that. A large diagram (hundreds of nodes) takes many times longer here than in a browser; one that exceeds the limit prints as source text. The backend remembers each drawing (in memory, by the text, theme and Mermaid version), so a report run again does not draw again, and one run draws at most 40 diagrams.
+- The image is about 255 MB, 27 MB more than it was without the diagram renderer, and is published with the others (`ghcr.io/<owner>/<repo>-converter`).
 
 ### Extra report fonts
 

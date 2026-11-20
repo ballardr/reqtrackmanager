@@ -124,7 +124,7 @@ jobs:
       - name: Bandit (Python, high severity)
         run: |
           python3 -m pip install --quiet bandit==1.8.6
-          python3 -m bandit -r backend/app mcp-server/server.py converter/converter.py scripts \
+          python3 -m bandit -r backend/app mcp-server/server.py converter/converter.py converter/diagram_worker.py scripts \
             --severity-level high -x '*/tests/*' -q
 
       - name: Semgrep (Python, TypeScript and React, error severity)
@@ -1039,6 +1039,9 @@ jobs:
       - name: Audit mcp-server Python dependencies
         run: python3 -m pip_audit -r mcp-server/requirements.txt
 
+      - name: Audit converter Python dependencies
+        run: python3 -m pip_audit -r converter/requirements.txt
+
       # --omit=dev: only what ships to users is gated. The frontend bundle is
       # built from these production dependencies; test-only tooling is not.
       - name: Audit frontend npm dependencies
@@ -1323,11 +1326,14 @@ jobs:
             version_args: true
           - image: mcp-server
             context: ./mcp-server
+            reuse: true
           - image: converter
             context: ./converter
+            reuse: true
           - image: docs
             context: ./docs/website
             file: ./docs/website/Dockerfile.prod
+            reuse: true
     env:
       # Only `main` publishes: a manual run (workflow_dispatch) from any other branch must not retag `latest`.
       PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
@@ -1343,6 +1349,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # An image that carries no build identity (`reuse`: nothing in it names the release) is published again only when
+      # its sources changed. `src-<tree>` is a tag on the published image, named by the git tree of its build context,
+      # so an unchanged image keeps its digest: a production host that pulls the new release tag finds the image it
+      # already has, downloads nothing and has no extra image to prune. A fixable HIGH or CRITICAL finding in its base
+      # image fails the scan jobs, which is what forces the change and a new image.
+      - name: Check whether the published image is current
+        id: current
+        if: env.PUSH == 'true' && matrix.reuse
+        env:
+          CONTEXT: ${{ matrix.context }}
+          REPOSITORY: ghcr.io/${{ github.repository }}-${{ matrix.image }}
+        run: |
+          tree="$(git rev-parse "HEAD:${CONTEXT#./}")"
+          if docker buildx imagetools inspect "$REPOSITORY:src-$tree" > /dev/null 2>&1; then
+            echo "The published image for tree $tree is current: it is tagged again, not pushed again."
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # Only the images that declare the build identity ARGs get them; passing an unused build arg is a Docker
       # warning. A multi-line step output keeps one build step for all six images.
@@ -1400,7 +1426,7 @@ jobs:
 
       - name: Push image by digest
         id: push
-        if: env.PUSH == 'true'
+        if: env.PUSH == 'true' && steps.current.outputs.current != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
@@ -1411,7 +1437,7 @@ jobs:
           outputs: type=image,name=ghcr.io/${{ github.repository }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
-        if: env.PUSH == 'true'
+        if: env.PUSH == 'true' && steps.current.outputs.current != 'true'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -1419,7 +1445,7 @@ jobs:
           touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
-        if: env.PUSH == 'true'
+        if: env.PUSH == 'true' && steps.current.outputs.current != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: digests-${{ matrix.image }}-${{ matrix.arch }}
@@ -1444,6 +1470,9 @@ jobs:
       contents: read
       packages: write
     steps:
+      # The tree of each build context names an image that is not rebuilt (see the check in docker-build).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: digests-*
@@ -1458,22 +1487,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # An image built in this run gets its tags from the digests its legs pushed (and, if it is `reuse`, the `src-` tag
+      # naming its sources). An image whose legs found it current pushed nothing: its tags are put on the image that already
+      # carries `src-<tree>`, so the release tag names the same digest and a host that has it pulls nothing.
       - name: Create and verify manifest lists
         env:
           REPOSITORY: ghcr.io/${{ github.repository }}
           SEMVER: ${{ needs.version.outputs.semver }}
         run: |
-          cd "$RUNNER_TEMP/digests"
+          # The build context of each image (the backup image builds from the backend's).
+          context_of() { case "$1" in backup) echo backend ;; docs) echo docs/website ;; *) echo "$1" ;; esac; }
+          reuse=" mcp-server converter docs "
           for image in backend backup frontend mcp-server converter docs; do
             repo="$REPOSITORY-$image"
+            tree="$(git rev-parse "HEAD:$(context_of "$image")")"
             sources=""
-            for file in "digests-$image-"*/*; do
-              sources="$sources $repo@sha256:$(basename "$file")"
+            for file in "$RUNNER_TEMP/digests/digests-$image-"*/*; do
+              [ -e "$file" ] && sources="$sources $repo@sha256:$(basename "$file")"
             done
             echo "::group::$image"
-            # shellcheck disable=SC2086
-            docker buildx imagetools create \
-              -t "$repo:$SEMVER" -t "$repo:$GITHUB_SHA" -t "$repo:latest" $sources
+            if [ -n "$sources" ]; then
+              extra=""
+              case "$reuse" in *" $image "*) extra="-t $repo:src-$tree" ;; esac
+              # shellcheck disable=SC2086
+              docker buildx imagetools create \
+                -t "$repo:$SEMVER" -t "$repo:$GITHUB_SHA" -t "$repo:latest" $extra $sources
+            else
+              case "$reuse" in
+                *" $image "*) ;;
+                *) echo "::error::$image has no digests and may not reuse a published image"; exit 1 ;;
+              esac
+              docker buildx imagetools create \
+                -t "$repo:$SEMVER" -t "$repo:$GITHUB_SHA" -t "$repo:latest" "$repo:src-$tree"
+            fi
             inspected="$(docker buildx imagetools inspect "$repo:$GITHUB_SHA")"
             echo "$inspected"
             for platform in linux/amd64 linux/arm64; do

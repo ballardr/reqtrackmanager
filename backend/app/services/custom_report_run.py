@@ -100,6 +100,7 @@ from app.services.report_model import (
     Block,
     BulletList,
     CellLink,
+    CodeBlock,
     Contents,
     DataCell,
     Equation,
@@ -110,12 +111,14 @@ from app.services.report_model import (
     NumberedList,
     PageBreak,
     Paragraph,
+    Quote,
     ReportDocument,
     Sheet,
     SheetCell,
     Table,
     contents_sheet,
     linked,
+    list_entries,
     project_report_label,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
@@ -513,10 +516,17 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
             unused.append(block.text)
         elif isinstance(block, Paragraph | Note | Equation):  # an equation is shown as written
             lines.append(block.text)
-        elif isinstance(block, BulletList):
-            lines += [f"• {item}" for item in block.items]
-        elif isinstance(block, NumberedList):
-            lines += [f"{number}. {item}" for number, item in enumerate(block.items, start=1)]
+        elif isinstance(block, BulletList | NumberedList):
+            counters: dict[int, int] = {}
+            for entry in list_entries(block):
+                counters[entry.level] = counters.get(entry.level, 0) + 1
+                for deeper in [level for level in counters if level > entry.level]:
+                    del counters[deeper]
+                lines.append("  " * entry.level + (f"{counters[entry.level]}. " if entry.ordered else "• ") + entry.text)
+        elif isinstance(block, Quote):
+            lines.append(f"> {block.text}")
+        elif isinstance(block, CodeBlock):
+            lines += block.text.splitlines()
         elif isinstance(block, Grid):  # a custom table reads on screen as one line per row
             lines += [" | ".join(" ".join(cell.paragraphs).strip() for cell in row.cells) for row in block.rows]
         elif isinstance(block, Table):

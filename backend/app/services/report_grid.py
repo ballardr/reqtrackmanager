@@ -36,6 +36,7 @@ from app.services.branding import contrast_ratio
 from app.services.report_model import (
     Block,
     BulletList,
+    CodeBlock,
     Equation,
     Grid,
     GridCell,
@@ -43,7 +44,9 @@ from app.services.report_model import (
     MathText,
     NumberedList,
     Paragraph,
+    Quote,
     Styled,
+    list_entries,
     text_runs,
 )
 
@@ -216,10 +219,18 @@ def cell_paragraphs(blocks: Sequence[Block]) -> tuple[str, ...]:
             out.extend(text_lines(block.text))
         elif isinstance(block, Heading):
             out.extend(_bolded(line) for line in text_lines(block.text))
-        elif isinstance(block, BulletList):
-            out.extend(_prefixed("\u2022 ", item) for item in block.items)
-        elif isinstance(block, NumberedList):
-            out.extend(_prefixed(f"{number}. ", item) for number, item in enumerate(block.items, start=1))
+        elif isinstance(block, BulletList | NumberedList):
+            counters: dict[int, int] = {}
+            for entry in list_entries(block):
+                counters[entry.level] = counters.get(entry.level, 0) + 1
+                for deeper in [level for level in counters if level > entry.level]:
+                    del counters[deeper]
+                marker = f"{counters[entry.level]}. " if entry.ordered else "\u2022 "
+                out.append(_prefixed("\u00a0\u00a0" * entry.level + marker, entry.text))
+        elif isinstance(block, Quote):
+            out.extend(text_lines(block.text))
+        elif isinstance(block, CodeBlock):
+            out.extend(line.replace(" ", "\u00a0") for line in block.text.splitlines() or [""])
         elif isinstance(block, Equation):
             out.append(MathText([Equation(block.tex, display=False)]))
     return tuple(out) or ("",)

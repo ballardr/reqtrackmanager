@@ -1,13 +1,15 @@
 """
 Module: converter
 
-A small, isolated HTTP service that turns an uploaded EPS or PDF logo into an SVG, so the backend never runs a
-PostScript interpreter or a PDF parser itself.
+A small, isolated HTTP service that turns an uploaded EPS or PDF logo into an SVG, and a Mermaid diagram into an SVG, so
+the backend never runs a PostScript interpreter, a PDF parser or a JavaScript engine itself.
 
 Responsibilities:
 - `POST /convert/eps`: Ghostscript (EPS to a one-page PDF cropped to the bounding box), then poppler's `pdftocairo`
   (PDF to SVG). `POST /convert/pdf`: `pdftocairo` on the first page.
-- `GET /health`: whether the tools are installed.
+- `POST /diagram`: Mermaid text (JSON `{"source", "theme"}`) to an SVG, drawn by `diagram_worker.py` (the real Mermaid
+  library in an embedded JavaScript engine, no browser) with the same version, font and limits as the screen.
+- `GET /health`: whether the tools and the diagram renderer are installed.
 - Confine each conversion: a private working directory, a cleared environment, no stdin, a wall-clock timeout, CPU,
   memory and output-size limits, and a cap on conversions at once.
 
@@ -19,17 +21,23 @@ Design decisions:
 - **The output is untrusted.** The backend sanitises the SVG (`app.services.report_svg.sanitize_svg`) and decides
   what is stored; this service only converts. The input is not trusted either: its type is checked here from its
   bytes, never from the request.
-- **Stateless and standard library only**, so the image holds nothing but the two tools and this file. Nothing is
-  stored; no file name or content is logged.
+- **Stateless.** The HTTP service is standard library only; the image holds the two tools, the diagram renderer
+  (`requirements.txt`) and these files. Nothing is stored; no file name, diagram text or content is logged.
+- **A diagram is drawn in a process of its own** (`diagram_worker.py`), killed at the wall-clock limit: the embedded
+  JavaScript engine cannot be interrupted from inside, and some diagrams (a wide flowchart) run for minutes in it.
+  The reply is checked against the screen's element limit, so a diagram the screen refuses is refused here too.
 - The listener is dual-stack IPv6 (`::`), falling back to IPv4 where the host has no IPv6.
 
-Dependencies: the `gs` (Ghostscript) and `pdftocairo` (poppler-utils) executables, Python 3.12 standard library.
+Dependencies: the `gs` (Ghostscript) and `pdftocairo` (poppler-utils) executables, `mermaidx` (for the diagram worker
+only), Python 3.12 standard library.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -60,6 +68,19 @@ MAX_OUTPUT_BYTES = 64 * 1024**2
 MAX_SVG_BYTES = 32 * 1024**2
 #: Seconds a client may take to send its request before the connection is dropped.
 CLIENT_TIMEOUT_SECONDS = 30
+
+#: What a diagram is drawn with: the screen's version, font and limits (`diagram_config.json`).
+DIAGRAM_CONFIG = json.loads((Path(__file__).resolve().parent / "diagram_config.json").read_text(encoding="utf-8"))
+#: Wall-clock seconds a diagram may take (the engine is an interpreter, far slower than a browser on a large diagram).
+DIAGRAM_TIMEOUT_SECONDS = DIAGRAM_CONFIG["serverRenderMilliseconds"] / 1000
+#: Limits on a diagram's process: address space (the engine's own heap limit is 512 MiB), CPU seconds, written file size.
+DIAGRAM_MAX_MEMORY_BYTES = 1536 * 1024**2
+DIAGRAM_MAX_CPU_SECONDS = int(DIAGRAM_TIMEOUT_SECONDS) + 5
+#: Largest request body for a diagram: its text (at most `sourceChars`) as JSON, with room for escapes.
+MAX_DIAGRAM_REQUEST_BYTES = DIAGRAM_CONFIG["limits"]["sourceChars"] * 8
+#: Largest reply read from the worker, in bytes (its own SVG cap, JSON-escaped).
+MAX_DIAGRAM_REPLY_BYTES = 24 * 1024**2
+_ELEMENT = re.compile(r"<[a-zA-Z]")
 
 _DOS_EPS_MAGIC = b"\xc5\xd0\xd3\xc6"
 _PS_MAGIC = b"%!PS-Adobe"
@@ -108,17 +129,25 @@ def postscript_of(data: bytes) -> bytes:
     return data[offset : offset + length]
 
 
-def _limits() -> Callable[[], None] | None:
-    """A `preexec_fn` applying the resource limits in the child (POSIX only)."""
+def _limits(
+    memory: int = MAX_MEMORY_BYTES, cpu: int = MAX_CPU_SECONDS, output: int = MAX_OUTPUT_BYTES,
+) -> Callable[[], None] | None:
+    """A `preexec_fn` applying the resource limits in the child (POSIX only).
+
+    Args:
+        memory: Address-space limit, in bytes.
+        cpu: CPU-time limit, in seconds.
+        output: Size limit for any file the child writes, in bytes.
+    """
     try:
         import resource
     except ImportError:  # pragma: no cover - not POSIX
         return None
 
     def apply() -> None:
-        resource.setrlimit(resource.RLIMIT_AS, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
-        resource.setrlimit(resource.RLIMIT_CPU, (MAX_CPU_SECONDS, MAX_CPU_SECONDS))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES))
+        resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (output, output))
 
     return apply
 
@@ -212,6 +241,76 @@ def pdf_to_svg(data: bytes) -> bytes:
         return _pdf_to_svg(pdf, svg, workdir)
 
 
+def render_diagram(source: str, theme: str) -> bytes:
+    """Draws Mermaid text as an SVG (not yet sanitised) in a confined process.
+
+    Args:
+        source: The Mermaid text.
+        theme: `light` or `dark`.
+
+    Returns:
+        SVG bytes.
+
+    Raises:
+        ToolMissingError: The renderer is not installed.
+        ConversionError: The text is empty, over the size limit, refused by Mermaid, too large to draw, or took too long.
+    """
+    text = source.strip()
+    if not text:
+        raise ConversionError("The diagram is empty.")
+    if len(text) > DIAGRAM_CONFIG["limits"]["sourceChars"]:
+        raise ConversionError(f"The diagram text is over the limit of {DIAGRAM_CONFIG['limits']['sourceChars']} characters.")
+    if theme not in ("light", "dark"):
+        raise ConversionError("The theme must be light or dark.")
+    if not diagram_renderer_available():
+        raise ToolMissingError("The converter is missing the diagram renderer.")
+    request = json.dumps({"source": text, "theme": theme}).encode()
+    with tempfile.TemporaryDirectory(prefix="diagram-") as tmp:
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": tmp, "TMPDIR": tmp, "LC_ALL": "C"}
+        with subprocess.Popen(  # noqa: S603 - fixed argument list, no shell
+            [sys.executable, "-I", str(Path(__file__).with_name("diagram_worker.py"))],
+            cwd=tmp, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            preexec_fn=_limits(DIAGRAM_MAX_MEMORY_BYTES, DIAGRAM_MAX_CPU_SECONDS, 1024**2), start_new_session=True,
+        ) as process:
+            try:
+                out, _ = process.communicate(request, timeout=DIAGRAM_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                raise ConversionError("The diagram took too long to draw.") from None
+            finally:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)  # a runaway layout, or anything the worker left behind
+                except ProcessLookupError:
+                    pass
+    if len(out) > MAX_DIAGRAM_REPLY_BYTES:
+        raise ConversionError("The diagram is too large to draw.")
+    try:
+        reply = json.loads(out)
+    except ValueError:
+        raise ConversionError("The diagram could not be drawn (it used too much memory or time).") from None
+    if "error" in reply:
+        raise ConversionError(str(reply["error"])[:300])
+    svg = str(reply.get("svg", ""))
+    if len(_ELEMENT.findall(svg)) > DIAGRAM_CONFIG["limits"]["elements"]:
+        raise ConversionError("The diagram is too large to draw.")
+    return svg.encode()
+
+
+def _render_diagram_request(body: bytes) -> bytes:
+    """Reads a `/diagram` request body (JSON) and draws it.
+
+    Raises:
+        ConversionError: The body is not a JSON object with a text `source`, or the drawing failed (see `render_diagram`).
+    """
+    try:
+        request = json.loads(body)
+    except ValueError:
+        raise ConversionError("The request must be JSON.") from None
+    if not isinstance(request, dict) or not isinstance(request.get("source"), str):
+        raise ConversionError("The request needs a text `source`.")
+    theme = request.get("theme", "light")
+    return render_diagram(request["source"], theme if isinstance(theme, str) else "")
+
+
 #: Route to (type check, converter, message for a file of the wrong type).
 ROUTES: dict[str, tuple[Callable[[bytes], bool], Callable[[bytes], bytes], str]] = {
     "/convert/eps": (is_eps, eps_to_svg, "This is not an EPS file."),
@@ -219,13 +318,18 @@ ROUTES: dict[str, tuple[Callable[[bytes], bool], Callable[[bytes], bytes], str]]
 }
 
 
+def diagram_renderer_available() -> bool:
+    """Whether the diagram renderer (`mermaidx`) is installed (found without loading its 6 MB engine)."""
+    return importlib.util.find_spec("mermaidx") is not None
+
+
 def tools_available() -> bool:
-    """Whether both executables are installed."""
-    return shutil.which("gs") is not None and shutil.which("pdftocairo") is not None
+    """Whether both executables and the diagram renderer are installed."""
+    return shutil.which("gs") is not None and shutil.which("pdftocairo") is not None and diagram_renderer_available()
 
 
 class Handler(BaseHTTPRequestHandler):
-    """Handles `GET /health` and the `POST /convert/...` routes."""
+    """Handles `GET /health`, the `POST /convert/...` routes and `POST /diagram`."""
 
     server_version = "converter"
     protocol_version = "HTTP/1.1"
@@ -254,8 +358,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - http.server's name
         """Converts the request body."""
+        diagram = self.path == "/diagram"
         route = ROUTES.get(self.path)
-        if route is None:
+        if route is None and not diagram:
             self._error(404, "Not found.")
             return
         try:
@@ -263,9 +368,9 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._error(411, "A Content-Length is required.")
             return
-        if length <= 0 or length > MAX_BODY_BYTES:
+        if length <= 0 or length > (MAX_DIAGRAM_REQUEST_BYTES if diagram else MAX_BODY_BYTES):
             self.close_connection = True
-            self._error(413, "The file is too large.")
+            self._error(413, "The diagram is too large." if diagram else "The file is too large.")
             return
         # The slot is taken before the body is read, so waiting requests hold no upload in memory (up to 64 MiB each).
         if not _slots.acquire(timeout=QUEUE_SECONDS):
@@ -275,11 +380,14 @@ class Handler(BaseHTTPRequestHandler):
         started = time.monotonic()
         try:
             data = self.rfile.read(length)
-            check, convert, wrong_type = route
-            if not check(data):
-                self._error(422, wrong_type)
-                return
-            svg = convert(data)
+            if route is None:
+                svg = _render_diagram_request(data)
+            else:
+                check, convert, wrong_type = route
+                if not check(data):
+                    self._error(422, wrong_type)
+                    return
+                svg = convert(data)
         except ToolMissingError as exc:
             self._error(503, str(exc))
         except ConversionError as exc:

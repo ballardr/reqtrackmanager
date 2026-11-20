@@ -1,0 +1,6 @@
+# The diagram renderer: runs the real Mermaid library (the same version and font as the screen) in an embedded
+# JavaScript engine, with no browser and no Node.js. Exact pins, each at least two weeks old; quickjs-ng and novasvg are
+# the engine and the picture library mermaidx itself needs.
+mermaidx==0.11.1
+quickjs-ng==0.18.0.1
+novasvg==0.11.5

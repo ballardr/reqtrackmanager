@@ -50,6 +50,7 @@ from app.services.report_model import (
     SLOT_NAMES,
     TONE_FILL,
     BulletList,
+    CodeBlock,
     Contents,
     DocumentStyles,
     Equation,
@@ -65,12 +66,14 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     RunningBand,
     Styled,
     Table,
     VerticalSpace,
     finalize_links,
+    list_entries,
     text_on,
     text_runs,
 )
@@ -109,6 +112,9 @@ table td .cell-images { display: flex; gap: .15cm; align-items: flex-start; } ta
 table td .cell-images.side { flex-wrap: wrap; } table td .cell-images img, table td .cell-images svg { display: block; }
 figure.equation { text-align: center; overflow-x: auto; } span.math svg { display: inline-block; }
 code.math-source { font-size: .9em; }
+pre.code { background: #f3f3f3; padding: .5rem .7rem; overflow-x: auto; margin: .5rem 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: .85rem/1.35 ui-monospace, "Liberation Mono", monospace; }
+blockquote { margin: .5rem 0; padding: .1rem .9rem; border-left: 3px solid #bbb; color: #444; white-space: pre-line; }
 .logo { max-height: 4rem; margin-bottom: .5rem; }
 footer { margin-top: 3rem; color: #666; font-size: .8rem; border-top: 1px solid #ddd; padding-top: .5rem; }
 hr.page-break { border: 0; border-top: 1px dashed #bbb; margin: 2rem 0; }
@@ -441,6 +447,31 @@ def _layer_left(block: Image, style: PageStyle) -> str:
     return f"{100 * from_page_edge / style.dimensions_cm[0]:.2f}%"
 
 
+def _list(block: BulletList | NumberedList) -> str:
+    """A list (nested to the depth the block holds) as `<ul>` and `<ol>`; a list inside an item sits in that item."""
+    entries = list_entries(block)
+    own = _own_style(block.font, block.size)
+
+    def build(position: int, level: int) -> tuple[str, int]:
+        """The list of the entries from `position` at `level`, and the position after it."""
+        tag = "ol" if entries[position].ordered else "ul"
+        items: list[str] = []
+        while position < len(entries) and entries[position].level >= level:
+            entry = entries[position]
+            if entry.level > level:  # a list the previous item holds
+                nested, position = build(position, entry.level)
+                if items:
+                    items[-1] += nested
+                else:
+                    items.append(nested)
+                continue
+            items.append(_rich(entry.text))
+            position += 1
+        return f"<{tag}{own if level == 0 else ''}>" + "".join(f"<li>{item}</li>" for item in items) + f"</{tag}>", position
+
+    return build(0, 0)[0]
+
+
 def _figure(block: Image, page: PageStyle) -> str | None:
     """An image block as a `<figure>`: the picture at its placed width, alignment and alternative text, with its caption.
 
@@ -541,10 +572,13 @@ def render_html_document(document: ReportDocument) -> bytes:
             parts.append(_equation(block))
         elif isinstance(block, Note):
             parts.append(f'<p class="note">{_esc(block.text)}</p>')
-        elif isinstance(block, BulletList):
-            parts.append(f"<ul{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ul>")
-        elif isinstance(block, NumberedList):
-            parts.append(f"<ol{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
+        elif isinstance(block, BulletList | NumberedList):
+            parts.append(_list(block))
+        elif isinstance(block, CodeBlock):
+            label = f'<p class="note">{_esc(block.label)}</p>' if block.label else ""
+            parts.append(f'{label}<pre class="code"><code>{_esc(block.text)}</code></pre>')
+        elif isinstance(block, Quote):
+            parts.append(f"<blockquote>{_rich(block.text)}</blockquote>")
         elif isinstance(block, Image):
             figure = _figure(block, current)
             if figure:

@@ -37,6 +37,7 @@ MAX_TEXT_BYTES = 120_000
 COMPONENT_TITLES = {
     "backend": "Backend API image",
     "mcp-server": "MCP server image",
+    "converter": "Picture and diagram converter image",
     "frontend": "Front-end application (bundled)",
     "docs": "Documentation site (bundled)",
 }

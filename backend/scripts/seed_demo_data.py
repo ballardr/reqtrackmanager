@@ -861,6 +861,29 @@ DESIGN_FORMULAE_LAYOUT = {
 """A custom report layout with an equation block and equations written inside text, as the designer's Equation shortcut and text view produce."""
 
 
+DECISION_DOCUMENTS_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "if", "when": {"module": "decisions"}, "children": [
+                {
+                    "type": "each", "source": {"record_type": "decision", "sort": [{"field": "code"}]}, "as": "decision",
+                    "children": [
+                        {"type": "heading", "level": 2, "text": "{{decision.code}} {{decision.title}}"},
+                        {"type": "text", "text": "{{decision.decision_statement}}"},
+                        {"type": "text", "text": "{{decision.rationale}}"},
+                        {"type": "text", "text": "{{decision.document}}"},
+                    ],
+                },
+            ],
+        },
+    ],
+}
+"""A custom report layout that prints each Decision's statement, rationale and long-form document formatted, with its tables and diagrams
+(the converter service draws the diagrams)."""
+
+
 PAIN_POINTS_WITH_PICTURES_LAYOUT = {
     "schema_version": 1, "family": "document", "orientation": "portrait",
     "nodes": [
@@ -3276,6 +3299,11 @@ def main() -> None:
         h_pm, f"/orgs/{org['id']}", "Requirements by component and category",
         "A heading above each category's table that names its component and category.",
         REQUIREMENTS_BY_COMPONENT_AND_CATEGORY_LAYOUT, folder="Handover/Requirements",
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Decision documents",
+        "Each Decision's statement, rationale and long-form document, printed as written with its tables and diagrams.",
+        DECISION_DOCUMENTS_LAYOUT, folder="Handover",
     )
     design_formulae = create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,

@@ -1,0 +1,12 @@
+{
+  "_about": "What the server draws a Mermaid diagram with. `version`, `fontFamily` and the shared `limits` equal frontend/src/utils/mermaidRenderConfig.json (backend/tests/test_diagram_config.py fails when they differ), so a diagram reads the same in a report as on the screen; `converter/tests/test_diagram.py` checks `version` against the Mermaid library inside the installed renderer. `serverRenderMilliseconds` is the server's own wall-clock limit: its engine is an interpreter, much slower than a browser on a large diagram.",
+  "version": "12.3.0",
+  "fontFamily": "DejaVu Sans",
+  "limits": {
+    "sourceChars": 20000,
+    "elements": 4000,
+    "edges": 300,
+    "renderMilliseconds": 10000
+  },
+  "serverRenderMilliseconds": 30000
+}

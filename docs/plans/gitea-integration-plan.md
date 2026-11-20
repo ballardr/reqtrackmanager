@@ -9,7 +9,7 @@ Source: a conversation on 2026-11-20 about a Gitea integration, raising two need
 
 Scope is Gitea (Forgejo shares its API and is covered by the same client). No other issue tracker is planned (**Decided by: User**, 2026-11-20).
 
-Related: [external references](platform-review-2026-11-19-plan.md) (phases 11 and 12, built) are the manual form of this plan; [service users](platform-review-2026-11-19-plan.md) (phase 20) are the identity a Gitea Actions step or webhook-driven job can run as; [Engineering Design](module-06-engineering-design-plan.md) question 13 reserved a "pulled in from the tool" resolver, which Phase 6 builds generically.
+Related: [external references](platform-review-2026-11-19-plan.md) (phases 11 and 12, built) are the manual form of this plan; [service users](platform-review-2026-11-19-plan.md) (phase 21) are the identity a Gitea Actions step or webhook-driven job can run as; [Engineering Design](module-06-engineering-design-plan.md) question 13 reserved a "pulled in from the tool" resolver, which Phase 6 builds generically.
 
 ## Status / Resume Here
 

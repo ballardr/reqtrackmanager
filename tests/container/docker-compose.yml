@@ -221,7 +221,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # Picture converter: runs Ghostscript and poppler on uploaded EPS and PDF logos so the backend never does
+  # Converter: runs Ghostscript and poppler on uploaded EPS and PDF logos, and draws Mermaid diagrams for reports, so the
+  # backend never does
   # (docs/solution-architecture.md). It is the sandbox: only on the `converter`
   # network, which is `internal` (no route out, no published port) and shared with the backend alone; no secrets and
   # no application code; non-root, read-only root filesystem with a small scratch `tmpfs`, no Linux capabilities, and

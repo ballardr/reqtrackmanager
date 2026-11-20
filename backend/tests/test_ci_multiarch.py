@@ -91,7 +91,7 @@ def test_arm64_legs_smoke_test_and_scan_before_pushing(jobs):
 def test_digests_are_pushed_untagged_and_only_off_pull_requests(jobs):
     """Legs push by digest (no tags) and only when this is not a pull request."""
     push = next(s for s in jobs["docker-build"]["steps"] if s.get("name") == "Push image by digest")
-    assert push["if"] == "env.PUSH == 'true'"
+    assert push["if"] == "env.PUSH == 'true' && steps.current.outputs.current != 'true'"
     assert "push-by-digest=true" in push["with"]["outputs"]
     assert "tags" not in push["with"]
     assert jobs["docker-build"]["env"]["PUSH"] == "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}"
@@ -109,6 +109,41 @@ def test_manifest_job_publishes_every_image_only_after_all_legs_pass(jobs):
         assert platform in script
     for tag in ("$SEMVER", "$GITHUB_SHA", "latest"):
         assert tag in script
+
+
+def test_only_images_with_no_build_identity_are_reused_when_their_sources_are_unchanged(matrix):
+    """`reuse` marks the images that name no release inside them, so rebuilding one without a source change gives nothing new."""
+    includes = _includes(matrix)
+    reused = {name for name, entry in includes.items() if entry.get("reuse")}
+    without_identity = {name for name, entry in includes.items() if not entry.get("version_args")}
+
+    assert reused == without_identity == {"mcp-server", "converter", "docs"}
+
+
+def test_an_unchanged_image_is_checked_for_before_it_is_pushed_and_then_pushes_nothing(jobs):
+    """The check runs for `reuse` images only, on a push run, before the push, and every push step honours its answer."""
+    steps = jobs["docker-build"]["steps"]
+    names = [step.get("name", "") for step in steps]
+    check = next(step for step in steps if step.get("name") == "Check whether the published image is current")
+    assert check["id"] == "current" and check["if"] == "env.PUSH == 'true' && matrix.reuse"
+    assert names.index(check["name"]) < names.index("Push image by digest")
+    assert "git rev-parse" in check["run"] and 'src-$tree' in check["run"] and "imagetools inspect" in check["run"]
+    for name in ("Push image by digest", "Export digest", "Upload digest"):
+        step = next(step for step in steps if step.get("name") == name)
+        assert step["if"] == "env.PUSH == 'true' && steps.current.outputs.current != 'true'", name
+
+
+def test_the_manifest_job_retags_an_unchanged_image_and_tags_a_built_one_with_its_sources(jobs):
+    """With digests an image's tags are made from them (a `reuse` image also gets `src-<tree>`); without, only a `reuse` image
+    may take its tags from the published `src-<tree>` image, and any other image is an error."""
+    publish = jobs["docker-publish"]
+    assert any("actions/checkout" in step.get("uses", "") for step in publish["steps"]), "the trees are read from a checkout"
+    script = next(s["run"] for s in publish["steps"] if s.get("name", "").startswith("Create and verify"))
+    assert 'reuse=" mcp-server converter docs "' in script
+    assert 'extra="-t $repo:src-$tree"' in script and '"$repo:src-$tree"' in script
+    assert "may not reuse a published image" in script
+    for image in IMAGES - {"backup"}:
+        assert image in script
 
 
 def test_registry_write_permission_is_limited_to_the_push_jobs(jobs):

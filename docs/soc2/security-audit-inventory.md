@@ -50,7 +50,7 @@ flowchart LR
 
 - The proxy is the trust boundary for client address and scheme; the backend honours forwarded headers from the addresses in `FORWARDED_ALLOW_IPS` only.
 - Outbound connections to a tenant-chosen host (identity provider, SMTP relay) pass `services/net_guard.assert_public_host`; the check resolves then judges and does not pin the connection.
-- The converter sits on an internal network shared with the backend only; the backend treats its output as untrusted and sanitises it.
+- The converter (logo conversion and Mermaid diagram drawing) sits on an internal network shared with the backend only; the backend treats its output as untrusted and sanitises it.
 - The front-end server does not proxy the API; `/metrics`, `/docs` and `/openapi.json` are not reachable through the demonstration proxy.
 
 ## Stored secrets

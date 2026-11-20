@@ -91,9 +91,11 @@ from app.services.branding import explicit_logo_band_hex, get_server_settings
 from app.services.external_reference_surfaces import CELL_SEPARATOR, REFERENCES_COLUMN_KEY
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.markdown_text import plain_text
 from app.services.placements import PLACEMENT_TEXT_SEPARATOR, PLACEMENTS_FIELD_KEY
 from app.services.report_colours import effective_scheme, is_name, resolve_colour
 from app.services.report_column_width import sheet_widths_cm
+from app.services.report_diagram import DiagramBudget
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_fonts import FontFamily
 from app.services.report_framework import ReportContext, ReportResult
@@ -107,6 +109,7 @@ from app.services.report_layout_tree import (
     assert_valid,
     group_member,
 )
+from app.services.report_markdown import record_markdown_blocks
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
     MAX_CONTENTS_LEVELS,
@@ -137,6 +140,7 @@ from app.services.report_model import (
     PageStyle,
     PageStyleChange,
     Paragraph,
+    Quote,
     ReportDocument,
     RunningBand,
     Sheet,
@@ -481,6 +485,8 @@ class _Run:
         self.warnings: list[str] = []
         self.stats = EvalStats()
         self._equations = 0
+        #: The diagrams of the run (author text and Markdown fields): drawn within one budget, then cached.
+        self.diagrams = DiagramBudget()
         #: The owner of the layout being run, and the picture cache, byte total and caption counter of its image blocks.
         self.layout_project_id: uuid.UUID | None = None
         self._images: dict[str, ResolvedImage | None] = {}
@@ -916,7 +922,7 @@ class _Run:
             return (bound.label if group_member(member) == "value" else str(len(bound.members))), False
         assert bound.record is not None
         math = member not in RESERVED_FIELD_KEYS and self.catalogue(bound.record.artefact_type)[member].math
-        return self.text_of(bound.record, member), math
+        return self.document_text(bound.record, member), math
 
     def fill(self, text: str, scope: Scope) -> str:
         """Substitutes `{{...}}` placeholders in already-parsed text, in one pass over `text` only."""
@@ -960,43 +966,59 @@ class _Run:
         ]
         return MathText(parts) if any(isinstance(p, Equation) for p in parts) else "".join(str(p) for p in parts)
 
-    def checked_link(self, run: Styled, scope: Scope) -> Styled | str:
+    def checked_link(self, run: Styled, scope: Scope | None) -> Styled | str:
         """`run` with its link address filled in and checked: the run itself, or without the link (with one warning) when
         the address, once filled in, is not allowed. A record value can reach an address, so the check is made here,
         on the final text, never on the template."""
         if run.href is None:
             return run
-        href = "".join(piece for piece, _ in self.fill_pieces(run.href, scope))
+        href = run.href if scope is None else "".join(piece for piece, _ in self.fill_pieces(run.href, scope))
         if link_problem(href) is None:
             return replace(run, href=href)
         self.warn("A link address was not allowed once filled in, so its text is shown without the link.")
         plain = replace(run, href=None)
         return plain if (plain.bold or plain.italic or plain.code) else plain.text
 
-    def rich(self, text: str, scope: Scope) -> str:
+    def pieces_of(self, text: str, scope: Scope | None, math: bool) -> list[tuple[str, bool]]:
+        """The pieces of `text` for `fill_pieces`' callers: its placeholders filled (`scope` given), or, for a record's own
+        Markdown value (`scope` is `None`), the text exactly as it is, whose equations count when `math` says the field has them."""
+        return self.fill_pieces(text, scope) if scope is not None else [(text, math)]
+
+    def rich(self, text: str, scope: Scope | None, *, math: bool = True) -> str:
         """`text` with placeholders filled and its equations found, for a heading or a list item.
+
+        With no `scope` the text is a record's Markdown value: nothing is filled, and equations are found only when `math`.
 
         Styled runs (bold, italic, code) from the Markdown reader keep their style: each run is filled and scanned on
         its own and the strings it yields take the run's style.
         """
         if not isinstance(text, MathText):
-            return self.inline_text(self.fill_pieces(text, scope))
+            return self.inline_text(self.pieces_of(text, scope, math))
         parts: list[str | Equation | Styled] = []
         for run in text_runs(text):
             run = self.checked_link(run, scope) if isinstance(run, Styled) else run  # noqa: PLW2901
             plain = run.text if isinstance(run, Styled) else run
-            for part in text_runs(self.inline_text(self.fill_pieces(str(plain), scope))):
+            for part in text_runs(self.inline_text(self.pieces_of(str(plain), scope, math))):
                 parts.extend(_restyled(part, run))
         return MathText(parts)
 
+    def document_text(self, record: ReportRecord, key: str) -> str:
+        """A field's text for a sentence or a cell of a document: the words of a Markdown field (no marks, one line), else the
+        value as `text_of` gives it. A spreadsheet keeps the Markdown source, and a math-capable field keeps its delimiters."""
+        value = self.text_of(record, key)
+        if key in RESERVED_FIELD_KEYS or not value:
+            return value
+        info = self.catalogue(record.artefact_type)[key]
+        return plain_text(value) if info.markdown and not info.math else value
+
     def cell_of(self, record: ReportRecord, key: str) -> str:
         """A field as a document table cell: its text, with equations drawn when the field is math-capable."""
-        value = self.text_of(record, key)
+        value = self.document_text(record, key)
         if key in RESERVED_FIELD_KEYS or not self.catalogue(record.artefact_type)[key].math:
             return value
         return self.inline_text([(value, True)])
 
-    def paragraph_blocks(self, text: str, scope: Scope) -> list[Block]:
+    def paragraph_blocks(self, text: str, scope: Scope | None, *, math: bool = True) -> list[Block]:
         """A text block's paragraph with its placeholders filled and its equations found (see the module docstring).
 
         Inline equations stay in the paragraph's `MathText`; a display equation ends the paragraph and is a block.
@@ -1019,7 +1041,7 @@ class _Run:
         for run in runs:
             run = self.checked_link(run, scope) if isinstance(run, Styled) else run  # noqa: PLW2901
             plain = run.text if isinstance(run, Styled) else run
-            pieces = self.fill_pieces(str(plain), scope)
+            pieces = self.pieces_of(str(plain), scope, math)
             found = self._segments(pieces)
             if found is None:
                 if not isinstance(text, MathText):
@@ -1039,19 +1061,67 @@ class _Run:
         return blocks
 
     def text_blocks(self, source: str, scope: Scope) -> list[Block]:
-        """Markdown `source` as blocks with placeholders filled (parsed once, filled each time)."""
+        """Markdown `source` as blocks with placeholders filled (parsed once, filled each time).
+
+        A paragraph that is only the placeholder of a Markdown field of a record (`{{decision.rationale}}`) is replaced by
+        the field's own Markdown, read as the screen reads it (`markdown_field_blocks`); any other placeholder is filled with
+        the value as plain text.
+        """
         if source not in self._markdown:
-            self._markdown[source] = markdown_to_blocks(source)
+            self._markdown[source] = markdown_to_blocks(source, diagrams=self.diagrams, warn=self.warn)
         out: list[Block] = []
         for block in self._markdown[source]:
             if isinstance(block, Heading):
                 out.append(Heading(self.rich(block.text, scope), block.level))
             elif isinstance(block, Paragraph):
-                out.extend(self.paragraph_blocks(block.text, scope))
-            elif isinstance(block, BulletList):
-                out.append(BulletList([self.rich(item, scope) for item in block.items]))
-            elif isinstance(block, NumberedList):
-                out.append(NumberedList([self.rich(item, scope) for item in block.items]))
+                field_blocks = self.markdown_field_blocks(block.text, scope)
+                out.extend(field_blocks if field_blocks is not None else self.paragraph_blocks(block.text, scope))
+            elif isinstance(block, BulletList | NumberedList):
+                out.append(replace(block, items=[self.rich(item, scope) for item in block.items]))
+            elif isinstance(block, Quote):
+                out.append(Quote(self.rich(block.text, scope)))
+            elif isinstance(block, Grid):
+                out.append(replace(block, rows=[
+                    replace(row, cells=[replace(cell, paragraphs=tuple(self.rich(text, scope) for text in cell.paragraphs)) for cell in row.cells])
+                    for row in block.rows
+                ]))
+            else:
+                out.append(block)
+        return out
+
+    def markdown_field_blocks(self, text: str, scope: Scope) -> list[Block] | None:
+        """The blocks of a record's Markdown field when `text` is that field's placeholder and nothing else, else `None`.
+
+        The value is read as the screen reads it, never as the layout's own text, so nothing in it can add a placeholder
+        or change what the layout prints around it; equations are drawn only where the field is math-capable, and a heading
+        in it sits below the layout's own.
+        """
+        if isinstance(text, MathText):
+            return None
+        match = PLACEHOLDER_RE.fullmatch(text.strip())
+        if match is None or match.group(2) is None:
+            return None
+        bound = scope.get(match.group(1))
+        member = match.group(2)
+        if bound is None or bound.kind == "group" or bound.record is None or member in RESERVED_FIELD_KEYS:
+            return None
+        info = self.catalogue(bound.record.artefact_type)[member]
+        if not info.markdown:
+            return None
+        value = self.text_of(bound.record, member)
+        blocks = record_markdown_blocks(value, math=info.math, diagrams=self.diagrams, warn=self.warn)
+        if not info.math:
+            return blocks
+        out: list[Block] = []
+        for block in blocks:
+            if isinstance(block, Paragraph):
+                out.extend(self.paragraph_blocks(block.text, None, math=True))
+            elif isinstance(block, Heading):
+                out.append(Heading(self.rich(block.text, None, math=True), block.level))
+            elif isinstance(block, BulletList | NumberedList):
+                out.append(replace(block, items=[self.rich(item, None, math=True) for item in block.items]))
+            elif isinstance(block, Quote):
+                out.append(Quote(self.rich(block.text, None, math=True)))
             else:
                 out.append(block)
         return out

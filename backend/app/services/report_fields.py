@@ -82,6 +82,7 @@ class FieldInfo:
         key / label / kind: As on `ReportField`; `reserved` fields are the engine's own.
         choices: For an `enum`, the display labels a value can take, else empty.
         math: Whether the field may hold equations, which a layout's text block then draws.
+        markdown: Whether the field holds Markdown, which a layout's text block that prints only this field draws formatted.
     """
 
     key: str
@@ -90,6 +91,7 @@ class FieldInfo:
     reserved: bool = False
     choices: tuple[str, ...] = ()
     math: bool = False
+    markdown: bool = False
 
 
 @dataclass
@@ -128,9 +130,9 @@ class ReportRecord:
 # --- builders ------------------------------------------------------------------------------------
 
 
-def text_field(key: str, label: str, column: Any, *, math: bool = False) -> ReportField:
-    """A free-text field; `math` marks one in which people write equations."""
-    return ReportField(key, label, column, "text", math=math)
+def text_field(key: str, label: str, column: Any, *, math: bool = False, markdown: bool = False) -> ReportField:
+    """A free-text field; `math` marks one in which people write equations, `markdown` one that holds Markdown."""
+    return ReportField(key, label, column, "text", math=math, markdown=markdown)
 
 
 def date_field(key: str, label: str, column: Any) -> ReportField:
@@ -226,7 +228,8 @@ def from_search(
     math_keys = frozenset(math_fields)
     core_keys = frozenset(core_fields)
     from_search_fields = (
-        tuple(text_field(f.key, f.label, f.column, math=f.key in math_keys) for f in search.fields) if search_fields else ()
+        tuple(text_field(f.key, f.label, f.column, math=f.key in math_keys, markdown=f.markdown) for f in search.fields)
+        if search_fields else ()
     )
     seen = {f.key for f in from_search_fields}
     extra = tuple(f for f in fields if f.key not in seen)
@@ -264,6 +267,8 @@ def validate_provider(artefact_type: str, provider: ReportFieldProvider) -> list
             problems.append(f"{artefact_type}.{f.key}: principal field without id_column")
         if f.math and f.kind != "text":
             problems.append(f"{artefact_type}.{f.key}: only a text field can be math-capable")
+        if f.markdown and f.kind != "text":
+            problems.append(f"{artefact_type}.{f.key}: only a text field can hold Markdown")
         if f.kind == "enum" and not f.labels:
             problems.append(f"{artefact_type}.{f.key}: enum field without labels")
     return problems
@@ -298,7 +303,9 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
         FieldInfo("tags", "Tags", "text", reserved=True),
     ]
     own = [
-        FieldInfo(f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else (), math=f.math)
+        FieldInfo(
+            f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else (), math=f.math, markdown=f.markdown,
+        )
         for f in provider.fields
     ]
     if artefact_type not in get_not_placeable_types():
