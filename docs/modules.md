@@ -1272,11 +1272,11 @@ flowchart LR
 
 - `search_providers[artefact_type] = ArtefactSearchProvider(from_clause, columns, fields, where, status_labels, organization_owned, open_owner_type)`.
   `columns` (`SearchColumns`) says which SQL expression is the id, owning project, code, title, status,
-  archived flag and last change; `fields` (`SearchField(key, label, column)`) are the **extra** text columns
+  archived flag and last change; `fields` (`SearchField(key, label, column, markdown=False)`) are the **extra** text columns
   the search may match. **Fields are opt-in:** a column you do not list is never matched, so a personal-data or
   consent-sensitive column is excluded by leaving it out. Reuse a `key` and `label` another type uses
   (`description`, `rationale`) so the field picker lists it once; `id`, `title` and `tags` are built by core
-  (every taggable type is searched on tags with no provider work). A versioned record is read through its
+  (every taggable type is searched on tags with no provider work). `markdown=True` marks a column that holds Markdown: a result's snippet then shows its plain text (diagram source included) instead of the marks. A versioned record is read through its
   current version: `services.search_core.versioned_provider` builds the provider for you.
 - `organization_owned=True` for a type that can belong to the organisation (`project_id` NULL) and is shown
   through projects: such a record is found only through a project allowed to see it, using the same visibility

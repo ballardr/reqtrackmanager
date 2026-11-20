@@ -28,6 +28,7 @@ import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
+import { useStrings } from "../../context/TerminologyContext";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { DECISIONS_HELP } from "./help";
 
@@ -72,6 +73,7 @@ export function DecisionFormModal({
   onCancel: () => void;
   onSave: (values: DecisionFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
+  const strings = useStrings();
   const [templateId, setTemplateId] = useState("");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -86,6 +88,7 @@ export function DecisionFormModal({
   const [decisionDate, setDecisionDate] = useState(initial?.decision_date ?? "");
   const [decisionMaker, setDecisionMaker] = useState<PrincipalRef | null>(principalRef(initial?.decision_maker));
   const [owner, setOwner] = useState<PrincipalRef | null>(initial ? principalRef(initial.owner) : userPrincipal(currentUserId));
+  const [documentText, setDocumentText] = useState(initial?.document ?? "");
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, (initial?.[f.fieldKey] as string | null) ?? ""]))
   );
@@ -105,6 +108,7 @@ export function DecisionFormModal({
       decision_date: decisionDate || null,
       decision_maker: decisionMaker,
       owner,
+      document: documentText || null,
       ...(Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, fields[f.fieldKey] || null])) as Record<string, string | null>),
     } as DecisionFieldValues, quickLinks, tags);
   }
@@ -130,7 +134,7 @@ export function DecisionFormModal({
             <TextField helpNotNeeded required label="Decision title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded required label="Decision statement" value={statement} onChange={setStatement} />
+            <TextAreaField markdown help={strings.help.markdown} required label="Decision statement" value={statement} onChange={setStatement} />
           </FormGridFull>
           <LabeledSelect help={DECISIONS_HELP.decisionType} required
             label="Decision type"
@@ -164,12 +168,15 @@ export function DecisionFormModal({
           />
           {PROMPT_TO_FIELD.map((f) => (
             <FormGridFull key={f.fieldKey}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField markdown help={strings.help.markdown}
                 label={f.label} value={fields[f.fieldKey]}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.fieldKey]: value }))}
               />
             </FormGridFull>
           ))}
+          <FormGridFull>
+            <TextAreaField markdown help={DECISIONS_HELP.document} rows={10} label="Document" value={documentText} onChange={setDocumentText} />
+          </FormGridFull>
           {!initial && (
             <FormGridFull>
               <div className="stack">

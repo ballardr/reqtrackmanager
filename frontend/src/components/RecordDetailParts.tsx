@@ -13,16 +13,17 @@ import type { ReactNode } from "react";
 import type { OrgUser, Principal, PrincipalRef } from "../api/types";
 import { DetailCard } from "./DetailCard";
 import { FieldCaption } from "./FieldHelp";
+import { MarkdownView } from "./MarkdownView";
 import type { FieldHelpProps } from "./FieldHelp";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { PrincipalPicker } from "./PrincipalPicker";
 
-/** A labelled, multi-line read-only value. */
-export function RecordField({ label, value }: { label: string; value: string }) {
+/** A labelled, multi-line read-only value; `markdown` shows `value` formatted (`MarkdownView`) instead of as typed. */
+export function RecordField({ label, value, markdown }: { label: string; value: string; markdown?: boolean }) {
   return (
     <div className="stack" style={{ gap: "0.15rem" }}>
       <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
-      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
+      {markdown ? <MarkdownView text={value} /> : <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>}
     </div>
   );
 }

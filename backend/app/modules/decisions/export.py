@@ -60,7 +60,7 @@ from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 from app.services.template_reset import fresh_drafts
 
-_TEXT_FIELDS = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints")
+_TEXT_FIELDS = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints", "document")
 _TEMPLATE_FIELDS = (
     "description", "context_prompt", "options_considered_prompt", "chosen_option_prompt", "rationale_prompt",
     "consequences_prompt", "assumptions_prompt", "constraints_prompt",

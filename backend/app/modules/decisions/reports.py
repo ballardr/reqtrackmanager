@@ -8,6 +8,8 @@ each, returning the core framework's `ReportResult`, plus the
 all live in `app.services.report_framework`, so this module is declarations
 and queries only.
 
+Free-text fields in a cell are read as Markdown: plain text, no marks, cut to a length.
+
 Reports: D1 Decision register, D2 Approval ageing, D3 Decision log, D4
 Rationale coverage.
 
@@ -42,7 +44,6 @@ Dependencies: `app.services.report_framework`, `app.modules.registry`,
 
 from __future__ import annotations
 
-import re
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
@@ -68,6 +69,7 @@ from app.modules.registry import (
     is_module_enabled_for_project,
 )
 from app.services import relationships
+from app.services.markdown_text import plain_text
 from app.services.principals import PrincipalRef, principal_labels, principal_text
 from app.services.report_framework import (
     ReportContext,
@@ -102,9 +104,9 @@ def _fmt_date(value: date | datetime | None) -> str:
 
 
 def _clip(text: str | None, limit: int = _CLIP) -> str:
-    """Collapses whitespace and cuts `text` to `limit` characters with an ellipsis."""
-    flat = re.sub(r"\s+", " ", text or "").strip()
-    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+    """The readable text of a Markdown field (no marks; a diagram reads "Diagram"), on one line, cut to `limit`
+    characters with an ellipsis."""
+    return plain_text(text or "", limit=limit)
 
 
 class _PrincipalText(Protocol):

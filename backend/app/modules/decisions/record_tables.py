@@ -6,8 +6,9 @@ so it exports to CSV, PDF and Word and imports from the same CSV (a row with a c
 creates).
 
 Responsibilities:
-- Declare the Decision columns (title, statement, type, date, decision maker, owner, the ADR text fields, tags)
-  and the status as an export-only cell.
+- Declare the Decision columns (title, statement, type, date, decision maker, owner, the ADR text fields and the
+  long-form document, tags) and the status as an export-only cell. The text columns carry the Markdown source both
+  ways, so an exported file imports back unchanged.
 - Share the list filters and the create / edit logic with the endpoints (`edits`), so the effective-type and
   principal checks, the content lock and the audit events are the ones the screen applies.
 
@@ -72,10 +73,11 @@ DECISION_OPEN = frozenset({DecisionStatus.DRAFT, DecisionStatus.PROPOSED, Decisi
 #: groups' Decisions.
 DECISION_FILTERS = frozenset({"include_archived", "status", "type", "mine", "decision_maker_mine", "open_only", "search"})
 
-_ADR_TEXT = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints")
+_ADR_TEXT = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints", "document")
 _ADR_LABELS = {
     "context": "Context", "options_considered": "Options considered", "chosen_option": "Chosen option",
     "rationale": "Rationale", "consequences": "Consequences", "assumptions": "Assumptions", "constraints": "Constraints",
+    "document": "Document",
 }
 
 

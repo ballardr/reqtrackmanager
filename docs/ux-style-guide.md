@@ -480,9 +480,10 @@ Use this for any free-text field where more than a couple of lines is a realisti
 A long text field that holds formatted prose (a decision's rationale, a dashboard note) is written in Markdown. The stored value is the Markdown source; people see it formatted.
 
 - **Edit** with `TextAreaField markdown` (the `MarkdownEditor`: Write with a formatting toolbar, and Preview). The field keeps its label, `help` and accessible name like any text area; the `help.markdown` text states what is supported (headings, lists, emphasis, code, quotations, tables, rules, links, and a `mermaid` block for a diagram).
-- **Show** with `MarkdownView`, never `dangerouslySetInnerHTML` and never a per-page renderer. Headings start at the third level because the page owns the first two. Raw HTML and images are shown as the text typed; only https, http and mailto addresses are links.
+- **Show** with `MarkdownView`, or `RecordField markdown` for a labelled read-only value, never `dangerouslySetInnerHTML` and never a per-page renderer. Headings start at the third level because the page owns the first two. Raw HTML and images are shown as the text typed; only https, http and mailto addresses are links.
 - **Diagrams** are drawn on demand as images with the source available beneath; do not import Mermaid directly (`utils/mermaidRender` is the one entry, lazily loaded and limited).
 - **Lists and notifications** show plain text (`services.markdown_text.plain_text`), never raw Markdown.
+- A record's long-form write-up (a Decision's Document) is a field of its own with the same editor, shown in its own detail card only when it has content.
 - A new editor toolbar button is a `ToolbarButton` (icon, tooltip and accessible name the same).
 
 ## Pattern: view toggle (tile vs. list)

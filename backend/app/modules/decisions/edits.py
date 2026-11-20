@@ -14,12 +14,15 @@ Responsibilities:
 Design decisions:
 - Nothing here commits and nothing here checks who may do it: the caller owns the transaction and the role gate
   (`_require_edit_role` for the endpoint, `can_update` for the import).
+- Every text field except the title is Markdown (`MARKDOWN_LIMITS`, checked by `check_markdown_limits`: 422 for a value
+  over its size, nesting or diagram limits); the stored value is the author's source, never rewritten.
 - A refusal is an `HTTPException` (409 for a locked Decision, 400 for an unusable type or person), the shape the
   endpoints already answered with and the import turns into that row's error.
 - An edit takes the fields to change and keeps every other as it is, because the edit endpoint's body is a full
   replace but a file names only the cells it changes.
 
-Dependencies: `modules.decisions.service` (effective types, unique codes), `services.principals`, `services.audit`.
+Dependencies: `modules.decisions.service` (effective types, unique codes), `services.principals`, `services.audit`,
+`services.markdown_text` (the limits).
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ from app.modules.decisions.models import Decision
 from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, DECISION_CODE_PREFIX, resolve_effective_decision_types
 from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
+from app.services.markdown_text import MarkdownLimitError, validate_markdown
 from app.services.principals import principal_filter_clause, validate_principal
 from app.services.rbac import user_satisfies_module_role
 from app.services.sequences import generate_unique_code
@@ -50,8 +54,36 @@ LOCKED_STATUSES = frozenset({DecisionStatus.APPROVED, DecisionStatus.SUPERSEDED}
 #: The free-text content fields of a Decision (everything an edit may change except type, date and people).
 TEXT_FIELDS = (
     "title", "decision_statement", "context", "options_considered", "chosen_option", "rationale", "consequences",
-    "assumptions", "constraints",
+    "assumptions", "constraints", "document",
 )
+
+#: The size limit, in characters, of each field written in Markdown (every text field but the title). The document is
+#: the long-form field, so it has the larger limit.
+MARKDOWN_LIMITS: dict[str, int] = {
+    **{field: 50_000 for field in TEXT_FIELDS if field not in ("title", "document")}, "document": 200_000,
+}
+
+
+def check_markdown_limits(values: Mapping[str, Any]) -> None:
+    """Refuses Markdown text over its limits (size, nesting, diagram count and size) with a 422 naming the field.
+    Every write path (the endpoints, an import and the record table) goes through the stage functions below, so one
+    check covers them all.
+
+    Args:
+        values: Field names mapped to the submitted text (a key that is not a Markdown field, or a blank value, is
+            skipped).
+
+    Raises:
+        HTTPException: 422 when a field breaks a limit.
+    """
+    for field, limit in MARKDOWN_LIMITS.items():
+        text = values.get(field)
+        if not text:
+            continue
+        try:
+            validate_markdown(text, max_chars=limit, field=field.replace("_", " ").capitalize())
+        except MarkdownLimitError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 def user_is_decision_owner(db: Session, user: User, project: Project) -> bool:
@@ -151,6 +183,7 @@ def stage_decision(
         HTTPException: 400 for a type or person the project cannot use.
     """
     validate_effective_decision_type(db, project.id, decision_type_id)
+    check_markdown_limits({"decision_statement": decision_statement, **text})
     owner = owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)
     validate_people(db, project, owner, decision_maker)
     decision = Decision(
@@ -183,6 +216,7 @@ def stage_decision_update(
         )
     if "decision_type_id" in changes:
         validate_effective_decision_type(db, project.id, changes["decision_type_id"])
+    check_markdown_limits(changes)
     owner = changes.get("owner")
     if "owner" in changes and owner is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A Decision needs an owner.")

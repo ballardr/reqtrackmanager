@@ -1566,11 +1566,14 @@ class SearchField:
             for the record's code, title and tags, which the search builds itself.
         label: User-facing name (`"Description"`, `"Mitigation"`).
         column: A SQL text expression over `ArtefactSearchProvider.from_clause`.
+        markdown: The column holds Markdown, so a result's snippet shows its plain text (`services.markdown_text.
+            plain_text`, diagram source included) and never the marks. The match itself is on the stored source.
     """
 
     key: str
     label: str
     column: Any
+    markdown: bool = False
 
 
 @dataclass(frozen=True)

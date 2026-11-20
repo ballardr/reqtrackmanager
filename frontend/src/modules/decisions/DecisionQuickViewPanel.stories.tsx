@@ -23,7 +23,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
     decision_statement: "Use PostgreSQL as the backing store for the billing service.", decision_type_id: "dt-1",
     status: "under_review", decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM,
     context: null, options_considered: null, chosen_option: null, rationale: null, consequences: null,
-    assumptions: null, constraints: null, creator_id: "user-1", is_archived: false, archived_at: null,
+    assumptions: null, constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null,
     archived_by: null, is_locked: false, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
@@ -44,6 +44,18 @@ const meta: Meta<typeof DecisionQuickViewPanel> = {
 export default meta;
 
 type Story = StoryObj<typeof DecisionQuickViewPanel>;
+
+/** The statement is Markdown: marks are formatted, never shown as typed. */
+export const StatementIsFormatted: Story = {
+  args: { decision: decision({ decision_statement: "We **adopt** a queue.\n\n- fewer retries" }) },
+  play: async () => {
+    const body = within(document.body);
+    await waitFor(() => expect(body.getByText("adopt")).toBeInTheDocument());
+    await expect(body.getByText("adopt").tagName).toBe("STRONG");
+    await expect(body.getByRole("listitem")).toHaveTextContent("fewer retries");
+    await expect(body.queryByText(/\*\*/)).not.toBeInTheDocument();
+  },
+};
 
 export const ShowsIdentifyingFieldsOnly: Story = {
   args: { decision: decision() },

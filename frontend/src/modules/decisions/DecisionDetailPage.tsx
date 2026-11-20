@@ -55,6 +55,7 @@ import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { MarkdownView } from "../../components/MarkdownView";
 import { DECISIONS_HELP } from "./help";
 
 export function DecisionDetailPage() {
@@ -212,20 +213,26 @@ export function DecisionDetailPage() {
       {archive.dialog}
       <div className="stack">
         <DetailCard>
-          <p style={{ margin: 0 }}>{decision.decision_statement}</p>
+          <MarkdownView text={decision.decision_statement} />
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup help={DECISIONS_HELP.decisionOwner} label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
             <RecordFieldGroup help={DECISIONS_HELP.decisionMaker} label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
           </div>
 
-          {decision.context && <RecordField label="Context" value={decision.context} />}
-          {decision.options_considered && <RecordField label="Options considered" value={decision.options_considered} />}
-          {decision.chosen_option && <RecordField label="Chosen option" value={decision.chosen_option} />}
-          {decision.rationale && <RecordField label="Rationale" value={decision.rationale} />}
-          {decision.consequences && <RecordField label="Consequences" value={decision.consequences} />}
-          {decision.assumptions && <RecordField label="Assumptions" value={decision.assumptions} />}
-          {decision.constraints && <RecordField label="Constraints" value={decision.constraints} />}
+          {decision.context && <RecordField markdown label="Context" value={decision.context} />}
+          {decision.options_considered && <RecordField markdown label="Options considered" value={decision.options_considered} />}
+          {decision.chosen_option && <RecordField markdown label="Chosen option" value={decision.chosen_option} />}
+          {decision.rationale && <RecordField markdown label="Rationale" value={decision.rationale} />}
+          {decision.consequences && <RecordField markdown label="Consequences" value={decision.consequences} />}
+          {decision.assumptions && <RecordField markdown label="Assumptions" value={decision.assumptions} />}
+          {decision.constraints && <RecordField markdown label="Constraints" value={decision.constraints} />}
         </DetailCard>
+
+        {decision.document && (
+          <DetailCard heading="Document">
+            <MarkdownView text={decision.document} />
+          </DetailCard>
+        )}
 
         <DetailCard heading="Attachments">
           <FileAttachmentList

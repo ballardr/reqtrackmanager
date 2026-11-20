@@ -112,6 +112,10 @@ logger = logging.getLogger(__name__)
 
 MAX_IMPORT_ROWS = 5000
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
+# The csv reader refuses a cell over 131072 characters by default, so a long Markdown field (a 200000-character
+# Decision document) exported by this module would not import back. The upload cap above already bounds every cell,
+# so the reader's limit is set to it (the setting is process-wide; no other reader in the product relies on the default).
+csv.field_size_limit(MAX_IMPORT_BYTES)
 CODE_COLUMN = "code"
 PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.

@@ -136,11 +136,13 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
             maker. The id has no foreign key (see `models.principal`);
             `services.principals.validate_principal` checks it on write and
             `module.py`'s `principal_references` guard group deletion.
-        context / options_considered / chosen_option / rationale /
-            consequences / assumptions / constraints: Free-text fields
+        decision_statement / context / options_considered / chosen_option / rationale /
+            consequences / assumptions / constraints: Free-text fields, written in Markdown
             (§13/10.3; rationale and consequences are
             explicitly separate fields per that section, not folded into
             a single description).
+        document: The decision written out in full, in Markdown with tables and diagrams, beside the structured
+            fields. Content-locked with them once the Decision is approved or superseded.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Requirement`/`RequirementAction`'s own convention.
@@ -173,6 +175,7 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
     consequences: Mapped[str | None] = mapped_column(Text, nullable=True)
     assumptions: Mapped[str | None] = mapped_column(Text, nullable=True)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document: Mapped[str | None] = mapped_column(Text, nullable=True)
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -34,7 +34,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
     status: "under_review", decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM,
     context: "The legacy MySQL cluster is nearing end of life.", options_considered: "PostgreSQL, MySQL 8, CockroachDB.",
     chosen_option: "PostgreSQL", rationale: "Best fit for our existing operational tooling.", consequences: null,
-    assumptions: null, constraints: null, creator_id: "user-1", is_archived: false, archived_at: null,
+    assumptions: null, constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null,
     archived_by: null, is_locked: false, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
@@ -88,6 +88,32 @@ export const UnderReviewShowsApproveReject: Story = {
     await expect(canvas.getByText("Platform Architecture")).toBeInTheDocument();
     await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await expect(canvas.getByText("Alex Morgan")).toBeInTheDocument();
+  },
+};
+
+const DOCUMENT = "## Failover\n\n```mermaid\nflowchart LR\n  A[Active] --> B[Standby]\n```\n\n| Option | Cost |\n|---|---|\n| Dual | Moderate |";
+
+/** The text fields and the long-form document are Markdown: formatted, with a table and a diagram. */
+export const ShowsMarkdownAndTheDocument: Story = {
+  beforeEach: () => mockDetailApis(decision({ rationale: "It is **cheaper** to run.", document: DOCUMENT })),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("cheaper").tagName).toBe("STRONG"));
+    const card = within(canvas.getByRole("region", { name: "Document" }));
+    await expect(card.getByRole("heading", { level: 4, name: "Failover" })).toBeInTheDocument();
+    await expect(card.getByRole("cell", { name: "Moderate" })).toBeInTheDocument();
+    // The diagram is drawn as an image with a text alternative.
+    await waitFor(() => expect(card.getByRole("img")).toBeInTheDocument(), { timeout: 15000 });
+  },
+};
+
+/** A Decision with no document has no Document card. */
+export const NoDocumentNoCard: Story = {
+  beforeEach: () => mockDetailApis(decision()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
+    await expect(canvas.queryByRole("region", { name: "Document" })).not.toBeInTheDocument();
   },
 };
 

@@ -133,6 +133,7 @@ class DecisionCreate(BaseModel):
     consequences: str | None = None
     assumptions: str | None = None
     constraints: str | None = None
+    document: str | None = None
 
 
 class DecisionUpdate(BaseModel):
@@ -156,6 +157,7 @@ class DecisionUpdate(BaseModel):
     consequences: str | None = None
     assumptions: str | None = None
     constraints: str | None = None
+    document: str | None = None
 
 
 class DecisionOut(ProjectScopedRow):
@@ -180,6 +182,7 @@ class DecisionOut(ProjectScopedRow):
     consequences: str | None
     assumptions: str | None
     constraints: str | None
+    document: str | None
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None

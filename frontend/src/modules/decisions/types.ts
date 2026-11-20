@@ -117,6 +117,8 @@ export interface Decision extends ProjectScopedRow {
   consequences: string | null;
   assumptions: string | null;
   constraints: string | null;
+  /** The decision written out in full, as Markdown (tables and diagrams allowed). */
+  document: string | null;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -144,6 +146,7 @@ export interface DecisionFieldValues {
   consequences: string | null;
   assumptions: string | null;
   constraints: string | null;
+  document: string | null;
 }
 
 // --- Comments (no reaction mechanism — see DecisionCommentOut's own docstring) -

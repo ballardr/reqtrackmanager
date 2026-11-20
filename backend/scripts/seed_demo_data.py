@@ -1689,6 +1689,37 @@ def seed_project(
     return by_name
 
 
+# The dual flight controller Decision's long-form document: Markdown with a table and a Mermaid diagram.
+FLIGHT_CONTROLLER_DECISION_DOCUMENT = """## Summary
+
+Falcon-3 flies with **two flight controllers** in an active/standby arrangement. The standby board takes over
+automatically when the active board stops sending a heartbeat.
+
+## Failover sequence
+
+```mermaid
+flowchart LR
+    A[Active controller] -->|heartbeat| W[Watchdog]
+    W -->|heartbeat missed twice| S[Standby controller]
+    S --> T[Takes over the actuator bus]
+    T --> L[Logs the event for the post-flight review]
+```
+
+## Options compared
+
+| Option | Mass added | Unit cost | In-flight recovery |
+|---|---|---|---|
+| Single controller, cold spare | 0 g | Lowest | None |
+| Dual, automatic failover | 45 g | Moderate | Yes |
+| Triple modular redundancy | 110 g | Highest | Yes, with voting |
+
+## Open questions
+
+- Handover time must stay below the **200 ms** the autopilot tolerates.
+- The standby board needs its own power rail.
+"""
+
+
 # --- Decision Management module helpers --------------------------------------------
 #
 # `Decision.decision_type_id` is a required FK, but every *root* project
@@ -1720,7 +1751,7 @@ def create_decision(
     headers: dict, project_id: str, *, title: str, decision_statement: str, decision_type_id: str,
     owner_id: str | None = None, decision_maker_id: str | None = None, owner_group_id: str | None = None,
     context: str = "", options_considered: str = "", chosen_option: str = "", rationale: str = "",
-    consequences: str = "", decision_date: str | None = None,
+    consequences: str = "", decision_date: str | None = None, document: str = "",
 ) -> dict:
     """Creates a Decision. The owner is a user (`owner_id`) or an organisation group (`owner_group_id`);
     the decision maker is a user."""
@@ -1734,7 +1765,7 @@ def create_decision(
             "decision_date": decision_date,
             "context": context,
             "options_considered": options_considered, "chosen_option": chosen_option, "rationale": rationale,
-            "consequences": consequences,
+            "consequences": consequences, "document": document or None,
         },
         headers=headers, timeout=30,
     )
@@ -3724,6 +3755,7 @@ def main() -> None:
         " penalty of full triple modular redundancy, which the airframe's payload budget can't absorb.",
         consequences="Adds airframe weight and BOM cost per unit; avionics firmware needs an active/standby"
         " handover path that didn't exist before (tracked as its own firmware requirement).",
+        document=FLIGHT_CONTROLLER_DECISION_DOCUMENT,
     )
     propose_and_approve_decision(
         h_pm, drone["id"], dual_fc_decision["id"],

@@ -101,6 +101,24 @@ export const SubmitsNewDecision: Story = {
   },
 };
 
+/** The text fields and the Document are written in Markdown (Write and Preview), and the Document is saved with the form. */
+export const WritesMarkdownAndADocument: Story = {
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Decision title"), "Adopt a queue");
+    await userEvent.type(body.getByLabelText("Decision statement"), "We **adopt** a queue.");
+    await userEvent.type(body.getByLabelText("Document"), "## Plan");
+    // Every Markdown field offers Write and Preview.
+    await expect(body.getAllByRole("tab", { name: "Preview" }).length).toBeGreaterThan(8);
+    await userEvent.click(body.getAllByRole("tab", { name: "Preview" })[0]);
+    await expect(body.getByText("adopt").tagName).toBe("STRONG");
+    await userEvent.click(body.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ decision_statement: "We **adopt** a queue.", document: "## Plan" }), [], []
+    ));
+  },
+};
+
 /** An organisation group can be the owner; the form sends it as a typed principal. */
 export const ChoosesAGroupOwner: Story = {
   play: async ({ args }) => {
@@ -157,7 +175,7 @@ export const EditExisting: Story = {
       owner: { type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 2, exists: true },
       context: "Legacy MySQL is EOL.",
       options_considered: null, chosen_option: null, rationale: null, consequences: null, assumptions: null,
-      constraints: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+      constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
       is_locked: false, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     } satisfies Decision,
   },
@@ -165,6 +183,7 @@ export const EditExisting: Story = {
     const body = within(document.body);
     await expect(body.getByRole("heading", { name: "Edit DEC-001" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Legacy MySQL is EOL.")).toBeInTheDocument();
+    await expect(body.getByLabelText("Document")).toHaveValue("");
     await expect(body.queryByLabelText("Start from a template")).not.toBeInTheDocument();
     // The existing group owner shows its name, kind and member count.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();

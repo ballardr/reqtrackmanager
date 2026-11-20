@@ -79,6 +79,7 @@ def generate_decisions(ctx: PerfProjectContext) -> dict[str, int]:
                 "consequences": textgen.paragraphs(rng, empty_chance=0.3, short_max=2),
                 "assumptions": textgen.paragraphs(rng, empty_chance=0.4, short_max=2),
                 "constraints": textgen.paragraphs(rng, empty_chance=0.5, short_max=2),
+                "document": textgen.paragraphs(rng, empty_chance=0.7, short_max=4),
                 "is_archived": archived, "archived_at": created + timedelta(days=90) if archived else None,
                 "archived_by": creator if archived else None,
             },

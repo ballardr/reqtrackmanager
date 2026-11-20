@@ -77,6 +77,7 @@ from app.modules.registry import (
     prefetch_project_module_state,
 )
 from app.services.external_references import references_for_records
+from app.services.markdown_text import plain_text
 from app.services.permissions import encode_permission
 from app.services.placements import COLUMN_PLACED_TYPES, placement_text, placements_for_records
 from app.services.project_access import accessible_project_ids
@@ -983,6 +984,7 @@ def _snippet(
     comment_texts: dict[tuple[str, uuid.UUID], str] | None = None,
     placements: dict[tuple[str, uuid.UUID], list[str]] | None = None,
     references: dict[tuple[str, uuid.UUID], list[str]] | None = None,
+    markdown: frozenset[str] = frozenset(),
 ) -> Snippet | None:
     """The first of Tags, the placement names, the external references and the declared fields (in selection order)
     that contains a term."""
@@ -1007,7 +1009,7 @@ def _snippet(
         value = row.field_values.get(key)
         if not value:
             continue
-        windowed = _window(" ".join(value.split()), terms)
+        windowed = _window(plain_text(value, diagrams="source") if key in markdown else " ".join(value.split()), terms)
         if windowed:
             return Snippet(key, labels.get(key, key), windowed[0], windowed[1])
     comment = (comment_texts or {}).get((row.type, row.id))
@@ -1162,8 +1164,14 @@ def _run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
     comment_texts = _comment_texts(db, page, terms, providers) if COMMENTS_FIELD in fields else {}
     placement_names = _placement_names(db, page) if PLACEMENTS_FIELD in fields else {}
     reference_names = _reference_names(db, page) if REFERENCES_FIELD in fields else {}
+    markdown_keys = {
+        name: frozenset(f.key for f in provider.fields if f.markdown) for name, provider in providers.items()
+    }
     hits = [
-        _shape(r, providers, context, _snippet(r, fields, terms, tag_names, field_labels, comment_texts, placement_names, reference_names))
+        _shape(r, providers, context, _snippet(
+            r, fields, terms, tag_names, field_labels, comment_texts, placement_names, reference_names,
+            markdown_keys.get(r.type, frozenset()),
+        ))
         for r in page
     ]
     total = None

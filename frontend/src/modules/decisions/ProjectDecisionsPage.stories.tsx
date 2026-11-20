@@ -28,7 +28,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
     decision_statement: "Use PostgreSQL as the backing store.", decision_type_id: "dt-1", status: "approved",
     decision_date: "2026-02-01", decision_maker: USER_ALEX, owner: GROUP_PLATFORM, context: null,
     options_considered: null, chosen_option: null, rationale: null, consequences: null, assumptions: null,
-    constraints: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+    constraints: null, document: null, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     is_locked: true, created_at: "2026-01-10T09:00:00Z", updated_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };

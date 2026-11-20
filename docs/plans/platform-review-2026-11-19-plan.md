@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 13 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 14 done 2026-11-20). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-13 / 25 phases complete.
+14 / 25 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -23,7 +23,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [x] |
 | 12 | External references: every surface | Record panel, list column and filter, export and import, search, report field, bundles, MCP, look-up by key | [x] |
 | 13 | Markdown and Mermaid: shared foundation | `MarkdownView`, `MarkdownEditor` (Write and Preview), safe Mermaid, server limits | [x] |
-| 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [ ] |
+| 14 | Decisions: Markdown and a long-form Document | Decision text fields use the foundation; new `document` field; locks, bundles, search, reports | [x] |
 | 15 | Visual (WYSIWYG) Markdown editing | Spike with exit criteria, then the visual editor on `@tiptap/markdown`; shared toolbar with the policy editor | [ ] |
 | 16 | Markdown for every long-text field | Registry-declared fields, generated inventory, mathematics coexistence | [ ] |
 | 17 | Markdown and diagrams in reports and exports | Markdown to PDF, Word, OpenDocument and HTML; one shared browserless Mermaid renderer in the converter container, same engine version and font as the screen, confirmed by a spike | [ ] |
@@ -229,6 +229,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - `decision_statement`, `context`, `options_considered`, `chosen_option`, `rationale`, `consequences`, `assumptions`, `constraints` use the foundation; new `document` column (long-form Markdown) in `TEXT_FIELDS`, so the approved and superseded content lock covers it; the existing file attachments remain for documents made elsewhere.
 - Detail page, quick view, create and edit through the one field group; CSV column; bundle; template classification; search field; report field; MCP schema and `mcp_guidance.md`; probe, generator and both seeds (the demo project's decisions gain a diagram and a document).
 - Tests: lock, round trip, search finds document text, export carries source, detail renders a diagram.
+- As built: limits (50,000 per section, 200,000 the document) are checked in one place, `edits.check_markdown_limits`, so the import and record-table paths are covered with the endpoints; `RecordField` gained `markdown`; `SearchField` gained a generic `markdown` flag so a snippet shows plain text; the built-in Decision reports cut cells with `plain_text`; the CSV reader's per-cell limit was raised to the upload cap (a defect found on the way). Not done here, by design: the other types' fields (phase 16), the report engine's Markdown rendering (phase 17), the website pages (phase W). See `docs/decisions.md`.
 
 ### Phase 15 — Visual (WYSIWYG) Markdown editing
 

@@ -48,7 +48,7 @@ def _decisions_to_out(db: Session, decisions: Sequence[Decision]) -> list[Decisi
             decision_maker=label_of(labels, d.decision_maker_type, d.decision_maker_id),
             owner=labels[(d.owner_type, d.owner_id)], context=d.context, options_considered=d.options_considered,
             chosen_option=d.chosen_option, rationale=d.rationale, consequences=d.consequences,
-            assumptions=d.assumptions, constraints=d.constraints, creator_id=d.creator_id,
+            assumptions=d.assumptions, constraints=d.constraints, document=d.document, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, archived_by=d.archived_by,
             is_locked=_is_locked(d), created_at=d.created_at, updated_at=d.updated_at,
         )
