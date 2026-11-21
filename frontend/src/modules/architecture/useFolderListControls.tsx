@@ -3,14 +3,16 @@
  *
  * Everything the Elements, Connections and Diagrams lists share for folders, so each list adds one hook call instead of
  * its own copy: the chosen folder and the "Include sub-folders" choice (both in the page address), the folder tree for
- * the filter panel, the filter the list applies and sends to its export, and the selection with its "Move to folder"
- * action. A folder only organises the list: the hook changes nothing about what a record is.
+ * the filter panel, the folder actions as rows of the page's one actions menu, the filter the list applies and sends to
+ * its export, and the selection with its "Move to folder" action. A folder only organises the list: the hook changes
+ * nothing about what a record is.
  */
 import { useState, type ReactNode } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useUrlText } from "../../hooks/useUrlFilter";
 import { FolderPanel } from "./FolderPanel";
+import { useFolderActions } from "./useFolderActions";
 import { inChosenFolder } from "./folderTree";
 import { MoveToFolderDialog } from "./MoveToFolderDialog";
 import type { FolderKind } from "./types";
@@ -24,8 +26,9 @@ import { useFolders, type FolderOwner } from "./useFolders";
  * @param inUrl Keep the chosen folder in the page address (default); false keeps it in component state, for a list shown
  *   inside a page whose own query parameters it must not touch (the organisation administration tabs).
  * @returns `matches` (a record's folder path is inside the choice), `addParams` (the export's `folder` and `subfolders`),
- *   `panel` (the folder tree for the filter panel), `selected` / `setSelected` (the chosen record ids, for
- *   `DirectoryTable`'s `selection`), `bar` (the bulk bar shown while records are chosen) and `dialog` (the Move dialog).
+ *   `panel` (the folder tree for the filter panel), `menuItems` (New, Edit and Delete folder, for the page's actions menu),
+ *   `selected` / `setSelected` (the chosen record ids, for `DirectoryTable`'s `selection`), `bar` (the bulk bar shown while
+ *   records are chosen) and `dialog` (the Move dialog and the folder form and confirmation).
  */
 export function useFolderListControls(owner: FolderOwner, kind: FolderKind, noun: string, onMoved: () => void, inUrl = true) {
   const { showToast } = useToast();
@@ -47,11 +50,15 @@ export function useFolderListControls(owner: FolderOwner, kind: FolderKind, noun
     if (!exactFolder) params.set("subfolders", "true");
   }
 
+  const actions = useFolderActions({
+    noun, folders: folderState.folders, calls: folderState.calls, selectedPath: folderPath, onSelect: setFolderPath,
+    onChanged: () => { folderState.reload(); onMoved(); },
+  });
+
   const panel: ReactNode = (
     <FolderPanel
-      noun={noun} folders={folderState.folders} calls={folderState.calls} selectedPath={folderPath} onSelect={setFolderPath}
+      folders={folderState.folders} selectedPath={folderPath} onSelect={setFolderPath}
       includeSub={!exactFolder} onIncludeSubChange={(on) => setExactFolder(!on)}
-      onChanged={() => { folderState.reload(); onMoved(); }}
     />
   );
 
@@ -63,7 +70,7 @@ export function useFolderListControls(owner: FolderOwner, kind: FolderKind, noun
     </div>
   );
 
-  const dialog: ReactNode = moving && (
+  const moveDialog: ReactNode = moving && (
     <MoveToFolderDialog
       count={selected.size} noun={noun} folders={folderState.folders} error={moveError} onCancel={() => setMoving(false)}
       onMove={async (folderId) => {
@@ -82,5 +89,7 @@ export function useFolderListControls(owner: FolderOwner, kind: FolderKind, noun
     />
   );
 
-  return { matches, addParams, panel, selected, setSelected, bar, dialog, folderPath, exactFolder };
+  const dialog: ReactNode = <>{moveDialog}{actions.dialogs}</>;
+
+  return { matches, addParams, panel, menuItems: actions.menuItems, selected, setSelected, bar, dialog, folderPath, exactFolder };
 }

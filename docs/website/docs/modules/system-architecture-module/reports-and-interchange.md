@@ -26,7 +26,7 @@ The Engineering Specification starter layout includes the element breakdown and 
 
 ## JSON interchange
 
-**Interchange** on the Elements tab offers **Export JSON file**, **Export Structurizr DSL** and **Import JSON file…**.
+**Interchange** in the actions menu of the Elements tab (the menu beside **New element**) offers **Export JSON file**, **Export Structurizr DSL** and **Import JSON file…**.
 
 ```mermaid
 flowchart LR

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 29 done 2026-11-22; phases 30 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 30 done 2026-11-22; phases 31 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-29 / 46 phases complete.
+30 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -39,7 +39,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [x] |
 | 28 | Tags: usage in a dialog | The "Where tags are used" section becomes a dialog opened from the record count in the Used on column | [x] |
 | 29 | Folder icons: review and fix | Every folder-tree list shows an icon of what its rows are (a stakeholder group, not a folder); icon chosen by the consuming list, not a core map | [x] |
-| 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [ ] |
+| 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [x] |
 | 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [ ] |
 | 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [ ] |
 | 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [ ] |
@@ -462,7 +462,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 ### Phases 28 to 41 — Items from the review of 2026-11-22
 
-Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 30 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
+Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 31 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
 
 ### Phase 28 — Tags: usage in a dialog
 
@@ -491,6 +491,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - UI review first, with a screenshot: say what the three buttons do, what the Folders box (`FolderPanel`) does and who uses it, whether collections and folders are one concept shown twice, and which shared component each element should be (`ListPageLayout`, `ActionMenuList`, the shared create form, the folder tree of phase 22 and 26). The register is shown to the user before the fixes if it recommends removing or merging a concept.
 - Rule (**Decided by: User** for the rule; **Decided by: Agent** for the wording): a page or list shows at most one primary action as a button (the Add control of "creation controls on demand"); every further action on the page (import, export, folders, bulk actions, settings) is an item of one actions menu (`ActionMenu`, `ActionMenuList`, `.menu-item` rows), never a row of separate buttons. Exceptions stated on the page: a toggle that changes the view, and a button whose state the person must see (a running validation). Added to `docs/ux-style-guide.md` and as one line in `CLAUDE.md`; applies to the same shape found elsewhere in the review's search (`ListActions`, record headers, panel headers), each converted in this phase or given a stated reason.
 - Tests: Storybook for the page's closed and open menu; Playwright for the menu actions and for the Folders area as decided; `scripts/check_menu_rows.py` stays green (a check script for the rule is considered after the search shows how many cases there are, and the decision is recorded).
+
+- As built (**Decided by: User** for the rule and for placing Sharing, Interchange and the folder rows in the one menu; **Decided by: Agent** for the rest): [the register](platform-review-2026-11-19-architecture-register.md). The "three buttons" were New, Edit and Delete folder under the Folders box (the project page had four title-row controls and each element row three buttons). Folders stay (they organise; collections share). `ListPageLayout` takes `menuItems` and `ListMenuItems` joins the one `ListActionsMenu`; `FolderPanel` is the tree only, `useFolderActions` the rows and dialogs, `useInterchangeActions` replaced `InterchangeMenu`; element rows and collection cards have `ActionMenu`s; the organisation Elements tab gained Export and Import. The rule is in `CLAUDE.md` and the style guide's "Pattern: page actions menu"; no check script (one page had the shape). Four stale port-list stories from phase 27 were fixed. Website pages for interchange and sharing updated. See `docs/decisions.md`.
 
 ### Phase 31 — Record codes settings: sections by module
 

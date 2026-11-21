@@ -13,9 +13,10 @@
  * and type render through their label maps. Create uses `ElementFormModal`, the same fields as the edit form.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { rowProjectId } from "../../api/projectScope";
+import type { ActionMenuItem } from "../../components/ActionMenu";
 import { Badge } from "../../components/Badge";
 import { cycleSort } from "../../components/sortState";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -46,9 +47,9 @@ import { ELEMENT_SORT_KEYS, elementSortValues } from "./architectureSort";
 import { ARCHITECTURE_PAGE_TITLE, type ArchitectureListChrome } from "./architectureTabs";
 import { buildElementTree, elementCodeRecord } from "./architectureFields";
 import { ElementFormModal } from "./ElementFormModal";
-import { InterchangeMenu } from "./InterchangeMenu";
 import { useCreateElement } from "./useCreateElement";
 import { useFolderListControls } from "./useFolderListControls";
+import { useInterchangeActions } from "./useInterchangeActions";
 import { useArchitectureReference } from "./useArchitectureReference";
 import {
   ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureRecordStatus, isOutOfUse,
@@ -77,6 +78,13 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
 
   const [refreshKey, setRefreshKey] = useState(0);
   const folders = useFolderListControls({ projectId }, "element", "elements", () => setRefreshKey((k) => k + 1));
+  const navigate = useNavigate();
+  const interchange = useInterchangeActions(projectId, () => setRefreshKey((k) => k + 1));
+  const menuItems = useMemo<ActionMenuItem[]>(() => [
+    ...folders.menuItems,
+    { key: "sharing", label: "Sharing", onSelect: () => navigate(`/projects/${projectId}/modules/architecture/sharing`) },
+    ...interchange.menuItems,
+  ], [folders.menuItems, interchange.menuItems, navigate, projectId]);
   const [elements, setElements] = useState<ArchitectureElement[] | null>(null);
   const [shared, setShared] = useState<ArchitectureElement[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -170,13 +178,8 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_element", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
-        actions={
-          <>
-            <Link className="btn" to={`/projects/${projectId}/modules/architecture/sharing`}>Sharing</Link>
-            <InterchangeMenu projectId={projectId} onImported={() => setRefreshKey((k) => k + 1)} />
-            <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New element</button>
-          </>
-        }
+        menuItems={menuItems}
+        actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New element</button>}
         filter={
           <FilterPanel
             sectionKey="architecture.elements" total={filtered.length}
@@ -240,6 +243,7 @@ export function ProjectElementsPage({ chrome }: { chrome?: ArchitectureListChrom
       </ListPageLayout>
 
       {folders.dialog}
+      {interchange.dialog}
       {creating && (
         <ElementFormModal
           elementTypes={reference.elementTypes} connectionTypes={reference.connectionTypes} candidates={elements}

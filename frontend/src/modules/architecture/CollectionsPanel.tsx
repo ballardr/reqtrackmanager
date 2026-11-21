@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import type { PrincipalRef, ProjectListItem } from "../../api/types";
+import { ActionMenu } from "../../components/ActionMenu";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FormActions } from "../../components/FormActions";
 import { CheckboxField, TextAreaField, TextField } from "../../components/FormFields";
@@ -104,10 +105,10 @@ function CollectionCard({
     <section className="card stack" aria-label={collection.name}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h2 className="detail-card__title">{collection.name}</h2>
-        <span className="row">
-          <button className="btn" onClick={onEdit}>Edit</button>
-          <button className="btn btn-danger" onClick={onDelete}>Delete</button>
-        </span>
+        <ActionMenu
+          triggerLabel={`Actions for ${collection.name}`}
+          items={[{ key: "edit", label: "Edit", onSelect: onEdit }, { key: "delete", label: "Delete", danger: true, onSelect: onDelete }]}
+        />
       </div>
       {collection.description && <MarkdownView text={collection.description} />}
 

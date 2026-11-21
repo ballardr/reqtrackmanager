@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
+import { expectTextRows } from "../../testing/menuRows";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildElement, buildFolder, mockArchitectureReads, ORG_ID } from "./architectureFixtures";
 import { OrgElementsPanel } from "./OrgElementsPanel";
@@ -28,7 +29,28 @@ export const ListsTheOrganisationsOwnElements: Story = {
     const canvas = within(canvasElement);
     const table = await canvas.findByRole("table", { name: "Organisation elements" });
     await expect(within(table).getByText("Identity service")).toBeInTheDocument();
-    await expect(within(table).getByRole("button", { name: "Change status" })).toBeInTheDocument();
+    // One actions menu per row, never a row of buttons.
+    await expect(within(table).getAllByRole("button").filter((b) => /^(Edit|Archive|Change status)/.test(b.textContent ?? ""))).toHaveLength(0);
+    await userEvent.click(within(table).getByRole("button", { name: "Actions for Identity service" }));
+    const menu = within(await within(document.body).findByRole("menu"));
+    await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
+    // The first parent row ("Change status") starts open, listing the server's allowed moves.
+    await expect(await menu.findByRole("menuitem", { name: /^Move from / })).toBeVisible();
+    await expectTextRows(within(document.body).getByRole("menu"));
+  },
+};
+
+/** One primary button and one actions menu above the list: folders first, then Export and Import. */
+export const HeaderHasOnePrimaryButtonAndOneActionsMenu: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Organisation elements" });
+    await expect(canvas.getByRole("button", { name: "New element" })).toBeVisible();
+    await expect(canvas.queryByRole("button", { name: "New folder" })).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "List actions" }));
+    const menu = within(await within(document.body).findByRole("menu"));
+    await expect(menu.getByRole("menuitem", { name: "New folder" })).toBeVisible();
   },
 };
 

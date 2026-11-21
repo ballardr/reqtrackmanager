@@ -158,6 +158,7 @@ export function ProjectConnectionsPage({ chrome }: { chrome?: ArchitectureListCh
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={{ projectId, recordType: "architecture_connection", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
+        menuItems={folders.menuItems}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New connection</button>}
         filter={
           <FilterPanel

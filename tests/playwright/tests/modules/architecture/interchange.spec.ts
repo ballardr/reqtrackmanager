@@ -36,7 +36,7 @@ test.describe("System Architecture: interchange", () => {
     expect(link.ok(), await link.text()).toBeTruthy();
 
     await page.goto(`/projects/${project.id}/modules/architecture?tab=elements`);
-    const interchange = page.getByRole("button", { name: "Interchange" });
+    const interchange = page.getByRole("button", { name: "List actions" });
 
     let jsonPath = "";
     await test.step("the JSON file holds the elements and the connection", async () => {

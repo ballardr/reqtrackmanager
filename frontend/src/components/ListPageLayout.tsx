@@ -31,7 +31,8 @@ import { useCurrentNavLabelOverride } from "../context/NavLabelValue";
 import { t } from "../i18n/strings";
 
 import { useListPosition } from "../hooks/useListPosition";
-import { ListActions, ListActionsMenu, type RecordListActions } from "./ListActions";
+import type { ActionMenuItem } from "./ActionMenu";
+import { ListActions, ListActionsMenu, ListMenuItems, type RecordListActions } from "./ListActions";
 
 const strings = t();
 
@@ -40,6 +41,8 @@ const strings = t();
  * @param actions Page-level actions beside the title (a New button).
  * @param records The record type and filters of the list: adds the shared Export and Import controls (an array when
  *   the list shows several kinds at once, each with a `kindLabel`).
+ * @param menuItems The page's other actions (folders, an interchange file, a link to a related page): rows of the one
+ *   actions menu, ahead of the export and import items. A page has one primary button in `actions` and this menu, never a row of buttons.
  * @param tabs A tab strip (`Tabs`) shown under the title and actions; the list column is then its panel.
  * @param filter The `FilterPanel` (side layout) for the list.
  * @param ready False while the list's rows are loading (default true): the position is saved and restored only once rows exist.
@@ -48,10 +51,11 @@ const strings = t();
  * @param children Everything else in the list column: switchers, chips, the list itself.
  */
 export function ListPageLayout({
-  title, actions, records, tabs, filter, ready = true, loadedRows, contentProps, children,
+  title, actions, menuItems, records, tabs, filter, ready = true, loadedRows, contentProps, children,
 }: {
   title: ReactNode;
   actions?: ReactNode;
+  menuItems?: ActionMenuItem[];
   records?: RecordListActions | RecordListActions[];
   tabs?: ReactNode;
   filter: ReactNode;
@@ -71,9 +75,10 @@ export function ListPageLayout({
           <h1 style={{ margin: 0 }}>{navName ?? title}</h1>
           <div className="row" style={{ alignItems: "center" }}>
             {actions}
-            {records && (
+            {(records || (menuItems && menuItems.length > 0)) && (
               <ListActionsMenu>
-                {[records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
+                {menuItems && menuItems.length > 0 && <ListMenuItems items={menuItems} />}
+                {records && [records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
               </ListActionsMenu>
             )}
             {filterHidden && (

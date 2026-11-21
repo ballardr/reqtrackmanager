@@ -7,7 +7,7 @@ import { buttonHeightViolations } from "../../testing/buttonHeights";
 import { expectLabelInName } from "../../testing/labelInName";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import { buildComment, buildPin } from "../../testing/recordCommentsFake";
-import { buildUser, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
+import { buildUser, openAddDialog, withAuth, withRouter, withThemeProvider, withToast } from "../../testing/storybook-helpers";
 import {
   buildBoundaryScene, buildConnection, buildDiagram, buildDiagramModel, buildDiagramView, buildElement, buildLeader, buildModelElement, buildNote,
   buildViewNode, captureDownloads, FIREWALL_TOGGLE, mockArchitectureReads, PROJECT_ID, SYMBOL_SVG,
@@ -1821,8 +1821,9 @@ export const ASelectedBoxListsItsPortsAndAddsOneAtOnce: Story = {
     await select(canvas, "Gateway");
     const panel = within(await canvas.findByRole("region", { name: "Selection" }));
     await expect(await panel.findByLabelText("Direction of HTTPS API")).toBeInTheDocument();
-    await userEvent.type(panel.getByLabelText("Port name", { selector: "input[placeholder='Port name']" }), "Events");
-    await userEvent.click(panel.getByRole("button", { name: "Add port" }));
+    const add = await openAddDialog(panel, "Add port");
+    await userEvent.type(add.getByRole("textbox", { name: "Name" }), "Events");
+    await userEvent.click(add.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `${BASE}/elements/el-1/ports`, { name: "Events", direction: "both", connection_type_id: null },
     ));

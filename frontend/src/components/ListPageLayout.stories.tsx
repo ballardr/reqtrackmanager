@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router-dom";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
+
+import { expectTextRows } from "../testing/menuRows";
 
 import { fakeRecordTables } from "../testing/recordTablesFixtures";
 
@@ -78,6 +80,40 @@ export const RecordsAddExportAndImportBesideTheActions: Story = {
     await expect(menuButton.getBoundingClientRect().left).toBeGreaterThanOrEqual(newButton.right);
     await expect(newButton.top).toBeLessThanOrEqual(title.bottom);
     await expect(menuButton.getBoundingClientRect().right).toBeLessThanOrEqual(canvasElement.querySelector(".filter-panel")!.getBoundingClientRect().right);
+  },
+};
+
+/** The page's other actions (`menuItems`) join the one menu, ahead of Export and Import; the page keeps one primary button and no row of buttons. */
+export const MenuItemsJoinTheOneActionsMenu: Story = {
+  args: {
+    title: "Elements",
+    actions: <button className="btn btn-primary">New element</button>,
+    menuItems: [
+      { key: "folder", label: "New folder", onSelect: fn() },
+      { key: "delete", label: "Delete folder", danger: true, onSelect: fn() },
+    ],
+    records: { projectId: "project-1", recordType: "requirement", tables: fakeRecordTables() },
+    filter,
+    children: <p>List</p>,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("button", { name: /List actions|New element/ })).toHaveLength(2);
+    await userEvent.click(await canvas.findByRole("button", { name: "List actions" }));
+    const menu = within(await within(document.body).findByRole("menu"));
+    const rows = menu.getAllByRole("menuitem").map((row) => row.textContent?.trim());
+    await expect(rows.slice(0, 2)).toEqual(["New folder", "Delete folder"]);
+    await expect(await menu.findByRole("menuitem", { name: "Download shown items" })).toBeVisible();
+    await expectTextRows(within(document.body).getByRole("menu"));
+  },
+};
+
+/** A page with `menuItems` and no `records` still gets the menu. */
+export const MenuItemsAloneStillDrawTheMenu: Story = {
+  args: { title: "Elements", menuItems: [{ key: "folder", label: "New folder", onSelect: fn() }], filter, children: <p>List</p> },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "List actions" }));
+    await expect(await within(document.body).findByRole("menuitem", { name: "New folder" })).toBeVisible();
   },
 };
 

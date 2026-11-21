@@ -48,7 +48,7 @@ A project that is given an element may read it, place it in a diagram, connect t
 
 ## Managing sharing
 
-- A project's collections are managed from **Sharing** on the System Architecture page; an organisation's from **Elements and Collections** under **System Architecture** in the organisation settings, which also lists the organisation's elements.
+- A project's collections are managed from **Sharing** in the actions menu of the Elements tab; an organisation's from **Architecture Elements and Collections** in Organisation resources, which also lists the organisation's elements. A collection's **Edit** and **Delete** are in the menu on its card.
 - An element's page has a **Sharing** card that lists the collections it is in.
 - Every collection change, grant and revocation is recorded in the audit log by identifier and count, never by name.
 - A grant may name only a project or group of the same organisation, and a group of another organisation is refused.

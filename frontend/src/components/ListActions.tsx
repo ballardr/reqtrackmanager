@@ -21,6 +21,10 @@
  * A list that shows several record kinds at once (the People list) renders one `ListActions` per kind inside one
  * `ListActionsMenu`: each kind registers its items under a heading (its `kindLabel`, "Personas") and acts on its
  * own kind, while the person sees a single kebab. A `ListActions` rendered alone wraps itself in its own menu.
+ *
+ * Every other action of the page joins the same kebab through `ListMenuItems` (or `ListPageLayout`'s `menuItems`):
+ * folder actions, an interchange export, a link to a related page. A page has at most one primary button and this
+ * one menu (docs/ux-style-guide.md, "Pattern: page actions menu").
  */
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -104,6 +108,28 @@ export function ListActionsMenu({ children }: { children: ReactNode }) {
       )}
     </RegisterContext.Provider>
   );
+}
+
+/**
+ * Adds the page's own actions (anything that is not a record kind's export or import) to the list's one kebab menu,
+ * ahead of the export and import items when rendered first. Renders nothing itself; with no `ListActionsMenu` around it,
+ * it makes its own.
+ *
+ * @param items The page's menu rows, in display order; keep the array stable between renders (memoise it).
+ */
+export function ListMenuItems({ items }: { items: ActionMenuItem[] }) {
+  const register = useContext(RegisterContext);
+  if (!register) return <ListActionsMenu><ListMenuItems items={items} /></ListActionsMenu>;
+  return <RegisterItems register={register} items={items} />;
+}
+
+function RegisterItems({ register, items }: { register: Register; items: ActionMenuItem[] }) {
+  const id = useId();
+  useEffect(() => {
+    register(id, { items, busy: false });
+  }, [register, id, items]);
+  useEffect(() => () => register(id, null), [register, id]);
+  return null;
 }
 
 /**

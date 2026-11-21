@@ -19540,3 +19540,25 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 **Tests.** Storybook: `FolderTreeList` (real folders closed and open, another icon given), the report picker and setup list keep the folder icon, Structure shows the component icon, Stakeholder Groups the group icon, each asserting no folder icon is drawn where it is not a folder. Playwright: the Structure and Stakeholder groups specs assert the icons.
 
 **Review (identify → verify → remediate).** Presentation only: no authorization, audit, retention, tenant or data rule changed, nothing logged. **Review table.** Modular boundary: no core file names a module (the module's list passes its own icon). Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP and perf: not applicable. Website: the report organising page's "a folder icon and chevron on each folder" is still true; no other page names the icon, so phase W needs no change for this phase.
+
+## Platform review 2026-11-19, Phase 30: Architecture elements and collections, and the page actions menu (2026-11-22)
+
+**Problem.** The organisation Architecture page drew three folder buttons (New, Edit, Delete) under a bare Folders box, three buttons per element row and two per collection card; the project Elements page had a Sharing link-button, an Interchange menu button, New element and the List actions kebab. See [the register](plans/platform-review-2026-11-19-architecture-register.md).
+
+**Decided by: User.**
+- *The rule:* a page or list has at most one primary button; every other action is a row of its one actions menu (`CLAUDE.md`, the style guide's "Pattern: page actions menu").
+- *Sharing and Interchange go into the one menu* (the recommended option, chosen at the gate), and *Edit and Delete folder are menu rows that appear once a folder is chosen*.
+
+**Decided by: Agent (revisable on its own judgement).**
+- *Folders stay.* They organise a list; collections share elements. Two concepts, so nothing is merged or removed.
+- *One shared mechanism.* `ListPageLayout` takes `menuItems` and `ListActions.tsx` exports `ListMenuItems`; both register into the one `ListActionsMenu`, ahead of Export and Import. `FolderPanel` is the tree only; `useFolderActions` gives the folder rows and dialogs; `useInterchangeActions` replaces `InterchangeMenu`.
+- *Row and card menus.* Elements rows and collection cards use `ActionMenu` (`Actions for {name}`), with Change status a parent row, per the existing row addendum.
+- *The organisation Elements tab gains Export and Import* (`ListActions organizationId`): the type already declared an organisation record table, so the list was missing a control the rules require.
+- *No check script.* The search found one page with the shape; a script matching sibling buttons would be fragile.
+- *Stated exceptions:* view toggles, the selection bar, icon-only buttons in a disclosure row, a folder chooser inside a form field.
+- *Incidental fix (fix, don't defer):* four Storybook stories for the port list (Element form, Selection card, Diagram editor) still typed into the removed inline Add port row after "creation controls on demand"; they now use the Add dialog.
+
+**Tests.** Storybook: `ListPageLayout` (menu items join the menu, alone still draw it), `FolderPanel` (tree, menu rows, Edit and Delete only with a choice, create, delete), `useInterchangeActions`, `OrgElementsPanel` (row menu, header), `CollectionsPanel`. Playwright: `page-actions-menu.spec.ts` (project and organisation pages, row menu, collection card menu); `folders.spec.ts` and `interchange.spec.ts` use the menu.
+
+**Review (identify → verify → remediate).** Presentation only: the same endpoints, permissions and audit events; no authorization, retention or tenant rule changed, nothing logged that was not before. The organisation Export and Import go through the existing organisation record table, which applies the type's own gate and the column policy. **Review table.** Modular boundary: the shared menu names no module; the architecture module passes its own rows. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP, perf: not applicable (no stored data or endpoint changed). Website: the interchange and sharing pages updated in the change.
+

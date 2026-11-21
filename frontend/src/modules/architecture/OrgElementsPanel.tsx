@@ -4,7 +4,8 @@
  * The organisation's own elements and collections, on Org Resources: shared platform blocks (an
  * identity service, a standard board) that projects use once a collection holding them is granted to the project or to a
  * group. Two tabs: *Elements* (a table with create, edit, status and archive; an element's code is qualified by the
- * organisation code) and *Collections* (`CollectionsPanel`). An organisation element has no project, so it takes no tags,
+ * organisation code) and *Collections* (`CollectionsPanel`). The Elements tab has one primary button (New element) and one
+ * actions menu (folders, then Export and Import), and each row one actions menu; folders and Show archived are in the filter panel. An organisation element has no project, so it takes no tags,
  * links or placements, and its parent and children must also be organisation elements. Controls render for any
  * organisation administrator; the server enforces the Architecture Org Admin role.
  */
@@ -12,8 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
+import { ActionMenu, type ActionMenuItem } from "../../components/ActionMenu";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { CheckboxField } from "../../components/FormFields";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { ListActions, ListActionsMenu, ListMenuItems } from "../../components/ListActions";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Badge } from "../../components/Badge";
@@ -24,12 +27,11 @@ import { useTableSort } from "../../hooks/useTableSort";
 import { connectionTypeApi, elementTypeApi, orgElementApi, orgSymbolUrl, symbolApi } from "./api";
 import { elementSortValues } from "./architectureSort";
 import { diffElementFields, elementCodeRecord, valuesFromElement } from "./architectureFields";
-import { ArchitectureStatusControls } from "./ArchitectureStatusControls";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { ElementFormModal, type ElementCreateExtras } from "./ElementFormModal";
 import { useFolderListControls } from "./useFolderListControls";
 import {
-  ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement, type ArchitectureRecordStatus,
+  ARCHITECTURE_STATUS_LABEL, ARCHITECTURE_STATUS_TONE, type ArchitectureElement,
   type ArchitectureSymbol, type ConnectionType, type ElementFieldValues, type ElementType,
 } from "./types";
 
@@ -83,6 +85,9 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
   if (elements === null) return <Spinner />;
 
   const shown = table.rows.filter((e) => folders.matches(e.folder_path));
+  const exportFilters = new URLSearchParams();
+  folders.addParams(exportFilters);
+  if (showArchived) exportFilters.set("include_archived", "true");
 
   async function save(values: ElementFieldValues, extras: ElementCreateExtras) {
     setFormError(null);
@@ -129,22 +134,26 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
     },
     {
       key: "actions", label: "Actions",
-      render: (e) => (
-        <span className="row" style={{ gap: "var(--space-2)" }}>
-          <ArchitectureStatusControls
-            status={e.status}
-            moves={e.allowed_status_moves}
-            onMove={(next: ArchitectureRecordStatus) => act(() => calls.setStatus(e.id, e.version, next), `Element moved to ${ARCHITECTURE_STATUS_LABEL[next]}.`)}
-          />
-          <button className="btn" aria-label={`Edit ${e.name}`} onClick={() => { setFormError(null); setEditing(e); }}>Edit</button>
-          <button
-            className="btn" aria-label={`${e.is_archived ? "Unarchive" : "Archive"} ${e.name}`}
-            onClick={() => void act(() => (e.is_archived ? calls.unarchive(e.id) : calls.archive(e.id)), e.is_archived ? "Element unarchived." : "Element archived.")}
-          >
-            {e.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </span>
-      ),
+      render: (e) => {
+        const items: ActionMenuItem[] = [
+          { key: "edit", label: "Edit", onSelect: () => { setFormError(null); setEditing(e); } },
+        ];
+        if (e.allowed_status_moves.length > 0) {
+          items.push({
+            key: "status", label: "Change status", onSelect: () => undefined,
+            children: e.allowed_status_moves.map((next): ActionMenuItem => ({
+              key: `status:${next}`,
+              label: `Move from ${ARCHITECTURE_STATUS_LABEL[e.status]} to ${ARCHITECTURE_STATUS_LABEL[next]}`,
+              onSelect: () => void act(() => calls.setStatus(e.id, e.version, next), `Element moved to ${ARCHITECTURE_STATUS_LABEL[next]}.`),
+            })),
+          });
+        }
+        items.push({
+          key: "archive", label: e.is_archived ? "Unarchive" : "Archive",
+          onSelect: () => void act(() => (e.is_archived ? calls.unarchive(e.id) : calls.archive(e.id)), e.is_archived ? "Element unarchived." : "Element archived."),
+        });
+        return <ActionMenu triggerLabel={`Actions for ${e.name}`} items={items} />;
+      },
     },
   ];
 
@@ -159,9 +168,12 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
       <div className="stack" {...tabPanelProps("org-architecture", tab)}>
         {tab === "elements" ? (
           <>
-            <div className="row" style={{ gap: "var(--space-4)", alignItems: "center" }}>
+            <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start", alignItems: "center" }}>
               <button className="btn btn-primary" onClick={() => { setFormError(null); setEditing("new"); }}>New element</button>
-              <CheckboxField helpNotNeeded label="Show archived" checked={showArchived} onChange={setShowArchived} />
+              <ListActionsMenu>
+                <ListMenuItems items={folders.menuItems} />
+                <ListActions organizationId={orgId} recordType="architecture_element" filters={exportFilters.toString()} onImported={reload} />
+              </ListActionsMenu>
             </div>
             <div className="side-grid">
               <div className="stack">
@@ -173,7 +185,10 @@ export function OrgElementsPanel({ orgId }: { orgId: string }) {
                       emptyState={<p className="text-muted">{elements.length === 0 ? "The organisation has no elements of its own yet." : "No elements match the chosen folder."}</p>}
                 />
               </div>
-              <div className="stack">{folders.panel}</div>
+              <FilterPanel sectionKey="architecture.org-elements" total={shown.length}>
+                <FilterCheckbox label="Show archived" checked={showArchived} onChange={setShowArchived} />
+                {folders.panel}
+              </FilterPanel>
             </div>
           </>
         ) : (

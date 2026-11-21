@@ -218,6 +218,7 @@ function DiagramsList({ chrome, viewTabs }: { chrome?: ArchitectureListChrome; v
       <ListPageLayout
         title={ARCHITECTURE_PAGE_TITLE} {...chrome}
         records={records}
+        menuItems={folders.menuItems}
         actions={<button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>New diagram</button>}
         filter={
           <FilterPanel
