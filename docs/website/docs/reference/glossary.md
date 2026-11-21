@@ -306,6 +306,10 @@ A Risk owner's judgement of whether one linked Requirement or Action actually re
 
 A line drawn at one level of a block diagram for connections between elements inside the boxes shown, for example a connection between two parts of a subsystem drawn as one line between the subsystems. See [Block diagram editor](../modules/system-architecture-module/block-diagram-editor.md).
 
+#### Service user
+
+An account of one organisation that has no password and cannot sign in, used by an integration (an AI assistant, a build job) instead of a named person. An organisation administrator creates it, names who is responsible for it, and issues and revokes its [personal access tokens](../core-features/personal-access-tokens.md#service-users). Everything it does is recorded under its own name.
+
 #### Shared resource
 
 A file owned by the organisation rather than by one project, such as a standards document. Any requirement in the organisation can link it and a report can append it. It is listed on the organisation Files page, where only a person holding the `manage_org_resources` permission (organisation administrators, or anyone given it through a custom role) can upload or delete it. See [File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md#organisation-wide-shared-resources).

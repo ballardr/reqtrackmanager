@@ -108,6 +108,9 @@ export function PolicyAcceptancesDialog({ path, title, onClose }: { path: string
             </table>
           )}
           {status.truncated && <div className="text-muted">{text.acceptanceTruncated(status.people.length)}</div>}
+          {(status.not_applicable ?? []).length > 0 && (
+            <div className="text-muted">{text.notApplicable((status.not_applicable ?? []).map((u) => u.display_name).join(", "))}</div>
+          )}
         </div>
       )}
       {confirming && (

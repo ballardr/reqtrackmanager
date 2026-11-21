@@ -120,6 +120,31 @@ export const MixedMembersAndInvited: Story = {
   },
 };
 
+/** A service user carries the Service badge beside its name, so an integration is never mistaken for a person. */
+export const ServiceUserMember: Story = {
+  args: {
+    members: [
+      ...MEMBERS,
+      {
+        user_id: "u-agent", display_name: "Build agent", email: "svc-1@service.invalid", effective_role: "member",
+        is_service_account: true,
+        sources: [
+          {
+            kind: "direct_role", role: "member", via_project_id: null, via_project_name: null,
+            via_mode: null, via_group_id: null, via_group_name: null,
+          },
+        ],
+        module_roles: [],
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Service")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Service")).toHaveLength(1);
+  },
+};
+
 /** No members and no invites at all — a distinct empty-state message from
  * "search/filter matched nothing" (below). */
 export const EmptyState: Story = {

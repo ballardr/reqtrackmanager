@@ -35,10 +35,8 @@ from app.schemas.pat import (
     PersonalAccessTokenOut,
     PersonalAccessTokenProjectRef,
 )
-from app.security import generate_pat
 from app.services.audit import log_event
-from app.services.pats import compute_expiry_ceiling, effective_expiry, revoke_matching
-from app.services.rbac import get_effective_org_roles, get_effective_project_roles
+from app.services.pats import compute_expiry_ceiling, create_token, effective_expiry, revoke_matching
 
 router = APIRouter(prefix="/api/v1/me/pats", tags=["personal-access-tokens"])
 
@@ -89,37 +87,10 @@ def create_pat(
     do anything. Returns the raw token secret once; it is never
     retrievable again afterward.
     """
-    if not payload.name.strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name is required.")
-    if not payload.allowed_organization_ids:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "At least one organisation must be selected.")
-    for org_id in payload.allowed_organization_ids:
-        if not get_effective_org_roles(db, current_user.id, org_id):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "You do not have a role in one or more selected organisations.")
-
-    allowed_org_ids = set(payload.allowed_organization_ids)
-    for project_id in payload.allowed_project_ids:
-        project = db.get(Project, project_id)
-        if project is None or project.organization_id not in allowed_org_ids:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "Each selected project must belong to one of the selected organisations."
-            )
-        if not get_effective_project_roles(db, current_user.id, project_id):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "You do not have access to one or more selected projects.")
-
-    raw_token, token_hash, token_prefix = generate_pat()
-    expires_at = compute_expiry_ceiling(db, payload.allowed_organization_ids, payload.requested_expires_at)
-    pat = PersonalAccessToken(
-        user_id=current_user.id,
-        name=payload.name.strip(),
-        token_hash=token_hash,
-        token_prefix=token_prefix,
-        allowed_organization_ids=[str(i) for i in payload.allowed_organization_ids],
-        allowed_project_ids=[str(i) for i in payload.allowed_project_ids],
-        expires_at_ceiling=expires_at,
+    pat, raw_token = create_token(
+        db, owner=current_user, issuer=current_user, name=payload.name, organization_ids=payload.allowed_organization_ids,
+        project_ids=payload.allowed_project_ids, requested_expires_at=payload.requested_expires_at,
     )
-    db.add(pat)
-    db.flush()
     log_event(db, entity_type="personal_access_token", entity_id=pat.id, action="pat_created", actor_id=current_user.id)
     db.commit()
     db.refresh(pat)

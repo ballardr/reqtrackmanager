@@ -4,6 +4,7 @@ import type { Principal, PrincipalType } from "../api/types";
 import { PRINCIPAL_TYPE_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { Badge } from "./Badge";
+import { ServiceBadge } from "./ServiceBadge";
 
 const ICON: Record<PrincipalType, typeof User> = { user: User, org_group: Users, project_group: FolderKanban };
 
@@ -33,6 +34,7 @@ export function PrincipalBadge({ principal, placeholder = "Unassigned" }: { prin
       <Icon size={14} aria-hidden="true" />
       <span>{principal.label}</span>
       {principal.imported && <Badge tone="warning">{strings.importPeople.importedBadge}</Badge>}
+      {principal.service && <ServiceBadge />}
       {principal.type !== "user" && <Badge tone="muted">{detail ? `${kind} · ${detail}` : kind}</Badge>}
     </span>
   );

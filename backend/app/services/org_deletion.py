@@ -11,6 +11,7 @@ foreign-key cascade can't do on its own:
   `FileAsset` row (a DB-only cascade would silently orphan the object in
   S3/local storage — see docs/soc2/policies/data-retention-and-disposal-
   policy.md's disposal-completeness requirement).
+- Deactivating and archiving the organisation's service users (they belong to it alone).
 - Descoping/auto-revoking every Personal Access Token that reaches this
   org — `PersonalAccessToken.allowed_organization_ids` is a JSONB list of
   id strings chosen by the token's own owner, not a foreign key, so nothing
@@ -70,6 +71,8 @@ from app.models.requirement_link_type import (
     ArtefactTypeLinkRuleEntry,
     RequirementLinkTypeDefinition,
 )
+from app.models.service_user import ServiceUserProfile
+from app.models.user import User
 from app.modules.registry import get_module_artefact_ids_in_organization
 from app.services.files import delete_file, get_storage_backend
 
@@ -160,6 +163,15 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
         pat.allowed_organization_ids = [oid for oid in pat.allowed_organization_ids if oid != org_id_str]
         if not pat.allowed_organization_ids:
             pat.revoked_at = datetime.now(UTC)
+
+    # A service user belongs to this organisation alone; with the organisation gone nothing can reach it, so the
+    # account is deactivated and archived (its profile row goes with the organisation) rather than left active.
+    db.execute(
+        update(User).where(
+            User.is_service_account.is_(True),
+            User.id.in_(select(ServiceUserProfile.user_id).where(ServiceUserProfile.organization_id == organization_id)),
+        ).values(is_active=False, is_archived=True, deactivated_at=datetime.now(UTC))
+    )
 
     # Projects go first, explicitly, so everything project-scoped (including
     # module rows such as project pain-point type overrides) is removed

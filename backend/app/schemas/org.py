@@ -865,6 +865,8 @@ class OrgUserOut(BaseModel):
     display_name_locked: bool = False
     last_login_at: datetime | None = None
     is_2fa_enabled: bool = False
+    #: A service user (`services.service_users`): shown with a badge, and never a person to expect a sign-in from.
+    is_service_account: bool = False
     # This user's org-scoped module-contributed role
     # grants, filtered to currently-enabled modules only (see
     # `ModuleRoleGrantOut`'s docstring and `routers.orgs.list_org_users`'s

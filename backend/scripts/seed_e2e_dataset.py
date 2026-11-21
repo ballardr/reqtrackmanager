@@ -39,6 +39,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from seed_notification_samples import seed_notification_samples  # noqa: E402
+from seed_service_users import seed_service_users  # noqa: E402
 
 BASE = "http://localhost:8000/api/v1"
 ADMIN_EMAIL = "admin@example.com"
@@ -1418,6 +1419,9 @@ def main() -> None:
     skipped_kinds = seed_notification_samples("e2e-notified@example.com", alpha["id"], alpha1["id"])
     if skipped_kinds:
         print(f"  No record to point at for: {', '.join(skipped_kinds)} (not seeded).")
+
+    print("Seeding two service users on Beta: one with no token, one with a revoked token (service-users.spec.ts)...")
+    seed_service_users(BASE, h_ab, beta["id"], member_ab["user_id"])
 
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")

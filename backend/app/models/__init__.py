@@ -102,6 +102,7 @@ from app.models.scoring import (
 )
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
+from app.models.service_user import ServiceUserProfile
 from app.models.stage_workflow import ComponentStageState, StagePhasePlan, StageWorkflow, StageWorkflowPhase
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
@@ -210,6 +211,7 @@ __all__ = [
     "ScoringLevel",
     "ScoringModelDefault",
     "UserServerRole",
+    "ServiceUserProfile",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
     "ServerModuleDefault",

@@ -53,6 +53,8 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         is_server_admin: Grants the cross-tenant server admin role, which can
             create organisations and organisation users but has no access to
             organisation data (I-M-05).
+        is_service_account: A service user: no password, no sign-in, tokens issued by an organisation administrator;
+            otherwise an ordinary user (roles, groups, ownership, audit).
         is_banned: Set by a server admin from the access review (C-A-13),
             distinct from an ordinary deactivation: also blocks
             `assign_org_role` from granting this account a role in any
@@ -151,6 +153,10 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_server_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: True for a service user (`services.service_users`): an organisation's integration identity with no password and
+    #: no interactive sign-in, which holds personal access tokens an administrator issues. Its `auth_backend` is
+    #: `service_users.SERVICE_AUTH_BACKEND`, which no sign-in backend matches.
+    is_service_account: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     #: Set only on an imported person: a stand-in for someone named in an import bundle who is not a member of the
     #: organisation it was imported into (`services.imported_people`). The row is always inactive and archived, holds
     #: no password and a synthetic non-routable address, and belongs to exactly this organisation.

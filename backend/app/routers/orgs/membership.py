@@ -123,6 +123,7 @@ def list_org_users(
     org_role: OrgRole | None = None,
     has_project_access: bool | None = None,
     is_active: bool | None = None,
+    is_service_account: bool | None = None,
     search: str | None = None,
     sort: str | None = Query(None, pattern="^(display_name|email|last_login_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
@@ -139,7 +140,7 @@ def list_org_users(
 
     The access-review filters (C-A-13) — `stale_since_days`,
     `never_logged_in`, `has_2fa`, `org_role`, `has_project_access`,
-    `is_active` — are org-admin only; a plain member/project-creator can
+    `is_active`, `is_service_account` — are org-admin only; a plain member/project-creator can
     still call this endpoint unfiltered for the general member directory
     (existing behavior), but supplying any filter requires org-admin,
     scoped to *this* organisation via `organization_id` (not "an org admin
@@ -162,7 +163,8 @@ def list_org_users(
     "never logged in" accounts jumping to the top.
     """
     filters_requested = any(
-        v is not None for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active)
+        v is not None
+        for v in (stale_since_days, never_logged_in, has_2fa, org_role, has_project_access, is_active, is_service_account)
     )
     is_admin = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
     if filters_requested and not is_admin:
@@ -190,6 +192,7 @@ def list_org_users(
                 # receive other members' account-security posture.
                 last_login_at=user.last_login_at if is_admin else None,
                 is_2fa_enabled=user.is_2fa_enabled if is_admin else False,
+                is_service_account=user.is_service_account,
             )
         by_user[user.id].roles.append(role)
 
@@ -240,8 +243,11 @@ def list_org_users(
     results = list(by_user.values())
     if is_active is not None:
         results = [r for r in results if r.is_active == is_active]
+    if is_service_account is not None:
+        results = [r for r in results if r.is_service_account == is_service_account]
     if has_2fa is not None:
-        results = [r for r in results if r.is_2fa_enabled == has_2fa]
+        # A service user has no sign-in to hold a second factor on, so it is never in a "without 2FA" review.
+        results = [r for r in results if r.is_2fa_enabled == has_2fa and not (has_2fa is False and r.is_service_account)]
     if org_role is not None:
         results = [r for r in results if org_role in r.roles]
     if never_logged_in:
@@ -535,7 +541,7 @@ def search_org_users(
             by_user[user.id] = OrgUserOut(
                 user_id=user.id, email=user.email, display_name=user.display_name,
                 is_active=user.is_active, is_archived=user.is_archived, roles=[],
-                display_name_locked=user.display_name_locked,
+                display_name_locked=user.display_name_locked, is_service_account=user.is_service_account,
             )
         by_user[user.id].roles.append(role)
     members = list(by_user.values())[:8]
@@ -546,7 +552,10 @@ def search_org_users(
         policy = org.external_user_policy if org else ExternalUserPolicy.DISABLED
         if policy != ExternalUserPolicy.DISABLED:
             existing = db.scalar(select(User).where(User.email == needle))
-            if existing is not None:
+            if existing is not None and existing.is_service_account:
+                # An address that belongs to a service user is never offered: it cannot join another organisation.
+                pass
+            elif existing is not None:
                 may_see_existing = OrgRole.ORG_ADMIN in get_effective_org_roles(db, current_user.id, organization_id)
                 if not may_see_existing and project_id is not None:
                     project = db.get(Project, project_id)
@@ -587,7 +596,7 @@ def list_outside_domain_users(
         db.scalars(select(UserOrgRole.user_id).where(UserOrgRole.organization_id == organization_id)).all()
     )
     domain_suffix = f"@{org.auto_accept_email_domain.lower()}"
-    candidates = db.scalars(select(User).where(User.is_archived.is_(False))).all()
+    candidates = db.scalars(select(User).where(User.is_archived.is_(False), User.is_service_account.is_(False))).all()
     return [
         OutsideDomainUserOut(user_id=u.id, email=u.email, display_name=u.display_name)
         for u in candidates

@@ -81,6 +81,8 @@ class SystemUserOut(BaseModel):
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
+    #: A service user (`services.service_users`): never a person, never able to sign in.
+    is_service_account: bool = False
     #: Server-tier roles granted by row (never `server_admin`, which is `is_server_admin`).
     server_roles: list[ServerRole]
     has_org_membership: bool
@@ -359,6 +361,8 @@ def set_server_admin(
         ) or 0
         if target.is_active and active_admin_count <= 1:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot revoke the deployment's last active server admin.")
+    if payload.is_server_admin and target.is_service_account:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A service user cannot be a server administrator.")
     target.is_server_admin = payload.is_server_admin
     log_event(
         db,
@@ -566,7 +570,8 @@ def list_system_users(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
             is_banned=u.is_banned,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, server_roles=sorted(server_roles_by_user.get(u.id, []), key=lambda r: r.value),
+            is_server_admin=u.is_server_admin, is_service_account=u.is_service_account,
+            server_roles=sorted(server_roles_by_user.get(u.id, []), key=lambda r: r.value),
             has_org_membership=u.id in org_ids_by_user,
             organization_count=len(org_ids_by_user.get(u.id, ())),
             organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),

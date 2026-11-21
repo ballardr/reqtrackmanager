@@ -4831,6 +4831,11 @@ def main() -> None:
     if skipped_kinds:
         print(f"No record to point a sample notification at for: {', '.join(skipped_kinds)} (not seeded).")
 
+    # Two service users: one with no token yet, one whose token was issued and revoked.
+    from seed_service_users import seed_service_users
+
+    seed_service_users(BASE, h_pm, org["id"], demo_engineer["user_id"])
+
     print()
     print("Done. Demo personas (all share one password: DemoDemo123! unless demo_setup.py rotated it):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")

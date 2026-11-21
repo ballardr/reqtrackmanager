@@ -771,6 +771,11 @@ _REVIEWED_LINK_READERS = {
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "services/templates.py": "copies same-project requirement-to-requirement links only (source_project_id is null)",
+    "services/requirement_aliases.py": (
+        "make independent deliberately reads cross-level links too: each is recreated through `create_link_for_artefact`, so "
+        "the same scope, lock and visibility rules apply to the other end; a far record the reader may not view is named "
+        "only as \"a record outside this project\" in the skipped list"
+    ),
     "modules/architecture/records.py": (
         "deliberately includes cross-level links: an element another project's record links to cannot be deleted"
     ),

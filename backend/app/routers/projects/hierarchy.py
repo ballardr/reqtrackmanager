@@ -415,6 +415,7 @@ def get_effective_members(
         out.append(
             EffectiveMemberOut(
                 user_id=user_id, display_name=user.display_name, email=user.email, effective_role=effective_role,
+                is_service_account=user.is_service_account,
                 sources=[
                     MemberSourceProvenanceOut.model_validate({
                         "kind": e["kind"], "role": e["role"], "via_project_id": e["via_project_id"],

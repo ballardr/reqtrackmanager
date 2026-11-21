@@ -341,10 +341,15 @@ def _require_org_2fa(db: Session, organization_id: UUID, user: User) -> None:
     still produces the more specific "disabled" message rather than this
     one when both are true.
 
+    A service user is exempt: it has no interactive sign-in to hold a second factor on, and its personal access token
+    is issued by an organisation administrator and narrowed by scope and expiry instead.
+
     Raises:
         HTTPException: 403 if the org requires 2FA and the caller doesn't
             have it enabled.
     """
+    if user.is_service_account:
+        return
     requires_2fa = bool(db.scalar(select(Organization.require_2fa).where(Organization.id == organization_id)))
     if requires_2fa and not user.is_2fa_enabled:
         raise HTTPException(

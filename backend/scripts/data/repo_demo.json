@@ -9982,6 +9982,24 @@
    "decided_by": "Agent"
   },
   {
+   "key": "88bebd",
+   "title": "Pull request 76 CI run: Docs image scan",
+   "statement": "Trivy failed `docs-smoke:test` on five HIGH nginx findings (fixed in 1.30.7-r0) although `Dockerfile.prod` already ran `apk upgrade`.",
+   "rationale": "The base image records `nginx=1.30.6-r1` and four dynamic modules pinned to the same version in `/etc/apk/world`, so `apk upgrade` silently skips nginx. `Dockerfile.prod` now removes the four modules (none is loaded by the docs configuration) and re-adds nginx unpinned before `apk upgrade`; the built image reports nginx 1.30.7 and passes the smoke checks. Pinning an older version was not an option.",
+   "type": "Engineering",
+   "section": "Pull request 76 CI run: docs image scan and a time-of-day query-count flake",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "b5130a",
+   "title": "Two Storybook failures on the next CI run",
+   "statement": "`TypeFormModal` \"Element Type Needs A Name And Saves Shape And Symbol\" failed with `Unable to find role=\"option\" and name \"Server\"` and passed alone.",
+   "rationale": "Cause: the symbol picker remembers List or Gallery in `localStorage`, Storybook's test files share one browser origin and run concurrently, and the `SymbolPicker` stories write `gallery` there, so a picker mounted in another file during that window opened in Gallery (tiles are radios, not options). Forcing `gallery` into the storage reproduces the exact failure. The two picker story files now hold that key in memory through `isolateSymbolPickerView` (`architectureFixtures.ts`), so nothing they do reaches another file. The second failure, \"Routing The Chosen Connection Draws It As A Line Of Its Own\", read the edge count in the same tick the selection card appeared; it now awaits the count. It did not reproduce locally, so that fix is a wait on the condition and not a confirmed root cause. Backend, docs, image and security jobs passed on that run; \"Build, version, and push production container images\" failed only because it requires the frontend job.",
+   "type": "Design",
+   "section": "Pull request 76 CI run: docs image scan and a time-of-day query-count flake",
+   "decided_by": "Agent"
+  },
+  {
    "key": "35c56b",
    "title": "Platform review 2026-11-19: Who writes it",
    "statement": "`ProtectedRoutes` writes the requested address when this tab has had no signed-in person (a followed link, or a stored token that is no longer valid at load); `AuthProvider`'s unauthorised handler writes the current address when a session ends; `ForcedPasswordChangePage` writes it before the change ends the session.",
@@ -10322,6 +10340,231 @@
    "type": "Design",
    "section": "Platform review 2026-11-19, Phase 10: record code prefixes (2026-11-19)",
    "decided_by": "Agent"
+  },
+  {
+   "key": "330685",
+   "title": "Platform review 2026-11-19: One generic table",
+   "statement": "`external_references` keyed by `artefact_type` and `artefact_id` with no foreign key on the record, validated against the registry, cleaned by `forget_record_references` where a record is deleted for good (the owning project and organisation cascade, as tags use `project_id`).",
+   "rationale": "",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "User"
+  },
+  {
+   "key": "ac8f3a",
+   "title": "The systems tables are reused, not copied",
+   "statement": "`external_system_definitions` and `project_external_systems` were already the organisation list and a project's overrides, additions and hide/restore that the plan describes, so their models moved from Product Feedback into core (`models/external_reference.py`) and gained `url_template`.",
+   "rationale": "Keeping the tables and ids means no data migration for systems and no re-pointing of any reference.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "ebb663",
+   "title": "Platform review 2026-11-19: Nested projects",
+   "statement": "A child project with no system configuration of its own shows its nearest ancestor's effective list, else the organisation's (`TypeVocabulary(inherit_from_ancestors=True)`), and its first change copies it.",
+   "rationale": "Organisation defaults a project can hide: a tombstone (`ProjectDefinitionSuppression`), restored from the same panel.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "User"
+  },
+  {
+   "key": "801d2b",
+   "title": "Role kept as a generic optional column",
+   "statement": "`role` is nullable (`origin` or `delivery`); Product Feedback keeps its role picker, any other type may use it.",
+   "rationale": "Chosen over a Product Feedback side table (a join and a second place to clean and export) and over folding it into the note (loses the structure).",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "User"
+  },
+  {
+   "key": "31e702",
+   "title": "One route set for the systems, gated by core roles",
+   "statement": "Organisation tier: organisation administrator; project tier: project settings authority (as tags and components).",
+   "rationale": "Product Feedback's `/external-systems` routes were removed and its settings panel replaced by a core panel; a Feedback List Admin no longer edits the systems (they stay Product Feedback's request channels). Consequence recorded for the upgrade note: anyone who relied on that role for systems now needs organisation administrator rights.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "User"
+  },
+  {
+   "key": "372ae3",
+   "title": "The settings panel is in this phase",
+   "statement": "`ExternalSystemsPanels` on the shared `TypeVocabularyPanels` (a second text field per row, the link template; the panels' `description` is optional so the section's help tooltip does the explaining), in Organisation Settings (Projects group) and Project Admin (Fields & actions).",
+   "rationale": "The two endpoint registrars and the API builders moved to core (`services/vocabulary_endpoints.py`, `api/typeVocabulary.ts`) and Product Feedback's request channels use them with its own gates.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "User"
+  },
+  {
+   "key": "e53133",
+   "title": "Platform review 2026-11-19: Link template and links",
+   "statement": "A template is an http(s) address with `{key}` exactly once and no other brace; the key is URL-encoded when substituted; the result is checked again, so a stored `javascript:` template or URL yields no link.",
+   "rationale": "A project override of null follows the organisation's template. A bundle's invalid template is dropped, not imported.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "a9655a",
+   "title": "Platform review 2026-11-19: Product Feedback switch kept",
+   "statement": "The `external_references` sub-component stays; the generic endpoints answer 404 for any type whose module declares a sub-component with that key while it is off (`references_enabled`), so the shared route cannot bypass an administrator's switch.",
+   "rationale": "The system list itself is shared, so it is no longer hidden by the switch.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 11: external references, shared table (2026-11-19)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "b606d9",
+   "title": "Surfaces follow the tags and placements wiring",
+   "statement": "A list filter, the shared `external_refs` export and import column, a search field, a report field, the bundle entries, a page read for a list column, a look-up by key, the record panel (rendered by `RecordTags`), the create-form field (inside `TagField`, committed by `useCommitTags`) and the filter field (inside `TagFilterField`).",
+   "rationale": "Reason: those are the single wiring points every list, detail page and create form already use, so a new type gets all of it with the registration it already has, which is the plan's stated outcome.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "4aafee",
+   "title": "Filter by system name and key fragment",
+   "statement": "`external_system` (repeatable, display name, case-insensitive) and `external_key` (substring); either alone is enough.",
+   "rationale": "A name, not an id, because the same system is an organisation entry in one project and a project's own entry in another, and a person types a name in a file. The requirement list has its own parameters of the same names (it does not take `TagFilter`). Reason: a name is portable across the two tiers and across a file round trip.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "a880f8",
+   "title": "Cell SYSTEM:KEY; SYSTEM:KEY carries no link, note or role",
+   "statement": "An import keeps a reference already there with the same system and key untouched, removes the others and adds the missing ones bare, each with its audit event.",
+   "rationale": "A system name is read by its longest offered name (a name may hold a colon), and `;` and `\\` in a key are escaped with a backslash. Reason: a spreadsheet round trip must never lose a link, note or role it could not show.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "0cc4f3",
+   "title": "Authority for a changed cell",
+   "statement": "Project tier: the authority for tagging (as the record panel).",
+   "rationale": "Organisation tier (the organisation's own lists): whoever may create or update the type's organisation records, because an organisation record has no project to ask `can_tag` in. A refused row is a row error and changes nothing.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "e6ce9a",
+   "title": "Platform review 2026-11-19: Search is opt-in",
+   "statement": "The field `external_refs` matches a key or a system's name, never a note or link, and, like the component field, is never a default (a person may add it to their own defaults).",
+   "rationale": "Reason: the project rule that searched fields are opt-in, and the cost of an `EXISTS` per type on every search. The flexible alternative, a default, would have changed every existing search result.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "ff659e",
+   "title": "Platform review 2026-11-19: Look-up by key",
+   "statement": "`GET /projects/{id}/records/by-external-reference?key=&system=&artefact_type=`: the key matches exactly, ignoring case, through the caller's visibility rules like the tag look-up (a record the caller cannot open is omitted, so the result discloses nothing), with `project_scope` for related projects, at most 100 records.",
+   "rationale": "Reason: an integration or an agent holding `PROJ-123` needs the record, and the page read and filter cannot answer that.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "63d9a3",
+   "title": "Platform review 2026-11-19: Performance tooling",
+   "statement": "`ratios.references_per_record` (0.6, profile version 15) writes references for every type through `add_tags` and the requirement generator, with a pass-through system row per project and the audit events the API writes; one shared Poisson draw replaced three copies.",
+   "rationale": "The parity tests create a reference through the API for every probed type and require the generator to populate every column it does (`url`, `note` and `role` included). Reason: the project rule that a new mechanism is profilable in the same change.",
+   "type": "Operational",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "998995",
+   "title": "A key in a URL",
+   "statement": "The filter and the look-up carry the key in the query string, which the server logs.",
+   "rationale": "Unlike the text of a search, a key is an identifier in another system (the same class as a tag name, which already travels this way), not record content; the audit trail still never holds a key, link or note. Recorded so a stricter classification can change it.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "27d758",
+   "title": "Platform review 2026-11-19: E2E seed",
+   "statement": "`seed_e2e_dataset.py` gets no references: the specs create their own (idempotent) and an extra list column in the fixed dataset would change what other specs read.",
+   "rationale": "The demo seed gives three requirements, a Pain Point and a Risk references (Jira with a link template, ServiceNow without), so every surface has something to show.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 12: external references, every surface (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "708cc1",
+   "title": "First consumer: the overview text widget",
+   "statement": "A foundation nothing calls is not reachable, so the dashboard text widget (the only existing Markdown surface, with its own subset renderer `utils/safeMarkdown`) moved onto `MarkdownView` and `TextAreaField markdown`, and `safeMarkdown` and its stories were removed rather than kept beside the new view (two renderers is the duplication the shared-component rule forbids).",
+   "rationale": "Visible changes for existing notes: tables, strikethrough, fenced code and diagrams now format, and `mailto:` links are allowed; headings keep the same levels (`#` is an `h3`).",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 13: Markdown and Mermaid foundation (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "3c68af",
+   "title": "Platform review 2026-11-19: Mermaid pinned exactly",
+   "statement": "12.3.0 (published 2026-11-03, over two weeks old), in `package.json` without a range; `mermaidRenderConfig.json` repeats the version and a story fails if they differ.",
+   "rationale": "The server renderer of the reports phase is checked against the same file. markdown-it is pinned exactly too.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 13: Markdown and Mermaid foundation (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "aab518",
+   "title": "Drawn as an image with the font embedded",
+   "statement": "An `<img>` of a data URI cannot use page fonts, so the font is also embedded in the drawing (a trusted `@font-face` added after sanitising, `safeSvgImage(svg, trustedStyle)`) and registered on the page first, so Mermaid measures with the font it draws with.",
+   "rationale": "Strict mode, SVG text labels (no `foreignObject`), the output sanitised again by DOMPurify. Only the regular face is shipped (a 25 KB Latin subset of DejaVu Sans, `frontend/src/assets/fonts/`, licence beside it, recorded in `scripts/licence_policy.json`); bold is the browser's synthetic bold, the same on measuring and drawing. A glyph outside the subset falls back to the system font.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 13: Markdown and Mermaid foundation (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "ed05ae",
+   "title": "Platform review 2026-11-19: Lazy loading is guarded",
+   "statement": "`scripts/check_mermaid_lazy.py` (run in the CI frontend job after the build) fails when a file the page loads at start-up contains the library, or when no separate Mermaid chunk exists.",
+   "rationale": "Measured: the main chunk is unchanged in kind; the library and its diagram types are separate chunks.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 13: Markdown and Mermaid foundation (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "b0ddac",
+   "title": "Platform review 2026-11-19: Server module",
+   "statement": "`services/markdown_text.py` has its own reader (CommonMark with tables, HTML off).",
+   "rationale": "The report engine's inline reader (`report_model`, a narrower configuration with placeholders) is unchanged until the reports phase replaces it with the shared walker. No schema uses `markdown_limit` yet; Decisions adopt it next.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 13: Markdown and Mermaid foundation (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "538894",
+   "title": "One declaration per column, not per call site",
+   "statement": "The plan named the record-table and search providers as the place to declare a field.",
+   "rationale": "A provider cannot be the declaration: its columns are SQL expressions or lambdas with no link to a table column, a search field is opt-in (a personal-data column such as a stakeholder's contact information must be declarable as Markdown without being searchable), and the limit has to attach to the stored column. So the declaration is `MarkdownField(Model.column, limit, math)` on `ModuleDefinition.markdown_fields` (core tables in `services/long_text_core.py`, a module's own in `modules/<key>/long_text.py`), or a reason in `plain_text_fields`. `SearchField.markdown` and `RecordColumn.markdown` stay as flags the providers set, and a test fails when a search field over a declared Markdown column lacks `markdown=True`. The frontend is not driven from the registry: a field's editor is chosen where the field is written (`TextAreaField markdown` or `plainText=\"<reason>\"`, `scripts/check_markdown_fields.py`), because no form is generic over a record type; the two sides are tied by the inventory, not by a lookup at run time.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 16: Markdown for every long-text field (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "505e07",
+   "title": "Platform review 2026-11-19: Plain text, and why",
+   "statement": "Text drawn inside a shape or printed in a fixed layout (a diagram note, a state's entry, exit and activity text, a report or email footer), configuration text shown in pickers and tooltips (role, scoring, vocabulary, report and template descriptions), a project's summary (project cards and pickers are one-line surfaces), version change notes, and system messages (notification bodies).",
+   "rationale": "Each reason is in its `plain_text_fields` entry. A workflow step's comment (`CommentConfirmDialog`) is stored in the audit event and shown as one line in the activity list, so it stays plain.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 16: Markdown for every long-text field (2026-11-20)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "e9ccd3",
+   "title": "The declaration is the limit",
+   "statement": "`services/markdown_fields.py` installs a session `before_flush` hook that checks each new or changed declared attribute with `validate_markdown` (size, control characters, depth, diagrams) and answers 422.",
+   "rationale": "Phase 14 did this inside the Decision module's stage functions; with 129 columns a validator per request schema would have left the file import, the bundle import and the MCP tools to each remember it. Only a changed attribute is checked, so a value already stored above a limit blocks an edit of that field and no other. Limits: 50,000 characters for a described record, 20,000 (`NOTE_LIMIT`) for a comment or short note, the Decision's own 50,000 and 200,000. `validate_markdown` skips the parse when no diagram can be present and too few block markers exist to nest 50 levels (a prose field costs about 30 microseconds instead of 2 milliseconds, which matters in a 5,000-row import); a test compares the shortcut with a full parse at every depth from 1 to 59.",
+   "type": "Design",
+   "section": "Platform review 2026-11-19, Phase 16: Markdown for every long-text field (2026-11-20)",
+   "decided_by": "Agent"
   }
  ],
  "standard": {
@@ -10531,7 +10774,7 @@
      {
       "reference": "CC6.1",
       "name": "Implements logical access security software/infrastructure/architecture",
-      "control": "JWT-based authentication, bcrypt password hashing, TOTP-based 2FA, per-org OIDC SSO, `token_version`-based mass session revocation, single-use emailed password-reset links and a forced credential reset (command line included); the MCP server (AI-assistant integration — read by default, with opt-in write and, separately, an org-and-project-gated AI-approval capability) reuses this same mechanism rather than a separate credential type, introducing no new access-control surface",
+      "control": "JWT-based authentication, bcrypt password hashing, TOTP-based 2FA, per-org OIDC SSO, `token_version`-based mass session revocation, single-use emailed password-reset links and a forced credential reset (command line included); the MCP server (AI-assistant integration — read by default, with opt-in write and, separately, an org-and-project-gated AI-approval capability) reuses this same mechanism rather than a separate credential type, introducing no new access-control surface; a service user (a non-person integration identity with no sign-in) holds only personal access tokens an organisation administrator issues, through the same token service",
       "evidence": "`backend/app/security.py`, `backend/app/services/totp.py`, `backend/app/routers/auth_oidc.py`, `mcp-server/server.py`",
       "status": "compliant",
       "status_note": "See [policies/access-control-policy.md](policies/access-control-policy.md)",
@@ -10540,7 +10783,7 @@
      {
       "reference": "CC6.2",
       "name": "Registers and authorizes new internal/external users prior to granting access",
-      "control": "Org admins provision members and assign roles; SSO users are provisioned on first login gated by an optional required-group check; server admin bootstrap is config-gated; public self-signup (opt-in, domain-gated in \"org specified\" mode) and admin-initiated project invites (org-opt-in `external_user_policy`) and a server admin's Add user (`POST /system/users`, sharing `services/user_provisioning.py` with Org Admin) are three further, explicitly-authorized provisioning paths — see access-control-policy.md's Provisioning section and its Known Gap on unverified-email trust",
+      "control": "Org admins provision members and assign roles; SSO users are provisioned on first login gated by an optional required-group check; server admin bootstrap is config-gated; public self-signup (opt-in, domain-gated in \"org specified\" mode) and admin-initiated project invites (org-opt-in `external_user_policy`) and a server admin's Add user (`POST /system/users`, sharing `services/user_provisioning.py` with Org Admin) are three further, explicitly-authorized provisioning paths; an organisation administrator also creates service users (`services/service_users.py`), bound to that organisation, audited, never able to sign in — see access-control-policy.md's Provisioning section and its Known Gap on unverified-email trust",
       "evidence": "`backend/app/routers/orgs.py`; `backend/app/services/oidc_provisioning.py` (`find_or_provision_user`, `meets_required_group`); `backend/app/routers/auth.py::signup`; `backend/app/services/invites.py`; `backend/app/services/user_provisioning.py`; `backend/app/routers/system/users.py::create_system_user`",
       "status": "compliant",
       "status_note": "",
@@ -10776,6 +11019,12 @@
    "policy": "access-control-policy",
    "title": "The demonstration command publishes a fixed password",
    "statement": "`scripts/demo_setup.py --demo` (a demonstration deployment only) creates three accounts with the documented password `DemoDemo123!` and publishes the sign-in details in a server-wide, non-dismissible message on the login pages; `--rotate-passwords` replaces it with a random password per run. This is a deliberate exception (a demonstration holds sample data only): the command requires `--demo`, a mail catcher as the SMTP relay, and refuses a database holding any organisation it did not create unless the database name is typed; it refuses to publish if a listed account is a server administrator or belongs to another organisation, and never sends the message as a notification or logs the password. It does not weaken the password rule, two-factor or rate limits. See `docs/decisions.md`.",
+   "type": "Security"
+  },
+  {
+   "policy": "access-control-policy",
+   "title": "A service user's token is a single-factor bearer credential",
+   "statement": "A service user has no sign-in and so cannot hold a second factor, and an organisation's two-factor requirement does not apply to it (item 12). The compensating controls are that an administrator issues every token, each is scoped to one organisation (optionally to projects), has an expiry within the organisation's cap, is revocable per token and in bulk, dies with deactivation, and that the access review flags a service user with no responsible principal or with administrator rights. An organisation that wants no such credential simply creates none.",
    "type": "Security"
   },
   {

@@ -59,6 +59,7 @@ from app.models.policy import PolicyAudience
 from app.models.project import Project, ProjectGroup, ProjectStage
 from app.models.requirement import RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.service_user import ServiceUserProfile
 from app.models.stage_workflow import ComponentStageState
 from app.models.user import User
 from app.modules.registry import PrincipalReference, get_module_principal_references, scoped_memo
@@ -124,6 +125,11 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
     PrincipalReference(
         model=PolicyAudience, field="audience", label="policy audiences", audit_entity_type="policy",
         mandatory=True, multi_valued=True, record_id_field="policy_id",
+    ),
+    # Optional: deleting a group clears the responsible party (the access review then flags the service user).
+    PrincipalReference(
+        model=ServiceUserProfile, field="responsible", label="service user responsible parties",
+        audit_entity_type="service_user", record_id_field="user_id",
     ),
     PrincipalReference(
         model=ChangeRequestTask, field="assignee", label="change request task assignees",
@@ -300,6 +306,7 @@ def principal_labels(
         out[(PrincipalType.USER.value, i)] = PrincipalOut(
             type=PrincipalType.USER, id=i, label=user.display_name if user else UNKNOWN_USER_LABEL,
             exists=user is not None, imported=user is not None and user.imported_organization_id is not None,
+            service=user is not None and user.is_service_account,
         )
 
     org_ids = {i for t, i in wanted if t == PrincipalType.ORG_GROUP.value}

@@ -23,6 +23,7 @@ from app.security import create_email_unsubscribe_token
 from app.services.email import send_email, send_email_async
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
+from app.services.service_users import can_receive_email
 
 DIGEST_INTERVAL_SECONDS = 24 * 60 * 60
 
@@ -145,7 +146,7 @@ def notify(
     # `routers.notifications.list_notifications` hides it at query time.
     db.add(notification)
 
-    if email_enabled and user.email_digest_mode == DigestMode.INSTANT:
+    if email_enabled and user.email_digest_mode == DigestMode.INSTANT and can_receive_email(user):
         try:
             organization_id = None
             if project_id is not None:
@@ -224,6 +225,8 @@ async def send_daily_digests(db: Session) -> None:
     """
     users = db.scalars(select(User).where(User.email_digest_mode == DigestMode.DAILY)).all()
     for user in users:
+        if not can_receive_email(user):
+            continue
         email_opted_out = select(NotificationPreference.type).where(
             NotificationPreference.user_id == user.id, NotificationPreference.email_enabled.is_(False)
         )

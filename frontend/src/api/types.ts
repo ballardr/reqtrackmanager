@@ -1002,6 +1002,8 @@ export interface OrgUser {
   display_name_locked: boolean;
   last_login_at: string | null;
   is_2fa_enabled: boolean;
+  /** A service user: shown with a badge, with no sign-in and so no second factor. */
+  is_service_account?: boolean;
   /** This user's org-scoped module-contributed role grants, filtered to
    * currently-enabled modules only — a grant for
    * a since-disabled module is simply omitted, not a sign it was revoked. */
@@ -1084,6 +1086,8 @@ export interface SystemUser {
   organization_count: number;
   organization_names: string[];
   group_names: string[];
+  /** A service user: never a person, and never able to sign in. */
+  is_service_account?: boolean;
 }
 
 export interface OrgGroup {
@@ -1293,6 +1297,8 @@ export interface EffectiveMember {
   display_name: string;
   email: string;
   effective_role: ProjectRole;
+  /** A service user: shown with the Service badge. */
+  is_service_account?: boolean;
   sources: MemberSourceProvenance[];
   /** This user's project-scoped module-contributed role grants, filtered
    * to currently-enabled modules only — same
@@ -2690,6 +2696,9 @@ export interface OrgPersonalAccessToken {
   other_org_count: number;
   last_used_at: string | null;
   created_at: string;
+  /** The administrator who issued the token when it is not the owner's own (a service user's token). */
+  created_by_display_name?: string | null;
+  is_service_account?: boolean;
 }
 
 /** What `POST /system/credentials/force-reset` did (counts only). */
@@ -2807,6 +2816,8 @@ export interface Principal extends PrincipalRef {
   exists: boolean;
   /** True for an imported person (a stand-in for someone named in an import bundle). */
   imported?: boolean;
+  /** True for a service user. */
+  service?: boolean;
 }
 
 /** The server's answer to "what still names this group" (`GET .../groups/{id}/usage`). */
@@ -3050,6 +3061,8 @@ export interface PolicyAcceptanceStatus {
   accepted: number;
   truncated: boolean;
   people: PolicyAcceptanceRow[];
+  /** Service users the policy does not apply to (they cannot accept one); not counted above. */
+  not_applicable?: { user_id: string; display_name: string }[];
 }
 
 /** The code the server returns with a refusal of a change while a required policy is unaccepted. */

@@ -83,3 +83,15 @@ export const ALongListPointsToTheExport: Story = {
     await expect(await dialog.findByText("Showing the first 3 people. Export the list for everyone.")).toBeInTheDocument();
   },
 };
+
+/** Service users cannot accept a policy, so they are named apart and never counted. */
+export const ServiceUsersAreNotApplicable: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ ...STATUS, not_applicable: [{ user_id: "s1", display_name: "Build agent" }] });
+  },
+  play: async () => {
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(await dialog.findByText("1 of 3 accepted version 2.")).toBeInTheDocument();
+    await expect(dialog.getByText("Not applicable (service users): Build agent")).toBeInTheDocument();
+  },
+};

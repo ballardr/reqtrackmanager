@@ -70,7 +70,8 @@ def list_org_pats(
         )
         .order_by(PersonalAccessToken.created_at.desc())
     ).all()
-    owners = {u.id: u for u in db.scalars(select(User).where(User.id.in_({p.user_id for p in pats}))).all()}
+    issuer_ids = {p.created_by_user_id for p in pats if p.created_by_user_id and p.created_by_user_id != p.user_id}
+    owners = {u.id: u for u in db.scalars(select(User).where(User.id.in_({p.user_id for p in pats} | issuer_ids))).all()}
     return [
         OrgPersonalAccessTokenOut(
             id=p.id, user_id=p.user_id,
@@ -78,6 +79,11 @@ def list_org_pats(
             name=p.name, token_prefix=p.token_prefix, expires_at=effective_expiry(db, p),
             other_org_count=len(p.allowed_organization_ids) - 1,
             last_used_at=p.last_used_at, created_at=p.created_at,
+            created_by_display_name=(
+                owners[p.created_by_user_id].display_name
+                if p.created_by_user_id and p.created_by_user_id != p.user_id and p.created_by_user_id in owners else None
+            ),
+            is_service_account=owners[p.user_id].is_service_account,
         )
         for p in pats
     ]

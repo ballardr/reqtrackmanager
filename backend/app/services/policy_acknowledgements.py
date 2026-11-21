@@ -48,6 +48,7 @@ from sqlalchemy.orm import Session
 from app.models.notification import NotificationType
 from app.models.organization import Organization, UserOrgRole
 from app.models.policy import PolicyAcknowledgement, PolicyDocument, PolicyDocumentVersion, PolicyState
+from app.models.service_user import ServiceUserProfile
 from app.models.user import User
 from app.services import org_policies, policies
 from app.services.audit import log_event
@@ -181,7 +182,9 @@ def enforce_accepted(db: Session, user: User, method: str, path: str) -> None:
     Raises:
         HTTPException: 403 with `BLOCK_CODE` in the detail.
     """
-    if is_open_request(method, path) or not any_required(db):
+    if user.is_service_account or is_open_request(method, path) or not any_required(db):
+        # A service user has no person to read and accept a policy; recording an acceptance on its behalf would be
+        # false evidence, so it is exempt from the gate and never appears in the acceptance counts.
         return
     waiting = pending(db, user)
     if waiting:
@@ -216,18 +219,35 @@ class StatusRow:
 
 
 def required_people(db: Session, row: PolicyDocument) -> list[User]:
-    """The active people a policy applies to: everyone for a server policy, its readers for an organisation policy."""
+    """The active people a policy applies to: everyone for a server policy, its readers for an organisation policy.
+
+    A service user is never one (`not_applicable_service_users` lists them apart).
+    """
     if row.organization_id is None:
-        people = list(db.scalars(select(User).where(User.is_active.is_(True), User.is_archived.is_(False))))
+        people = list(db.scalars(select(User).where(
+            User.is_active.is_(True), User.is_archived.is_(False), User.is_service_account.is_(False),
+        )))
     else:
         audience = org_policies.audience_of(db, [row.id])[row.id]
         members = db.scalars(
             select(User).join(UserOrgRole, UserOrgRole.user_id == User.id).where(
                 UserOrgRole.organization_id == row.organization_id, User.is_active.is_(True), User.is_archived.is_(False),
+                User.is_service_account.is_(False),
             ).distinct()
         )
         people = [u for u in members if org_policies.can_view(db, u, row.organization_id, audience)]
     return sorted(people, key=lambda u: (u.display_name or u.email).lower())
+
+
+def not_applicable_service_users(db: Session, row: PolicyDocument) -> list[User]:
+    """The active service users the policy does not apply to, so a status view can name them apart from the people
+    whose acceptance it counts (every service user for a server policy, the organisation's own for an organisation one)."""
+    query = select(User).where(User.is_service_account.is_(True), User.is_active.is_(True), User.is_archived.is_(False))
+    if row.organization_id is not None:
+        query = query.join(ServiceUserProfile, ServiceUserProfile.user_id == User.id).where(
+            ServiceUserProfile.organization_id == row.organization_id
+        )
+    return list(db.scalars(query.order_by(User.display_name)))
 
 
 def status_rows(db: Session, row: PolicyDocument) -> list[StatusRow]:

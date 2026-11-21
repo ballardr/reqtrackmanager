@@ -25,6 +25,7 @@ class PrincipalOut(BaseModel):
             an owner group stands for.
         exists: False once a group has been deleted but a history row still names it.
         imported: True for an imported person (a stand-in for someone named in an import bundle), so a badge can say so.
+        service: True for a service user, so a badge can say so.
     """
 
     type: PrincipalType
@@ -33,6 +34,7 @@ class PrincipalOut(BaseModel):
     member_count: int | None = None
     exists: bool = True
     imported: bool = False
+    service: bool = False
 
 
 class WatcherCreate(BaseModel):

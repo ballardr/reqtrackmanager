@@ -9,7 +9,8 @@ module-role grants, leave/remove/deactivate/archive), `groups`,
 accent/wordmark/email-footer, default template, public login-info),
 `settings` (advanced settings, module enablement, SSO/OIDC, SCIM),
 `org_pats`
-(org-admin PAT incident-response actions), `taxonomies` (project
+(org-admin PAT incident-response actions), `service_users` (service users and the tokens an administrator
+issues them), `taxonomies` (project
 statuses, requirement link types), `custom_roles` (Fine-Grained Access
 Control's permission vocabulary, `CustomRoleDefinition` CRUD, and its
 user/group grant endpoints —), `scoring` (generic scoring-matrix levels, default
@@ -41,6 +42,7 @@ from app.routers.orgs import (
     records,
     resources,
     scoring,
+    service_users,
     settings,
     storage,
     taxonomies,
@@ -69,3 +71,4 @@ router.include_router(custom_roles.router, prefix=_PREFIX)
 router.include_router(scoring.router, prefix=_PREFIX)
 router.include_router(record_policy.router, prefix=_PREFIX)
 router.include_router(imported_people.router, prefix=_PREFIX)
+router.include_router(service_users.router, prefix=_PREFIX)

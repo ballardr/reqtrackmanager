@@ -57,3 +57,13 @@ export const Empty: Story = {
 };
 
 export const DarkTheme: Story = { ...OrgGroup, globals: { theme: "dark" } };
+
+/** A service user carries the Service badge, with a tooltip saying what that is. */
+export const ServiceUser: Story = {
+  args: { principal: { type: "user", id: "u3", label: "Build agent", member_count: null, exists: true, service: true } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Build agent")).toBeInTheDocument();
+    await expect(canvas.getByText("Service")).toBeInTheDocument();
+  },
+};

@@ -77,6 +77,9 @@ class OrgPersonalAccessTokenOut(BaseModel):
     other_org_count: int
     last_used_at: datetime | None
     created_at: datetime
+    #: The administrator who issued the token when it is not the owner's own (a service user's token).
+    created_by_display_name: str | None = None
+    is_service_account: bool = False
 
 
 class BulkRevokeResult(BaseModel):

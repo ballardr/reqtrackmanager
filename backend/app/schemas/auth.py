@@ -83,6 +83,7 @@ class UserOut(BaseModel):
     display_name_locked: bool
     is_2fa_enabled: bool
     must_change_password: bool = False
+    is_service_account: bool = False
     email_digest_mode: DigestMode
     ui_preferences: dict[str, Any] = Field(default_factory=dict)
 

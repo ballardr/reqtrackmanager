@@ -8,6 +8,7 @@ import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { AddUserMenu } from "../components/AddUserMenu";
 import { Badge } from "../components/Badge";
+import { ServiceBadge } from "../components/ServiceBadge";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
@@ -311,7 +312,15 @@ function AccessReviewTab() {
   // are new (see `list_system_users`'s own docstring for the backend side).
   const usersColumns: DirectoryColumn<SystemUser>[] = [
     { key: "email", label: strings.system.email, sortable: true, render: (u) => u.email },
-    { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
+    {
+      key: "display_name", label: strings.system.name, sortable: true,
+      render: (u) => (
+        <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+          <span>{u.display_name}</span>
+          {u.is_service_account && <ServiceBadge />}
+        </span>
+      ),
+    },
     {
       // Comma-joined names have no natural order — not sortable, per style
       // guide "Pattern: sortable column header".

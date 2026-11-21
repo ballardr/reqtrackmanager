@@ -203,7 +203,7 @@ def administered_org_ids(db: Session, user: User, pat_allowed_org_ids: set[UUID]
     """Organisations in which the user holds the organisation administrator role and may use that role now.
 
     The same conditions as `require_org_role(OrgRole.ORG_ADMIN)`: the organisation is active, the user satisfies its
-    two-factor requirement, and a Personal Access Token is scoped to it. A server administrator is not included
+    two-factor requirement (a service user has none to meet), and a Personal Access Token is scoped to it. A server administrator is not included
     unless they hold the role (no server-administrator bypass).
 
     Args:
@@ -225,5 +225,5 @@ def administered_org_ids(db: Session, user: User, pat_allowed_org_ids: set[UUID]
     ).all()
     return {
         org_id for org_id, require_2fa in rows
-        if (not require_2fa or user.is_2fa_enabled) and (pat_allowed_org_ids is None or org_id in pat_allowed_org_ids)
+        if (not require_2fa or user.is_2fa_enabled or user.is_service_account) and (pat_allowed_org_ids is None or org_id in pat_allowed_org_ids)
     }

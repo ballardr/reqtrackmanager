@@ -254,6 +254,13 @@ class AcknowledgementStatusRowOut(BaseModel):
     current: bool
 
 
+class AcknowledgementNotApplicableOut(BaseModel):
+    """A service user shown in a policy's status view as not applicable."""
+
+    user_id: UUID
+    display_name: str
+
+
 class AcknowledgementStatusOut(BaseModel):
     """Who has and has not accepted a policy's current version.
 
@@ -270,6 +277,8 @@ class AcknowledgementStatusOut(BaseModel):
     accepted: int
     truncated: bool
     people: list[AcknowledgementStatusRowOut]
+    #: Service users the policy does not apply to (they cannot accept one), named apart from the counted people.
+    not_applicable: list[AcknowledgementNotApplicableOut] = []
 
 
 class ReminderOut(BaseModel):

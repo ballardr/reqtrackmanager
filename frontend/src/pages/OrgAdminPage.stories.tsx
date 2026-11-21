@@ -2,8 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
+import type { ServiceUser } from "../api/serviceUsers";
 import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
+import { buildServiceUser } from "../testing/serviceUserFixtures";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -67,7 +69,7 @@ function mockOrgAdminApis(overrides: {
   scim?: { enabled: boolean; token_prefix: string | null };
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
-  pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
+  pats?: OrgPersonalAccessToken[]; serviceUsers?: ServiceUser[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
   // A module's own declared
   // sub-components, keyed by `module_key`; defaults to `[]` per module
@@ -131,6 +133,7 @@ function mockOrgAdminApis(overrides: {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
       return overrides.advanced ?? advanced;
     }
+    if (path.includes("/service-users")) return overrides.serviceUsers ?? [];
     if (path.includes("/pats")) return overrides.pats ?? [];
     // Fetched inside the same try/catch-403 block
     // as `/advanced-settings` above — must be mocked here or every story
@@ -290,6 +293,40 @@ export const UsersSectionAndCreateUser: Story = {
     // table) instead — see docs/ux-style-guide.md's "Pattern: filter panel
     // placement — side vs. top".
     await expect(canvasElement.querySelector(".filter-panel-top")).toBeInTheDocument();
+  },
+};
+
+/** A service user is badged in the Users table, its two-factor cell reads Not applicable, and it has no reset-link action. */
+export const UsersTableMarksServiceUsers: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({
+      users: [orgUser, { ...orgUser, user_id: "svc-1", email: "svc-1@service.invalid", display_name: "Build agent", roles: ["member"], is_2fa_enabled: false, is_service_account: true }],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    const row = (await canvas.findByText("Build agent")).closest("tr") as HTMLElement;
+    await expect(within(row).getByText("Service")).toBeInTheDocument();
+    await expect(within(row).getByText("Not applicable")).toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "Build agent's actions" }));
+    await expect(within(document.body).queryByRole("menuitem", { name: /reset link/i })).not.toBeInTheDocument();
+  },
+};
+
+/** The Users group holds the Service users section (collapsed until opened), which lists the organisation's service users. */
+export const ServiceUsersSectionOpensInTheUsersGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ serviceUsers: [buildServiceUser()] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Service users section" }));
+    await expect(await canvas.findByRole("table", { name: "Service users" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "New service user" })).toBeInTheDocument();
   },
 };
 

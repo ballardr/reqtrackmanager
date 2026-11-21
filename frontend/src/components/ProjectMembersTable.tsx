@@ -164,6 +164,7 @@ import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Popover } from "./Popover";
 import { cycleSort, type SortState } from "./sortState";
 import { Badge } from "./Badge";
+import { ServiceBadge } from "./ServiceBadge";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
@@ -435,7 +436,16 @@ export function ProjectMembersTable({
       label: strings.membersTable.name,
       sortable: true,
       render: (row) => {
-        if (row.kind === "member") return row.member.display_name;
+        if (row.kind === "member") {
+          return row.member.is_service_account ? (
+            <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+              {row.member.display_name}
+              <ServiceBadge />
+            </span>
+          ) : (
+            row.member.display_name
+          );
+        }
         if (row.kind === "invited") return <span className="text-muted">—</span>;
         // `kind === "group"` — a small "Group" badge ahead of the
         // name so the row doesn't read as a person with a blank email (the

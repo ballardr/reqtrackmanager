@@ -6,6 +6,7 @@ import type { ExternalUserMatch, OrgGroup, OrgUser, OrgUserSearchResult, Project
 import { useOrgLabel } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { Badge } from "./Badge";
+import { ServiceBadge } from "./ServiceBadge";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const strings = t();
@@ -304,7 +305,7 @@ export function UserAutocomplete({
               onMouseEnter={() => setHighlightedIndex(i)}
               onClick={() => pick(u)}
             >
-              {u.display_name} <span className="text-muted">({u.email})</span>
+              {u.display_name} {u.is_service_account ? <ServiceBadge /> : <span className="text-muted">({u.email})</span>}
             </button>
           ))}
           {groupMatches.map((g, j) => {

@@ -23,6 +23,10 @@ A member who is locked out can be sent a password reset link from their **⋮** 
 
 The **Users** section lists every member, with access-review filters useful for periodic review: stale logins (180+ days), accounts without 2FA, and accounts with no project access at all. Once an accepted email domain is set (see below), it also lists existing accounts elsewhere in the system matching that domain but not yet members.
 
+### Service users
+
+The **Service users** section of the people settings lists the organisation's service users: accounts with no password and no sign-in that integrations use instead of a named person. Create one, name who is responsible for it, issue and revoke its tokens, and deactivate it when it is no longer needed. See [Personal access tokens: Service users](../core-features/personal-access-tokens.md#service-users). In the **Users** list a service user carries a **Service** label, and the access-review filters can show or hide service users.
+
 ## Managing groups
 
 **Groups** let you assign organisation-level roles to a set of users at once rather than one at a time — the same building block [project groups](./administering-a-project.md#project-groups) use one level down.

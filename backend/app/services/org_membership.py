@@ -90,10 +90,12 @@ def external_account_refusal(db: Session, org: Organization, target: User) -> st
 
     Returns:
         A message for the caller to report, or `None` when the account is already a member, is unclaimed, or
-        the organisation allows external users.
+        the organisation allows external users. A service user is never taken by another organisation.
     """
     if holds_org_role(db, target.id, org.id):
         return None
+    if target.is_service_account:
+        return "A service user belongs to one organisation and cannot be added to another."
     if target.is_banned:
         return "This user has been banned by a server admin and cannot be granted a role."
     if belongs_elsewhere(db, target.id, org.id) and org.external_user_policy == ExternalUserPolicy.DISABLED:

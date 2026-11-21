@@ -359,6 +359,7 @@ class EffectiveMemberOut(BaseModel):
     display_name: str
     email: str
     effective_role: ProjectRole
+    is_service_account: bool = False
     sources: list[MemberSourceProvenanceOut]
     # This user's project-scoped module-contributed
     # role grants, filtered to currently-enabled modules only — same

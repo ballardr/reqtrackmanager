@@ -1,7 +1,7 @@
 """
 Module: services.org_export
 
-Exports an entire organisation — its settings, members/groups, report
+Exports an entire organisation — its settings, members/groups, service users (configuration only), report
 templates, org-owned files (logo, login background), every one of its
 projects (full structure and history, reusing `services.project_export`),
 and every registered module's own org-level bundle content (`app.modules.
@@ -113,7 +113,15 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, User
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
-from app.services import announcements, code_prefixes, nav_labels, org_dashboards, org_policies, overview_widgets
+from app.services import (
+    announcements,
+    code_prefixes,
+    nav_labels,
+    org_dashboards,
+    org_policies,
+    overview_widgets,
+    service_users,
+)
 from app.services.audit import log_event
 from app.services.branding import FOOTER_POSITIONS
 from app.services.bundle_common import (
@@ -221,6 +229,8 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **org_dashboards.export_org(db, org.id),
         **org_policies.export_org(db, org.id),
         "code_prefixes": code_prefixes.export_overrides(db, org),
+        # Configuration only: never a token, a hash or an address (`services.service_users.export_org`).
+        "service_users": service_users.export_org(db, org),
         "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
@@ -229,7 +239,10 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
             module_bundle_json.update(hooks.export_files(db, org, file_assets_by_id))
 
     member_rows = list(
-        db.execute(select(UserOrgRole.role, User).join(User, User.id == UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id))
+        db.execute(
+            select(UserOrgRole.role, User).join(User, User.id == UserOrgRole.user_id)
+            .where(UserOrgRole.organization_id == org.id, User.is_service_account.is_(False))
+        )
         .all()
     )
     members_json = [
@@ -242,7 +255,8 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         members = list(
             db.execute(
                 select(User.email).join(OrgGroupMember, OrgGroupMember.user_id == User.id).where(
-                    OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None)
+                    OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None),
+                    User.is_service_account.is_(False),
                 )
             ).scalars()
         )
@@ -774,6 +788,7 @@ def import_org_bundle(
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings, organization_id=org.id, data=data)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
+    service_users.import_org(db, org, data.get("service_users") or [], current_user.id, warnings.add)
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
     code_prefixes.import_overrides(db, org, data.get("code_prefixes"), acting_user.id, warnings.add)
@@ -919,6 +934,7 @@ def merge_org_bundle(
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings, organization_id=target_org.id, data=data)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
+    service_users.import_org(db, target_org, data.get("service_users") or [], current_user.id, warnings.add)
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_snippets(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)

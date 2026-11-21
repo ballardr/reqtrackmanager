@@ -7,6 +7,7 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { Modal } from "../components/Modal";
+import { OneTimeSecret } from "../components/OneTimeSecret";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -847,19 +848,13 @@ export function PreferencesPage() {
         )}
 
         {createdPat && (
-          <div className="stack" style={{ border: "1px solid var(--color-accent)", borderRadius: "var(--radius-md)", padding: "var(--space-4)" }}>
-            <strong>{strings.preferences.patCreatedTitle}</strong>
-            <p className="text-muted">{strings.preferences.patCreatedHint}</p>
-            <code style={{ wordBreak: "break-all", background: "var(--color-surface-alt)", padding: "var(--space-3)", borderRadius: "var(--radius-sm)" }}>
-              {createdPat.token}
-            </code>
-            <button className="btn" onClick={() => navigator.clipboard.writeText(createdPat.token)} style={{ alignSelf: "flex-start" }}>
-              {strings.common.copy}
-            </button>
-            <button className="btn" onClick={() => setCreatedPat(null)} style={{ alignSelf: "flex-start" }}>
-              {strings.common.cancel}
-            </button>
-          </div>
+          <OneTimeSecret
+            title={strings.preferences.patCreatedTitle}
+            hint={strings.preferences.patCreatedHint}
+            secret={createdPat.token}
+            dismissLabel={strings.common.close}
+            onDismiss={() => setCreatedPat(null)}
+          />
         )}
       </div>
       )}

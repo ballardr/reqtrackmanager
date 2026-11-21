@@ -130,6 +130,10 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
         raise ValueError("OIDC claims did not include an email address; cannot provision a new user.")
 
     existing_by_email = db.scalar(select(User).where(User.email == email))
+    if existing_by_email is not None and existing_by_email.is_service_account:
+        # A service user's address receives notifications only. Matching it by a verified email would hand its roles
+        # to whoever signs in with that address, so it is never adopted and never linked.
+        raise ValueError(f"{email} is already registered; refusing to link it.")
     if existing_by_email is not None:
         if not email_verified:
             # Refuse outright rather than falling through to "provision a

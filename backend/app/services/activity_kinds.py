@@ -128,6 +128,7 @@ CORE_METADATA_TYPES: dict[str, str] = {
         "user_project_role", "user_module_role", "user_org_role", "user_server_role", "org_group_project_role",
         "group_module_role", "user_custom_role_grant", "group_custom_role_grant", "project_group", "org_group",
         "project_member_source", "pending_invite", "personal_access_token", "user", "credential_reset", "imported_person",
+        "service_user",
     ), "access"),
     **dict.fromkeys((
         "project", "project_stage", "project_component", "project_category", "stage_workflow", "stage_phase_plan",

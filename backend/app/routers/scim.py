@@ -248,9 +248,10 @@ def _get_org_user(db: Session, org: Organization, user_id: UUID) -> User:
     """Loads a User and 404s unless they actually belong to `org` — without
     this, a SCIM token for org A could read/modify any user in the entire
     deployment by guessing/enumerating ids. A server administrator is the platform's own account, never an
-    organisation's to manage, so it reads as absent here too."""
+    organisation's to manage, so it reads as absent here too. A service user is an administrator-managed integration
+    identity with no place in an identity provider's directory, so it reads as absent as well."""
     user = db.get(User, user_id)
-    if user is None or user.is_server_admin or not get_effective_org_roles(db, user.id, org.id):
+    if user is None or user.is_server_admin or user.is_service_account or not get_effective_org_roles(db, user.id, org.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
     return user
 
@@ -371,7 +372,9 @@ def list_users(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     org_user_ids = select(UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id)
-    query = select(User).where(User.id.in_(org_user_ids), User.is_server_admin.is_(False))
+    query = select(User).where(
+        User.id.in_(org_user_ids), User.is_server_admin.is_(False), User.is_service_account.is_(False),
+    )
     parsed = _parse_simple_eq_filter(filter)
     if parsed:
         attr, value = parsed
@@ -415,6 +418,8 @@ def create_user(
     display_name = _display_name(payload.get("displayName")) or _display_name(formatted) or email.split("@")[0][:_MAX_DISPLAY_NAME]
 
     user = db.scalar(select(User).where(User.email == email))
+    if user is not None and user.is_service_account:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this userName already exists.")
     if user is not None:
         # An existing account is pulled in only under the same rule as every other grant by an administrator
         # (`services.org_membership`): not banned, not a platform administrator, and not held by another

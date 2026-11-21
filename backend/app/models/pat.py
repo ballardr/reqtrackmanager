@@ -42,7 +42,8 @@ class PersonalAccessToken(UUIDPKMixin, TimestampMixin, Base):
     """A long-lived, org-scoped bearer credential a user creates for themselves.
 
     Attributes:
-        user_id: The owning (and only ever creating) user.
+        user_id: The owning user: the token authenticates as this account.
+        created_by_user_id: The issuer (see the column note).
         name: User-chosen label to help distinguish their own tokens.
         token_hash: SHA-256 hex digest of the raw token secret
             (`security.hash_pat`). The raw secret itself is never stored.
@@ -76,6 +77,11 @@ class PersonalAccessToken(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "personal_access_tokens"
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    #: Who issued the token: the owner for a self-service token, the organisation administrator for a service user's.
+    #: Null on a token created before the column existed (read as the owner).
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(255))
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     token_prefix: Mapped[str] = mapped_column(String(20))

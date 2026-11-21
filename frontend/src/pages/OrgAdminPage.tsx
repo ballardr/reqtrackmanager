@@ -106,6 +106,8 @@ import { labelOptions } from "../utils/labelOptions";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
+import { ServiceBadge } from "../components/ServiceBadge";
+import { ServiceUsersPanel } from "../components/ServiceUsersPanel";
 import { CheckboxField, ColorField, FileField, TextField, ToggleField } from "../components/FormFields";
 import { LogoBandField } from "../components/LogoBandField";
 import { FieldHelp } from "../components/FieldHelp";
@@ -406,6 +408,7 @@ export function OrgAdminPage() {
   const [userFilterStale, setUserFilterStale] = useState(false);
   const [userFilterNo2fa, setUserFilterNo2fa] = useState(false);
   const [userFilterNoAccess, setUserFilterNoAccess] = useState(false);
+  const [userFilterService, setUserFilterService] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState<OrgRole | "">("");
   // Pending (unaccepted) org-only invites, merged into the Users table as
   // `kind: "invited"` rows — fetched unpaginated (there are
@@ -503,11 +506,12 @@ export function OrgAdminPage() {
     stale: boolean;
     no2fa: boolean;
     noAccess: boolean;
+    service: boolean;
     role: OrgRole | "";
   }
 
   function currentUserFilters(): UserFilters {
-    return { stale: userFilterStale, no2fa: userFilterNo2fa, noAccess: userFilterNoAccess, role: userRoleFilter };
+    return { stale: userFilterStale, no2fa: userFilterNo2fa, noAccess: userFilterNoAccess, service: userFilterService, role: userRoleFilter };
   }
 
   // Only the newest users/groups load applies its response: filter and
@@ -526,6 +530,7 @@ export function OrgAdminPage() {
         if (filters.stale) params.set("stale_since_days", "180");
         if (filters.no2fa) params.set("has_2fa", "false");
         if (filters.noAccess) params.set("has_project_access", "false");
+        if (filters.service) params.set("is_service_account", "true");
         if (filters.role) params.set("org_role", filters.role);
       }
       if (search) params.set("search", search);
@@ -727,6 +732,7 @@ export function OrgAdminPage() {
     setUserFilterStale(merged.stale);
     setUserFilterNo2fa(merged.no2fa);
     setUserFilterNoAccess(merged.noAccess);
+    setUserFilterService(merged.service);
     setUserRoleFilter(merged.role);
     loadUsers(merged, userSearch, 0, false);
   }
@@ -1923,7 +1929,10 @@ export function OrgAdminPage() {
       key: "display_name", label: strings.orgAdmin.name, sortable: true,
       render: (row) =>
         row.kind === "user" ? (
-          row.user.display_name
+          <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+            <span>{row.user.display_name}</span>
+            {row.user.is_service_account && <ServiceBadge />}
+          </span>
         ) : (
           <span className="text-muted">{strings.orgAdmin.invitedBy(row.invite.invited_by_display_name)}</span>
         ),
@@ -2051,7 +2060,12 @@ export function OrgAdminPage() {
     },
     {
       key: "2fa", label: strings.orgAdmin.twoFactor,
-      render: (row) => (row.kind === "invited" ? "" : row.user.is_2fa_enabled ? strings.common.yes : strings.common.no),
+      render: (row) =>
+        row.kind === "invited"
+          ? ""
+          : row.user.is_service_account
+            ? strings.serviceUsers.notApplicable
+            : row.user.is_2fa_enabled ? strings.common.yes : strings.common.no,
     },
     {
       // Users table Actions column (docs/decisions.md) — the two previously-bare buttons
@@ -2079,7 +2093,7 @@ export function OrgAdminPage() {
                 },
                 // Emails the person a single-use reset link; the admin never sees it. Not offered on the
                 // caller's own row (they use the sign-in page's "Forgot your password?").
-                ...(isSelf
+                ...(isSelf || u.is_service_account
                   ? []
                   : [{ label: strings.passwordReset.sendLinkAction, icon: <KeyRound size={14} />, onSelect: () => setResetLinkUser(u) }]),
                 // Not offered on the caller's own row — self-removal has
@@ -2300,6 +2314,11 @@ export function OrgAdminPage() {
                     onChange={(checked) => applyUserFilters({ noAccess: checked })}
                   />
                   <FilterCheckbox
+                    label={strings.orgAdmin.filterServiceUsers}
+                    checked={userFilterService}
+                    onChange={(checked) => applyUserFilters({ service: checked })}
+                  />
+                  <FilterCheckbox
                     label={strings.orgAdmin.filterShowInvited}
                     checked={showInvitedUsers}
                     onChange={setShowInvitedUsers}
@@ -2414,6 +2433,9 @@ export function OrgAdminPage() {
                 )}
               </SidePanel>
             )}
+            <CollapsibleSection sectionKey="orgAdmin.serviceUsers" title={strings.serviceUsers.heading} defaultCollapsed>
+              {orgId && <ServiceUsersPanel organizationId={orgId} />}
+            </CollapsibleSection>
             <CollapsibleSection sectionKey="orgAdmin.importedPeople" title={strings.importPeople.panelTitle}>
               {orgId && <ImportedPeoplePanel orgId={orgId} />}
             </CollapsibleSection>
@@ -3106,7 +3128,17 @@ export function OrgAdminPage() {
                     columns={[
                       {
                         key: "user", label: strings.orgAdmin.patUser,
-                        render: (p) => <>{p.user_display_name} <span className="text-muted">({p.user_email})</span></>,
+                        render: (p) => (
+                          <>
+                            <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
+                              <span>{p.user_display_name}</span>
+                              {p.is_service_account ? <ServiceBadge /> : <span className="text-muted">({p.user_email})</span>}
+                            </span>
+                            {p.created_by_display_name && (
+                              <div className="text-muted">{strings.orgAdmin.patIssuedBy(p.created_by_display_name)}</div>
+                            )}
+                          </>
+                        ),
                       },
                       {
                         key: "name", label: strings.orgAdmin.patName,

@@ -220,6 +220,8 @@ def assign_project_role_by_email(
     if existing_user is not None:
         assert_account_active(db, existing_user.id)
         already_in_org = bool(get_effective_org_roles(db, existing_user.id, org.id))
+        if not already_in_org and existing_user.is_service_account:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "A service user belongs to one organisation and cannot be added to another.")
         if not already_in_org:
             if org.external_user_policy == ExternalUserPolicy.DISABLED:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "This organisation does not allow external users.")
