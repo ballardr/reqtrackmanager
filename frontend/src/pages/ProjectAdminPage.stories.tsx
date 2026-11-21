@@ -1794,7 +1794,7 @@ const overriddenSubComponent: ProjectModuleSubComponent = {
   effective_enabled: false, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
 };
 
-/** The Tags group shows the project's tag vocabulary and usage tables. */
+/** The Tags group shows the project's tag vocabulary; where a tag is used opens from its record count. */
 export const TagsGroupShowsTheVocabularyAndUsage: Story = {
   beforeEach: () => mockProjectAdminApis(),
   play: async ({ canvasElement }) => {
@@ -1802,7 +1802,7 @@ export const TagsGroupShowsTheVocabularyAndUsage: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Tags" }));
     await expect(await canvas.findByRole("table", { name: "Tags" })).toBeInTheDocument();
     await expect(canvas.getByRole("combobox", { name: "Who can add a new tag" })).toHaveValue("free");
-    await expect(canvas.getByRole("table", { name: "Where tags are used: Requirement" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("table", { name: /Where tags are used/ })).not.toBeInTheDocument();
   },
 };
 

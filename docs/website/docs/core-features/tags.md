@@ -50,7 +50,7 @@ Project managers open **Project admin → Tags** to look after the project's tag
 | Merge two tags | **⋮ → Merge … into another tag**. Records get the other tag, and the first is deleted |
 | Change many records | **⋮ → Reclassify records tagged …**: add or remove other tags, optionally for one kind of record only. **Preview** shows the count; **Apply** makes the change |
 | Delete a tag | **⋮ → Delete …**. You type the tag's name to confirm, and the dialog says how many records lose it |
-| See how tags are used | One table per kind of record: each tag, how many records of that kind carry it, and when it was last used. Tick a tag to hide it from the tables while you review the others; the box above a table filters it |
+| See where a tag is used | Press the record count in the **Used on** column. A dialog lists each kind of record that carries the tag, how many records of that kind do, and when the tag was last used, with **Reclassify** for one kind of record. A tag no record carries shows a plain count |
 
 Every change is recorded in the audit trail, and a bulk change also appears in each affected record's Activity tab.
 

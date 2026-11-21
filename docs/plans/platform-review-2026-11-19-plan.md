@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 27 done 2026-11-22). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 28 done 2026-11-22; phases 29 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
-Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
+Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-27 / 32 phases complete.
+28 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -37,7 +37,21 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; signed off 2026-11-21: By standard and Outstanding become tabs of the Standards page (Organisation filter), not Resources sections or Overview widgets | [x] |
 | 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes; signed off 2026-11-21: the shared `FolderTreeList` grid, members below it, a row actions menu | [x] |
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [x] |
-| R | Review checkpoint: all changes together | The user reviews phases 1 to 27 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
+| 28 | Tags: usage in a dialog | The "Where tags are used" section becomes a dialog opened from the record count in the Used on column | [x] |
+| 29 | Folder icons: review and fix | Every folder-tree list shows an icon of what its rows are (a stakeholder group, not a folder); icon chosen by the consuming list, not a core map | [ ] |
+| 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [ ] |
+| 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [ ] |
+| 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [ ] |
+| 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [ ] |
+| 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [ ] |
+| 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [ ] |
+| 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [ ] |
+| 37 | Text styling toolbar: compact, and a mathematics button | Smaller toolbar buttons; a decision gate on a mathematics button and how it works | [ ] |
+| 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [ ] |
+| 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [ ] |
+| 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [ ] |
+| 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [ ] |
+| R | Review checkpoint: all changes together | The user reviews phases 1 to 41 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
 | S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
@@ -67,6 +81,20 @@ flowchart LR
     P25["25 Compliance homes"] --> R
     P26["26 Stakeholder Groups"] --> R
     P27["27 Tags creation"] --> R
+    P28["28 Tags"] --> R
+    P29["29 Folder icons"] --> R
+    P30["30 Architecture page"] --> R
+    P31["31 Record codes settings"] --> R
+    P32["32 Stage workflow editor"] --> R
+    P33["33 Admin section scroll"] --> R
+    P34["34 Record detail card order"] --> R
+    P35["35 Tree selector"] --> R
+    P36["36 Make change request"] --> R
+    P37["37 Text styling toolbar"] --> R
+    P38["38 Global navigation"] --> R
+    P39["39 Standards cards"] --> R
+    P40["40 Standards org filter"] --> R
+    P41["41 Sign-in page"] --> R
     P3 --> R{"R Review"}
     P5 --> R
     P6 --> R
@@ -76,7 +104,7 @@ flowchart LR
     R --> D["D Register clean-up"] --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
 ```
 
-Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
+Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 41 fourteen more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
 
 ## Findings and objections
 
@@ -432,9 +460,124 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 - As built: the style guide's "Pattern: creation controls on demand" and one line in `CLAUDE.md` (**Decided by: User**). The review read every `+` and Add control and every inline add row: the Tags page, Project Administration's stage and custom field sections and the shared `DefinitionList` (twelve vocabularies) drew permanent fields. The user chose to convert `DefinitionList` too. `DefinitionAddModal` gives every vocabulary an Add button and a dialog with one field per column; `TagCreateModal`, `StageCreateModal` and `CustomFieldCreateModal` do the same for the other three. Stated exceptions: the change request task row (a checklist quick-add), `InlineStructureForm` inside the new requirement dialog (an empty state) and comment boxes. No check script (**Decided by: Agent**). Stories for every converted panel, a Tags Playwright spec, and about twenty specs moved to the dialog (`addDefinition` helper). See `docs/decisions.md`.
 
+### Phases 28 to 41 — Items from the review of 2026-11-22
+
+Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 29 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
+
+### Phase 28 — Tags: usage in a dialog
+
+**Why:** raised 2026-11-22: on the organisation Tags page (`TagAdminPanel`, strings `usageHeading` "Where tags are used") the usage list is a permanent section, though it is read rarely. **Risk addressed:** a page that spends its space on a secondary answer, and the count in the Used on column being a dead number. **Outcome:** the record count in the Used on column is a button that opens a dialog listing where that tag is used.
+
+- The count opens a `Modal` (shared dialog, header with a Close action) titled with the tag name and showing the existing usage content (record type, record code and title, linking to the record); the permanent section is removed. `TagAdminPanel` is shared by the organisation and project pages (`OrgTagsPanel`, `ProjectTagsPanel`), so both change together. A count of zero is plain text, not a button.
+- The button has an accessible name ("Show where {tag} is used") and a tooltip with the same text, per the style guide's help-on-interactive-elements rule.
+- Tests: Storybook for the panel and the dialog (populated, zero, many records); Playwright opens the dialog from the count and follows a record link; the existing spec that reads the section is updated.
+
+- As built (**Decided by: User** for the request; **Decided by: Agent** for the rest): the user's screenshot showed the whole section moving into a dialog. `TagUsageModal` shows one tag's rows (kind of record, count, last used, sortable, Reclassify limited to that kind); the hide ticks, filter boxes and "Not used anywhere" chips went with the section. The plan's "record code and title, linking to the record" was not built: the section never listed records, and the organisation has no records-by-tag endpoint. `TagUsage.unused` stays in the API. Stories and the project and organisation Playwright specs updated; the website's Tags page updated. See `docs/decisions.md`.
+
+### Phase 29 — Folder icons: review and fix
+
+**Why:** raised 2026-11-22: after the Stakeholder Groups change (phase 26) a group row still shows a folder icon. **Risk addressed:** an icon that says "folder" for a thing that is a group, a collection or a standard, so rows of different kinds look the same. **Outcome:** each folder-tree list shows an icon of what its rows are, and a row that really is a folder keeps the folder icon.
+
+- Review first: list every use of the folder icon and of `FolderTreeList` / `useOpenFolders` (report folders, the Structure page, Stakeholder Groups, Architecture folders and collections, document folders, the rest the search finds) and state for each what a row is and which icon should show. The list is shown to the user before the fixes if it recommends an icon the product does not yet have.
+- The icon is chosen by the consuming list and passed to `FolderTreeList` (a generic prop, for example `rowIcon`); core never keeps a kind-to-icon map a module must add to (the module boundary rule). A module's own icon comes from its registration (`navIcons.ts` shows the mechanism).
+- Tests: Storybook for each changed list; a unit test that no folder-tree consumer relies on the default folder icon without stating that its rows are folders.
+
+### Phase 30 — Architecture elements and collections: UI review and an actions-menu rule
+
+**Why:** raised 2026-11-22 for `/orgs/:orgId/resources/architecture-elements`: the page header carries three separate buttons where one actions menu would do, and the purpose of the "Folders" box is unclear. **Risk addressed:** a page whose controls cannot be understood, and each page choosing its own number of header buttons. **Outcome:** the page has one primary action, one actions menu for the rest, and a Folders area whose purpose is clear or which is gone; and a rule that stops the pattern recurring.
+
+- UI review first, with a screenshot: say what the three buttons do, what the Folders box (`FolderPanel`) does and who uses it, whether collections and folders are one concept shown twice, and which shared component each element should be (`ListPageLayout`, `ActionMenuList`, the shared create form, the folder tree of phase 22 and 26). The register is shown to the user before the fixes if it recommends removing or merging a concept.
+- Rule (**Decided by: User** for the rule; **Decided by: Agent** for the wording): a page or list shows at most one primary action as a button (the Add control of "creation controls on demand"); every further action on the page (import, export, folders, bulk actions, settings) is an item of one actions menu (`ActionMenu`, `ActionMenuList`, `.menu-item` rows), never a row of separate buttons. Exceptions stated on the page: a toggle that changes the view, and a button whose state the person must see (a running validation). Added to `docs/ux-style-guide.md` and as one line in `CLAUDE.md`; applies to the same shape found elsewhere in the review's search (`ListActions`, record headers, panel headers), each converted in this phase or given a stated reason.
+- Tests: Storybook for the page's closed and open menu; Playwright for the menu actions and for the Folders area as decided; `scripts/check_menu_rows.py` stays green (a check script for the rule is considered after the search shows how many cases there are, and the decision is recorded).
+
+### Phase 31 — Record codes settings: sections by module
+
+**Why:** raised 2026-11-22 for the Record codes panel on `/orgs/:orgId/admin/projects` (`RecordCodePrefixPanel`) and its project equivalent in Project Administration: it wastes space and is one long list. **Risk addressed:** a settings list that grows with every module and cannot be scanned. **Outcome:** a compact panel whose record types sit under a section for Core and one for each module.
+
+- UI review first for the organisation and the project panel, which share the component: list the wasted space (widths, padding, rows that could share a line), then group the rows into foldable sections through the style guide's "aligned rows and foldable blocks in a settings panel" pattern. The groups come from the registry (each module's own label and its registered artefact types), never a hard-coded module list in a core file (the module boundary rule); Core types form the first section.
+- The project panel keeps showing which values it overrides and which it inherits from the organisation or an ancestor project (phase 10), per section; a section with an override shows it when folded.
+- Tests: Storybook for both pages with several modules and an override; Playwright sets, clears and inherits a prefix inside a section.
+
+### Phase 32 — Stage workflow editor: one line per stage
+
+**Why:** raised 2026-11-22: the edit workflow dialog (`StageWorkflowEditor`, `StageWorkflowsPanel`) is poorly laid out: controls do not line up, drop-downs run the full width though their options are short, and buttons are on their own lines. **Risk addressed:** a dialog that is hard to read and slow to edit, and a panel written without the aligned-rows pattern. **Outcome:** one line per stage with its controls inline, at widths that fit their content.
+
+- UI review first with a screenshot: list each control per stage (name, type, transitions, order, actions), then rebuild as a grid with one row per stage (`DefinitionList layout="grid"` or the shared row pattern, `LabeledSelect`/`InlineSelect` sized to their options, a row actions menu per the style guide), inside the dialog with the form header (Save in the header).
+- Tests: Storybook for few, many and empty stages and a narrow width; Playwright adds, reorders and removes a stage and saves, with a bounding-box check that the controls of a row share one line.
+
+### Phase 33 — Administration section list scrolls separately
+
+**Why:** raised 2026-11-22: on the organisation administration pages the list of sections (Users, Groups, Pain point submission and the rest) scrolls with the page. Selecting a section near the bottom of a long list leaves the content scrolled past its start, so a short section looks empty until the person scrolls up. **Risk addressed:** content that cannot be seen after a selection. **Outcome:** the section list has its own scroll area, and a chosen section always opens at its top.
+
+- The section list is a sticky column that fills the viewport height and scrolls on its own; the content column scrolls with the page. The same shell is used by Project Administration and server administration, so all share the fix through the one shared shell, not per page (`OrgAdminPage`, `ProjectAdminPage`; the admin menu in `modules/adminMenu.ts`).
+- Changing section scrolls the content to its top (a defect on its own even with the separate scroll); the selected entry is scrolled into view in the list on a deep link.
+- Tests: Storybook with a list longer than the viewport; Playwright selects the last section from a long list and asserts that the content heading is visible.
+
+### Phase 34 — Record detail card order: a rule and the fixes
+
+**Why:** raised 2026-11-22: "Components and codes" (`RequirementPlaces`, `RecordPlacements`) appears at the top of a record's detail page, above the details of the record itself, and new cards are placed wherever they were added. **Risk addressed:** a detail page whose most-used information is pushed down by whichever card was added last, and a comment thread that, being long, hides everything below it. **Outcome:** every detail page follows one default order, and the rule that states it is in the agent instructions.
+
+- Rule (**Decided by: User** for the rule; **Decided by: Agent** for the wording): on a record's detail page, cards run from what the record is to what is least often needed: the record's own details first, then the information most relevant to the card's purpose, then supporting and organising information (components and codes, tags, external references), then links, watching and activity, and **comments or discussion last**, because a thread can grow long and must not need scrolling past to reach other information. A new card is placed by this order, never at the top by default; a deviation is stated on the page. Added to `docs/ux-style-guide.md` and as one line in `CLAUDE.md`.
+- Apply: review every record detail page (core and module `DetailLayout` users) and list its card order against the rule; fix each one that deviates, starting with Components and codes above discussion. The order is expressed once, through `DetailLayout` slots or an order field on the shared cards, not by editing each page's markup, so a later card lands in a sane place.
+- Tests: Storybook for a detail page with every card; a test that comments are the last card of every detail page that has them.
+
+### Phase 35 — Tree selector: chevron styling and placement
+
+**Why:** raised 2026-11-22 for the tree dropdown used by Components and codes (`TreeSelect`, `TreeSelectField`): the expand chevron is drawn with button styling, and the user is unsure whether the chevron and the checkbox should sit side by side. **Risk addressed:** a control that looks like a button inside a row that is itself the choice, and an unclear target. **Outcome:** a plain chevron, and a stated placement.
+
+- Remove the button styling (border, background, padding) from the chevron, keeping a keyboard-focusable control with an accessible name and a hit area large enough to touch.
+- Placement (**Decided by: User**, 2026-11-22): the chevron stays on the left, indented by depth, beside the label; the checkbox moves to a **column on the right edge**, so every checkbox lines up whatever the depth or label length (a checkbox beside the indented chevron would step across the list with each level). The whole row stays the click target for the choice, a row highlight on hover and focus ties a distant checkbox to its label, and a single-choice tree has no checkbox column (the row itself is the choice). Review in Storybook that a narrow dropdown still keeps the label and the checkbox readable together, and that a parent row's checkbox means the same as a child's (the existing selection rule is unchanged).
+- Check `FolderTreeList`, `TreeView` and `ProjectTree` for the same chevron styling and fix them through the one shared chevron if they differ.
+- Tests: Storybook for single and multiple selection with several depths; Playwright expands, selects and navigates by keyboard.
+
+### Phase 36 — Requirements: Make change request in the actions menu
+
+**Why:** raised 2026-11-22: "Make change request" (`strings.makeChangeRequest`) is a separate control on the requirement page, though the record has an action menu. **Risk addressed:** actions split between a menu and loose buttons, which phase 30's rule forbids. **Outcome:** the action is an item of the requirement's action menu.
+
+- Move it into the `RecordHeader` object actions of the requirement page, with the same permission gate and disabled reasons as today; check the other record types that carry a make-change-request button (Compliance findings, the Links panel's creator) and move any that sit outside their menu in the same way.
+- Tests: Storybook for the menu with and without permission; the Playwright specs that press the button open the menu first.
+
+### Phase 37 — Text styling toolbar: compact, and a mathematics button
+
+**Why:** raised 2026-11-22: the toolbar buttons of the Markdown and visual editors (`RichTextToolbar`, `ToolbarButton`) could be more compact, and a mathematics button might help. **Risk addressed:** a toolbar that takes a row of space, and mathematics that a person must know to type as `$…$`. **Outcome:** a compact toolbar, and a decided answer on a mathematics button.
+
+- Compact: smaller buttons and spacing, buttons grouped with separators, the less common ones behind one overflow menu if the width requires it, all still with an accessible name and a tooltip. Applies to every editor sharing the toolbar (Markdown, visual, policy).
+- **Decision gate (mathematics button), recommend yes:** the product already renders `$…$` and `$$…$$` as KaTeX in fields declared `markdown="math"` (the requirement description; phase 16). Options: (a) a button, shown only in a field declared for mathematics, that wraps the selection in `$…$` (or inserts `$$` blocks) and opens a small preview of the rendered formula; (b) no button, a help line naming the syntax. (a) costs one toolbar item and a preview popover and makes a feature discoverable; the toolbar must hide it in fields where mathematics is not rendered, so a person is never offered something that will print as raw marks. **Decided by:** User at the start of the phase.
+- Tests: Storybook for the compact toolbar in each editor and for the mathematics insert; Playwright types a formula through the button where it is available and asserts it renders.
+
+### Phase 38 — Global navigation: collapsible groups
+
+**Why:** raised 2026-11-22: the global navigation (`Layout.tsx`, `NavRailLink`) lists every entry under group labels (Project, Global, Standards and the like), so reaching a lower group needs a long scroll. **Risk addressed:** a navigation that grows with every module and hides its lower groups. **Outcome:** each group label has a chevron that folds and unfolds its entries.
+
+- Groups are generic (built from the registry's nav entries, never a per-module case in `Layout.tsx`); the chevron is a plain disclosure control (`aria-expanded`, keyboard operable) beside the label; the group holding the current page is open on arrival and cannot hide the active entry; the open or folded state is remembered per person (`localStorage`, wrapped in try/catch and rendering correctly without it, as browser storage is only a convenience); a collapsed rail (icons only) shows no chevrons.
+- Open question for the review: whether a group folded by the person stays folded when a notification or a link opens a page inside it (recommend: it opens, since the active entry must be visible).
+- Tests: Storybook for open, folded and active-in-folded states; Playwright folds a group, reloads, and checks that the state is kept and that the active entry's group is open.
+
+### Phase 39 — Compliance standards: cards styled as project cards
+
+**Why:** raised 2026-11-22: on the Compliance Standards page the standard titles do not read as links and the cards look worse than the project cards on the Projects page. **Risk addressed:** two card styles for the same kind of object, and a title that does not look clickable. **Outcome:** a standard card has the project card's look, through one shared card.
+
+- Review the project card (title as a link, secondary text, status, actions menu) and the standard card; extract the shared card component if it is not yet shared and move the Projects page onto it too (the shared-component rule), then use it for standards, passing the module-specific content as children or slots. The title is the link, styled as the product styles links elsewhere; the whole card does not become a link where it holds actions.
+- Tests: Storybook for both cards side by side in light and dark themes; Playwright opens a standard from its title.
+
+### Phase 40 — Compliance standards: organisation filter
+
+**Why:** raised 2026-11-22: on the Compliance Standards page (phase 25 gave it an Organisation filter) the organisation selector does not show every organisation by default, the organisation is not shown on the standard, and the selector is not in the filter panel. **Risk addressed:** a person seeing only one organisation's standards without being told, and a filter outside the filter panel the style guide requires. **Outcome:** every organisation's standards show by default, each standard states its organisation, and the selector is a filter in the panel.
+
+- The selector becomes a `FilterSelect` (or the multi-choice equivalent) in the page's `ListPageLayout` filter panel, defaulting to all organisations the person can see; its state is in the URL (`useUrlChoice`/`useUrlList`) so it survives the list-position rule. Each card and list row shows the organisation (the shared card of phase 39), through the organisation code convention.
+- Review first: say which page the user meant by "settings" if it differs (the Standards page, Organisation Settings or the project's Compliance page), and apply the same filter placement to any other Compliance page with a free-standing organisation selector.
+- Tests: Storybook for the filter panel; Playwright with two organisations confirms both appear by default, the filter narrows them, and the organisation is visible on each standard.
+
+### Phase 41 — Sign-in page: no redirect notice
+
+**Why:** raised 2026-11-22: when the sign-in will return the person to a page, the sign-in page adds text saying so (`strings.login.returnToPage`, added by phase 1), which is not needed. **Risk addressed:** noise on the page people see most. **Outcome:** the sign-in page shows no such message.
+
+- Remove the message from `LoginPage` and `OrgLoginPage`; keep the explicit message a redirect carries for its own reason (for example a lapsed session reaches the page with its own text in the router state) unless the user also wants that removed (confirm in the phase). **Decided by: User**, 2026-11-22: no replacement text anywhere. A person who has to sign in again expects unsaved content to be gone, and the message never changed what happened to it; phase 1's note that unsaved content is not preserved is dropped with it.
+- Tests: the Phase 1 Playwright specs assert the message is absent while the return still works; story updated.
+
 ### Phase R — Review checkpoint: all changes together
 
-**Why:** twenty-seven phases across fifteen tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
+**Why:** forty-one phases across twenty-nine tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
 
 - The user reviews the running stack with every phase in place; each item raised becomes a numbered phase or is fixed in place; W starts only after the sign-off is recorded (**Decided by: User**).
 
@@ -447,7 +590,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Move what is durable out: any rule a later contributor needs to follow (the notification target kinds and the "no type lacks a target" guard, the Org Resources classification rule and `orgResourceSections`, the prefix rule and structure tree) is in `docs/modules.md`, `docs/ux-style-guide.md` or `docs/solution-architecture.md` as its owner, or is added there; the register then keeps only the per-row classification, with a link to that owner. Do not copy tables that the code already declares (a registry, a test inventory).
 - Overlap: where two registers or a register and the Org Resources "Behaviour to preserve" list describe the same rows (Compliance after phase 25), keep one and link to it.
 - References: rewrite any link whose wording or anchor changed; `docs/decisions.md` cites a register by its topic. Source files and `docs/soc2/` never cite a register or a phase (checked by `scripts/check_doc_links.py`).
-- Archive: the registers move with the plan. When the Status table reads 32/32, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
+- Archive: the registers move with the plan. When the Status table reads 46/46, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
 - Tests: `python scripts/check_doc_links.py` and `backend/tests/test_doc_links.py`; every Mermaid diagram touched renders.
 - Decided by: Agent (the scope of "clean-up"); revisit on the user's correction.
 
@@ -494,4 +637,4 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - **Phase 18 changes how every test runs:** a shared fixture, a template database or a shard boundary can hide an ordering assumption that a serial run never exposed; mitigated by the guardrails and the shuffled and repeated passes. It is also the one phase whose benefit comes from landing early, while the others only need it before R.
 - **No performance run is planned in the phases;** phase W reviews whether a new lookup on every create and a long-text render moved a measured number, and phase C does not run load scenarios (the project decided against performance tests in CI).
 
-When the table reads 32/32: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 46/46: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

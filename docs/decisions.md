@@ -19506,3 +19506,21 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 **Review (identify → verify → remediate).** No authorization, audit, retention or tenant rule changed: the same API calls under the same gates, only reached through a dialog. Nothing is logged that was not before. Remediated: the scoped link type assertion above.
 
 **Review table.** Modular boundary: `DefinitionAddModal` is generic; no core file names a module. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP and perf: not applicable (no stored data or endpoint changed). Website: the Tags and stages pages describe the New tag and New stage buttons. Style guide: the new pattern and the aligned-rows pattern now describe the Add button. Formal wording: "New tag", "Add".
+
+## Platform review 2026-11-19, Phase 28: tag usage in a dialog (2026-11-22)
+
+**Problem.** The Tags page (`TagAdminPanel`, organisation and project) closed with a permanent "Where tags are used" section: one table per kind of record for every tag, with a filter box, hide ticks and a Reclassify button per row. It is read rarely, took most of the page, and the count in the Used on column was a dead number.
+
+**Decided by: User.**
+- *The record count opens the content* (the request, with a marked screenshot): the count in the Used on column is a button, and the section is removed from the page.
+
+**Decided by: Agent (revisable on its own judgement).**
+- *The dialog is for one tag* (`TagUsageModal`, titled `Where "<tag>" is used`): one row per kind of record, with the count, the last use and Reclassify limited to that kind (the panel closes the dialog and opens its reclassify dialog). Its data is the usage the panel already loads, so there is no new request or endpoint. The hide ticks and the per-table filter box are gone, since they only served the all-tags view; the "Not used anywhere" chips are gone too, as a tag with no records shows "0 records" in the main table. The count is a plain `btn btn-sm` button with an accessible name and a tooltip of the same text ("Show where <tag> is used"); a count of zero is plain text.
+- *No record list.* The plan text asked for "record code and title, linking to the record", but the section never listed records (only counts by kind), the project has a find-by-tag endpoint and the organisation has none, so a record list would have needed a new organisation endpoint. The dialog keeps the content the section had; a record list per tag remains possible through `GET .../tags/records` if wanted.
+- *`TagUsage.unused` stays in the API.* The page no longer reads it, but it is a shipped response field with its own test; removing it would be a breaking change with no stated reason.
+
+**Tests.** Storybook: `TagAdminPanel` (no usage section on the page, the count opens the dialog with only that tag's rows, a zero count is text, many kinds of record, an inherited list offers no Reclassify, Reclassify from a row limited to its kind), the Project Administration Tags group. Playwright: the project spec opens the dialog from the count and reclassifies from a row; the organisation spec reads the Persona row in the dialog. The tags spec passes twice in a row against the same database.
+
+**Review (identify → verify → remediate).** No authorization, audit, retention or tenant rule changed: the same usage call, which already omits a kind of record the caller cannot view (the dialog shows an empty state if the count includes records of such a kind). Nothing is logged that was not before. Remediated during the build: `scripts/check_sortable_columns.py` flagged the dialog's table, so its columns sort (`useTableSort`).
+
+**Review table.** Modular boundary: `TagUsageModal` is generic; no core file names a module. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP and perf: not applicable (no stored data or endpoint changed). Website: the Tags page's "See where a tag is used" row and the project administration summary are updated. The Phase 27 review note about the usage tables' column alignment no longer applies, as those tables are gone.

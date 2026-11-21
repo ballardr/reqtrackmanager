@@ -101,6 +101,21 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
     await expect(page.getByRole("button", { name: `Remove tag ${renamed}` })).toBeVisible();
   });
 
+  await test.step("the record count opens where the tag is used, in a dialog and not a page section", async () => {
+    await page.goto(`/projects/${project.id}/admin/tags`);
+    await expect(page.getByRole("heading", { name: "Where tags are used" })).toHaveCount(0);
+    await page.getByRole("button", { name: `Show where ${renamed} is used`, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: `Where "${renamed}" is used` });
+    const row = dialog.getByRole("row", { name: /Persona/ });
+    await expect(row).toContainText("1 record");
+    await row.getByRole("button", { name: /Reclassify/ }).click();
+    const reclassify = page.getByRole("dialog", { name: `Reclassify records tagged "${renamed}"` });
+    await expect(reclassify.getByRole("combobox", { name: "Only these record types" })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(reclassify).toHaveCount(0);
+  });
+
   await test.step("a custom colour is typed as a hex code and shown on the tag; a bad code is refused", async () => {
     await page.goto(`/projects/${project.id}/admin/tags`);
     await page.getByRole("button", { name: renamed, exact: true }).click();
@@ -267,7 +282,11 @@ test("an organisation-owned persona is tagged from a project and managed in Org 
 
   await page.goto(`/orgs/${org.id}/resources/tags`);
   await expect(page.getByRole("table", { name: "Tags", exact: true }).getByText(tag)).toBeVisible();
-  await expect(page.getByRole("table", { name: "Where tags are used: Persona" }).getByText(tag)).toBeVisible();
+  await page.getByRole("button", { name: `Show where ${tag} is used`, exact: true }).click();
+  const usage = page.getByRole("dialog", { name: `Where "${tag}" is used` });
+  await expect(usage.getByRole("row", { name: /Persona/ })).toContainText("1 record");
+  await page.keyboard.press("Escape");
+  await expect(usage).toHaveCount(0);
 
   await page.goto(`/projects/${project.id}/admin/tags`);
   await expect(page.getByRole("table", { name: "Tags", exact: true })).toHaveCount(0);
