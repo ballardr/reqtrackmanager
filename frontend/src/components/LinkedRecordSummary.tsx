@@ -10,7 +10,8 @@
  * Two layouts. `inline` (the trace tree) leads with the relationship as a pill. `list` (the Links
  * panel) groups rows under their relationship, so it shows no pill: the record's title is the
  * link (named in full, code included, for assistive technology), its code is a small muted
- * suffix, and the status, archived flag and project are plain muted text.
+ * suffix, and the status, archived flag, the note of a carried-over link ("Copied from REQ-001") and project are plain
+ * muted text.
  *
  * Responsibilities: presentation only. It renders a fragment, so the caller
  * owns the row container (and any controls beside it, such as Remove).
@@ -66,6 +67,7 @@ export function LinkedRecordSummary({
         </span>
         {statusLabel && <span className="artefact-links__meta">{statusLabel}</span>}
         {node.is_archived && <span className="artefact-links__meta">{strings.artefactLinks.archivedBadge}</span>}
+        {edge.note && <span className="artefact-links__meta">{edge.note}</span>}
         {elsewhere && (
           <Link className="artefact-links__meta" to={`/projects/${node.project_id}`}>
             {strings.artefactLinks.otherProjectBadge(node.project_name ?? "")}

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ChangeRequest
@@ -34,6 +34,7 @@ from app.models.enums import ChangeRequestKind, RequirementLevel, StagePhaseKind
 from app.models.project import ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.models.stage_workflow import StagePhasePlan, StageWorkflowPhase
 from app.modules.registry import ReportFieldProvider
 from app.services.report_fields import (
@@ -70,6 +71,15 @@ def _target_stage_plan(column: Any) -> Any:
     )
 
 
+def _alias_codes() -> Any:
+    """A correlated subquery: the active alias codes of the requirement, `; `-separated (NULL when it has none)."""
+    return (
+        select(func.string_agg(RequirementAlias.unique_code, "; "))
+        .where(RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False))
+        .scalar_subquery()
+    )
+
+
 CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "requirement": from_search(
         CORE_SEARCH_PROVIDERS["requirement"],
@@ -93,6 +103,8 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         date_field("target_stage_phase_expected_end", "Target stage phase expected end", _target_stage_plan(StagePhasePlan.expected_to)),
         instant_field("target_stage_phase_started_at", "Target stage phase started at", _target_stage_plan(StagePhasePlan.started_at)),
         enum_field("level", "Level", RequirementVersion.level, RequirementLevel),
+        # The codes of the further places the requirement sits in (its aliases), so a layout can print them.
+        text_field("alias_codes", "Alias codes", _alias_codes()),
         principal_field("owner", "Owner", RequirementVersion.owner_type, RequirementVersion.owner_id),
         principal_field("reviewer", "Reviewer", RequirementVersion.reviewer_type, RequirementVersion.reviewer_id),
         date_field("review_date", "Review date", RequirementVersion.review_date),

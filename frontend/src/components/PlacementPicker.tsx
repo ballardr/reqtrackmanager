@@ -17,10 +17,11 @@ import { TreeSelect } from "./TreeSelect";
  * @param value The places chosen so far.
  * @param onChange Called with the new list (a component alone and the same component with a category are different places).
  * @param id `id` of the trigger, so a caption can point at it.
+ * @param categoryOnly Offers only categories (a requirement's further places each sit in a category).
  */
 export function PlacementPicker({
-  tree, value, onChange, id,
-}: { tree: PlacementTree; value: PlacementPair[]; onChange: (next: PlacementPair[]) => void; id?: string }) {
+  tree, value, onChange, id, categoryOnly = false,
+}: { tree: PlacementTree; value: PlacementPair[]; onChange: (next: PlacementPair[]) => void; id?: string; categoryOnly?: boolean }) {
   const strings = useStrings();
   if (tree.components.length === 0) return null;
   return (
@@ -28,7 +29,7 @@ export function PlacementPicker({
       id={id}
       triggerLabel={strings.placements.pickerLabel}
       emptyLabel={strings.placements.choose}
-      nodes={placementNodes(tree)}
+      nodes={placementNodes(tree, categoryOnly ? { title: strings.placements.categoryRequired } : undefined)}
       selectedIds={value.map(placeNodeId)}
       onChange={(ids) => onChange(placesOfNodeIds(ids, tree))}
       searchable

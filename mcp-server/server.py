@@ -715,6 +715,19 @@ async def get_record_list_report(
     return response.json()
 
 
+def _require_places(places: list[dict] | None, name: str) -> list[dict] | None:
+    """A list of `{"component_id", "category_id"}` places with both ids validated, or `None` when not given."""
+    if places is None:
+        return None
+    return [
+        {
+            "component_id": _require_uuid(place.get("component_id"), f"{name}[].component_id"),
+            "category_id": _require_uuid(place.get("category_id"), f"{name}[].category_id"),
+        }
+        for place in places
+    ]
+
+
 @mcp.tool
 async def get_requirement(project_id: str | None = None, *, requirement_id: str) -> dict:
     """Gets a single requirement's full current detail.
@@ -1988,6 +2001,7 @@ if MCP_WRITES_ENABLED:
         review_date: str | None = None,
         review_lead_days: int | None = None,
         reviewer: dict | None = None,
+        additional_places: list[dict] | None = None,
     ) -> dict:
         """Creates a new requirement. Always starts in "draft" status —
         there is no way to create one pre-approved, and no tool here can
@@ -2021,6 +2035,10 @@ if MCP_WRITES_ENABLED:
                 review_date a reminder notification fires.
             reviewer: Optional principal (same shape as `owner`) responsible for that review;
                 any one member of a group may record it.
+            additional_places: Optional further places the requirement sits in, as
+                `[{"component_id": uuid, "category_id": uuid}]` (a requirement concerning several components, such as an
+                interface). Each gets an alias code of its own (`aliases` in the result) and names the same requirement.
+                Refused (409) when the project's alias setting is Disabled.
 
         Returns:
             The newly created requirement's full detail, same shape as `get_requirement`.
@@ -2041,6 +2059,7 @@ if MCP_WRITES_ENABLED:
             "review_date": review_date,
             "review_lead_days": review_lead_days,
             "reviewer": _require_principal(reviewer, "reviewer"),
+            "additional_places": _require_places(additional_places, "additional_places") or [],
         }
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements", json=body)
         return response.json()
@@ -2064,6 +2083,7 @@ if MCP_WRITES_ENABLED:
         review_date: str | None = None,
         review_lead_days: int | None = None,
         reviewer: dict | None = None,
+        additional_places: list[dict] | None = None,
         change_note: str = "",
     ) -> dict:
         """Edits an unlocked requirement's content in place.
@@ -2101,6 +2121,10 @@ if MCP_WRITES_ENABLED:
             custom_fields: Replaces the full custom field value map if given; omit to leave unchanged.
             review_date / review_lead_days / reviewer: Review scheduling fields (`reviewer` is a
                 principal, same shape as `owner`); omit any you're not changing.
+            additional_places: Makes the requirement sit in exactly its own place plus these further places
+                (`[{"component_id": uuid, "category_id": uuid}]`, each with an alias code); a place left out is
+                retired (its code still resolves); omit to leave them as they are. Refused (409) when a new place is
+                wanted and the project's alias setting is Disabled.
             change_note: Optional note explaining why this edit was made,
                 recorded in the requirement's version history (C-A-09).
 
@@ -2136,7 +2160,85 @@ if MCP_WRITES_ENABLED:
         if keywords is not None:
             # Omitted leaves the tags alone; a stale copy of them sent back would remove tags added since the read.
             body["keywords"] = keywords
+        if additional_places is not None:
+            # Omitted leaves the further places alone; a stale copy sent back would retire places added since the read.
+            body["additional_places"] = _require_places(additional_places, "additional_places")
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
+        return response.json()
+
+    # --- Requirement aliases (a requirement in several components) -----------
+    #
+    # An alias is a further component and category a requirement sits in, with a code of its own that names the same
+    # record. Adding places is `create_requirement`/`update_requirement` with `additional_places`; these three act on
+    # one alias (ids are in the requirement's `aliases`).
+
+    @mcp.tool
+    async def remove_requirement_alias(project_id: str | None = None, *, requirement_id: str, alias_id: str) -> dict:
+        """Takes a requirement out of one of its further places. The alias code is retired: it is never reused and still
+        finds the requirement. Allowed on an approved requirement (it is placement, not content).
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            requirement_id: The requirement's UUID.
+            alias_id: The alias's id (`aliases[].id` in `get_requirement`).
+
+        Returns:
+            The requirement's new detail, same shape as `get_requirement`.
+        """
+        pid = _require_project_id(project_id)
+        rid = _require_uuid(requirement_id, "requirement_id")
+        aid = _require_uuid(alias_id, "alias_id")
+        response = await _call_backend("DELETE", f"/api/v1/projects/{pid}/requirements/{rid}/aliases/{aid}")
+        return response.json()
+
+    @mcp.tool
+    async def promote_requirement_alias(project_id: str | None = None, *, requirement_id: str, alias_id: str) -> dict:
+        """Makes an alias's place the requirement's own, swapping the two places and their codes (no code is lost: the
+        old own code becomes an alias). Refused (409) while the requirement is approved.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            requirement_id: The requirement's UUID.
+            alias_id: The alias's id (`aliases[].id` in `get_requirement`).
+
+        Returns:
+            The requirement's new detail, same shape as `get_requirement`.
+        """
+        pid = _require_project_id(project_id)
+        rid = _require_uuid(requirement_id, "requirement_id")
+        aid = _require_uuid(alias_id, "alias_id")
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements/{rid}/aliases/{aid}/promote")
+        return response.json()
+
+    @mcp.tool
+    async def make_requirement_alias_independent(
+        project_id: str | None = None, *, requirement_id: str, alias_id: str, related_link_type_id: str | None = None,
+    ) -> dict:
+        """Turns an alias into a requirement of its own. This cannot be undone. The new requirement is a draft (never
+        approved) that takes the alias code and the original's content, links, comments, tags and attachments, is owned
+        by the caller, and is linked to the original with a Related to link. A link the approved-link lock refuses is
+        left out and listed in `skipped`.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            requirement_id: The original requirement's UUID.
+            alias_id: The alias's id (`aliases[].id` in `get_requirement`).
+            related_link_type_id: The link type joining the two, only needed (409 otherwise) when the organisation has no
+                symmetric Related to type (from `list_artefact_link_types`).
+
+        Returns:
+            `requirement_id` and `unique_code` of the new requirement, counts of what was copied and `skipped`
+            (what could not be carried over, with the reason).
+        """
+        pid = _require_project_id(project_id)
+        rid = _require_uuid(requirement_id, "requirement_id")
+        aid = _require_uuid(alias_id, "alias_id")
+        body = {
+            "related_link_type_id": _require_uuid(related_link_type_id, "related_link_type_id") if related_link_type_id else None,
+        }
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/requirements/{rid}/aliases/{aid}/make-independent", json=body,
+        )
         return response.json()
 
     # --- Project structure (components and categories) ---------------------

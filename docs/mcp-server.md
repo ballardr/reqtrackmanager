@@ -60,8 +60,9 @@ Plus these write tools, only when [write mode](#write-mode) is enabled:
 
 | Tool | Purpose |
 | --- | --- |
-| `create_requirement` | Creates a new requirement (always starts in "draft") |
-| `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
+| `create_requirement` | Creates a new requirement (always starts in "draft"); `additional_places` also places it in further components, each with an alias code |
+| `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status`; `additional_places` replaces its further places when given |
+| `remove_requirement_alias` / `promote_requirement_alias` / `make_requirement_alias_independent` | Act on one further place of a requirement: retire its code (never reused, still resolves), swap it with the own place, or turn it into a new draft requirement that takes the alias code |
 | `create_component` / `update_component` / `move_component` / `delete_component` | Structures a project: adds, renames or re-prefixes, reorders (`up` or `down`) and deletes a component. Delete only when it has no categories and no placed records (409 otherwise). Needs the project manager role; the prefix is unique and forms the requirement code |
 | `create_category` / `update_category` / `move_category` / `delete_category` | The same for a category under one component (never moved to another component). `delete_category` takes no replacement: it succeeds only when no requirement and no placed record is in the category, checked by the server in the same step (409 with the counts otherwise), so move requirements first with `update_requirement` |
 | `create_artefact_link` | Links an artefact to another record of the same project, or of a parent or child project (`other_project_id`), from either end — subject to the organisation's link restrictions, each link type's nesting scope and the caller's own permissions |

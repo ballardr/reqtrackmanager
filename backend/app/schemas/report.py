@@ -29,6 +29,9 @@ class ReportRequest(BaseModel):
         include_archived: Whether archived requirements are included.
         component_id / category_id / status / keyword: Optional filters on
             which requirements are included (R-G-03).
+        primary_places_only: When `False` (the default) a requirement that sits in further components and categories
+            is listed under each place with that place's own code and a "Same as" reference to its own code; when
+            `True` it is listed once, under its own place, so a document does not repeat its text.
         resource_file_ids: Organisation shared resource files (C-M-03) to
             render as additional report sections, appended after the
             requirement table (R-G-04). Only text/markdown files can be
@@ -45,5 +48,6 @@ class ReportRequest(BaseModel):
     category_id: UUID | None = None
     status: RequirementStatus | None = None
     keyword: str | None = None
+    primary_places_only: bool = False
     resource_file_ids: list[UUID] = []
     chapters_per_component: bool | None = None

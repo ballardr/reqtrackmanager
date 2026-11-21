@@ -187,6 +187,19 @@ def assign_project_role(headers: dict, project_id: str, user_id: str, role: str)
     r.raise_for_status()
 
 
+def place_requirement_in_component(headers: dict, project_id: str, requirement: dict, component_id: str) -> dict:
+    """Also places `requirement` in the first category of `component_id` (a further place with an alias code of its
+    own) and returns the requirement as the server now holds it."""
+    categories = httpx.get(f"{BASE}/projects/{project_id}/categories", headers=headers, timeout=30).json()
+    target = next(c for c in categories if c["component_id"] == component_id and c["id"] != requirement["category_id"])
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/requirements/{requirement['id']}/aliases",
+        json={"places": [{"component_id": component_id, "category_id": target["id"]}]}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
     r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
     r.raise_for_status()
@@ -3080,6 +3093,12 @@ def main() -> None:
 
     print("Archiving a descoped Falcon-3 requirement (demonstrates the 'Include archived' filter and Restore button)...")
     archive_requirement(h_pm, drone["id"], drone_reqs["Support geofencing with a configurable no-fly boundary"]["id"])
+
+    print("Placing the Falcon-3 return-to-launch requirement in the avionics component too (a requirement alias with a code of its own)...")
+    place_requirement_in_component(
+        h_pm, drone["id"], drone_reqs["Autonomously return to launch point when battery charge falls below 15%"],
+        drone_components["AV"]["id"],
+    )
 
     print("Linking related Falcon-3 requirements (C-G-09)...")
     gps_req = drone_reqs["Acquire GPS position lock within 5 seconds of power-on in open-sky conditions"]

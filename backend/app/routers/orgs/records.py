@@ -46,5 +46,5 @@ def get_record_by_code(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No visible record has that code.")
     return CodedRecordOut(
         artefact_type=found.artefact_type, id=found.id, project_id=found.project_id,
-        qualified_code=found.qualified_code, label=found.label,
+        qualified_code=found.qualified_code, label=found.label, alias_state=found.alias_state,
     )

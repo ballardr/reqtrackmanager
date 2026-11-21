@@ -33,6 +33,7 @@ import {
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
 import { RecordActivity } from "../components/RecordActivity";
 import { RecordTags } from "../components/RecordTags";
+import { RequirementPlaces } from "../components/RequirementPlaces";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
 import { RequirementFields } from "../components/RequirementFields";
@@ -663,6 +664,16 @@ export function RequirementDetailPage() {
           commentLabel={strings.requirements.approveCommentLabel}
           onConfirm={approveRequirement}
           onCancel={() => setApproving(false)}
+        />
+      )}
+
+      {projectId && (
+        <RequirementPlaces
+          projectId={projectId} requirement={requirement} canPlace={canEdit} canEdit={canEdit}
+          onChanged={(updated) => {
+            if (updated) setRequirement(updated);
+            void reload();
+          }}
         />
       )}
 

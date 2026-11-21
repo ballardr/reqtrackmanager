@@ -83,7 +83,10 @@ CORE_ACTION_KINDS: dict[str, str] = {
                      "file_attached", "file_linked", "file_unlinked", "comment_file_attached", "comment_file_removed",
                      "link_type_changed", "represents_added", "represents_removed", "policy_links_changed",
                      "reference_added", "reference_updated", "reference_removed"), LINKS),
-    **dict.fromkeys(("tagged", "untagged", "placed", "unplaced"), TAGS),
+    **dict.fromkeys(
+        ("tagged", "untagged", "placed", "unplaced", "alias_added", "alias_retired", "alias_promoted", "alias_made_independent"),
+        TAGS,
+    ),
     **dict.fromkeys(("granted", "revoked", "role_granted", "role_revoked", "role_assigned", "member_added",
                      "member_removed", "nested_group_added", "holder_added", "holder_removed", "watcher_added",
                      "watcher_removed", "inherited_access_materialized"), ACCESS),
@@ -129,7 +132,7 @@ CORE_METADATA_TYPES: dict[str, str] = {
     **dict.fromkeys((
         "project", "project_stage", "project_component", "project_category", "stage_workflow", "stage_phase_plan",
         "component_stage_state", "overview_layout", "nav_labels", "project_module", "project_module_subcomponent",
-        "tag_settings", "pain_point_submission_settings", "project_feedback_settings", "record_sensitivity_policy",
+        "tag_settings", "requirement_alias_settings", "pain_point_submission_settings", "project_feedback_settings", "record_sensitivity_policy",
         "scoring_model", "scoring_level", "scoring_axis", "scoring_threshold_set", "scoring_model_default",
         "scoring_enabled_models", "scoring_cell_rating_set", "scoring_band_set", "report_layout", "report_pack",
         "report_pack_set", "report_snippet", "report_folder", "report_placement", "report_run", "generated_report",

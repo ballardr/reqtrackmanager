@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -67,15 +67,18 @@ from app.modules.registry import (
 from app.schemas.principal import PrincipalRef
 from app.services import actions as action_service
 from app.services import change_request_list as change_request_service
+from app.services import requirement_aliases as alias_service
 from app.services import requirements as requirement_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.custom_fields import validate_custom_field_values
 from app.services.labels import CHANGE_REQUEST_STATUS_TONE, REQUIREMENT_STATUS_TONE
+from app.services.placements import PlacementCells, PlacementPair
 from app.services.principals import principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles
 from app.services.record_tables import PrincipalCells, find_many_by_code, parse_principal_cell
+from app.services.requirement_aliases import aliases_for_requirements
 from app.services.search_core import humanise_labels
 
 CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
@@ -251,6 +254,9 @@ class _RequirementTable:
         refs += [principal_ref(v.reviewer_type, v.reviewer_id) for v in self.versions.values()]
         self.people = PrincipalCells.load(db, refs)
         self.keywords = tag_service.keywords_for_requirements(db, ids) if ids else {}
+        # Further places and their codes, read once for the whole page.
+        self.aliases = aliases_for_requirements(db, ids)
+        self.places = PlacementCells(db, project, "requirement")
 
 
 def _prepare_requirements(db: Session, project: Project, records: list[Any]) -> _RequirementTable:
@@ -276,7 +282,18 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
 
 
 def _find_requirement(db: Session, project: Project, code: str) -> Requirement | None:
-    return db.scalar(select(Requirement).where(Requirement.project_id == project.id, Requirement.unique_code == code.upper()))
+    """The requirement a code names, its own code or any alias code."""
+    match = alias_service.find_by_code(db, project.id, code)
+    return match.requirement if match is not None else None
+
+
+def _find_many_requirements(db: Session, project: Project, codes: Sequence[str]) -> dict[str, Any]:
+    """The requirements the codes name (`{UPPER code: requirement}`), alias codes included."""
+    return alias_service.find_many_by_code(db, project.id, codes)
+
+
+#: The key of the additional-places column (the requirement's further components and categories, by prefix).
+ADDITIONAL_PLACES_KEY = "additional_places"
 
 
 def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -322,6 +339,16 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
             person_parser("reviewer"), kind="principal",
         ),
         RecordColumn("keywords", "Tags", lambda t, r: list_cell(t.keywords.get(r.id, [])), list_parser, kind="list"),
+        RecordColumn(
+            ADDITIONAL_PLACES_KEY, "Additional components and categories",
+            lambda t, r: t.places.format([
+                PlacementPair(a.component_id, a.category_id) for a in t.aliases.get(r.id, []) if a.component_id and a.category_id
+            ]),
+            lambda ctx, text: PlacementCells(ctx.db, ctx.project, "requirement").parse(text), kind="list",
+        ),
+        RecordColumn(
+            "alias_codes", "Alias codes", lambda t, r: list_cell([a.unique_code for a in t.aliases.get(r.id, [])]), kind="list",
+        ),
         RecordColumn(
             "review_date", "Review date", lambda t, r: review_date.isoformat() if (review_date := version(t, r).review_date) else "",
             date_parser("Review date"), kind="date",
@@ -437,6 +464,10 @@ def _create_requirement(ctx: RecordImportContext, values: Mapping[str, Any]) -> 
         custom_fields=custom_fields, review_date=values.get("review_date"), review_lead_days=values.get("review_lead_days"),
         reviewer=values.get("reviewer"),
     )
+    if values.get(ADDITIONAL_PLACES_KEY):
+        alias_service.set_aliases(
+            ctx.db, project=ctx.project, requirement=requirement, actor_id=ctx.user.id, pairs=values[ADDITIONAL_PLACES_KEY],
+        )
     log_event(ctx.db, entity_type="requirement", entity_id=requirement.id, action="created", actor_id=ctx.user.id,
               project_id=ctx.project.id, detail={"via": "record_import"})
     requirements_created_total.inc()
@@ -480,6 +511,7 @@ def _update_requirement(ctx: RecordImportContext, requirement: Requirement, valu
         review_lead_days=values.get("review_lead_days"), review_lead_days_explicitly_set="review_lead_days" in values,
         reviewer=values.get("reviewer"), reviewer_explicitly_set="reviewer" in values,
         component_id=component_id, category_id=category_id, keywords=values.get("keywords"),
+        additional_places=values.get(ADDITIONAL_PLACES_KEY),
     )
     log_event(ctx.db, entity_type="requirement", entity_id=requirement.id, action="updated", actor_id=ctx.user.id,
               project_id=ctx.project.id, detail={"via": "record_import"})
@@ -503,7 +535,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     columns=_requirement_columns,
     list_records=_list_requirements,
     find=_find_requirement,
-    find_many=find_many_by_code(Requirement, "project_id"),
+    find_many=_find_many_requirements,
     prepare=_prepare_requirements,
     create=_create_requirement,
     update=_update_requirement,

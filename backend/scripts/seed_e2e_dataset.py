@@ -200,6 +200,8 @@ LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 # approval dialog's "can no longer be merged, with the reason" state has a fixed fixture. Read-only: nothing here may
 # approve or reject that request (change-request-proposed-links.spec.ts builds its own disposable organisation for that).
 PROPOSED_LINKS_PROJECT_NAME = "Zeta-1 Proposed Links Demo"
+ALIASES_PROJECT_NAME = "Eta-1 Requirement Aliases Demo"
+ALIASES_DISABLED_PROJECT_NAME = "Theta-1 Aliases Disabled Demo"
 
 # Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
 # all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
@@ -791,6 +793,19 @@ def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, st
     return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
 
 
+def add_requirement_alias(headers: dict, project: dict, requirement: dict) -> dict:
+    """Places `requirement` in the other component and category of a `seed_project_content` project (its Software
+    Performance when it sits in Hardware, else Hardware Functional) and returns the requirement with its alias."""
+    categories = httpx.get(f"{BASE}/projects/{project['id']}/categories", headers=headers, timeout=30).json()
+    other = next(c for c in categories if c["id"] != requirement["category_id"])
+    r = httpx.put(
+        f"{BASE}/projects/{project['id']}/requirements/{requirement['id']}/aliases",
+        json={"places": [{"component_id": other["component_id"], "category_id": other["id"]}]}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def seed_project_content(headers: dict, project: dict, req_count: int) -> list[dict]:
     """Adds two components, two categories, and `req_count` requirements to a project."""
     hw = create_component(headers, project["id"], "Hardware", "HW")
@@ -1070,6 +1085,21 @@ def main() -> None:
     r.raise_for_status()
     # Made after the request: the third record is now linked directly, so that proposed link cannot be merged.
     create_artefact_link(h_ab, zeta1["id"], "requirement", zeta1_reqs[0]["id"], related_type["id"], "requirement", zeta1_reqs[3]["id"])
+
+    print(f"Creating {ALIASES_PROJECT_NAME!r} (a requirement placed in two components, with an alias code) and"
+          f" {ALIASES_DISABLED_PROJECT_NAME!r} (new aliases disabled; its existing alias still resolves)...")
+    eta1 = create_project(
+        h_ab, alpha["id"], ALIASES_PROJECT_NAME, "E2E seed project holding a requirement that sits in two components.",
+    )
+    eta1_reqs = seed_project_content(h_ab, eta1, 3)
+    eta1_aliased = add_requirement_alias(h_ab, eta1, eta1_reqs[0])
+    theta1 = create_project(
+        h_ab, alpha["id"], ALIASES_DISABLED_PROJECT_NAME, "E2E seed project where new requirement aliases are disabled.",
+    )
+    theta1_reqs = seed_project_content(h_ab, theta1, 3)
+    theta1_aliased = add_requirement_alias(h_ab, theta1, theta1_reqs[0])
+    r = httpx.put(f"{BASE}/projects/{theta1['id']}/requirement-aliases", json={"mode": "disabled"}, headers=h_ab, timeout=30)
+    r.raise_for_status()
 
     print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
     fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)
@@ -1411,6 +1441,9 @@ def main() -> None:
     print(f"\n{PROPOSED_LINKS_PROJECT_NAME!r} ({zeta1['id']}) holds a submitted change request on {zeta1_reqs[0]['unique_code']}"
           f" proposing links to {', '.join(r['unique_code'] for r in zeta1_reqs[1:])}; the link to {zeta1_reqs[3]['unique_code']}"
           " is unmergeable (already linked), the other two are valid. Read-only fixture.")
+    print(f"\n{ALIASES_PROJECT_NAME!r} ({eta1['id']}) holds {eta1_aliased['unique_code']} with the alias "
+          f"{eta1_aliased['aliases'][0]['unique_code']}; {ALIASES_DISABLED_PROJECT_NAME!r} ({theta1['id']}) holds "
+          f"{theta1_aliased['unique_code']} with the alias {theta1_aliased['aliases'][0]['unique_code']} and new aliases disabled.")
     print(f"\nLocked requirement for CR workflow: {locked_req['unique_code']} ({locked_req['name']}) in Alpha-1 ({alpha1['id']})")
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")

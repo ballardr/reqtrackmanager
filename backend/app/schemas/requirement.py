@@ -15,12 +15,27 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus, StagePhaseKind
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
+
+
+class RequirementAliasIn(BaseModel):
+    """A further place (component and category) a requirement should sit in."""
+
+    component_id: UUID
+    category_id: UUID
+
+
+class RequirementAliasOut(RequirementAliasIn):
+    """A requirement's alias: the code of one further place it sits in."""
+
+    id: UUID
+    unique_code: str
+    is_retired: bool = False
 
 
 class RequirementCreate(BaseModel):
@@ -46,6 +61,8 @@ class RequirementCreate(BaseModel):
     review_date: date | None = None  # C-R-06
     review_lead_days: int | None = None  # C-R-08 per-requirement override
     reviewer: PrincipalRef | None = None  # C-R-10
+    # Further places, each given a code of its own (needs the project's alias setting to be Allowed).
+    additional_places: list[RequirementAliasIn] = Field(default=[], max_length=49)
 
 
 class RequirementUpdate(BaseModel):
@@ -68,6 +85,9 @@ class RequirementUpdate(BaseModel):
     # Omitted leaves the requirement's tags as they are (a stale copy sent back would remove tags added since);
     # a list replaces them (`services.tags`).
     keywords: list[str] | None = None
+    # Omitted leaves the further places as they are; a list makes the requirement sit in exactly these (an alias no
+    # longer listed is retired, its code kept).
+    additional_places: list[RequirementAliasIn] | None = Field(default=None, max_length=49)
     custom_fields: dict[str, Any] = {}
     change_note: str = ""
     review_date: date | None = None  # C-R-06 (blocked by is_locked() once approved, same as every other field here)
@@ -103,6 +123,8 @@ class RequirementOut(ProjectScopedRow):
     completed_at: datetime | None = None
     completed_by: UUID | None = None
     keywords: list[str]
+    # The further places the requirement sits in, each with its own code (empty when it has none).
+    aliases: list[RequirementAliasOut] = []
     custom_fields: dict[str, Any]
     created_at: datetime
     updated_at: datetime

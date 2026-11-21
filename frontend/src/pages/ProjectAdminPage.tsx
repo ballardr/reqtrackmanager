@@ -50,6 +50,7 @@ import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { ProjectExternalSystemsPanel } from "../components/ExternalSystemsPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
+import { RequirementAliasSettingsPanel } from "../components/RequirementAliasSettingsPanel";
 import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
@@ -2148,6 +2149,10 @@ export function ProjectAdminPage() {
             <Plus /> {strings.admin.newComponent}
           </button>
         </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.structure.requirementAliases" title={strings.requirementAliases.settings.heading}>
+          {projectId && <RequirementAliasSettingsPanel scope={{ kind: "project", projectId }} />}
         </CollapsibleSection>
       </div>
       )}

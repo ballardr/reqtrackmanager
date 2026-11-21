@@ -21,6 +21,7 @@ import { downloadBlob } from "../utils/download";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ReportExportButton } from "./ReportExportButton";
 import { Spinner } from "./Spinner";
+import { CheckboxField } from "./FormFields";
 import { FormGrid } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 
@@ -42,6 +43,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const [resourceFileIds, setResourceFileIds] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [chaptersPerComponent, setChaptersPerComponent] = useState<boolean | null>(null);
+  const [ownPlacesOnly, setOwnPlacesOnly] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -62,6 +64,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         format: kind,
         resource_file_ids: resourceFileIds,
         chapters_per_component: TABLE_FORMATS.includes(kind) ? null : chaptersPerComponent,
+        // Sent only when ticked: a requirement in several components is otherwise listed under each.
+        ...(ownPlacesOnly ? { primary_places_only: true } : {}),
       });
       const projectName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${projectName}-requirements.${kind}`);
@@ -93,6 +97,10 @@ export function RequirementReportPanel({ project }: { project: Project }) {
             { value: "false", label: strings.reports.chapterLayoutContinuous },
           ]}
           placeholder={strings.reports.chapterLayoutAuto}
+        />
+        <CheckboxField
+          help={strings.help.reportOwnPlacesOnly} heading={strings.reports.placesHeading}
+          label={strings.reports.ownPlacesOnly} checked={ownPlacesOnly} onChange={setOwnPlacesOnly}
         />
       </FormGrid>
 

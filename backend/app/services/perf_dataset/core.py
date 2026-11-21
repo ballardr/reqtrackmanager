@@ -46,6 +46,7 @@ from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.models.tag import ArtefactTag, Tag
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, CHUNK, PerfProjectContext, insert_rows, uuid_from
@@ -277,9 +278,49 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
     _generate_tags(ctx, audit, requirement_ids, created_times, org_id)
     _generate_comments(ctx, requirement_ids, created_times)
     _generate_links(ctx, audit, requirement_ids, created_times)
+    alias_count = _generate_aliases(ctx, requirement_ids, categories, prefixes, count)
     audit.flush()
-    db.query(Project).filter(Project.id == project_id).update({Project.next_requirement_seq: count + 1})
+    db.query(Project).filter(Project.id == project_id).update({Project.next_requirement_seq: count + alias_count + 1})
     return {table: ctx.counts.get(table, 0) - start_counts.get(table, 0) for table in ctx.counts}
+
+
+def _generate_aliases(
+    ctx: PerfProjectContext, requirement_ids: list[uuid.UUID], categories: list[tuple[str, str, str]],
+    prefixes: dict[str, str], count: int,
+) -> int:
+    """The further places of some requirements (`requirement_aliases`), each numbered after the requirements from the
+    one counter, in a category other than the requirement's own.
+
+    Args:
+        ctx: The project's context.
+        requirement_ids: The generated requirements, in creation order.
+        categories: `(category id, component id, category prefix)` of the project's categories.
+        prefixes: Component prefix by component id.
+        count: How many requirements were generated (alias numbers continue from it).
+
+    Returns:
+        How many aliases were written.
+    """
+    if len(categories) < 2 or ctx.spec.ratios.aliases_per_requirement <= 0:
+        return 0
+    rng = ctx.rng
+    rows: list[dict[str, Any]] = []
+    number = count
+    for index, requirement_id in enumerate(requirement_ids):
+        own = index % len(categories)
+        others = [i for i in range(len(categories)) if i != own]
+        wanted = min(_poisson(rng, ctx.spec.ratios.aliases_per_requirement), len(others))
+        for other in rng.sample(others, wanted):
+            category_id, component_id, category_prefix = categories[other]
+            number += 1
+            rows.append({
+                "id": uuid_from(rng), "project_id": ctx.project_uuid, "requirement_id": requirement_id,
+                "component_id": uuid.UUID(component_id), "category_id": uuid.UUID(category_id),
+                "unique_code": f"{prefixes[component_id]}-{category_prefix}-{number:03d}",
+                "is_retired": False, "retired_at": None, "created_by": ctx.user_ids[0], "created_at": ANCHOR - timedelta(days=30),
+            })
+    ctx.add_count("requirement_aliases", insert_rows(ctx.db, RequirementAlias, rows))
+    return len(rows)
 
 
 def _generate_tags(

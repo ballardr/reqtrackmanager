@@ -71,6 +71,9 @@ class ReportRequirementRow:
     component_sort_order: int = 0
     category_sort_order: int = 0
     tags: str = ""
+    # The code of the requirement's own place when this row is one of its further places (an alias), so the entry
+    # reads "Same as REQ-001"; empty for the requirement's own place.
+    same_as: str = ""
 
 
 def _group_rows_by_component_and_category(
@@ -170,7 +173,13 @@ def build_requirement_document(
                 Heading(category_name, 2), Gap(0.2),
                 Table(
                     header,
-                    [[r.unique_code, r.name, r.reasoning, requirement_status_label(r.status), r.tags] for r in category_rows],
+                    [
+                        [
+                            r.unique_code, f"{r.name} (same as {r.same_as})" if r.same_as else r.name, r.reasoning,
+                            requirement_status_label(r.status), r.tags,
+                        ]
+                        for r in category_rows
+                    ],
                     col_widths_cm=widths,
                     # The Status cell takes the badge colour the screen gives that status.
                     tones=[[None, None, None, REQUIREMENT_STATUS_TONE.get(r.status), None] for r in category_rows],
@@ -251,6 +260,11 @@ def requirement_table(rows: list[ReportRequirementRow], terminology: dict[str, s
         row.unique_code, row.name, row.component_name, row.category_name, requirement_status_label(row.status),
         row.reasoning, row.clarification, row.tags,
     ] for row in rows]
+    if any(row.same_as for row in rows):
+        # Only a report that lists a requirement under more than one place needs the cross-reference column.
+        header.append("Same as")
+        for row, cells in zip(rows, body, strict=True):
+            cells.append(row.same_as)
     return header, body
 
 

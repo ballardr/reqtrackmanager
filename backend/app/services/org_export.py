@@ -149,6 +149,7 @@ from app.services.report_layout_bundle import export_org_layouts, import_org_lay
 from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
 from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
+from app.services.requirement_aliases import MODES as ALIAS_MODES
 from app.services.scoring import seed_missing_scoring_levels
 from app.services.stage_workflow_bundle import export_org_stage_workflows, import_org_stage_workflows
 from app.services.vocabulary_bundle import export_org_list, import_org_list
@@ -280,6 +281,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "allow_imported_approval_state": org.allow_imported_approval_state,
         # How project codes are formed and shown; the codes themselves are numbered afresh on import.
         "project_code_policy": org.project_code_policy, "enforce_code_everywhere": org.enforce_code_everywhere,
+        "requirement_aliases": org.requirement_aliases,
         # Reference only — never re-applied on import (see module docstring).
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
@@ -711,6 +713,7 @@ def import_org_bundle(
         allow_imported_approval_state=data.get("allow_imported_approval_state", True),
         project_code_policy=_imported_code_policy(data.get("project_code_policy"), warnings),
         enforce_code_everywhere=bool(data.get("enforce_code_everywhere", False)),
+        requirement_aliases=data.get("requirement_aliases") if data.get("requirement_aliases") in ALIAS_MODES else "allowed",
         # Deliberately not carried over from the bundle — see module docstring.
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),

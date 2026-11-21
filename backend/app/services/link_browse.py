@@ -44,7 +44,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.action_type import ActionTypeDefinition
@@ -53,6 +53,7 @@ from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.modules.registry import (
     ArtefactSummary,
     BrowseLevel,
@@ -164,6 +165,14 @@ _CORE_LEVELS: dict[str, tuple[BrowseLevel, ...]] = {
 }
 
 
+def _alias_exists(**where: uuid.UUID):
+    """An EXISTS over the requirement's active aliases whose columns equal `where` (a component or category)."""
+    return exists().where(
+        RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False),
+        *(getattr(RequirementAlias, column) == value for column, value in where.items()),
+    )
+
+
 def _requirement_candidates(
     db: Session, project_id: uuid.UUID, selected: Mapping[str, str], needle: str, limit: int
 ) -> list[ArtefactSummary]:
@@ -176,13 +185,17 @@ def _requirement_candidates(
             RequirementVersion.valid_to.is_(None),
         )
     )
+    # A requirement also sits in the places of its aliases, so a component or category choice finds it there too.
     if (component_id := _uuid_or_none(selected.get("component"))) is not None:
-        stmt = stmt.where(Requirement.component_id == component_id)
+        stmt = stmt.where(or_(Requirement.component_id == component_id, _alias_exists(component_id=component_id)))
     if (category_id := _uuid_or_none(selected.get("category"))) is not None:
-        stmt = stmt.where(Requirement.category_id == category_id)
+        stmt = stmt.where(or_(Requirement.category_id == category_id, _alias_exists(category_id=category_id)))
     if needle:
         like = f"%{needle}%"
-        stmt = stmt.where(or_(Requirement.unique_code.ilike(like), RequirementVersion.name.ilike(like)))
+        stmt = stmt.where(or_(
+            Requirement.unique_code.ilike(like), RequirementVersion.name.ilike(like),
+            exists().where(RequirementAlias.requirement_id == Requirement.id, RequirementAlias.unique_code.ilike(like)),
+        ))
     return [
         ArtefactSummary(
             id=r.id, project_id=r.project_id, label=f"{r.unique_code} {v.name}", status=v.status.value,

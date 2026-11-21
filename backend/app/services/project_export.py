@@ -104,6 +104,7 @@ from app.models.requirement import (
     RequirementReview,
     RequirementVersion,
 )
+from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks, get_all_registered_artefact_types
@@ -145,6 +146,7 @@ from app.services.report_layout_bundle import export_project_layouts, import_pro
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
+from app.services.requirement_aliases import MODES, aliases_for_requirements
 from app.services.scoring_config import export_project_scoring, import_project_scoring
 from app.services.sequences import generate_unique_code
 from app.services.stage_workflow_bundle import (
@@ -246,6 +248,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         vs.sort(key=lambda v: v.version_number)
 
     keywords_by_req = keywords_for_requirements(db, req_ids)
+    aliases_by_req = aliases_for_requirements(db, req_ids, include_retired=True)
 
     # Requirement-to-requirement traceability links only (not untyped
     # action links, which also live in `artefact_links` but aren't part of
@@ -441,6 +444,16 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "versions": [serialize_requirement_version(v) for v in versions_by_req.get(r.id, [])],
             "keywords": keywords_by_req.get(r.id, []), "attachments": attachments_by_req.get(r.id, []),
             "external_references": record_references(db, ArtefactType.REQUIREMENT.value, r.id),
+            # The further places the requirement sits in; a code is kept as it is, like the requirement's own.
+            "aliases": [
+                {
+                    "unique_code": a.unique_code,
+                    "component_prefix": component_prefix_by_id.get(a.component_id) if a.component_id else None,
+                    "category_prefix": category_by_id[a.category_id].prefix if a.category_id and a.category_id in category_by_id else None,
+                    "is_retired": a.is_retired, "retired_at": _j(a.retired_at),
+                }
+                for a in aliases_by_req.get(r.id, [])
+            ],
         })
 
     requirement_links_json = [
@@ -448,7 +461,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "source_unique_code": req_code_by_id.get(link.source_id),
             "target_unique_code": req_code_by_id.get(link.target_id),
             "link_type_forward_name": (link_type_forward_name_by_id.get(link.link_type_id) if link.link_type_id else None),
-            "created_by_email": email(link.created_by),
+            "created_by_email": email(link.created_by), "note": link.note,
         }
         for link in links if link.source_id in req_code_by_id and link.target_id in req_code_by_id
     ]
@@ -564,6 +577,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "allow_member_change_requests": project.allow_member_change_requests,
         "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
+        "requirement_aliases": project.requirement_aliases,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
         **export_project_scoring(db, project),
@@ -698,6 +712,7 @@ def new_project_from_bundle_data(
         require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
         terminology=data.get("terminology") or {},
+        requirement_aliases=data.get("requirement_aliases") if data.get("requirement_aliases") in MODES else None,
         review_reminder_lead_days_default=data.get("review_reminder_lead_days_default", 7),
         status_id=get_default_project_status_id(db, organization_id),
     )
@@ -870,9 +885,22 @@ def apply_project_data(
             db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
             artefact_type=ArtefactType.REQUIREMENT.value, artefact_id=requirement.id, entries=r.get("external_references"),
         )
-        tail = r["unique_code"].rsplit("-", 1)[-1]
-        if tail.isdigit():
-            max_seq = max(max_seq, int(tail))
+        for code in (r["unique_code"], *(a.get("unique_code", "") for a in r.get("aliases", []))):
+            tail = code.rsplit("-", 1)[-1]
+            if tail.isdigit():
+                max_seq = max(max_seq, int(tail))
+        for alias_entry in r.get("aliases", []):
+            alias_component = component_id_by_prefix.get(alias_entry.get("component_prefix") or "")
+            alias_category = category_id_by_key.get((alias_entry.get("component_prefix"), alias_entry.get("category_prefix")))
+            retired = bool(alias_entry.get("is_retired"))
+            if not alias_entry.get("unique_code") or (not retired and (alias_component is None or alias_category is None)):
+                warnings.add(f"Requirement {r['unique_code']}: an alias with an unknown component/category prefix was skipped.")
+                continue
+            db.add(RequirementAlias(
+                project_id=project.id, requirement_id=requirement.id, unique_code=alias_entry["unique_code"],
+                component_id=alias_component, category_id=alias_category, is_retired=retired,
+                retired_at=_dt(alias_entry.get("retired_at")), created_by=current_user.id,
+            ))
 
         for v in r.get("versions", []):
             version = RequirementVersion(
@@ -935,12 +963,13 @@ def apply_project_data(
         target_id = requirement_id_by_code.get(link["target_unique_code"])
         link_type_id = link_type_id_by_name.get(link.get("link_type_forward_name"))
         if source_id and target_id and link_type_id is not None:
-            create_artefact_link(
+            imported_link = create_artefact_link(
                 db, source_type=ArtefactType.REQUIREMENT, source_id=source_id,
                 target_type=ArtefactType.REQUIREMENT, target_id=target_id, link_type_id=link_type_id,
                 created_by=users.resolve(link.get("created_by_email"), required=True, context="Requirement link creator"),
                 enforce_rules=False,  # replaying existing data, not a new user-chosen link
             )
+            imported_link.note = (link.get("note") or None) and str(link["note"])[:200]
         elif source_id and target_id:
             warnings.add(
                 f"Requirement link {link.get('source_unique_code')} -> {link.get('target_unique_code')} "

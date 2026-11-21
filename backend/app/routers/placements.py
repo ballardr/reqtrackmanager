@@ -38,19 +38,42 @@ def _out(
     db: Session, resolver: ArtefactResolver, artefact_type: str, artefact_id: UUID, owner_project_id: UUID | None,
 ) -> RecordPlacementsOut:
     """The record's placements with names, and whether the caller may change them."""
-    pairs = placement_service.pairs_for_records(db, artefact_type, [artefact_id]).get(artefact_id, [])
-    names = _names(db, pairs)
     return RecordPlacementsOut(
-        placements=[
+        placements=_place_outs(db, artefact_type, [artefact_id]).get(artefact_id, []),
+        can_edit=owner_project_id is not None and placement_service.can_place(resolver, artefact_type),
+        managed_on_record=artefact_type in placement_service.COLUMN_PLACED_TYPES,
+    )
+
+
+def _place_outs(db: Session, artefact_type: str, ids: list[UUID]) -> dict[UUID, list[PlacementOut]]:
+    """Each record's places with names; a requirement's carry the code of the place and the alias id of a further one."""
+    if artefact_type in placement_service.COLUMN_PLACED_TYPES:
+        places = placement_service.requirement_places(db, ids)
+        names = _names(db, [pl.pair for row in places.values() for pl in row])
+        return {
+            record_id: [
+                PlacementOut(
+                    component_id=pl.pair.component_id, category_id=pl.pair.category_id,
+                    component_name=names[pl.pair.component_id],
+                    category_name=names.get(pl.pair.category_id) if pl.pair.category_id else None,
+                    code=pl.code, alias_id=pl.alias_id,
+                )
+                for pl in row
+            ]
+            for record_id, row in places.items()
+        }
+    pairs = placement_service.pairs_for_records(db, artefact_type, ids)
+    names = _names(db, [p for row in pairs.values() for p in row])
+    return {
+        record_id: [
             PlacementOut(
                 component_id=p.component_id, category_id=p.category_id, component_name=names[p.component_id],
                 category_name=names.get(p.category_id) if p.category_id else None,
             )
-            for p in pairs
-        ],
-        can_edit=owner_project_id is not None and placement_service.can_place(resolver, artefact_type),
-        managed_on_record=artefact_type in placement_service.COLUMN_PLACED_TYPES,
-    )
+            for p in row
+        ]
+        for record_id, row in pairs.items()
+    }
 
 
 def _names(db: Session, pairs: list[PlacementPair]) -> dict[UUID, str]:
@@ -105,21 +128,7 @@ def get_page_placements(
         i for i in ids
         if (summary := resolver.visible((artefact_type, i))) is not None and summary.project_id == project.id
     ]
-    pairs = placement_service.pairs_for_records(db, artefact_type, visible)
-    all_pairs = [p for row in pairs.values() for p in row]
-    names = _names(db, all_pairs)
-    return PagePlacementsOut(
-        placements={
-            record_id: [
-                PlacementOut(
-                    component_id=p.component_id, category_id=p.category_id, component_name=names[p.component_id],
-                    category_name=names.get(p.category_id) if p.category_id else None,
-                )
-                for p in row
-            ]
-            for record_id, row in pairs.items()
-        }
-    )
+    return PagePlacementsOut(placements=_place_outs(db, artefact_type, visible))
 
 
 @router.get("/artefacts/{artefact_type}/{artefact_id}/placements", response_model=RecordPlacementsOut)

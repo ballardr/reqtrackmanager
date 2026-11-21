@@ -72,6 +72,7 @@ from app.routers import (
     report_placements,
     report_snippets,
     reports,
+    requirement_aliases,
     requirements,
     reviews,
     scim,
@@ -401,6 +402,8 @@ app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
 app.include_router(placements.router)
+app.include_router(requirement_aliases.org_router)
+app.include_router(requirement_aliases.project_router)
 app.include_router(code_prefixes.org_router)
 app.include_router(code_prefixes.project_router)
 app.include_router(external_systems.org_router)

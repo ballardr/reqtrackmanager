@@ -59,6 +59,7 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.placement import ArtefactPlacement
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement
+from app.models.requirement_alias import RequirementAlias
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 from app.modules.registry import (
@@ -570,7 +571,7 @@ def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
     component_name = func.lower(ProjectComponent.name).like(f"%{_escape_like(term)}%", escape="\\")
     category_name = func.lower(ProjectCategory.name).like(f"%{_escape_like(term)}%", escape="\\")
     if artefact_type in COLUMN_PLACED_TYPES:
-        return exists(
+        own = exists(
             select(1)
             .select_from(
                 Requirement.__table__.join(ProjectComponent.__table__, ProjectComponent.id == Requirement.component_id)
@@ -578,6 +579,19 @@ def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
             )
             .where(Requirement.id == id_column, or_(component_name, category_name))
         )
+        # A requirement is also found through the places of its aliases.
+        by_alias = exists(
+            select(1)
+            .select_from(
+                RequirementAlias.__table__.join(ProjectComponent.__table__, ProjectComponent.id == RequirementAlias.component_id)
+                .outerjoin(ProjectCategory.__table__, ProjectCategory.id == RequirementAlias.category_id)
+            )
+            .where(
+                RequirementAlias.requirement_id == id_column, RequirementAlias.is_retired.is_(False),
+                or_(component_name, category_name),
+            )
+        )
+        return or_(own, by_alias)
     return exists(
         select(1)
         .select_from(
@@ -652,6 +666,12 @@ def _text_condition(artefact_type: str, provider: ArtefactSearchProvider, fields
         alternatives: list[Any] = []
         if "id" in fields:
             alternatives.append(_like(columns.code, term))
+            if artefact_type in COLUMN_PLACED_TYPES:
+                # A requirement is also found by the code of any of its further places, retired ones included.
+                alternatives.append(exists(
+                    select(1).select_from(RequirementAlias.__table__)
+                    .where(RequirementAlias.requirement_id == columns.id, _like(RequirementAlias.unique_code, term))
+                ))
             qualified = _qualified_code_match(provider, term, context, exact=False)
             if qualified is not None:
                 alternatives.append(qualified)

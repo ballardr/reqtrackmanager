@@ -18,6 +18,10 @@ What goes on for as long as a state is active, for example "monitor the temperat
 
 A visible approve/reject signal a stakeholder can cast on a change request. It never approves or rejects the change itself — only a manager's or administrator's explicit decision does. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
 
+#### Alias code
+
+The code a requirement has in one of its further components and categories, for example `HW-IF-017` beside its own `SW-PERF-014`. It names the same requirement: one text, approval, discussion and set of links. Removing the requirement from that component retires the code, which is never reused and still opens the requirement; **Make independent** turns it into a requirement of its own. See [Core Features → Components on every record](../core-features/components-on-records.md#requirements-in-several-components).
+
 #### Allocation
 
 A link of the type Allocated to from a requirement to an element of the architecture. Placing an element in a component suggests the requirements of that component for allocation; a person accepts or dismisses each suggestion. See [Allocation](../modules/system-architecture-module/allocation.md).
@@ -76,7 +80,7 @@ A condition, written as text, that must be true for a transition to be taken, fo
 
 #### Component placement
 
-The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement keeps its own single component and category. See [Core Features → Components on every record](../core-features/components-on-records.md).
+The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement has one own place and may sit in further places called aliases. See [Core Features → Components on every record](../core-features/components-on-records.md).
 
 #### Connection
 

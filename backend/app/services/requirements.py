@@ -9,10 +9,10 @@ management (C-M-01, C-G-09).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -32,6 +32,7 @@ from app.models.enums import (
 from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.requirement_alias import RequirementAlias
 from app.models.user import User
 from app.modules.registry import ArtefactChange
 from app.schemas.principal import PrincipalOut, PrincipalRef
@@ -43,6 +44,9 @@ from app.services.external_reference_surfaces import reference_clause
 from app.services.lookups import present, project_or_404
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import lock_project_for_update, lock_row_for_update
+
+if TYPE_CHECKING:
+    from app.services.placements import PlacementPair
 
 # C-G-11: completion is an overlay marker on top of APPROVED, not a
 # separate lifecycle status a requirement can be "in" — a completed
@@ -172,6 +176,8 @@ def create_requirement(
     review_date: date | None = None,
     review_lead_days: int | None = None,
     reviewer: PrincipalRef | None = None,
+    unique_code: str | None = None,
+    change_note: str = "Initial creation.",
 ) -> Requirement:
     """Creates a requirement and its initial (version 1) content snapshot.
 
@@ -185,8 +191,11 @@ def create_requirement(
             falsifying the audit trail of who technically made the request.
         owner: The responsible principal (the caller has validated it); the creator when omitted.
         reviewer: The principal accountable for the scheduled review, or None.
+        unique_code: A code already issued for this requirement (an alias code taken over when the alias is made
+            independent); a fresh code is numbered from the project counter when omitted.
+        change_note: The first version's note.
     """
-    unique_code = generate_unique_code(db, project, component, category)
+    unique_code = unique_code or generate_unique_code(db, project, component, category)
     requirement = Requirement(
         project_id=project.id, component_id=component.id, category_id=category.id,
         unique_code=unique_code, creator_id=creator_override_id or creator.id,
@@ -202,7 +211,7 @@ def create_requirement(
         **principal_columns("owner", owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)),
         target_stage_id=target_stage_id, level=level,
         sort_order=sort_order, created_by=creator.id, created_at=now,
-        change_note="Initial creation.", custom_fields=custom_fields or {},
+        change_note=change_note, custom_fields=custom_fields or {},
         review_date=review_date, review_lead_days=review_lead_days, **principal_columns("reviewer", reviewer),
     )
     db.add(version)
@@ -369,6 +378,7 @@ class ListPrefetch:
         comment_counts: Comment count per requirement id (absent = 0).
         open_change_request: Requirement ids with an open change request.
         people: Resolved owner and reviewer (`services.principals.principal_labels`), keyed by `(type, id)`.
+        aliases: Active aliases per requirement id (absent = none).
     """
 
     versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
@@ -377,6 +387,7 @@ class ListPrefetch:
     comment_counts: dict[UUID, int] = field(default_factory=dict)
     open_change_request: set[UUID] = field(default_factory=set)
     people: dict[tuple[str, UUID], PrincipalOut] = field(default_factory=dict)
+    aliases: dict[UUID, list[RequirementAlias]] = field(default_factory=dict)
 
 
 def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> ListPrefetch:
@@ -397,6 +408,12 @@ def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     prefetch.people = version_people(db, prefetch.versions.values())
     prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
+    for alias in db.scalars(
+        select(RequirementAlias)
+        .where(RequirementAlias.requirement_id.in_(requirement_ids), RequirementAlias.is_retired.is_(False))
+        .order_by(RequirementAlias.created_at, RequirementAlias.unique_code)
+    ):
+        prefetch.aliases.setdefault(alias.requirement_id, []).append(alias)
     prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
         Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
         Subscription.entity_type == "requirement",
@@ -546,6 +563,14 @@ def _sql_order(sort: str | None, descending: bool) -> list:
     return [*keys, Requirement.created_at, Requirement.id]
 
 
+def _alias_clause(**where: UUID):
+    """An EXISTS over the requirement's active aliases whose columns equal `where` (a component or category)."""
+    return exists().where(
+        RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False),
+        *(getattr(RequirementAlias, column) == value for column, value in where.items()),
+    )
+
+
 def filter_requirement_rows(
     db: Session, project_id: UUID, current_user_id: UUID, filters: RequirementFilters, *,
     sort: str | None = None, descending: bool = False, limit: int | None = None, offset: int = 0,
@@ -582,10 +607,11 @@ def filter_requirement_rows(
 
     if filters.is_completed is not None:
         conditions.append(Requirement.is_completed.is_(filters.is_completed))
+    # A requirement also sits in the places of its aliases, so a component or category filter matches those too.
     if filters.component_id:
-        conditions.append(Requirement.component_id == filters.component_id)
+        conditions.append(or_(Requirement.component_id == filters.component_id, _alias_clause(component_id=filters.component_id)))
     if filters.category_id:
-        conditions.append(Requirement.category_id == filters.category_id)
+        conditions.append(or_(Requirement.category_id == filters.category_id, _alias_clause(category_id=filters.category_id)))
     if any(t.strip() for t in filters.tag_names):
         conditions.append(Requirement.id.in_(
             tag_service.tagged_ids(
@@ -612,6 +638,10 @@ def filter_requirement_rows(
         conditions.append(or_(
             func.strpos(func.lower(RequirementVersion.name), needle) > 0,
             func.strpos(func.lower(Requirement.unique_code), needle) > 0,
+            exists().where(
+                RequirementAlias.requirement_id == Requirement.id,
+                func.strpos(func.lower(RequirementAlias.unique_code), needle) > 0,
+            ),
         ))
     if filters.has_comments:
         conditions.append(exists().where(
@@ -733,6 +763,7 @@ def edit_requirement(
     component_id: UUID | None = None,
     category_id: UUID | None = None,
     keywords: list[str] | None = None,
+    additional_places: Sequence[PlacementPair] | None = None,
 ) -> RequirementVersion:
     """A direct edit of a requirement: the version lock, validation and new version the edit endpoint applies.
 
@@ -748,6 +779,8 @@ def edit_requirement(
         custom_fields: The **complete** custom field values to store (validated here), or `None` to keep them.
         component_id / category_id: Move the requirement (both given, the category inside the component).
         keywords: Replace the keyword set, or `None` to leave it.
+        additional_places: Make the requirement sit in exactly these further places, each with its own alias
+            code (`services.requirement_aliases.set_aliases`), or `None` to leave them.
 
     Returns:
         The new version.
@@ -756,6 +789,8 @@ def edit_requirement(
         HTTPException: 409 when the requirement is approved (changes then go through a change request); 400/422
             for a custom field value, person, component or category that is not valid for the project.
     """
+    from app.services import requirement_aliases  # imported here: that module builds on this one
+
     current_version = get_current_version_for_update(db, requirement.id)
     if is_locked(current_version):
         raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is approved; changes must be made via a change request.")
@@ -786,6 +821,10 @@ def edit_requirement(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
         requirement.component_id = component_id
         requirement.category_id = category_id
+        # An alias in the pair the requirement just moved to would name the same place twice.
+        requirement_aliases.drop_redundant(db, project, requirement, actor.id)
+    if additional_places is not None:
+        requirement_aliases.set_aliases(db, project=project, requirement=requirement, actor_id=actor.id, pairs=additional_places)
     if keywords is not None:
         set_keywords(db, requirement, keywords, actor.id)
     return new_version

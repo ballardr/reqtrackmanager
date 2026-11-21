@@ -58,6 +58,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.modules.registry import (
     get_all_registered_artefact_types,
     list_artefact_summaries,
@@ -316,6 +317,8 @@ class CodedRecord:
         project_id: The project that owns it; `None` for a record the organisation itself owns.
         qualified_code: The code as displayed outside the project, e.g. `ACME-REQ-001`.
         label: The record's summary label (`REQ-001 Title`).
+        alias_state: `alias` when the code is a further place's code of a requirement, `retired_alias` when that
+            place was taken away (the code still resolves); `None` for the record's own code.
     """
 
     artefact_type: str
@@ -323,6 +326,7 @@ class CodedRecord:
     project_id: uuid.UUID | None
     qualified_code: str
     label: str
+    alias_state: str | None = None
 
 
 def label_title(label: str) -> str:
@@ -398,6 +402,19 @@ def find_record_by_qualified_code(
     ).scalar_one_or_none()
     if requirement is not None:
         return result("requirement", requirement, unique_code)
+    alias = db.execute(
+        select(RequirementAlias.requirement_id, RequirementAlias.is_retired).where(
+            RequirementAlias.project_id == project.id, RequirementAlias.unique_code == unique_code
+        )
+    ).first()
+    if alias is not None:
+        found = result("requirement", alias.requirement_id, unique_code)
+        if found is None:
+            return None
+        return CodedRecord(
+            found.artefact_type, found.id, found.project_id, found.qualified_code, found.label,
+            "retired_alias" if alias.is_retired else "alias",
+        )
     action = db.execute(
         select(RequirementAction.id, RequirementAction.title).where(
             RequirementAction.project_id == project.id, RequirementAction.unique_code == unique_code

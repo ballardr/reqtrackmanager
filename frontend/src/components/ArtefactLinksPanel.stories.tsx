@@ -197,6 +197,13 @@ export const Empty: Story = {
   },
 };
 
+export const ShowsWhereACarriedOverLinkWasCopiedFrom: Story = {
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION, { note: "Copied from SW-PERF-001" }]])) }) },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText("Copied from SW-PERF-001")).toBeInTheDocument());
+  },
+};
+
 export const FlagsALinkItsTypeNoLongerPermitsAndKeepsDedicatedLinksUnremovable: Story = {
   args: {
     api: buildLinksApi({

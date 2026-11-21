@@ -57,6 +57,7 @@ from app.models.project import (
 )
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.stage_workflow import ComponentStageState, StageWorkflow
 from app.models.user import User
@@ -67,6 +68,7 @@ from app.services.definitions import get_default_project_status_id
 from app.services.external_references import copy_project_systems
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.relationships import create_link as create_artefact_link
+from app.services.requirement_aliases import aliases_for_requirements
 from app.services.requirements import get_current_version, get_keywords, set_keywords
 from app.services.stage_workflows import PhaseInput, effective_workflows, new_stage, phases_of, start_phase, write_workflow
 from app.services.template_content import copy_module_content, copy_module_enablement, copy_project_setup
@@ -142,6 +144,7 @@ def clone_project(
         require_change_request_for_approved_links=source.require_change_request_for_approved_links,
         exempt_from_org_link_lock=source.exempt_from_org_link_lock,
         terminology=dict(source.terminology),
+        requirement_aliases=source.requirement_aliases,
         nav_label_overrides=dict(source.nav_label_overrides or {}),
         overview_widgets=copy.deepcopy(source.overview_widgets),
         status_id=get_default_project_status_id(db, source.organization_id),
@@ -292,6 +295,17 @@ def clone_project(
         keywords = get_keywords(db, requirement.id)
         if keywords:
             set_keywords(db, new_requirement, keywords, creator.id)
+        # Every further place comes along with its code, so a citation of an alias code still reaches the requirement.
+        for alias in aliases_for_requirements(db, [requirement.id]).get(requirement.id, []):
+            if alias.component_id is None or alias.category_id is None:
+                continue
+            alias_component_id = component_id_map.get(alias.component_id)
+            alias_category_id = category_id_map.get(alias.category_id)
+            if alias_component_id is not None and alias_category_id is not None:
+                db.add(RequirementAlias(
+                    project_id=new_project.id, requirement_id=new_requirement.id, component_id=alias_component_id,
+                    category_id=alias_category_id, unique_code=alias.unique_code, created_by=creator.id,
+                ))
 
     new_project.next_requirement_seq = source.next_requirement_seq
     copy_requirement_links(db, source, new_project, creator, {r.id: r.unique_code for r in requirements})

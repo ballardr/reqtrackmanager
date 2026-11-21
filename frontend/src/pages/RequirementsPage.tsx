@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
-import { RecordCode } from "../components/RecordCode";
+import { RequirementListCode } from "../components/RequirementListCode";
 import { Tooltip } from "../components/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -615,7 +615,7 @@ export function RequirementsPage() {
                   >
                     <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                       <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                        <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} />
+                        <RequirementListCode requirement={r} componentId={componentFilter} categoryId={categoryFilter} />
                       </span>
                       {!r.from_project_id && (
                         <div className="row" style={{ gap: "var(--space-1)" }}>
@@ -719,7 +719,7 @@ export function RequirementsPage() {
                             )}
                           </td>
                         )}
-                        <td className="text-muted"><RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /></td>
+                        <td className="text-muted"><RequirementListCode requirement={r} componentId={componentFilter} categoryId={categoryFilter} /></td>
                         <td>
                           <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}>{r.name}</Link>
                           <ProjectScopeLabel row={r} />

@@ -41,19 +41,23 @@ from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
+    RequirementAliasOut,
     RequirementCreate,
     RequirementOut,
     RequirementUpdate,
     RequirementVersionOut,
 )
 from app.services import component_stages, engagement, pubsub
+from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.lookups import project_or_404
+from app.services.placements import PlacementPair
 from app.services.principals import label_of, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
+from app.services.requirement_aliases import active_aliases
 from app.services.requirements import (
     OPEN_CR_STATUSES,
     ListPrefetch,
@@ -114,12 +118,14 @@ def _to_out(
     if prefetch is not None:
         people = prefetch.people
         keywords = prefetch.keywords.get(requirement.id, [])
+        aliases = prefetch.aliases.get(requirement.id, [])
         subscribed = requirement.id in prefetch.subscribed
         comment_count = prefetch.comment_counts.get(requirement.id, 0)
         open_cr = requirement.id in prefetch.open_change_request
     else:
         people = version_people(db, [version])
         keywords = get_keywords(db, requirement.id)
+        aliases = active_aliases(db, requirement.id)
         subscribed = engagement.is_subscribed(db, current_user_id, "requirement", requirement.id)
         comment_count = engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id)
         open_cr = _has_open_change_request(db, requirement.id)
@@ -134,6 +140,14 @@ def _to_out(
         is_completed=requirement.is_completed, completed_at=requirement.completed_at,
         completed_by=requirement.completed_by,
         keywords=keywords, custom_fields=version.custom_fields,
+        aliases=[
+            RequirementAliasOut(
+                id=a.id, unique_code=a.unique_code, component_id=a.component_id, category_id=a.category_id,
+                is_retired=a.is_retired,
+            )
+            for a in aliases
+            if a.component_id is not None and a.category_id is not None
+        ],
         created_at=requirement.created_at, updated_at=version.created_at,
         is_subscribed=subscribed,
         comment_count=comment_count,
@@ -203,6 +217,11 @@ def create_requirement_endpoint(
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="created",
               actor_id=current_user.id, project_id=project_id)
+    if payload.additional_places:
+        alias_service.set_aliases(
+            db, project=project, requirement=requirement, actor_id=current_user.id,
+            pairs=[PlacementPair(p.component_id, p.category_id) for p in payload.additional_places],
+        )
     requirements_created_total.inc()
     db.commit()
     db.refresh(requirement)
@@ -392,6 +411,10 @@ def update_requirement(
         reviewer=payload.reviewer, reviewer_explicitly_set=True,
         component_id=payload.component_id, category_id=payload.category_id,
         keywords=payload.keywords,
+        additional_places=(
+            None if payload.additional_places is None
+            else [PlacementPair(p.component_id, p.category_id) for p in payload.additional_places]
+        ),
     )
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})

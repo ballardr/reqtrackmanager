@@ -39,13 +39,25 @@ def _component_and_category(api: Any, project_id: str) -> tuple[str, str]:
     return component_id, category_id
 
 
+def _further_place(api: Any, project_id: str, category_id: str) -> dict[str, str]:
+    """A second component and category (created once), where each probe requirement also sits as an alias."""
+    base = f"/projects/{project_id}"
+    others = [c for c in api.get(f"{base}/categories") if c["id"] != category_id]
+    if others:
+        return {"component_id": others[0]["component_id"], "category_id": others[0]["id"]}
+    component = api.post(f"{base}/components", {"name": "Hardware", "prefix": "HW"})
+    category = api.post(f"{base}/categories", {"name": "Interfaces", "prefix": "IF", "component_id": component["id"]})
+    return {"component_id": component["id"], "category_id": category["id"]}
+
+
 def _create_requirements(api: Any, project_id: str, start: int, count: int) -> list[str]:
     component_id, category_id = _component_and_category(api, project_id)
+    further = _further_place(api, project_id, category_id)
     return [
         api.post(
             f"/projects/{project_id}/requirements",
             {"name": f"Probe requirement {start + i}", "component_id": component_id, "category_id": category_id,
-             "keywords": [f"kw{start + i}"]},
+             "keywords": [f"kw{start + i}"], "additional_places": [further]},
         )["id"]
         for i in range(count)
     ]

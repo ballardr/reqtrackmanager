@@ -104,6 +104,7 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
             asked (`include_cross_project`), so a legacy reader can never show an
             ancestor's artefact to someone who cannot open it.
         created_by: The user who created the link.
+        note: Optional short provenance text (a carried-over link says where it was copied from).
     """
 
     __tablename__ = "artefact_links"
@@ -161,3 +162,6 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # Why the link exists when it was not authored directly ("Copied from REQ-001" on a link a requirement
+    # carried over when made independent). Plain text, shown beside the link, never a Restricted value.
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)

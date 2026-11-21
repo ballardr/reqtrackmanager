@@ -187,6 +187,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             code even inside its own project, overriding each user's preference.
         tag_mode: `"free"` or `"restricted"`: whether organisation-owned records may take a tag
             nobody listed in the organisation's tag vocabulary.
+        requirement_aliases: `"allowed"` or `"disabled"`: whether a requirement may be placed in further components
+            (`services.requirement_aliases`); a project may override it.
         nav_label_overrides: The organisation's default navigation names by stable navigation key
             (`services.nav_labels`); a project's own or inherited name takes precedence.
         overview_widgets: The organisation's default project overview layout (`services.overview_widgets`); SQL NULL
@@ -206,6 +208,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
+    requirement_aliases: Mapped[str] = mapped_column(String(10), default="allowed", server_default=text("'allowed'"))
     nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     overview_widgets: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

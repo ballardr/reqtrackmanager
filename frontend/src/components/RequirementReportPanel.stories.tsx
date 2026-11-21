@@ -53,3 +53,18 @@ export const OnlyDocumentFormatsSendTheChapterLayout: Story = {
     }
   },
 };
+
+/** Listing a requirement under its own component only is sent when ticked, and left out of the request otherwise. */
+export const OwnComponentOnlyIsSentWhenTicked: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "List under own component only" }));
+    await userEvent.click(canvas.getByRole("button", { name: "More formats" }));
+    await userEvent.click(within(await within(document.body).findByRole("dialog", { name: "Export" })).getByRole("menuitem", { name: "Download CSV report" }));
+    await waitFor(() =>
+      expect(api.postForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/reports", {
+        format: "csv", resource_file_ids: [], chapters_per_component: null, primary_places_only: true,
+      }),
+    );
+  },
+};

@@ -1538,7 +1538,7 @@ flowchart LR
 | Piece | Where | Rule |
 | --- | --- | --- |
 | Table | `models/placement.py` | A plain registry-validated type string like `artefact_tags`, project-scoped, cascading with the project; unique per record, component and category. |
-| Requirement | `COLUMN_PLACED_TYPES` | Keeps its own `component_id`/`category_id` (the prefix forms its code); `pairs_for_records` gives one resolved view for every type. |
+| Requirement | `COLUMN_PLACED_TYPES` | Keeps its own `component_id`/`category_id` (the prefix forms its code) as its primary place. Its further places are **aliases** (`requirement_aliases`, below), each with a code of its own; `pairs_for_records` gives one resolved view for every type, the primary place first and then the active aliases, and `placed_ids`, the count helpers and `reassign_category` treat an alias as a place. |
 | `ModuleDefinition.not_placeable[type] = reason` | The module that owns the type | A type that exists only inside a structure of its own (the three Compliance assessment types). The API answers 422; no column, filter, search field or bundle entry is offered. |
 | Organisation-owned records | | Cannot be placed: a component belongs to one project. |
 | Authority | `placements.can_place` | The authority to tag the type; an approved requirement's lock does not apply. |
@@ -1550,6 +1550,25 @@ flowchart LR
 | Scaling | | Placements are read for a page at once (`placements_for_records`, `GET .../placements/{type}`); `perf_dataset.records.add_tags` also places each batch, so generators need no extra call. |
 
 The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
+
+**Requirement aliases.** A requirement sits in one primary place and, optionally, further places (`models/requirement_alias.py`, `services/requirement_aliases.py`, `routers/requirement_aliases.py`). Each further place is a component and a category and gets an **alias code** (`HW-IF-017`) from that pair's prefixes, numbered from the project's one requirement counter, so a code is never reused and never collides with a primary code. An alias names the same record: one set of content, versions, approval, comments, links and attachments.
+
+```mermaid
+flowchart LR
+    Q["Requirement<br/>own place + own code"] --> A["requirement_aliases<br/>pair + alias code"]
+    A --> R["Any code finds the one record:<br/>by-code look-up, link finder, search, CSV import, MCP"]
+    A --> M["Make independent:<br/>a new draft takes the alias code"]
+    S["Setting: allowed or disabled<br/>project, ancestor project, organisation"] -. "new aliases only" .-> A
+```
+
+| Piece | Rule |
+| --- | --- |
+| Setting | `Organization.requirement_aliases` (default `allowed`) and `Project.requirement_aliases` (`NULL` follows the nearest ancestor project that sets one, then the organisation). Not tied to any module. Disabled stops new aliases only; existing ones keep resolving, stay listed and can be made independent one by one or in bulk. |
+| Authority | Adding or retiring a place is placement, so it needs the authority to tag a requirement and ignores an approved requirement's lock. Promoting moves the primary place and follows the lock; make independent needs the editing roles. |
+| Retiring | Taking a requirement out of a place retires the alias: the code is never reused and still resolves, with a notice (`alias_state` of the by-code look-up). Deleting a category with a replacement moves an alias or, when the requirement already sits in the target, retires it; a component or category still holding an alias cannot be deleted without one. |
+| Promoting | Swaps the primary and alias places and their codes, so each code still matches the prefixes of the place it names and no code is lost. |
+| Make independent | Creates a new requirement (a draft, owned by the person who acted) that takes the alias code and the current content; copies tags, comments (keeping their author and time, with a "Copied from" marker), attachments (a direct upload is stored again, so removing it from one requirement never removes it from the other) and links, each made through `create_link_for_artefact` so the approved-link lock and the organisation's change-request setting apply to the other end. A link refused is reported in `skipped`, never forced. The copy is joined to the original by a symmetric type without a direction ("Related to"); an organisation with none is asked to choose. Each copied link carries a `note` ("Copied from SW-PERF-001") shown in the Links panel. |
+| Surfaces | Create form (`RequirementAliasField`, `additional_places`), record page (`RequirementPlaces`), list filter and search (match an alias place or code), CSV export and import (`additional_places` by prefix, `alias_codes`; a row named by an alias code updates the one record), project and organisation bundles and templates (aliases and the setting), the Requirements report (a requirement is listed under each place with that place's code and a "Same as" reference; `primary_places_only` lists it once), the `alias_codes` report field, the MCP tools, the scaling probe and the dataset generator (`aliases_per_requirement`). |
 
 ### 4l8. Record comments and pinned threads
 

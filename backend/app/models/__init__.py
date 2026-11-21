@@ -82,6 +82,7 @@ from app.models.requirement import (
     RequirementVersion,
 )
 from app.models.requirement_action import RequirementAction
+from app.models.requirement_alias import RequirementAlias
 from app.models.requirement_link_type import (
     ArtefactTypeLinkRule,
     ArtefactTypeLinkRuleEntry,
@@ -141,6 +142,7 @@ __all__ = [
     "Subscription",
     "FileAsset",
     "GeneratedReport",
+    "RequirementAlias",
     "RequirementFile",
     "RequirementActionFile",
     "CommentFile",

@@ -1231,6 +1231,16 @@ A create form accepts every field the edit form edits, and both render the **sam
 - Fields that cannot exist before the record does (comments, attachments, change note) and permission-gated fields the caller may not use are left out of create: **hide** the control, never show one the server will refuse (the create form asks the server whether the caller may, as Pain Point scoring does).
 - A field deliberately absent from create or edit is recorded in `docs/decisions.md` with the reason.
 
+## Pattern: requirement places and aliases
+
+A requirement sits in one **own** component and category (its code) and may sit in further places, each an **alias** with a code of its own that names the same requirement. The surfaces share one vocabulary: *own place* and *alias*, never "copy" or "duplicate".
+
+- **Create form:** `RequirementAliasField` ("Additional components"), a `PlacementPicker` with `categoryOnly` (a component is a heading to open, not a choice, because an alias needs a category). It is absent when the project's setting disallows new aliases or has no other category, never shown and then refused.
+- **Record page:** `RequirementPlaces` ("Components and codes") lists each place with its code through `RecordCode`; the own place is badged "Own place", an alias "Alias". Actions on an alias live in an `ActionMenu`: **Make independent** (Tier 2: the alias code is typed; it cannot be undone), **Make this the own place** (Tier 1; unavailable with a tooltip while the requirement is approved) and **Remove from this component** (Tier 1; the code is retired, never reused). The result of making independent lists what could not be copied, with the reason.
+- **Lists:** narrowed to a component or category the requirement reaches only through an alias, `RequirementListCode` follows the own code with the alias code in muted text.
+- **Setting:** `RequirementAliasSettingsPanel` in organisation settings (Allowed or Disabled) and project administration (adds "follow the parent or organisation", an `OverridePill` naming the tier, the alias count and **Make all independent**). What each option means is in the `(?)`, not in the layout.
+- **Links panel:** a carried-over link shows its note ("Copied from SW-PERF-001") as muted text after the status.
+
 ## Pattern: list scope filter (nested projects)
 
 In a project tree a list can be widened to the **parent and/or child projects the viewer can open**. Every project-scoped record list does this the same way, so no list builds its own:

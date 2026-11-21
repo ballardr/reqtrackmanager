@@ -28,12 +28,15 @@ export function categoryNodeId(categoryId: string): string {
  * The tree as nodes: a node per component with a child per category of it, in the tree's own order.
  *
  * @param tree The project's components and categories.
+ * @param categoryOnly Leaves a component unchosen (a heading to open) so only a category can be ticked, for a place that
+ *   needs one (a requirement's further places); `categoryOnlyTitle` says why.
  * @returns Root nodes (the components); a category's `pathLabel` is `Component / Category`.
  */
-export function placementNodes(tree: PlacementTree): TreeSelectNode[] {
+export function placementNodes(tree: PlacementTree, categoryOnly?: { title: string }): TreeSelectNode[] {
   return tree.components.map((component) => ({
     id: componentNodeId(component.id),
     label: component.name,
+    ...(categoryOnly ? { disabled: true, title: categoryOnly.title } : {}),
     children: tree.categories
       .filter((category) => category.component_id === component.id)
       .map((category) => ({

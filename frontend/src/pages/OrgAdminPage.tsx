@@ -89,6 +89,7 @@ import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
 import { OrgExternalSystemsPanel } from "../components/ExternalSystemsPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
+import { RequirementAliasSettingsPanel } from "../components/RequirementAliasSettingsPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { SidePanel } from "../components/SidePanel";
@@ -2669,6 +2670,10 @@ export function OrgAdminPage() {
 
             <CollapsibleSection sectionKey="orgAdmin.recordCodePrefixes" title={strings.codePrefixes.heading}>
               <RecordCodePrefixPanel scope={{ kind: "organization", organizationId: org.id }} />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.requirementAliases" title={strings.requirementAliases.settings.heading}>
+              <RequirementAliasSettingsPanel scope={{ kind: "organization", organizationId: org.id }} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.organizationCode" title={strings.orgAdmin.organizationCode} help={strings.orgAdmin.organizationCodeHint}>

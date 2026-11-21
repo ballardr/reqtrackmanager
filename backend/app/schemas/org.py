@@ -117,6 +117,7 @@ class CodedRecordOut(BaseModel):
     project_id: UUID | None
     qualified_code: str
     label: str
+    alias_state: str | None = None
 
 
 class ReportColourOut(BaseModel):

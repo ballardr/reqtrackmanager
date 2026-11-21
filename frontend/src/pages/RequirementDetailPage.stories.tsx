@@ -25,6 +25,7 @@ import {
   withToast,
 } from "../testing/storybook-helpers";
 import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
+import { buildAlias, buildAliasSettings, buildAliasTree } from "../testing/requirementAliasFixtures";
 import { RequirementDetailPage } from "./RequirementDetailPage";
 
 const PROJECT_ID = "project-1";
@@ -110,6 +111,9 @@ function mockRequirementDetailApis(
     if (path.endsWith("/orgs/org-1")) {
       return { force_require_change_request_for_approved_links: extra.orgForceLinksLocked ?? false };
     }
+    if (path.endsWith("/requirement-aliases")) return buildAliasSettings();
+    if (path.endsWith("/components")) return buildAliasTree().components;
+    if (path.endsWith("/categories")) return buildAliasTree().categories;
     if (path.endsWith("/enabled-modules")) return extra.enabledModules ?? [];
     if (path.endsWith("/resources")) return extra.orgResources ?? [];
     if (path.includes("/users/search")) {
@@ -153,6 +157,22 @@ export const MemberSeesReadOnlyView: Story = {
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
     await expect(canvas.getByRole("link", { name: "← Requirements" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements`);
+  },
+};
+
+/** A requirement that sits in further components lists each place with its code, and a manager can act on a further place. */
+export const ListsTheCodesOfTheComponentsARequirementSitsIn: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], {
+      unique_code: "SW-PERF-001", component_id: "c-sw", category_id: "k-perf", aliases: [buildAlias()],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: "Components and codes" })).toBeInTheDocument();
+    await expect(await canvas.findByLabelText("Code HW-COOL-002")).toBeInTheDocument();
+    await expect(canvas.getByLabelText("Code SW-PERF-001")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Actions for HW-COOL-002" })).toBeInTheDocument();
   },
 };
 

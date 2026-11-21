@@ -112,6 +112,7 @@ def export_artefact_links(
             "forward_name": link_type.forward_name if link_type else None,
             "reverse_name": link_type.reverse_name if link_type else None,
             "created_by_email": emails.get(link.created_by),
+            "note": link.note,
         })
     return out
 
@@ -160,12 +161,13 @@ def import_artefact_links(
         creator = users.resolve(entry.get("created_by_email"), required=False, context=f"{context} link creator")
         try:
             with db.begin_nested():
-                create_link(
+                imported = create_link(
                     db, source_type=entry["source"]["type"], source_id=source_id,
                     target_type=entry["target"]["type"], target_id=target_id, link_type_id=link_type_id,
                     created_by=creator or current_user.id, project_id=project.id,
                     enforce_rules=False,  # replaying existing data
                 )
+                imported.note = (entry.get("note") or None) and str(entry["note"])[:200]
         except IntegrityError:
             continue  # the same link was already recreated by another section
     db.flush()

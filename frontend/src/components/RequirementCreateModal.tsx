@@ -8,7 +8,7 @@
  * - Load what the form needs (the project, its organisation's members, components, categories, target versions and the
  *   requirement custom fields) and show `RequirementFields`, the component and category pickers, custom fields, the
  *   quick-link field and the tag field.
- * - Create the requirement, then apply its quick links and tags.
+ * - Create the requirement (with any further components, `RequirementAliasField`), then apply its quick links and tags.
  * - A project with no component or category yet: let a project manager create the first ones inline, else point to the
  *   project's settings.
  * - Optionally (`offerAttach`) a second step to attach files to the new requirement, which the create endpoints need an
@@ -23,6 +23,7 @@ import { Link } from "react-router-dom";
 
 import type { CollectedLink } from "../api/artefactLinks";
 import { api } from "../api/client";
+import type { PlacementPair } from "../api/placements";
 import type { Category, Component, CustomFieldDefinition, FileAsset, ProjectStage, Requirement } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -39,6 +40,7 @@ import { FormGrid, FormGridFull } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { QuickLinkField } from "./QuickLinkField";
+import { RequirementAliasField } from "./RequirementAliasField";
 import { RequirementFields } from "./RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "./requirementFieldValues";
 import { TagField } from "./TagField";
@@ -80,6 +82,7 @@ export function RequirementCreateModal({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [additionalPlaces, setAdditionalPlaces] = useState<PlacementPair[]>([]);
   const [inlineComponentName, setInlineComponentName] = useState("");
   const [inlineComponentPrefix, setInlineComponentPrefix] = useState("");
   const [inlineCategoryName, setInlineCategoryName] = useState("");
@@ -159,6 +162,9 @@ export function RequirementCreateModal({
         level: fields.level,
         ...requirementPeopleAndReviewPayload(fields),
         keywords: [],
+        additional_places: additionalPlaces
+          .filter((place) => place.category_id && place.category_id !== categoryId)
+          .map((place) => ({ component_id: place.component_id, category_id: place.category_id })),
         custom_fields: customFieldValues,
       });
       showToast(strings.requirements.created);
@@ -288,6 +294,9 @@ export function RequirementCreateModal({
                     .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
                   placeholder={categories.some((c) => c.component_id === componentId) ? null : strings.requirements.noCategoriesForComponent}
                 />
+                <FormGridFull>
+                  <RequirementAliasField projectId={projectId} ownCategoryId={categoryId} value={additionalPlaces} onChange={setAdditionalPlaces} />
+                </FormGridFull>
               </>
             }
           />

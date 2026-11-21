@@ -292,6 +292,7 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   artefact_link: "Link",
   tag: "Tag",
   tag_settings: "Tag settings",
+  requirement_alias_settings: "Requirement alias settings",
 };
 
 function capitalize(value: string): string {
@@ -444,6 +445,10 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   untagged: "removed a tag",
   placed: "placed this in a component or category",
   unplaced: "removed this from a component or category",
+  alias_added: "placed this in a further component",
+  alias_retired: "removed this from a further component",
+  alias_promoted: "made a further component its own",
+  alias_made_independent: "made a further component an independent requirement",
   reference_added: "added an external reference",
   reference_updated: "changed an external reference",
   reference_removed: "removed an external reference",
@@ -1831,6 +1836,15 @@ export interface ProjectMetrics {
   record_total: number;
 }
 
+/** A further component and category a requirement sits in, with the code of that place (`HW-IF-017`). */
+export interface RequirementAlias {
+  id: string;
+  unique_code: string;
+  component_id: string;
+  category_id: string;
+  is_retired: boolean;
+}
+
 export interface Requirement extends ProjectScopedRow {
   /** The phase that governs the requirement (its component's track when component phases are on, else its stage's); null when not applicable. */
   phase_name?: string | null;
@@ -1859,6 +1873,8 @@ export interface Requirement extends ProjectScopedRow {
   completed_at: string | null;
   completed_by: string | null;
   keywords: string[];
+  /** The further places the requirement sits in, each with its own code (empty when it has none). */
+  aliases?: RequirementAlias[];
   custom_fields: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -2219,6 +2235,20 @@ export function describeActivityAction(entry: ChangeEntry, projectId?: string): 
   }
   if ((entry.action === "placed" || entry.action === "unplaced") && typeof entry.detail?.place === "string") {
     return `${entry.action === "placed" ? "placed this in" : "removed this from"} ${entry.detail.place}`;
+  }
+  if (
+    ["alias_added", "alias_retired", "alias_promoted", "alias_made_independent"].includes(entry.action)
+    && typeof entry.detail?.code === "string"
+  ) {
+    const code = entry.detail.code;
+    const place = typeof entry.detail.place === "string" ? ` in ${entry.detail.place}` : "";
+    const verb = {
+      alias_added: "placed this in a further component with the code",
+      alias_retired: "retired the code",
+      alias_promoted: "made this the own code of",
+      alias_made_independent: "made independent the requirement with the code",
+    }[entry.action];
+    return `${verb} ${code}${place}`;
   }
   const action = activityActionLabel(entry.action);
   // AI approval via MCP (docs/decisions.md): every approval/decision/

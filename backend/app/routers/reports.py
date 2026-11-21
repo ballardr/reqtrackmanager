@@ -35,6 +35,7 @@ from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
 from app.services.lookups import get_or_404, project_or_404
+from app.services.placements import requirement_places
 from app.services.rbac import require_project_view
 from app.services.report_document import resolve_branding, resolve_report_images
 from app.services.report_file_names import org_default_stem
@@ -64,16 +65,13 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
     query = select(Requirement).where(Requirement.project_id == project_id)
     if not payload.include_archived:
         query = query.where(Requirement.is_archived.is_(False))
-    if payload.component_id is not None:
-        query = query.where(Requirement.component_id == payload.component_id)
-    if payload.category_id is not None:
-        query = query.where(Requirement.category_id == payload.category_id)
     requirements = db.scalars(query).all()
     # The current versions and tags of every requirement are read in one statement each, not one per row.
     ids = [req.id for req in requirements]
     versions = {v.requirement_id: v for v in db.scalars(select(RequirementVersion).where(
         RequirementVersion.requirement_id.in_(ids), RequirementVersion.valid_to.is_(None)))} if ids else {}
     tags_by_id = tag_service.keywords_for_requirements(db, ids) if ids else {}
+    places = requirement_places(db, ids)
 
     rows = []
     for req in requirements:
@@ -85,17 +83,26 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
         keywords = tags_by_id.get(req.id, [])
         if payload.keyword is not None and payload.keyword.casefold() not in {k.casefold() for k in keywords}:
             continue
-        component = components.get(req.component_id)
-        category = categories.get(req.category_id)
-        rows.append(ReportRequirementRow(
-            unique_code=display_code(req.unique_code, project.code, own_project_code=project.code, enforced=enforced),
-            tags=", ".join(keywords) if keywords else "", name=version.name, reasoning=version.reasoning,
-            clarification=version.clarification, status=version.status.value,
-            component_name=component.name if component else "",
-            category_name=category.name if category else "",
-            component_sort_order=component.sort_order if component else 0,
-            category_sort_order=category.sort_order if category else 0,
-        ))
+        own_code = display_code(req.unique_code, project.code, own_project_code=project.code, enforced=enforced)
+        # The requirement is listed under each place it sits in, named by that place's own code; the filters narrow
+        # the places, so a component filter lists it under that component's code.
+        for place in places.get(req.id, [])[: 1 if payload.primary_places_only else None]:
+            if payload.component_id is not None and place.pair.component_id != payload.component_id:
+                continue
+            if payload.category_id is not None and place.pair.category_id != payload.category_id:
+                continue
+            component = components.get(place.pair.component_id)
+            category = categories.get(place.pair.category_id) if place.pair.category_id else None
+            rows.append(ReportRequirementRow(
+                unique_code=display_code(place.code, project.code, own_project_code=project.code, enforced=enforced),
+                tags=", ".join(keywords) if keywords else "", name=version.name, reasoning=version.reasoning,
+                clarification=version.clarification, status=version.status.value,
+                component_name=component.name if component else "",
+                category_name=category.name if category else "",
+                component_sort_order=component.sort_order if component else 0,
+                category_sort_order=category.sort_order if category else 0,
+                same_as=own_code if place.alias_id is not None else "",
+            ))
     rows.sort(key=lambda r: r.unique_code)
     return rows
 

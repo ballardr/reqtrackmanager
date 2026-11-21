@@ -84,7 +84,7 @@ Parameters: `name*` (string), `family*` (string), `tree*` (object), `description
 
 Creates a new requirement. Always starts in "draft" status — there is no way to create one pre-approved, and no tool here can approve it afterward either; use the ReqTrackManager UI for that.
 
-Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `category_id*` (string), `reasoning` (string), `clarification` (string), `description` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object)
+Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `category_id*` (string), `reasoning` (string), `clarification` (string), `description` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `additional_places` (list[object])
 
 ## `decide_change_request` (approval)
 
@@ -406,6 +406,12 @@ Lists the tags a project offers and how new tags are treated.
 
 Parameters: `project_id` (string)
 
+## `make_requirement_alias_independent` (write)
+
+Turns an alias into a requirement of its own. This cannot be undone. The new requirement is a draft (never approved) that takes the alias code and the original's content, links, comments, tags and attachments, is owned by the caller, and is linked to the original with a Related to link. A link the approved-link lock refuses is left out and listed in `skipped`.
+
+Parameters: `project_id` (string), `requirement_id*` (string), `alias_id*` (string), `related_link_type_id` (string)
+
 ## `move_category` (write)
 
 Moves a category one place up or down among the categories of its component (never to another component). Needs the project manager role.
@@ -436,6 +442,12 @@ Shows how many records each report in a pack would include for the chosen values
 
 Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string), `variables` (object), `variable_set_id` (string), `include_children` (boolean), `project_ids` (list[string])
 
+## `promote_requirement_alias` (write)
+
+Makes an alias's place the requirement's own, swapping the two places and their codes (no code is lost: the old own code becomes an alias). Refused (409) while the requirement is approved.
+
+Parameters: `project_id` (string), `requirement_id*` (string), `alias_id*` (string)
+
 ## `remove_artefact_external_reference` (write)
 
 Removes one external reference from a record. Confirm with the user first: the key is not kept anywhere else.
@@ -447,6 +459,12 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 Removes one tag from a record. The tag stays in the project's list.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tag_id*` (string)
+
+## `remove_requirement_alias` (write)
+
+Takes a requirement out of one of its further places. The alias code is retired: it is never reused and still finds the requirement. Allowed on an approved requirement (it is placement, not content).
+
+Parameters: `project_id` (string), `requirement_id*` (string), `alias_id*` (string)
 
 ## `run_custom_report` (read)
 
@@ -524,7 +542,7 @@ Parameters: `layout_id*` (string), `name` (string), `description` (string), `fol
 
 Edits an unlocked requirement's content in place.
 
-Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `change_note` (string)
+Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `additional_places` (list[object]), `change_note` (string)
 
 ## `update_saved_report_snippet` (write)
 

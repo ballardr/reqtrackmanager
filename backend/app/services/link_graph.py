@@ -425,7 +425,7 @@ def build_link_graph(
                 flow=LinkGraphFlow.RELATED if link_type is None else _hop_flow(link_type.flow, outgoing),
                 cross_project=cross,
                 nesting_permitted=not cross or link_type is None or _nesting_permitted(link, link_type, chain_cache),
-                dedicated=link_type is None or link_type.dedicated_endpoint,
+                dedicated=link_type is None or link_type.dedicated_endpoint, note=link.note,
             )
         frontier = next_frontier
 
