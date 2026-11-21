@@ -3,7 +3,7 @@ import { useState } from "react";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { ActionTypesPanel } from "./ActionTypesPanel";
 import * as complianceApi from "./api";
 import type { ComplianceActionType } from "./types";
@@ -101,8 +101,9 @@ export const AddActionType: Story = {
   render: () => <Harness initial={[{ id: "at-1", organization_id: ORG_ID, name: "Review", sort_order: 0 }]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(canvas.getByPlaceholderText("Action type name"), "Evidence review");
-    await userEvent.click(canvas.getByRole("button", { name: "Add action type" }));
+    const dialog = await openAddDialog(canvas, "Add action type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Action type name" }), "Evidence review");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/action-types`,

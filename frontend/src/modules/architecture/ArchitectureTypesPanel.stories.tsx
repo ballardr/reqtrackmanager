@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { ArchitectureTypesPanel } from "./ArchitectureTypesPanel";
 import { mockArchitectureReads, ORG_ID, PROJECT_ID } from "./architectureFixtures";
 
@@ -95,8 +95,9 @@ export const ANewConnectionTypeStartsAtTheTopLevel: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByPlaceholderText("Connection type name"), "Radio link");
-    await userEvent.click(canvas.getByRole("button", { name: "Add connection type" }));
+    const dialog = await openAddDialog(canvas, "Add connection type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Radio link");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/architecture/connection-types`, expect.objectContaining({ name: "Radio link", parent_ids: [] }),
     ));
@@ -135,8 +136,9 @@ export const ANewDomainIsCreatedWithItsName: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByPlaceholderText("Domain name"), "Mechanical");
-    await userEvent.click(canvas.getByRole("button", { name: "Add domain" }));
+    const dialog = await openAddDialog(canvas, "Add domain");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Mechanical");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/architecture/domains`, { name: "Mechanical" },
     ));

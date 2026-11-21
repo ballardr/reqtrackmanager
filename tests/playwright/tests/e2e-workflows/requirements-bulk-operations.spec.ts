@@ -44,7 +44,9 @@ test.describe("requirements list: bulk operations", () => {
     await test.step("add a second stage to move requirements into later", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Workflows and phases");
-      await page.getByPlaceholder("Name", { exact: true }).first().fill(stageName);
+      await page.getByRole("button", { name: "New stage", exact: true }).click();
+      const stageDialog = page.getByRole("dialog", { name: "New stage" });
+      await stageDialog.getByLabel("Name", { exact: true }).fill(stageName);
       // The new stage's name renders into an editable rename `<input>`'s
       // current *value* once created, not as plain text — no DOM text
       // matcher (`getByText`) can see it, and a React-controlled input's
@@ -53,7 +55,7 @@ test.describe("requirements list: bulk operations", () => {
       // fighting the DOM for a value-only check.
       const [stageResponse] = await Promise.all([
         page.waitForResponse((res) => res.url().includes("/stages") && res.request().method() === "POST"),
-        page.getByRole("button", { name: "New stage" }).click(),
+        stageDialog.getByRole("button", { name: "Add", exact: true }).click(),
       ]);
       expect(stageResponse.ok()).toBeTruthy();
     });

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { DecisionTypesPanel } from "./DecisionTypesPanel";
 import type { DecisionTypeDefinition } from "./types";
 
@@ -80,9 +80,9 @@ export const AddDecisionType: Story = {
   beforeEach: () => mockDecisionTypeApis([SEED[0]]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Decision type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Decision type name"), "Engineering");
-    await userEvent.click(canvas.getByRole("button", { name: "Add decision type" }));
+    const dialog = await openAddDialog(canvas, "Add decision type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Decision type name" }), "Engineering");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/decisions/decision-types`,

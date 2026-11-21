@@ -212,7 +212,7 @@ flowchart LR
 
 **"Not set" is never zero.** An optional rating input offers an explicit "Not scored" option (`ScoringLevelPicker`), and a result missing an input reads "not scored under this model" — never 0, and never silently dropped from a ranking.
 
-**A long text value in a row is `multiline`.** A `DefinitionListField` holding prose (a type's definition) sets `multiline: true`: the row and the add form show a growing text area, not a one-line input.
+**A long text value in a row is `multiline`.** A `DefinitionListField` holding prose (a type's definition) sets `multiline: true`: the row and the Add dialog show a growing text area, not a one-line input.
 
 **Derived order hides reorder controls.** When a list's order is computed (scoring levels are ordered by weight), omit `DefinitionList`'s `onMove` so no up/down buttons appear; when a list has a floor (an axis keeps two levels), set `minItems` so delete is disabled with a reason.
 
@@ -975,6 +975,21 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 - A field that scopes the rest (the organisation on New project, which decides the templates offered) comes first, alone on its row, above a `FormDivider`; the fields that depend on it sit beneath. Never draw a rule with a hand-written `<hr>`.
 - Every field has `help` or `helpNotNeeded` ([Pattern: field help](#pattern-field-help)).
 
+## Pattern: creation controls on demand
+
+A list or administration page shows an **Add** (or **New …**) button and opens the creation form only when asked. It never draws a block of empty inputs above or below the list for something created rarely: the list is what the page is for, and an empty form is useful once and then occupies space on every later visit.
+
+- **The form is a dialog.** The button opens a `Modal` (or `SidePanel` for a record with a long form) following [Pattern: form header](#pattern-form-header): a title, `FormActions` with the save button in the header, the shared field components with `*` on the required fields and `help` or `helpNotNeeded`, and the same field group the rename or edit form uses. A refusal from the server shows beside Save and keeps what was typed; the dialog closes only once the item exists, and the page then reloads and toasts.
+- **The button sits above the list**, in the page's action row or at the top of the section, as a medium `btn btn-primary` with the `+` icon and a name that says what it makes ("New tag", "Add action type"). A small heading `(+)` stays the shape for adding to a list inside a record ([compact forms](#pattern-compact-forms-and-add-on-demand)).
+- **`DefinitionList` does this for every vocabulary** (action, decision, link and pain point types, project statuses, scoring levels, ports, symbols, external systems): `addLabel` names the button and the dialog, and the dialog holds one field per entry of `fields` (`DefinitionAddModal`), so a new vocabulary gets it without code. The Tags page (`TagCreateModal`) and Project Administration's stage and custom field sections (`StageCreateModal`, `CustomFieldCreateModal`) follow the same shape.
+- **Exceptions, each stated where it is used:**
+  - *Rapid repeated entry.* A list whose purpose is adding many items in a row may keep one single-line input beside its list: a comment box, and a checklist whose row is one text field with an optional assignee (the change request tasks).
+  - *An empty state as the call to action.* A create dialog that cannot proceed until a first item exists may show the small creation form inline (the first component or category inside the new requirement dialog, `InlineStructureForm`).
+  - *A canvas.* A diagram adds at once and is edited in its Selection card ([Pattern: add, then edit in the selection](#pattern-add-then-edit-in-the-selection)).
+- **Review a new page by asking:** will the empty fields still be useful the fifth time the page is opened? If not, they belong in a dialog. This extends [explain in help, not in the layout](#pattern-explain-in-help-not-in-the-layout) and [modal dialog for entity create/rename](#pattern-modal-dialog-for-entity-createrename); it does not replace them.
+
+*Why:* the Tags page drew a name, a colour picker and a button above its table, the stage and custom field sections drew a row of selects and inputs under their lists, and twelve vocabularies drew an empty grid row, each answering "where does the create form go" separately.
+
 ## Pattern: button sizes
 
 *(New 2026-10-13 — from user review of the Engagement page, where prompt row buttons, add-on-demand (+) buttons, finding card buttons and the Links panel header each had a different height, and a small icon button sat beside two full-size ones.)*
@@ -1597,7 +1612,7 @@ A page made of widgets is edited on the page itself: the control sits at the rig
 
 A settings panel that edits several fields per row (a scoring level's name, weight and guidance; a type's name and definition; a model's axes) lays them out as **one grid with a heading per column**, never as a floating line of unlabelled inputs that wraps.
 
-- **`DefinitionList layout="grid"`** is the editable form: each field gives `label` (the column heading) and `track` (its CSS grid track, e.g. `"6.5rem"` or `"minmax(10rem, 1.5fr)"`); the add row sits in the same grid under the last row, and a per-row control (`renderExtra`: an Enabled toggle) gets a right-aligned column of its own, so keep it the same width on every row. A long free-text field is `multiline` (it starts at one row and grows). **Rename** is laid out but hidden until a row is edited, so the columns do not shift. The default `layout="stack"` stays for a one-field list.
+- **`DefinitionList layout="grid"`** is the editable form: each field gives `label` (the column heading) and `track` (its CSS grid track, e.g. `"6.5rem"` or `"minmax(10rem, 1.5fr)"`); a single **Add** button above the grid opens the dialog the new row is made in (the grid shows no empty row, see [creation controls on demand](#pattern-creation-controls-on-demand)), and a per-row control (`renderExtra`: an Enabled toggle) gets a right-aligned column of its own, so keep it the same width on every row. A long free-text field is `multiline` (it starts at one row and grows). **Rename** is laid out but hidden until a row is edited, so the columns do not shift. The default `layout="stack"` stays for a one-field list.
 - **Read-only rows use the same columns.** An inherited value is shown with `.definition-grid` and plain cells (`ScoringAxisLevels`), not as a sentence of "Name (weight) · Name (weight)", so a person can see at once what is editable and what is not.
 - **A table of named things** (the scoring criteria: axes and models with who defined each and a Hide or Edit action) is the same grid with fixed heading columns, not a list of loose badges.
 - **Foldable blocks.** Each block of a long panel (`ScoringSection`: default model, models shown, criteria, levels, rating bands) is a `CollapsibleSection`, and each repeated group inside it (one axis's levels) folds to its name and a count ("5 levels"), folded by default where the content is long and rarely changed. The fold is remembered per person; its preference key is at most 100 characters, so it never carries an id.

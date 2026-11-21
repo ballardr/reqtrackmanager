@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import { withToast } from "../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../testing/storybook-helpers";
 import { OrgExternalSystemsPanel, ProjectExternalSystemsPanel } from "./ExternalSystemsPanels";
 import type { EffectiveTypeRow, OrgTypeRow } from "./TypeVocabularyPanels";
 
@@ -32,10 +32,10 @@ export const OrganisationListShowsAndAddsTemplates: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByDisplayValue("Jira")).toBeInTheDocument());
     await expect(canvas.getByDisplayValue(TEMPLATE)).toBeInTheDocument();
-    await userEvent.type(canvas.getByPlaceholderText("External system type name"), "Linear");
-    const templateFields = canvas.getAllByLabelText("Link template");
-    await userEvent.type(templateFields[templateFields.length - 1], "https://linear.example/{{key}");
-    await userEvent.click(canvas.getByRole("button", { name: "Add External system type" }));
+    const dialog = await openAddDialog(canvas, "Add External system type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Linear");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Link template" }), "https://linear.example/{{key}");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/api/v1/orgs/org-1/external-systems", { name: "Linear", url_template: "https://linear.example/{key}" }),
     );

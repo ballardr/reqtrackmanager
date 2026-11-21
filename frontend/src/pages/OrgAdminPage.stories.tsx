@@ -6,7 +6,7 @@ import type { ServiceUser } from "../api/serviceUsers";
 import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildServiceUser } from "../testing/serviceUserFixtures";
-import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast, openAddDialog } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
 const ORG_ID = "org-1";
@@ -1881,9 +1881,9 @@ export const ProjectStatusesAddAndReorder: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
-    const nameInput = canvas.getByPlaceholderText("Name");
-    await userEvent.type(nameInput, "Deprecated");
-    await userEvent.click(canvas.getByRole("button", { name: "New status" }));
+    const dialog = await openAddDialog(canvas, "New status");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Deprecated");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/project-statuses`,
@@ -1937,17 +1937,11 @@ export const LinkTypesAddAndRename: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: /^Workflow$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
-    // Two "Forward name"/"Reverse name"-placeholder inputs exist on this
-    // section: the existing row's own rename inputs (first, pre-filled)
-    // and the "add new link type" row at the very bottom (last, empty) —
-    // same convention as ProjectAdminPage's category/component add-rows.
-    const forwardCandidates = canvas.getAllByPlaceholderText("Forward name");
-    const reverseCandidates = canvas.getAllByPlaceholderText("Reverse name");
-    const forwardInput = forwardCandidates[forwardCandidates.length - 1];
-    const reverseInput = reverseCandidates[reverseCandidates.length - 1];
-    await userEvent.type(forwardInput, "Supersedes");
-    await userEvent.type(reverseInput, "Is superseded by");
-    await userEvent.click(canvas.getByRole("button", { name: "New link type" }));
+    // The list shows only the existing rows; the new link type is made in the dialog the Add button opens.
+    const dialog = await openAddDialog(canvas, "New link type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Forward name" }), "Supersedes");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Reverse name" }), "Is superseded by");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/link-types`,

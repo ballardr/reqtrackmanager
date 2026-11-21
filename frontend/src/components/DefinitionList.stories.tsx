@@ -3,6 +3,8 @@ import { useState } from "react";
 import { expect, fireEvent, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
+import { requiredCaptions } from "../testing/requiredMarkers";
+import { openAddDialog } from "../testing/storybook-helpers";
 import { DefinitionList } from "./DefinitionList";
 
 interface Named {
@@ -87,11 +89,10 @@ export const RenameReorderAndDelete: Story = {
     await waitFor(async () => expect(canvas.queryByDisplayValue("Chore")).not.toBeInTheDocument());
     await expect(canvas.getByDisplayValue("Task")).toBeInTheDocument();
 
-    // Delete an item with no dependents: disappears immediately. (2 remaining
-    // items + the always-present "add new" row's own input = 3 textboxes.)
+    // Delete an item with no dependents: it disappears immediately, and the list shows no empty add fields.
     const deleteButtons = canvas.getAllByRole("button", { name: "Delete type" });
     await userEvent.click(deleteButtons[0]);
-    await waitFor(async () => expect(rows()).toHaveLength(3));
+    await waitFor(async () => expect(rows()).toHaveLength(2));
   },
 };
 
@@ -130,23 +131,55 @@ export const DeleteInUseOpensDialogThenConfirms: Story = {
 
     await userEvent.click(confirmButton);
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
-    // 1 remaining item + the "add new" row's own input = 2 textboxes.
-    await expect(canvas.getAllByRole("textbox")).toHaveLength(2);
+    await expect(canvas.getAllByRole("textbox")).toHaveLength(1);
   },
 };
 
-export const AddDisabledUntilFilled: Story = {
+/** The list shows no empty fields: Add opens a dialog whose Add button waits for the required field. */
+export const AddOpensADialogAndWaitsForTheRequiredField: Story = {
   render: () => <SingleFieldHarness initialItems={[{ id: "1", name: "Bug" }]} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const addButton = canvas.getByRole("button", { name: "New type" });
-    await expect(addButton).toBeDisabled();
+    await expect(canvas.getAllByRole("textbox")).toHaveLength(1);
+    const dialog = await openAddDialog(canvas, "New type");
+    const save = dialog.getByRole("button", { name: "Add" });
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    await expect(save).toBeDisabled();
 
-    await userEvent.type(canvas.getByPlaceholderText("Name"), "Task");
-    await expect(addButton).toBeEnabled();
-    await userEvent.click(addButton);
-    // 2 items + the "add new" row's own (now-cleared) input = 3 textboxes.
-    await waitFor(async () => expect(canvas.getAllByRole("textbox")).toHaveLength(3));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Task");
+    await expect(save).toBeEnabled();
+    await userEvent.click(save);
+    await waitFor(async () => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(canvas.getByDisplayValue("Task")).toBeInTheDocument();
+  },
+};
+
+/** A refused add stays in the dialog beside Add, with what was typed. */
+export const ARefusedAddStaysInTheDialog: Story = {
+  render: () => {
+    function Harness() {
+      return (
+        <DefinitionList<Named>
+          items={[{ id: "1", name: "Bug" }]}
+          fields={[{ key: "name", getValue: (i) => i.name, placeholder: "Name" }]}
+          getReassignLabel={(i) => i.name}
+          onRename={async () => {}}
+          onAdd={async () => { throw new Error("That name is already used."); }}
+          onDelete={async () => {}}
+          deleteLabel="Delete type"
+          addLabel="New type"
+        />
+      );
+    }
+    return <Harness />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const dialog = await openAddDialog(canvas, "New type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Bug");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    await expect(await dialog.findByText("That name is already used.")).toBeInTheDocument();
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Bug");
   },
 };
 
@@ -186,18 +219,19 @@ export const TwoFieldVariant: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // 2 items + the "add new" row's own forward-name field = 3.
-    await expect(canvas.getAllByLabelText("Forward name")).toHaveLength(3);
-    const addButton = canvas.getByRole("button", { name: "New link type" });
+    // The two rows only: the empty fields are in the dialog.
+    await expect(canvas.getAllByLabelText("Forward name")).toHaveLength(2);
+    const dialog = await openAddDialog(canvas, "New link type");
+    const addButton = dialog.getByRole("button", { name: "Add" });
     await expect(addButton).toBeDisabled();
 
-    await userEvent.type(canvas.getByPlaceholderText("Forward name"), "depends on");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Forward name" }), "depends on");
     await expect(addButton).toBeDisabled();
-    await userEvent.type(canvas.getByPlaceholderText("Reverse name"), "is depended on by");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Reverse name" }), "is depended on by");
     await expect(addButton).toBeEnabled();
 
     await userEvent.click(addButton);
-    await waitFor(async () => expect(canvas.getAllByLabelText("Forward name")).toHaveLength(4));
+    await waitFor(async () => expect(canvas.getAllByLabelText("Forward name")).toHaveLength(3));
   },
 };
 
@@ -293,11 +327,14 @@ export const DerivedOrderWithFloorAndOptionalField: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
     await expect(canvas.getAllByRole("button", { name: /At least 2 are required/ })).toHaveLength(2);
-    // The optional guidance field may stay blank; weight is a number input.
-    await userEvent.type(canvas.getByPlaceholderText("Name"), "Mid");
-    await userEvent.type(canvas.getByPlaceholderText("Weight"), "2");
-    await expect(canvas.getByPlaceholderText("Weight")).toHaveAttribute("type", "number");
-    await userEvent.click(canvas.getByRole("button", { name: "Add level" }));
+    // The optional guidance field may stay blank (no `*`); weight is a number input.
+    const dialog = await openAddDialog(canvas, "Add level");
+    await expect(dialog.getByRole("textbox", { name: "Guidance" })).toBeInTheDocument();
+    await expect(requiredCaptions(document.body)).toEqual(["Name", "Weight"]);
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Mid");
+    await userEvent.type(dialog.getByRole("spinbutton", { name: "Weight" }), "2");
+    await expect(dialog.getByRole("spinbutton", { name: "Weight" })).toHaveAttribute("type", "number");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete level" })).toHaveLength(3));
   },
 };
@@ -334,9 +371,11 @@ export const MultilineFieldGrowsWithContent: Story = {
     const before = (box as HTMLElement).clientHeight;
     fireEvent.change(box, { target: { value: Array.from({ length: 6 }, (_, i) => `Line ${i + 1}`).join("\n") } });
     await waitFor(() => expect((box as HTMLElement).clientHeight).toBeGreaterThan(before));
-    // The optional definition may stay blank when adding.
-    await userEvent.type(canvas.getByPlaceholderText("Name"), "User");
-    await userEvent.click(canvas.getByRole("button", { name: "Add type" }));
+    // The optional definition may stay blank when adding; it is a growing text area there too.
+    const dialog = await openAddDialog(canvas, "Add type");
+    await expect(dialog.getByRole("textbox", { name: "Definition" }).tagName).toBe("TEXTAREA");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "User");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(canvas.getByDisplayValue("User")).toBeInTheDocument());
   },
 };
@@ -393,7 +432,7 @@ interface Level {
   guidance: string;
 }
 
-/** `layout="grid"`: one heading per field, every row and the add row aligned under it, and a Rename that only shows once a row is edited. */
+/** `layout="grid"`: one heading per field, every row aligned under it, and a Rename that only shows once a row is edited. */
 function GridHarness() {
   const [items, setItems] = useState<Level[]>([
     { id: "1", name: "Low", weight: 1, guidance: "A handful of people." },
@@ -437,10 +476,12 @@ export const GridLayoutAlignsRowsUnderHeadings: Story = {
     await userEvent.type(names[0], "Minor");
     await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Minor")).toBeInTheDocument());
-    // The add row is the last input in each column.
-    await userEvent.type(canvas.getAllByRole("textbox", { name: "Level name" }).slice(-1)[0], "Top");
-    await userEvent.type(canvas.getAllByRole("spinbutton", { name: "Level weight" }).slice(-1)[0], "5");
-    await userEvent.click(canvas.getByRole("button", { name: "Add level" }));
+    // The grid holds only the items; the new one is made in the Add dialog.
+    await expect(canvas.getAllByRole("textbox", { name: "Level name" })).toHaveLength(2);
+    const dialog = await openAddDialog(canvas, "Add level");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Level" }), "Top");
+    await userEvent.type(dialog.getByRole("spinbutton", { name: "Weight" }), "5");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Top")).toBeInTheDocument());
   },
 };

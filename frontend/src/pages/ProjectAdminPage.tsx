@@ -9,8 +9,6 @@ import type {
   ActionTypeDefinition,
   AssignByEmailOutcome,
   CustomFieldDefinition,
-  CustomFieldEntityKind,
-  CustomFieldType,
   EffectiveMember,
   MaterializeResult,
   ModuleRoleDefinition,
@@ -61,7 +59,9 @@ import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FilterPanel } from "../components/FilterPanel";
+import { CustomFieldCreateModal, type CustomFieldDraft } from "../components/CustomFieldCreateModal";
 import { Modal } from "../components/Modal";
+import { StageCreateModal } from "../components/StageCreateModal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -244,7 +244,7 @@ export function ProjectAdminPage() {
   // `MultiSelectDropdown` (see `groupsTabColumns`'s "role" column below).
   const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [newStageName, setNewStageName] = useState("");
+  const [creatingStage, setCreatingStage] = useState(false);
   const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
 
   // Rename/delete state for stages/components/categories. Each "edits" map
@@ -382,11 +382,7 @@ export function ProjectAdminPage() {
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
 
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
-  const [newFieldName, setNewFieldName] = useState("");
-  const [newFieldType, setNewFieldType] = useState<CustomFieldType>("short_text");
-  const [newFieldOptions, setNewFieldOptions] = useState("");
-  const [newFieldRequired, setNewFieldRequired] = useState(false);
+  const [creatingField, setCreatingField] = useState(false);
   const [deletingFieldId, setDeletingFieldId] = useState<string | null>(null);
 
   const GROUPS_PAGE_SIZE = 20;
@@ -650,18 +646,17 @@ export function ProjectAdminPage() {
     }
   }
 
-  async function addCustomField() {
+  /** Creates a custom field from the dialog's draft; resolves true when it exists (failure is toasted by `run`). */
+  async function addCustomField(draft: CustomFieldDraft): Promise<boolean> {
     if (!(await run(() => api.post(`/api/v1/projects/${projectId}/custom-fields`, {
-      entity_kind: newFieldKind,
-      name: newFieldName,
-      field_type: newFieldType,
-      options: newFieldType === "list" ? newFieldOptions.split(",").map((s) => s.trim()).filter(Boolean) : null,
-      required: newFieldRequired,
-    }), "add", "custom field"))) return;
-    setNewFieldName("");
-    setNewFieldOptions("");
-    setNewFieldRequired(false);
+      entity_kind: draft.entityKind,
+      name: draft.name,
+      field_type: draft.fieldType,
+      options: draft.fieldType === "list" ? draft.options.split(",").map((s) => s.trim()).filter(Boolean) : null,
+      required: draft.required,
+    }), "add", "custom field"))) return false;
     reload();
+    return true;
   }
 
   async function deleteCustomField(fieldId: string) {
@@ -801,7 +796,7 @@ export function ProjectAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  /** Creates a project workflow from the editor opened beside the new-stage form and selects it for the new stage. */
+  /** Creates a project workflow from the editor opened over the new-stage dialog and selects it for the new stage. */
   async function saveNewWorkflow(values: StageWorkflowValues) {
     setNewWorkflowError(null);
     try {
@@ -815,12 +810,13 @@ export function ProjectAdminPage() {
     reload();
   }
 
-  async function addStage() {
-    if (!newStageName.trim()) return;
-    const body = { name: newStageName, workflow_id: newStageWorkflowId || undefined };
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, body), "add", "{stage}"))) return;
-    setNewStageName("");
+  /** Creates a stage from the dialog; resolves true when it exists (failure is toasted by `run`). */
+  async function addStage(name: string, workflowId: string): Promise<boolean> {
+    if (!name.trim()) return false;
+    const body = { name, workflow_id: workflowId || undefined };
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, body), "add", "{stage}"))) return false;
     reload();
+    return true;
   }
 
   /** Moves a stage to a phase of its workflow; a closed phase first asks whether to complete its requirements. */
@@ -1818,17 +1814,8 @@ export function ProjectAdminPage() {
           </div>
           );
         })}
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
-          <LabeledSelect
-            label={strings.stageWorkflows.workflow} help={strings.help.stageWorkflowChoice} placeholder={null}
-            value={newStageWorkflowId || stageWorkflows[0]?.id || ""} onChange={setNewStageWorkflowId}
-            options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
-          />
-          <button className="btn" onClick={() => { setNewWorkflowError(null); setCreatingWorkflow(true); }}>
-            <Plus /> {strings.stageWorkflows.newWorkflow}
-          </button>
-          <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
+        <div>
+          <button className="btn btn-primary" onClick={() => setCreatingStage(true)}>
             <Plus /> {strings.admin.newStage}
           </button>
         </div>
@@ -1890,40 +1877,8 @@ export function ProjectAdminPage() {
             )}
           </div>
         ))}
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <LabeledSelect help={strings.help.customFieldAppliesTo}
-            label={strings.admin.fieldAppliesTo}
-            value={newFieldKind}
-            onChange={(next) => setNewFieldKind(next as CustomFieldEntityKind)}
-            options={[
-              { value: "requirement", label: strings.admin.entityKindRequirement },
-              { value: "change_request", label: strings.admin.entityKindChangeRequest },
-            ]}
-            placeholder={null}
-          />
-          <TextField helpNotNeeded label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
-          <LabeledSelect help={strings.help.customFieldType}
-            label={strings.admin.fieldTypeLabel}
-            value={newFieldType}
-            onChange={(next) => setNewFieldType(next as CustomFieldType)}
-            options={[
-              { value: "short_text", label: strings.admin.fieldTypeShortText },
-              { value: "long_text", label: strings.admin.fieldTypeLongText },
-              { value: "checkbox", label: strings.admin.fieldTypeCheckbox },
-              { value: "list", label: strings.admin.fieldTypeList },
-            ]}
-            placeholder={null}
-          />
-          {newFieldType === "list" && (
-            <TextField help={strings.help.customFieldOptions}
-              label={strings.admin.optionsCommaSeparated}
-              placeholder={strings.admin.optionsCommaSeparated}
-              value={newFieldOptions}
-              onChange={setNewFieldOptions}
-            />
-          )}
-          <CheckboxField help={strings.help.customFieldRequired} label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
-          <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
+        <div>
+          <button className="btn btn-primary" onClick={() => setCreatingField(true)}>
             <Plus /> {strings.admin.newCustomField}
           </button>
         </div>
@@ -2550,6 +2505,14 @@ export function ProjectAdminPage() {
           </div>
         ))}
       {stageMove.dialog}
+      {creatingStage && (
+        <StageCreateModal
+          workflows={stageWorkflows} workflowId={newStageWorkflowId} onWorkflowChange={setNewStageWorkflowId}
+          onNewWorkflow={() => { setNewWorkflowError(null); setCreatingWorkflow(true); }}
+          onCreate={addStage} onClose={() => setCreatingStage(false)}
+        />
+      )}
+      {creatingField && <CustomFieldCreateModal onCreate={addCustomField} onClose={() => setCreatingField(false)} />}
       {creatingWorkflow && (
         <StageWorkflowEditor workflow={null} error={newWorkflowError} onCancel={() => setCreatingWorkflow(false)} onSave={saveNewWorkflow} />
       )}

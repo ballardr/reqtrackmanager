@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { addDefinition, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
@@ -48,8 +48,7 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.goto("/standards");
     await page.getByRole("link", { name: ORG_NAMES.alpha, exact: true }).click();
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
-    await page.getByPlaceholder("Action type name").fill(actionTypeName);
-    await page.getByRole("button", { name: "Add action type" }).click();
+    await addDefinition(page, "Add action type", { "Action type name": actionTypeName });
     await expect(async () => {
       const values = await page.locator("input.input").evaluateAll((inputs) => inputs.map((i) => (i as HTMLInputElement).value));
       expect(values).toContain(actionTypeName);

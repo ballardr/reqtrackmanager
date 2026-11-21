@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
+import { addDefinition, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, setOrgModuleAvailability } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -104,8 +104,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
       await expect(inputWithValue(page, "User")).toBeVisible();
       await expect(inputWithValue(page, "Operator")).toBeVisible();
 
-      await page.getByPlaceholder("Pain Point type name").fill(orgTypeName);
-      await page.getByRole("button", { name: "Add Pain Point type" }).click();
+      await addDefinition(page, "Add Pain Point type", { Name: orgTypeName });
       await expect(inputWithValue(page, orgTypeName)).toBeVisible();
     });
 

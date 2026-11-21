@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { expandScoringLevels } from "../scoringLevels";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -73,9 +73,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
       await expect(inputWithValue(page, "Blocker")).toBeVisible();
       await expect(inputWithValue(page, "Constant")).toBeVisible();
 
-      await page.getByRole("textbox", { name: "Severity level name" }).last().fill("Catastrophic");
-      await page.getByRole("spinbutton", { name: "Severity level weight" }).last().fill("6");
-      await page.getByRole("button", { name: "Add Severity level" }).click();
+      await addDefinition(page, "Add Severity level", { Level: "Catastrophic", Weight: "6" });
       await expect(page.getByText("Level added.")).toBeVisible();
       await expect(inputWithValue(page, "Catastrophic")).toBeVisible();
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -114,8 +114,7 @@ test.describe("Stakeholders & Personas: organisation Personas and types", () => 
     await expect(page.locator(`input[value="Primary"]`)).toBeVisible();
     await expect(page.locator(`input[value="Secondary"]`)).toBeVisible();
     await expect(page.locator(`input[value="Negative"]`)).toBeVisible();
-    await page.getByPlaceholder("Persona type name").fill(typeName);
-    await page.getByRole("button", { name: "Add Persona type" }).click();
+    await addDefinition(page, "Add Persona type", { Name: typeName });
     await expect(page.getByText("Persona type created.")).toBeVisible();
     await expect(page.locator(`input[value="${typeName}"]`)).toHaveCount(1);
 

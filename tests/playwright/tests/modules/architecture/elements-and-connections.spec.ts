@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, installCleanupHook, selectOptionContaining, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 import { clickMenuRow } from "../../menuTree";
 
@@ -56,8 +56,7 @@ test.describe("System Architecture: elements, connections and sharing", () => {
       await page.getByRole("link", { name: new RegExp(gateway) }).first().click();
       await expect(page.getByRole("heading", { name: new RegExp(gateway) })).toBeVisible();
       const ports = page.getByRole("region", { name: "Ports" });
-      await ports.getByPlaceholder("Port name").fill("HTTPS API");
-      await ports.getByRole("button", { name: "Add port" }).click();
+      await addDefinition(page, "Add port", { Name: "HTTPS API" }, ports);
       await expect(ports.locator('input[value="HTTPS API"]')).toBeVisible();
       // Reloading before the save lands aborts it, so wait for the server to answer.
       const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/ports/") && r.ok());

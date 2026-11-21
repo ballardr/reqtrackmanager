@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
+import { addDefinition, installCleanupHook, PASSWORD, selectOrgAdminGroup, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -172,8 +172,7 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
     await selectOrgAdminGroup(page, "Stakeholder Types", "Personas and Stakeholders");
     await expect(page.locator(`input[value="Customer"]`)).toBeVisible();
     await expect(page.locator(`input[value="Regulator"]`)).toBeVisible();
-    await page.getByPlaceholder("Stakeholder type name").fill(typeName);
-    await page.getByRole("button", { name: "Add Stakeholder type" }).click();
+    await addDefinition(page, "Add Stakeholder type", { Name: typeName });
     await expect(page.getByText("Stakeholder type created.")).toBeVisible();
     await expect(page.locator(`input[value="${typeName}"]`)).toHaveCount(1);
 

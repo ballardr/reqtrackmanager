@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { addDefinition, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, PASSWORD, selectOrgAdminGroup } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -177,11 +177,7 @@ test.describe("org admin: project statuses and link types", () => {
       await ensureExpanded(page, "Link types");
       await expect(inputWithValue(page, "Depends on")).toBeVisible();
 
-      const newForward = page.getByPlaceholder("Forward name").last();
-      const newReverse = page.getByPlaceholder("Reverse name").last();
-      await newForward.fill("E2E Precedes");
-      await newReverse.fill("E2E Is preceded by");
-      await page.getByRole("button", { name: "New link type" }).click();
+      await addDefinition(page, "New link type", { "Forward name": "E2E Precedes", "Reverse name": "E2E Is preceded by" });
       await expect(inputWithValue(page, "E2E Precedes")).toBeVisible();
 
       await inputWithValue(page, "E2E Precedes").fill("E2E Precedes v2");

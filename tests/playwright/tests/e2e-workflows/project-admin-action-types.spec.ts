@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { addDefinition, loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: a project's requirement-action types (Review, Test, ...)
@@ -66,8 +66,7 @@ test.describe("project admin: action types", () => {
     });
 
     await test.step("add a new action type, then rename it", async () => {
-      await page.getByPlaceholder("Name", { exact: true }).fill("E2E Inspection");
-      await page.getByRole("button", { name: /New action type/ }).click();
+      await addDefinition(page, "New action type", { Name: "E2E Inspection" });
       await expect(inputWithValue(page, "E2E Inspection")).toBeVisible();
 
       await inputWithValue(page, "E2E Inspection").fill("E2E Inspection v2");

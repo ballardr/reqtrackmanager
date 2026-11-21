@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { addDefinition, installCleanupHook, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -32,9 +32,8 @@ test.describe("System Architecture: domains are a vocabulary", () => {
       await selectProjectAdminGroup(page, "Domains", "System Architecture");
       await expect(page.locator('input[value="Software"]')).toBeVisible();
       await expect(page.locator('input[value="Hardware"]')).toBeVisible();
-      await page.getByPlaceholder("Domain name").fill(domain);
       const created = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/modules/architecture/domains") && r.ok());
-      await page.getByRole("button", { name: "Add domain" }).click();
+      await addDefinition(page, "Add domain", { Name: domain });
       await created;
       await expect(page.locator(`input[value="${domain}"]`)).toBeVisible();
     });

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 26 done 2026-11-21; phase 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 27 done 2026-11-22). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-26 / 32 phases complete.
+27 / 32 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -36,7 +36,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 24 | Watching: compact, as a tab beside Activity, for users and groups | The panel leaves the top of the requirement and change request pages; empty by default with a `[+]` to add; sits in the Links and Activity card; a user can be a watcher too (raised during the phase) | [x] |
 | 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; signed off 2026-11-21: By standard and Outstanding become tabs of the Standards page (Organisation filter), not Resources sections or Overview widgets | [x] |
 | 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes; signed off 2026-11-21: the shared `FolderTreeList` grid, members below it, a row actions menu | [x] |
-| 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [ ] |
+| 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [x] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 27 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
@@ -429,6 +429,8 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Apply: the Tags page now (the Add control opens the shared create form: name, colour, `*` on the name, field help, Save and Cancel through `FormActions`; the new tag appears and is announced by a toast). The review step searches the frontend for the same shape (a permanent `<form>` of a name and an add button above a `DirectoryTable` or list: project tags, the type vocabularies, the action and decision type panels, definition panels) and lists each; each one found is converted in this phase (the fix-don't-defer rule), through one shared component if it is not yet extracted (the shared-component rule), or given a stated reason in the style guide's exceptions.
 - A check script is considered, not assumed: `scripts/check_*.py` that flags a `<form>` with an add-style input rendered at the top level of a list panel would be fragile; the phase decides after seeing how many cases the search finds, and records the decision in `docs/decisions.md` (**Decided by: Agent**).
 - Tests: Storybook for the closed and open states of every converted panel; Playwright: the Tags page shows no creation fields until Add is pressed, creates a tag, and shows it; the existing specs that fill the always-visible form press Add first.
+
+- As built: the style guide's "Pattern: creation controls on demand" and one line in `CLAUDE.md` (**Decided by: User**). The review read every `+` and Add control and every inline add row: the Tags page, Project Administration's stage and custom field sections and the shared `DefinitionList` (twelve vocabularies) drew permanent fields. The user chose to convert `DefinitionList` too. `DefinitionAddModal` gives every vocabulary an Add button and a dialog with one field per column; `TagCreateModal`, `StageCreateModal` and `CustomFieldCreateModal` do the same for the other three. Stated exceptions: the change request task row (a checklist quick-add), `InlineStructureForm` inside the new requirement dialog (an empty state) and comment boxes. No check script (**Decided by: Agent**). Stories for every converted panel, a Tags Playwright spec, and about twenty specs moved to the dialog (`addDefinition` helper). See `docs/decisions.md`.
 
 ### Phase R — Review checkpoint: all changes together
 

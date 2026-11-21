@@ -114,33 +114,27 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       //.
       await selectProjectAdminGroup(page, "Fields & actions");
 
-      const fieldNameInput = page.getByPlaceholder("Field name");
+      // The section draws no empty fields: "New field" opens the dialog the field is made in.
+      await expect(page.getByLabel("Field name", { exact: true })).toHaveCount(0);
+      const fieldDialog = page.getByRole("dialog", { name: "New field" });
+      /** Makes one field through the dialog, then waits for the dialog to close. */
+      async function createField(name: string, type: string, extras?: () => Promise<void>) {
+        await page.getByRole("button", { name: "New field", exact: true }).click();
+        await fieldDialog.getByLabel("Field name", { exact: true }).fill(name);
+        await fieldDialog.getByLabel("Field type", { exact: true }).selectOption(type);
+        await extras?.();
+        await fieldDialog.getByRole("button", { name: "Add", exact: true }).click();
+        await expect(fieldDialog).toHaveCount(0);
+        await expect(page.getByText(name)).toBeVisible();
+      }
 
-      await fieldNameInput.fill(verificationMethodField);
-      await expect(fieldNameInput).toHaveValue(verificationMethodField);
-      await page.getByRole("main").getByRole("combobox").nth(1).selectOption("short_text");
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(verificationMethodField)).toBeVisible();
-
-      await fieldNameInput.fill(detailedRationaleField);
-      await expect(fieldNameInput).toHaveValue(detailedRationaleField);
-      await page.getByRole("main").getByRole("combobox").nth(1).selectOption("long_text");
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(detailedRationaleField)).toBeVisible();
-
-      await fieldNameInput.fill(safetyCriticalField);
-      await expect(fieldNameInput).toHaveValue(safetyCriticalField);
-      await page.getByRole("main").getByRole("combobox").nth(1).selectOption("checkbox");
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(safetyCriticalField)).toBeVisible();
-
-      await fieldNameInput.fill(priorityField);
-      await expect(fieldNameInput).toHaveValue(priorityField);
-      await page.getByRole("main").getByRole("combobox").nth(1).selectOption("list");
-      await page.getByPlaceholder("Options (comma separated)").fill("Low, Medium, High");
-      await page.getByLabel("Required").check();
-      await page.getByRole("button", { name: "New field" }).click();
-      await expect(page.getByText(priorityField)).toBeVisible();
+      await createField(verificationMethodField, "short_text");
+      await createField(detailedRationaleField, "long_text");
+      await createField(safetyCriticalField, "checkbox");
+      await createField(priorityField, "list", async () => {
+        await fieldDialog.getByLabel("Options (comma separated)", { exact: true }).fill("Low, Medium, High");
+        await fieldDialog.getByLabel("required", { exact: true }).check();
+      });
       await expect(page.getByText("Required").first()).toBeVisible();
     });
 

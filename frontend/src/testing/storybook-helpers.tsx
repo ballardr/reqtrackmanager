@@ -17,7 +17,7 @@
  * the two context providers.
  */
 import type { Decorator } from "@storybook/react-vite";
-import { userEvent, type within } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { ScoringScheme } from "../api/scoring";
@@ -703,4 +703,18 @@ export function withThemeProvider(): Decorator {
 export async function expandScoringLevels(canvas: ReturnType<typeof within>): Promise<void> {
   const folded = canvas.queryAllByRole("button", { expanded: false }).filter((b: HTMLElement) => /\d+ levels/.test(b.textContent ?? ""));
   for (const bar of folded) await userEvent.click(bar);
+}
+
+/**
+ * Opens a `DefinitionList`'s Add dialog (docs/ux-style-guide.md, "Pattern: creation controls on demand"): clicks the
+ * list's Add button and returns queries scoped to the dialog, which is named like the button and renders in a portal
+ * outside the story canvas. Fill its fields by their captions, then press its "Add" button.
+ *
+ * @param canvas Queries over the story canvas holding the list.
+ * @param name The list's add label (the button's and the dialog's accessible name).
+ * @returns Queries scoped to the dialog.
+ */
+export async function openAddDialog(canvas: ReturnType<typeof within>, name: string): Promise<ReturnType<typeof within>> {
+  await userEvent.click(await canvas.findByRole("button", { name }));
+  return within(await within(document.body).findByRole("dialog", { name }));
 }

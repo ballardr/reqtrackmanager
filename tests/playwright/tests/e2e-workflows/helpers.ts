@@ -981,3 +981,25 @@ export async function closeDialogWithoutSaving(dialog: Locator, options: { unsav
   }
   await expect(dialog).toHaveCount(0);
 }
+
+/**
+ * Adds an item to a definition list (action types, link types, project statuses, a vocabulary, scoring levels,
+ * ports): presses the list's Add button, fills the dialog's fields by caption and presses Add. The list draws no
+ * empty fields, so every spec that creates one goes through here (docs/ux-style-guide.md, "Pattern: creation
+ * controls on demand").
+ *
+ * @param page The page.
+ * @param addLabel The Add button's name, which is also the dialog's (a string is matched exactly).
+ * @param values Field caption (as in the dialog, without the `*`) to the value to type.
+ * @param scope Where the Add button is looked for (default: the whole page), for a page with several lists.
+ */
+export async function addDefinition(
+  page: Page, addLabel: string | RegExp, values: Record<string, string>, scope: Page | Locator = page,
+): Promise<void> {
+  const exact = typeof addLabel === "string";
+  await scope.getByRole("button", { name: addLabel, exact }).click();
+  const dialog = page.getByRole("dialog", { name: addLabel, exact });
+  for (const [caption, value] of Object.entries(values)) await dialog.getByLabel(caption, { exact: true }).fill(value);
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+}

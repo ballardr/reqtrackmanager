@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { MappingTypesPanel } from "./MappingTypesPanel";
 import type { ComplianceMappingRelationshipType } from "./types";
 
@@ -86,9 +86,9 @@ export const AddRelationshipTypeDefaultsImpliesEquivalenceFalse: Story = {
   beforeEach: () => mockMappingTypeApis([{ id: "mt-1", organization_id: ORG_ID, name: "Equivalent", sort_order: 0, implies_equivalence: false }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByPlaceholderText("Relationship type name")).toBeInTheDocument());
-    await userEvent.type(canvas.getByPlaceholderText("Relationship type name"), "Derived from");
-    await userEvent.click(canvas.getByRole("button", { name: "Add relationship type" }));
+    const dialog = await openAddDialog(canvas, "Add relationship type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Relationship type name" }), "Derived from");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/modules/compliance/mapping-relationship-types`,

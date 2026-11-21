@@ -2224,10 +2224,6 @@ given to the entity quick-switch chevron itself since it
   min-height: 2.25rem;
 }
 
-.definition-grid__add {
-  padding-top: var(--space-2);
-}
-
 /* A list with a per-row control (`renderExtra`) measures its own width, not the window's, because the same list sits in
    a wide page and in a narrow card: below 34rem the columns give way to one flowing row per item, the fields and the
    actions on the first line and the extra controls on the line below. */
@@ -2285,10 +2281,6 @@ given to the entity quick-switch chevron itself since it
     order: 3;
     flex: 1 0 100%;
     justify-content: flex-start;
-    padding-top: 0;
-  }
-
-  .definition-list--extra .definition-grid__add {
     padding-top: 0;
   }
 }

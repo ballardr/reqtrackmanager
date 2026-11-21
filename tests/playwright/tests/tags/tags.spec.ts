@@ -1,7 +1,33 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { installCleanupHook } from "../e2e-workflows/helpers";
 import { API_BASE_URL, openNew, openPeople, setUpOrg } from "../modules/stakeholders/helpers";
+
+/**
+ * Adds a tag on a Tags administration page: the page draws no creation fields, so "New tag" opens the dialog the
+ * tag is named and coloured in (docs/ux-style-guide.md, "Pattern: creation controls on demand").
+ */
+async function addAdminTag(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "New tag", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New tag" });
+  await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(name);
+  await dialog.getByRole("button", { name: "Add tag", exact: true }).click();
+  await expect(page.getByText("Tag added.")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+}
+
+/** The Tags page shows no creation fields until "New tag" is pressed, and the new tag then appears in the table. */
+test("the Tags page creates a tag on request, not from fields drawn above the table", async ({ page }) => {
+  const { suffix, project } = await setUpOrg(page, "TagsOnDemand");
+  const name = `On request ${suffix}`;
+  await page.goto(`/projects/${project.id}/admin/tags`);
+  await expect(page.getByRole("button", { name: "New tag", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveCount(0);
+
+  await addAdminTag(page, name);
+  await expect(page.getByRole("table", { name: "Tags", exact: true }).getByText(name)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveCount(0);
+});
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -93,9 +119,7 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
 
   await test.step("a previewed reclassify moves the record to another tag", async () => {
     await page.goto(`/projects/${project.id}/admin/tags`);
-    await page.getByRole("textbox", { name: "New tag" }).fill(replacement);
-    await page.getByRole("button", { name: "Add tag" }).click();
-    await expect(page.getByText("Tag added.")).toBeVisible();
+    await addAdminTag(page, replacement);
     await page.getByRole("button", { name: renamed, exact: true }).click();
     await page.getByRole("menuitem", { name: `Reclassify records tagged ${renamed}` }).click();
     const dialog = page.getByRole("dialog", { name: `Reclassify records tagged "${renamed}"` });
@@ -141,9 +165,7 @@ test("a restricted project accepts only listed tags", async ({ page }) => {
   await page.goto(`/projects/${project.id}/admin/tags`);
   await page.getByRole("combobox", { name: "Who can add a new tag" }).selectOption("restricted");
   await expect(page.getByText("Tag setting saved.")).toBeVisible();
-  await page.getByRole("textbox", { name: "New tag" }).fill(listed);
-  await page.getByRole("button", { name: "Add tag" }).click();
-  await expect(page.getByText("Tag added.")).toBeVisible();
+  await addAdminTag(page, listed);
 
   await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
   await page.getByRole("button", { name: "Add tag" }).click();

@@ -127,8 +127,10 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
     // Custom fields now lives inside the merged "Fields & actions" group.
     await selectProjectAdminGroup(page, "Fields & actions");
-    await page.getByPlaceholder("Field name").fill("Priority");
     await page.getByRole("button", { name: "New field" }).click();
+    const fieldDialog = page.getByRole("dialog", { name: "New field" });
+    await fieldDialog.getByLabel("Field name", { exact: true }).fill("Priority");
+    await fieldDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Priority").first()).toBeVisible();
 
     await selectProjectAdminGroup(page, "Project settings");

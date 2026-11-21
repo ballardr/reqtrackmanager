@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { expectHeaderSorts } from "../testing/sortHelpers";
 import { withToast } from "../testing/storybook-helpers";
 import { buildAdminApi, buildTag, buildUsage, buildVocabulary } from "../testing/tagsFixtures";
@@ -65,16 +66,36 @@ export const AnOrganisationCannotInheritTheMode: Story = {
   },
 };
 
+/** The page shows no creation fields until "New tag" is pressed. */
+export const NoCreationFieldsUntilNewTagIsPressed: Story = {
+  args: { api: buildAdminApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Tags" });
+    await expect(canvas.queryByRole("textbox", { name: /Tag name|^Name/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("textbox", { name: /Colour/ })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
+    await expect(requiredCaptions(document.body)).toEqual(["Name"]);
+    await userEvent.click(within(await body().findByRole("dialog")).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(body().queryByRole("dialog")).not.toBeInTheDocument());
+  },
+};
+
 export const AddingATag: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "Q4 audit");
-    await userEvent.click(canvas.getByRole("button", { name: "Blue" }));
-    await expect(canvas.getByRole("textbox", { name: "Colour (hex code)" })).toHaveValue("#2b6cb0");
-    await userEvent.click(canvas.getByRole("button", { name: "Add tag" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Q4 audit");
+    await userEvent.click(dialog.getByRole("button", { name: "Blue" }));
+    await expect(dialog.getByRole("textbox", { name: "Colour (hex code)" })).toHaveValue("#2b6cb0");
+    await userEvent.click(dialog.getByRole("button", { name: "Add tag" }));
     await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith("Q4 audit", "#2b6cb0"));
     await expect(await body().findByText("Tag added.")).toBeInTheDocument();
+    await waitFor(() => expect(body().queryByRole("dialog")).not.toBeInTheDocument());
   },
 };
 
@@ -82,9 +103,11 @@ export const ABadNameCannotBeAdded: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "a,b");
-    await expect(canvas.getByRole("alert")).toHaveTextContent("cannot contain a comma");
-    await expect(canvas.getByRole("button", { name: "Add tag" })).toBeDisabled();
+    await userEvent.click(await canvas.findByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "a,b");
+    await expect(dialog.getByRole("alert")).toHaveTextContent("cannot contain a comma");
+    await expect(dialog.getByRole("button", { name: "Add tag" })).toBeDisabled();
     await expect(args.api!.create).not.toHaveBeenCalled();
   },
 };
@@ -262,14 +285,16 @@ export const AFailedLoadSaysSo: Story = {
   },
 };
 
-export const ARefusedChangeIsToastedAndLeavesTheScreenAlone: Story = {
+export const ARefusedChangeStaysInTheDialog: Story = {
   args: { api: buildAdminApi(undefined, { create: fn(async () => { throw new Error("The tag 'Safety' already exists."); }) }) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "safety");
-    await userEvent.click(canvas.getByRole("button", { name: "Add tag" }));
-    await expect(await body().findByText("The tag 'Safety' already exists.")).toBeInTheDocument();
-    await expect(canvas.getByRole("textbox", { name: "New tag" })).toHaveValue("safety");
+    await userEvent.click(await canvas.findByRole("button", { name: "New tag" }));
+    const dialog = within(await body().findByRole("dialog", { name: "New tag" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "safety");
+    await userEvent.click(dialog.getByRole("button", { name: "Add tag" }));
+    await expect(await dialog.findByText("The tag 'Safety' already exists.")).toBeInTheDocument();
+    await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("safety");
   },
 };
 

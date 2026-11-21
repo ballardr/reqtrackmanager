@@ -217,8 +217,10 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await page.getByRole("button", { name: "Rename" }).click();
       await expect(page.locator('input.input[value="Milestone 1"]:not([placeholder])')).toBeVisible();
 
-      await stagesSection.getByPlaceholder("Name", { exact: true }).fill("Milestone 2");
       await stagesSection.getByRole("button", { name: "New stage" }).click();
+      const stageDialog = page.getByRole("dialog", { name: "New stage" });
+      await stageDialog.getByLabel("Name", { exact: true }).fill("Milestone 2");
+      await stageDialog.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.locator('input.input[value="Milestone 2"]:not([placeholder])')).toBeVisible();
 
       const stagesResp = await page.request.get(`http://localhost:8000/api/v1/projects/${projectId}/stages`, {

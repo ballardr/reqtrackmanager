@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import {withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { ProjectPainPointTypesPanel } from "./ProjectPainPointTypesPanel";
 import type { EffectivePainPointType } from "./types";
 
@@ -129,9 +129,9 @@ export const AddProjectLocalType: Story = {
   beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Project Pain Point type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Project Pain Point type name"), "Field team");
-    await userEvent.click(canvas.getByRole("button", { name: "Add project-only Pain Point type" }));
+    const dialog = await openAddDialog(canvas, "Add project-only Pain Point type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Field team");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types`, { name: "Field team", display_order: 1, definition: null }

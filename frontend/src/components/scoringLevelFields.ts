@@ -6,7 +6,10 @@
  * threshold field, which the server requires on it and refuses on a manual axis.
  */
 import type { ScoringAxis, ScoringLevel } from "../api/scoring";
+import { t } from "../i18n/strings";
 import type { DefinitionListField } from "./DefinitionList";
+
+const help = t().help;
 
 /** The level a row describes; a derived axis's level also carries the threshold its value must reach. */
 export function parseLevel(values: Record<string, string>, derived = false) {
@@ -30,17 +33,17 @@ export function levelFields(axis: ScoringAxis): DefinitionListField<ScoringLevel
     },
     {
       key: "weight", getValue: (l: ScoringLevel) => String(l.weight), label: "Weight", placeholder: "Weight",
-      ariaLabel: `${axis.label} level weight`, track: "6.5rem", inputType: "number",
+      ariaLabel: `${axis.label} level weight`, track: "6.5rem", inputType: "number", help: help.scoringLevelWeight,
     },
   ];
   if (axis.derived_source) {
     fields.push({
       key: "threshold", getValue: (l: ScoringLevel) => (l.threshold == null ? "" : String(l.threshold)), label: "From",
-      placeholder: "From", ariaLabel: `${axis.label} level threshold`, track: "6.5rem", inputType: "number",
+      placeholder: "From", ariaLabel: `${axis.label} level threshold`, track: "6.5rem", inputType: "number", help: help.scoringLevelThreshold,
     });
   }
   return [...fields, {
     key: "description", getValue: (l: ScoringLevel) => l.description ?? "", label: "Guidance", placeholder: "Guidance",
-    ariaLabel: `${axis.label} level guidance`, track: "minmax(12rem, 3fr)", optional: true, multiline: true,
+    ariaLabel: `${axis.label} level guidance`, track: "minmax(12rem, 3fr)", optional: true, multiline: true, help: help.scoringLevelGuidance,
   }];
 }

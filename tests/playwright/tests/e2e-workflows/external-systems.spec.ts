@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { addDefinition, closeDialogWithoutSaving, deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -71,16 +71,17 @@ test.describe("external systems", () => {
       await page.goto(`/orgs/${world.orgId}/admin`);
       await selectOrgAdminGroup(page, "Projects");
       await openSection(page, "External systems");
-      await page.getByPlaceholder("External system type name").fill("Broken");
-      await page.getByRole("textbox", { name: "Link template" }).last().fill("javascript:alert(1)");
-      await page.getByRole("button", { name: "Add External system type" }).click();
-      await expect(page.getByText(/link template|http or https|\{key\}/i).first()).toBeVisible();
+      await page.getByRole("button", { name: "Add External system type", exact: true }).click();
+      const refused = page.getByRole("dialog", { name: "Add External system type" });
+      await refused.getByLabel("Name", { exact: true }).fill("Broken");
+      await refused.getByLabel("Link template", { exact: true }).fill("javascript:alert(1)");
+      await refused.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(refused.getByText(/must contain \{key\}|http or https/i)).toBeVisible();
+      await closeDialogWithoutSaving(refused, { unsaved: true });
     });
 
     await test.step("a valid template is saved with the system", async () => {
-      await page.getByPlaceholder("External system type name").fill("Linear");
-      await page.getByRole("textbox", { name: "Link template" }).last().fill(TEMPLATE);
-      await page.getByRole("button", { name: "Add External system type" }).click();
+      await addDefinition(page, "Add External system type", { Name: "Linear", "Link template": TEMPLATE });
       await expect(page.getByText("External system type created.")).toBeVisible();
       await expect.poll(() => valuesOf(page, "Link template")).toContain(TEMPLATE);
     });
@@ -101,8 +102,7 @@ test.describe("external systems", () => {
     await openSection(page, "External systems");
 
     await test.step("the project adds its own system", async () => {
-      await page.getByPlaceholder("Project External system type name").fill("Internal tracker");
-      await page.getByRole("button", { name: "Add project-only External system type" }).click();
+      await addDefinition(page, "Add project-only External system type", { Name: "Internal tracker" });
       await expect(page.getByText("Project External system type created.")).toBeVisible();
       await expect.poll(() => valuesOf(page, "Project External system type name")).toContain("Internal tracker");
     });

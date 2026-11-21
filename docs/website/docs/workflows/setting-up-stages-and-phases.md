@@ -24,7 +24,7 @@ Open **Stage workflows**. The organisation's workflows are listed with the proje
 
 ## 2. Create the stages
 
-Open **Project stages**, enter a name, choose the workflow the stage follows and select **New stage**. The stage starts in the workflow's first phase. A stage can change workflow only while it is in an Open phase and has no baseline, so choose before work begins.
+Open **Project stages**, select **New stage**, enter a name, choose the workflow the stage follows (or select **New workflow** to define one) and select **Add**. The stage starts in the workflow's first phase. A stage can change workflow only while it is in an Open phase and has no baseline, so choose before work begins.
 
 ## 3. Turn on component phases (optional)
 

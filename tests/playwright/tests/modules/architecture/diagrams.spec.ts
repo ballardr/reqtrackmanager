@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { buttonHeightGeometry } from "../../../../../frontend/src/testing/buttonHeights";
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { addDefinition, installCleanupHook } from "../../e2e-workflows/helpers";
 import { setUpOrg } from "../stakeholders/helpers";
 import { clickMenuRow } from "../../menuTree";
 
@@ -505,8 +505,7 @@ test.describe("System Architecture: diagram editor", () => {
       await selectNode(page, `Edge ${suffix}`);
       const card = page.getByRole("region", { name: "Selection" });
       const stored = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/ports") && r.ok());
-      await card.getByPlaceholder("Port name").fill("Telemetry");
-      await card.getByRole("button", { name: "Add port" }).click();
+      await addDefinition(page, "Add port", { Name: "Telemetry" }, card);
       await stored;
       await page.reload();
       await selectNode(page, `Edge ${suffix}`);

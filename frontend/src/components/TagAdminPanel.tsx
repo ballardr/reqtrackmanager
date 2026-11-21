@@ -8,7 +8,8 @@
  * Responsibilities:
  * - Show and set the mode: free, restricted, and for a project "follow the parent project".
  * - Maintain the vocabulary through `TagAdminApi`; a vocabulary inherited from a parent project
- *   is read-only here (adding a tag gives the project a list of its own).
+ *   is read-only here (adding a tag gives the project a list of its own). A new tag is made in a dialog
+ *   (`TagCreateModal`) opened by the "New tag" button, never in fields drawn above the table.
  * - Show tag x record-type usage with a filter box and tick boxes that hide tags while reviewing,
  *   and launch "reclassify" for a tag, optionally limited to one kind of record.
  * - Follow the style guide's confirmation tiers: delete is Tier 2 (type the tag's name) and names
@@ -17,6 +18,7 @@
  *
  * `api` is injectable for stories; the factories in `api/tags` bind it to a project or the organisation.
  */
+import { Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import type { ReclassifyResult, Tag, TagAdminApi, TagMode, TagUsage, TagUsageRow, TagVocabulary } from "../api/tags";
@@ -38,6 +40,7 @@ import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
 import { TagChip } from "./TagChip";
+import { TagCreateModal } from "./TagCreateModal";
 import { cycleSort, type SortState } from "./sortState";
 import { TAG_COLOURS } from "./tagColours";
 
@@ -77,8 +80,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
   const [usage, setUsage] = useState<TagUsage | null>(null);
   const [failed, setFailed] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newColour, setNewColour] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -107,16 +109,10 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
   if (failed && !vocabulary) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
   if (!vocabulary || !usage) return <Spinner />;
 
-  const nameProblem = newName.trim() === "" ? null : tagNameProblem(newName);
-
-  async function addTag() {
-    const colour = newColour || null;
-    await run(async () => {
-      await api.create(newName.trim(), colour);
-      setNewName("");
-      setNewColour("");
-      return text.created;
-    });
+  async function addTag(name: string, colour: string | null) {
+    await api.create(name, colour);
+    showToast(text.created);
+    await reload();
   }
 
   const modes: Array<{ value: string; label: string }> = [
@@ -186,37 +182,9 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
       )}
       {vocabulary.inherited && <p className="text-muted" style={{ margin: 0 }}>{text.inheritedNotice}</p>}
 
-      <form
-        className="row"
-        style={{ alignItems: "flex-end" }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (newName.trim() !== "" && !nameProblem) void addTag();
-        }}
-      >
-        <TextField helpNotNeeded required
-          label={text.addLabel}
-          value={newName}
-          onChange={setNewName}
-          placeholder={text.addPlaceholder}
-          inputProps={{ maxLength: TAG_NAME_MAX_LENGTH * 2 }}
-        />
-        <ColorField helpNotNeeded
-          label={text.colourHeading}
-          value={newColour}
-          onChange={setNewColour}
-          presets={TAG_COLOURS}
-          emptyLabel={text.noColour}
-        />
-        <button type="submit" className="btn btn-primary" disabled={newName.trim() === "" || !!nameProblem}>
-          {text.addButton}
-        </button>
-      </form>
-      {nameProblem && (
-        <span role="alert" style={{ fontSize: "0.8rem", color: "var(--color-danger)" }}>
-          {nameProblem === "too_long" ? strings.tags.tooLong(TAG_NAME_MAX_LENGTH) : strings.tags.invalidCharacters}
-        </span>
-      )}
+      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+        <Plus /> {text.addLabel}
+      </button>
 
       <DirectoryTable
         ariaLabel={text.title}
@@ -233,6 +201,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
         if (tag) setDialog({ kind: "reclassify", tag, artefactType });
       }} />
 
+      {creating && <TagCreateModal onCreate={addTag} onClose={() => setCreating(false)} />}
       {dialog?.kind === "rename" && (
         <RenameDialog
           tag={dialog.tag}

@@ -33,7 +33,9 @@ import {
   withStatefulAuth,
   withTerminology,
   withToast,
+  openAddDialog,
 } from "../testing/storybook-helpers";
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { ProjectAdminPage } from "./ProjectAdminPage";
@@ -513,6 +515,28 @@ export const StagesTabAddAndTransition: Story = {
   },
 };
 
+/** The Stages section draws no empty fields: "New stage" opens the dialog a stage is named and given a workflow in. */
+export const StagesTabNewStageIsMadeInADialog: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue({ id: "s-new" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
+    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Phase of Scoping" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
+    const dialog = await openAddDialog(canvas, "New stage");
+    await expect(requiredCaptions(document.body)).toEqual(["Name"]);
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Design");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages`, { name: "Design", workflow_id: "workflow-1" }),
+    );
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+  },
+};
+
 /** Moving a stage into a closed phase first asks whether to complete its approved requirements too. */
 export const StagesTabClosingAPhaseOffersToCompleteRequirements: Story = {
   beforeEach: () => {
@@ -556,10 +580,9 @@ export const StagesTabNewWorkflowFromTheNewStageForm: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
-    await expect(await canvas.findByRole("combobox", { name: /Workflow/ })).toBeInTheDocument();
-    // The workflows list has its own "New workflow" button; this is the one beside the new-stage form.
-    const stagesSection = within(canvas.getByRole("button", { name: "Project stages section" }).closest(".card")!);
-    await userEvent.click(stagesSection.getByRole("button", { name: "New workflow" }));
+    // The workflows list has its own "New workflow" button; this is the one inside the new-stage dialog.
+    const stageDialog = await openAddDialog(canvas, "New stage");
+    await userEvent.click(stageDialog.getByRole("button", { name: "New workflow" }));
     const dialog = within(await within(document.body).findByRole("dialog", { name: "New workflow" }));
     await userEvent.type(dialog.getByRole("textbox", { name: /Workflow name/ }), "Tendered");
     await userEvent.type(dialog.getByRole("textbox", { name: "Phase name 1" }), "Scoping");
@@ -706,9 +729,11 @@ export const CustomFieldsTabAddField: Story = {
     const canvas = within(canvasElement);
     // Custom fields now lives inside the merged "Fields & actions" tab.
     await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
-    await waitFor(() => expect(canvas.getByPlaceholderText("Field name")).toBeInTheDocument());
-    await userEvent.type(canvas.getByPlaceholderText("Field name"), "Priority");
-    await userEvent.click(canvas.getByRole("button", { name: /New field/ }));
+    await expect(canvas.queryByRole("textbox", { name: "Field name" })).not.toBeInTheDocument();
+    const dialog = await openAddDialog(canvas, "New field");
+    await expect(requiredCaptions(document.body)).toEqual(["Field name"]);
+    await userEvent.type(dialog.getByRole("textbox", { name: "Field name" }), "Priority");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/custom-fields`,
@@ -1342,8 +1367,9 @@ export const ActionTypesTabAddAndReorder: Story = {
     // Action types now lives inside the merged "Fields & actions" tab.
     await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
-    await userEvent.type(canvas.getByPlaceholderText("Name"), "Inspection");
-    await userEvent.click(canvas.getByRole("button", { name: /New action type/ }));
+    const dialog = await openAddDialog(canvas, "New action type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Inspection");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/action-types`,
@@ -1407,9 +1433,10 @@ export const CustomFieldsTabEntityKindDropdownReflectsTerminology: Story = {
     await waitFor(() => expect(canvas.getByText("Safety critical")).toBeInTheDocument());
     // The existing field's own entity-kind badge.
     await expect(canvas.getByText("Spec", { selector: "span.badge" })).toBeInTheDocument();
-    // The "New field" row's entity-kind <select> options.
-    await expect(canvas.getByRole("option", { name: "Spec" })).toBeInTheDocument();
-    await expect(canvas.getByRole("option", { name: "ECR" })).toBeInTheDocument();
+    // The "New field" dialog's entity-kind <select> options.
+    const dialog = await openAddDialog(canvas, "New field");
+    await expect(dialog.getByRole("option", { name: "Spec" })).toBeInTheDocument();
+    await expect(dialog.getByRole("option", { name: "ECR" })).toBeInTheDocument();
   },
 };
 
