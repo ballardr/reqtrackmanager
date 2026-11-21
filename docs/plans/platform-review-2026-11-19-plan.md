@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 22 done 2026-11-21; phases 23 to 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 23 done 2026-11-21; phases 24 to 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-22 / 31 phases complete.
+23 / 32 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -32,12 +32,13 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 20 | Requirements in several components | A requirement can sit in more than one component and category, with an alias code in each and a Make independent action; decision gate first | [x] |
 | 21 | Service users with administrator-issued tokens | An organisation administrator creates a service user with no password and no sign-in, then issues and revokes its personal access tokens on its behalf; decision gate first | [x] |
 | 22 | Components and categories: prefix suggestion and a folder-tree page | Prefix suggested from the name and editable; the Structure page rebuilt as a collapsible tree like the report folders; the requirement component and category choice through the shared tree selector; UI review first | [x] |
-| 23 | Formatting toolbar only while a field is active | The Markdown and visual editors (and the policy editor) show their formatting buttons only while the field has focus | [ ] |
+| 23 | Formatting toolbar only while a field is active | The Markdown and visual editors (and the policy editor) show their formatting buttons only while the field has focus | [x] |
 | 24 | Watching groups: compact, as a tab beside Activity | The panel leaves the top of the requirement and change request pages; empty by default with a `[+]` to add; sits in the Links and Activity card | [ ] |
 | 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; Outstanding compliance items moves to the Overview only | [ ] |
 | 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes | [ ] |
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 27 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
+| D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
 | S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
 | C | Local CI test review | Every job in `.github/workflows/` run locally before the pull request exists | [ ] |
@@ -72,10 +73,10 @@ flowchart LR
     P9 --> R
     P12 --> R
     P17 --> R
-    R --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
+    R --> D["D Register clean-up"] --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
 ```
 
-Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
+Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
 
 ## Findings and objections
 
@@ -383,6 +384,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Layout: revealing a row must not push the field's content under the pointer on first focus. Recommended: the toolbar sits in the frame's header strip, which is always drawn and holds the Write and Preview switch (Markdown editor); for the visual editor the strip is reserved at one line of the frame's own height, so the field grows once at the beginning and never when focus moves. Confirm in the UI check with a screenshot at both states; the alternative (the toolbar floating over the top edge) is rejected, since it covers the text being edited.
 - Style guide: a short addition to "Pattern: Markdown fields" (toolbar visible only while the field is active, and why). `docs/website/` editor page checked in phase W.
 - Tests: Storybook for the shown and hidden states of each editor; Vitest for focus-within (focus a toolbar button keeps it shown; blur to outside hides it; Escape does not hide it mid-edit); Playwright: open a record, no formatting buttons visible, click a description, they appear, apply bold with a toolbar click, and tab out and they disappear; the existing specs that click a toolbar button first focus the field (fix those specs, never the rule).
+- As built: `ActiveFieldFrame` and `ActiveFieldToolbar` (`components/ActiveFieldFrame.tsx`; the frame tracks focus and a context carries it, a nested frame tracks nothing) used by `MarkdownEditor`, `VisualMarkdownEditor` and `PolicyBodyEditor`; the hidden toolbar is rendered with `visibility: hidden`, which reserves its row and removes it from the tab order and the accessibility tree; a button press keeps focus in the text (`mousedown` default prevented) because Safari and Firefox on macOS do not focus a button on click. Write keeps its buttons in the header row beside the switch, so nothing is added there. Only the stories that used a button without focusing the field changed (`MarkdownEditor`, `PolicyBodyEditor`); the Playwright test is in `decision-markdown.spec.ts`. Focus-within is tested through Storybook, the project's only component test runner. See `docs/decisions.md`.
 
 ### Phase 24 — Watching groups: compact, as a tab beside Activity
 
@@ -428,6 +430,19 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 - The user reviews the running stack with every phase in place; each item raised becomes a numbered phase or is fixed in place; W starts only after the sign-off is recorded (**Decided by: User**).
 
+### Phase D — Register clean-up
+
+**Why:** phases 2, 7 and 22 each left a working-paper register in `docs/plans/` (notifications, Org Resources, structure), and phases 25 and 26 may add more; each was written before its phase was built and before the review changed anything. **Risk addressed:** a register that reads as the current design while the code and the review have moved on (the stale-plan failure the plan lifecycle exists to stop), durable facts that live only in a working paper, and dangling references when the plan is archived. **Outcome:** every register states the final result or is reduced to a record of the review, nothing durable lives only in one, and the links resolve.
+
+- Inventory: list every `platform-review-2026-11-19-*-register.md` present when the phase starts (the three above, plus any phases 23 to 27 or the review added) and every file that links to one (`docs/decisions.md`, `module-07-traceability-and-governance-plan.md`, `gitea-integration-plan.md`).
+- Reconcile each register with the reviewed code: correct a row whose target, home or rule changed (a notification kind, a section moved after review, a deviation recorded in the phase's "As built"), remove proposals that were rejected, and give each a one-line **Status: closed** with the date and the outcome. State the latest result only, not the history of how it changed.
+- Move what is durable out: any rule a later contributor needs to follow (the notification target kinds and the "no type lacks a target" guard, the Org Resources classification rule and `orgResourceSections`, the prefix rule and structure tree) is in `docs/modules.md`, `docs/ux-style-guide.md` or `docs/solution-architecture.md` as its owner, or is added there; the register then keeps only the per-row classification, with a link to that owner. Do not copy tables that the code already declares (a registry, a test inventory).
+- Overlap: where two registers or a register and the Org Resources "Behaviour to preserve" list describe the same rows (Compliance after phase 25), keep one and link to it.
+- References: rewrite any link whose wording or anchor changed; `docs/decisions.md` cites a register by its topic. Source files and `docs/soc2/` never cite a register or a phase (checked by `scripts/check_doc_links.py`).
+- Archive: the registers move with the plan. When the Status table reads 32/32, `git mv` the plan and every register to `docs/plans/completed/` together, rewrite each path (including the module 07 and Gitea plans and `docs/decisions.md`), run `python scripts/check_doc_links.py` to a pass, and update the memory index. This step runs once phases W, S and C are done, not inside this phase.
+- Tests: `python scripts/check_doc_links.py` and `backend/tests/test_doc_links.py`; every Mermaid diagram touched renders.
+- Decided by: Agent (the scope of "clean-up"); revisit on the user's correction.
+
 ### Phase W — Website content
 
 **Why:** the docs website is a separate published artefact. **Risk addressed:** pages that describe the old Overview, old settings addresses, plain-text Decisions or a single licence. **Outcome:** every user-visible change documented once, after the review fixed what it would otherwise describe.
@@ -471,4 +486,4 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - **Phase 18 changes how every test runs:** a shared fixture, a template database or a shard boundary can hide an ordering assumption that a serial run never exposed; mitigated by the guardrails and the shuffled and repeated passes. It is also the one phase whose benefit comes from landing early, while the others only need it before R.
 - **No performance run is planned in the phases;** phase W reviews whether a new lookup on every create and a long-text render moved a measured number, and phase C does not run load scenarios (the project decided against performance tests in CI).
 
-When the table reads 31/31: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 32/32: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

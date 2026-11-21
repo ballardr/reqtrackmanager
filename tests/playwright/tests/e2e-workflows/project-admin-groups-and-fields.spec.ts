@@ -485,7 +485,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         // + name text would also satisfy.
         await expect(groupRow.getByText("Direct", { exact: true })).toBeVisible();
         const rolesButton = groupRow.getByRole("button", { name: `${directGroupName}'s roles` });
-        await expect(rolesButton).toHaveAttribute("title", "Stakeholder");
+        await expect(rolesButton).toHaveAttribute("title", "Stakeholder (only role)");
 
         // The role dropdown is directly editable from this row — grant a
         // second role the same way `MembersTabGroupRowRoleToggleAndRemove`

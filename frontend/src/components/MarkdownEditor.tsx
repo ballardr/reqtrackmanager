@@ -6,6 +6,7 @@
  * It owns no value; the caller holds the text.
  *
  * Responsibilities:
+ * - Show the formatting toolbar only while focus is inside the field (`ActiveFieldFrame`).
  * - Apply a toolbar action to the textarea's selection through `utils/markdownEdit` and restore the selection.
  * - Grow with the text like every long field (`AutoGrowTextarea`); `rows` is the minimum height.
  * - Switch between the views with the shared `Tabs`; Preview shows `MarkdownView`.
@@ -28,6 +29,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { useMarkdownEditorView } from "../hooks/useMarkdownEditorView";
 import { applyMarkdownFormat, type MarkdownFormat } from "../utils/markdownEdit";
 import type { VisualBlocker } from "../utils/visualMarkdown";
+import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { MarkdownView } from "./MarkdownView";
 import { Tabs, tabPanelProps } from "./Tabs";
@@ -127,7 +129,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
   }, []);
 
   return (
-    <div className="markdown-editor stack" style={{ gap: "var(--space-1)" }}>
+    <ActiveFieldFrame className="markdown-editor stack" style={{ gap: "var(--space-1)" }}>
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-1)" }}>
         <Tabs
           idPrefix={idPrefix} active={view} onChange={choose}
@@ -136,7 +138,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
             { key: "write" as const, label: text.write }, { key: "preview" as const, label: text.preview },
           ]}
         />
-        {view === "write" && toolbar && <WriteToolbar onFormat={apply} disabled={disabled} />}
+        {view === "write" && toolbar && <ActiveFieldToolbar><WriteToolbar onFormat={apply} disabled={disabled} /></ActiveFieldToolbar>}
       </div>
       {blocker && view === "write" && (
         <p className="text-muted" role="status">
@@ -163,6 +165,6 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
           {value.trim() === "" ? <p className="text-muted">{text.previewEmpty}</p> : <MarkdownView text={value} math={math} />}
         </div>
       )}
-    </div>
+    </ActiveFieldFrame>
   );
 }

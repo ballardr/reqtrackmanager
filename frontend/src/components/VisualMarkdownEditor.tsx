@@ -11,6 +11,7 @@
  *   `onBlocked` and drawing nothing, so the field falls back to Write.
  * - Offer to convert pasted text that looks like Markdown (a notice under the toolbar: Convert to formatting, or
  *   Keep as typed), replacing only the pasted range.
+ * - Show the toolbar only while focus is inside the field (`ActiveFieldFrame`; the Markdown editor's frame when nested).
  * - Draw a `mermaid` code block as an editable source with a live diagram beneath it.
  *
  * Design decisions:
@@ -31,6 +32,7 @@ import {
   findVisualBlocker, looksLikeMarkdown, MarkdownCodeBlock, roundTripMarkdown, visualMarkdownExtensions, writtenMarkdown,
   type VisualBlocker,
 } from "../utils/visualMarkdown";
+import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { RichTextToolbar } from "./RichTextToolbar";
 
@@ -200,8 +202,10 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
 
   if (!editor || blocker) return null;
   return (
-    <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true }} disabled={disabled} />
+    <ActiveFieldFrame className="stack" style={{ gap: "var(--space-1)" }}>
+      <ActiveFieldToolbar>
+        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true }} disabled={disabled} />
+      </ActiveFieldToolbar>
       {pasted && (
         <div className="row" role="status" style={{ flexWrap: "wrap", gap: "var(--space-2)", alignItems: "center" }}>
           <span>{text.pastedMarkdown}</span>
@@ -212,6 +216,6 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
       <div className="policy-editor visual-markdown-editor">
         <EditorContent editor={editor} />
       </div>
-    </div>
+    </ActiveFieldFrame>
   );
 }

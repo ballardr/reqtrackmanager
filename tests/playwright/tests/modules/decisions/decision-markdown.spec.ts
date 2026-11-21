@@ -102,6 +102,51 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
     });
   });
 
+  test("a field shows its formatting buttons only while it is being worked in", async ({ page }) => {
+    const { project } = await setUpDecisionProject(page, "toolbar");
+    await page.evaluate(() => localStorage.removeItem("reqtrack.markdownEditorView"));
+    await page.goto(`/projects/${project.id}/modules/decisions`);
+    await page.getByRole("button", { name: "New decision" }).click();
+    const dialog = page.getByRole("dialog", { name: "New decision" });
+    const bold = dialog.getByRole("button", { name: "Bold", exact: true });
+    const statement = dialog.getByRole("textbox", { name: "Decision statement" });
+
+    await test.step("no formatting buttons are drawn before a field is used", async () => {
+      await expect(dialog.getByRole("tab", { name: "Visual", selected: true }).first()).toBeVisible();
+      await expect(statement).toBeVisible();
+      await expect(dialog.getByRole("toolbar")).toHaveCount(0);
+      await expect(bold).toHaveCount(0);
+    });
+
+    await test.step("clicking a field shows its buttons without moving the field, and a button applies to the text", async () => {
+      const before = (await statement.boundingBox())?.y;
+      await statement.click();
+      await page.keyboard.type("adopt");
+      await expect(bold).toHaveCount(1);
+      expect((await statement.boundingBox())?.y).toBe(before);
+      await page.keyboard.press("ControlOrMeta+A");
+      await bold.click();
+      await expect(statement.locator("strong", { hasText: "adopt" })).toBeVisible();
+      // Pressing the button did not end the editing: the buttons are still there.
+      await expect(bold).toHaveCount(1);
+    });
+
+    await test.step("moving to another field moves the buttons with it, and leaving the dialog's fields hides them", async () => {
+      await dialog.getByRole("textbox", { name: "Context" }).click();
+      await expect(bold).toHaveCount(1);
+      await dialog.getByLabel("Decision title").click();
+      await expect(bold).toHaveCount(0);
+    });
+
+    await test.step("the keyboard shows the buttons when the field takes focus and Shift+Tab reaches them", async () => {
+      await statement.focus();
+      await expect(bold).toHaveCount(1);
+      await page.keyboard.press("Shift+Tab");
+      await expect(dialog.getByRole("button", { name: "Undo", exact: true })).toBeFocused();
+      await expect(bold).toHaveCount(1);
+    });
+  });
+
   test("a Decision is written in the Visual view, and pasted Markdown is converted on request", async ({ page }) => {
     const { project } = await setUpDecisionProject(page, "visual");
     await page.evaluate(() => localStorage.removeItem("reqtrack.markdownEditorView"));
@@ -118,7 +163,9 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
       await expect(statement.locator("strong", { hasText: "adopt" })).toBeVisible();
       const document = dialog.getByRole("textbox", { name: "Document" });
       await document.click();
-      await dialog.getByRole("button", { name: "Diagram" }).last().click();
+      // Only the field being worked in shows its formatting buttons.
+      await expect(dialog.getByRole("button", { name: "Diagram" })).toHaveCount(1);
+      await dialog.getByRole("button", { name: "Diagram" }).click();
       await expect(dialog.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
     });
 

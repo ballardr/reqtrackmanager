@@ -37,7 +37,7 @@ export const ToolbarFormatsTheSelection: Story = {
     const area = canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement;
     area.focus();
     area.setSelectionRange(5, 9);
-    await userEvent.click(canvas.getByRole("button", { name: "Bold" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Bold" }));
     await expect(canvas.getByTestId("stored")).toHaveTextContent("make **this** bold");
     await waitFor(() => expect(area.selectionStart).toBe(7));
   },
@@ -50,7 +50,7 @@ export const DiagramButtonInsertsAMermaidBlock: Story = {
     const area = canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement;
     area.focus();
     area.setSelectionRange(5, 5);
-    await userEvent.click(canvas.getByRole("button", { name: "Diagram" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Diagram" }));
     await expect(canvas.getByTestId("stored")).toHaveTextContent("```mermaid");
   },
 };
@@ -94,6 +94,9 @@ export const OpensInTheVisualViewUntilWriteIsChosen: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("tab", { name: "Visual", selected: true })).toBeInTheDocument();
+    // The Visual view's toolbar appears once the person works in the field.
+    await expect(canvas.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+    await userEvent.click(await canvas.findByRole("textbox", { name: "Notes" }));
     await expect(await canvas.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("tab", { name: "Write" }));
     await expect((canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement).value).toBe("Some **bold** text");
@@ -186,5 +189,64 @@ export const ToolbarCanBeLeftOut: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("toolbar")).toBeNull();
     await expect(canvas.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+  },
+};
+
+/** The Write view's formatting buttons show only while focus is inside the field, and Tab reaches them. */
+export const WriteToolbarShowsOnlyWhileTheFieldIsActive: Story = {
+  render: () => (
+    <>
+      <MarkdownEditor value="some text" onChange={() => {}} ariaLabel="Notes" rows={3} />
+      <button type="button">Outside</button>
+    </>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("toolbar")).toBeNull();
+    await expect(canvas.queryByRole("button", { name: "Bold" })).toBeNull();
+    const area = canvas.getByRole("textbox", { name: "Notes" });
+    await userEvent.click(area);
+    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    // Pressing a button keeps the focus in the field, so the toolbar stays for the next action.
+    await userEvent.click(canvas.getByRole("button", { name: "Bold" }));
+    await expect(canvas.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    // Escape is for the field's own use (a dialog's close): it does not hide the toolbar mid-edit.
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Outside" }));
+    await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
+  },
+};
+
+/** Tab from the Write tab into the toolbar keeps it shown; Tab out of the field hides it. */
+export const KeyboardReachesTheToolbarAndLeavingHidesIt: Story = {
+  render: () => (
+    <>
+      <MarkdownEditor value="" onChange={() => {}} ariaLabel="Notes" rows={3} />
+      <button type="button">Outside</button>
+    </>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    canvas.getByRole("tab", { name: "Write" }).focus();
+    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    await userEvent.tab();
+    await expect(canvas.getByRole("button", { name: "Bold" })).toHaveFocus();
+    await expect(canvas.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    canvas.getByRole("button", { name: "Outside" }).focus();
+    await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
+  },
+};
+
+/** Showing the toolbar does not move the field: its text area sits at the same place with the toolbar hidden or shown. */
+export const ShowingTheToolbarDoesNotMoveTheField: Story = {
+  render: () => <MarkdownEditor value="text" onChange={() => {}} ariaLabel="Notes" rows={3} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const area = canvas.getByRole("textbox", { name: "Notes" });
+    const before = area.getBoundingClientRect().top;
+    await userEvent.click(area);
+    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    await expect(area.getBoundingClientRect().top).toBe(before);
   },
 };

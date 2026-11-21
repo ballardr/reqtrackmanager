@@ -491,6 +491,7 @@ A long free-text field is written in Markdown, or is plain text with a stated re
 - **Pasted Markdown.** Pasting plain text that looks like Markdown into Visual shows a notice under the toolbar with **Convert to formatting** and **Keep as typed**; Convert replaces only the pasted text.
 - A record's long-form write-up (a Decision's Document) is a field of its own with the same editor, shown in its own detail card only when it has content.
 - A new editor toolbar button is a `ToolbarButton` (icon, tooltip and accessible name the same).
+- **The toolbar shows only while the field is active.** A rich text field's formatting buttons (Write and Visual views, the policy editor) are visible while focus is anywhere inside the field's frame (the text, the buttons, the link entry, the Visual, Write and Preview switch) and hidden otherwise, so a page with several long-text fields does not carry several rows of icons used rarely. `ActiveFieldFrame` and `ActiveFieldToolbar` own this for every editor; a new editor wraps itself in them, never its own copy, and there is no setting to keep the buttons always visible. The hidden toolbar keeps its space (the field does not move when focus enters) and is out of the tab order and the accessibility tree. Pointer hover is not used (no touch equivalent), and a button press keeps focus in the text so the toolbar stays for the next action.
 
 ## Pattern: view toggle (tile vs. list)
 

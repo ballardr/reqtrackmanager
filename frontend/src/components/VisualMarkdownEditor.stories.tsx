@@ -190,3 +190,28 @@ export const AValueChangedFromOutsideReplacesTheContent: Story = {
     await waitFor(() => expect(box).toHaveTextContent("Replaced from outside"));
   },
 };
+
+/** The Visual view's toolbar shows while focus is in the field and its space is kept while it is hidden. */
+export const ToolbarShowsOnlyWhileTheFieldIsActive: Story = {
+  render: () => (
+    <>
+      <Harness initial="Some text" />
+      <button type="button">Outside</button>
+    </>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByRole("textbox", { name: "Notes" });
+    await expect(canvas.queryByRole("toolbar")).toBeNull();
+    const before = box.getBoundingClientRect().top;
+    await userEvent.click(box);
+    await expect(await canvas.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+    await expect(box.getBoundingClientRect().top).toBe(before);
+    // The link entry is part of the field: working in it keeps the toolbar.
+    await userEvent.click(canvas.getByRole("button", { name: "Link" }));
+    await expect(canvas.getByRole("textbox", { name: "Web address" })).toHaveFocus();
+    await expect(canvas.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Outside" }));
+    await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
+  },
+};

@@ -5,6 +5,8 @@
  * server accepts (headings 1 to 3, paragraphs, bulleted and numbered lists, quotations, horizontal rule, bold,
  * italic and links). It reports the document as JSON through `onChange`; the server validates it again.
  *
+ * The toolbar is shown only while focus is inside the field (`ActiveFieldFrame`).
+ *
  * Design decisions:
  * - The extension set is the server's vocabulary and nothing wider (code, strike-through, underline and code
  *   blocks are off), so what is typed or pasted can always be saved. Pasted content outside it is reduced by the
@@ -20,6 +22,7 @@ import { useId } from "react";
 
 import type { PolicyBody } from "../api/types";
 import { SAFE_LINK } from "../utils/markdownIt";
+import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
 import { FieldCaption } from "./FieldHelp";
 import { RichTextToolbar } from "./RichTextToolbar";
 
@@ -51,12 +54,12 @@ export function PolicyBodyEditor({ label, value, onChange, help }: {
   });
 
   return (
-    <div className="stack" style={{ gap: "var(--space-1)" }}>
+    <ActiveFieldFrame className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption label={label} help={help} htmlFor={id} />
-      {editor && <RichTextToolbar editor={editor} />}
+      {editor && <ActiveFieldToolbar><RichTextToolbar editor={editor} /></ActiveFieldToolbar>}
       <div className="policy-editor">
         <EditorContent editor={editor} />
       </div>
-    </div>
+    </ActiveFieldFrame>
   );
 }
