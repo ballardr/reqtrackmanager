@@ -234,8 +234,10 @@ def create_requirement_endpoint(
 def list_requirements(
     project_id: UUID,
     response: Response,
-    component_id: UUID | None = None,
-    category_id: UUID | None = None,
+    component_id: list[UUID] = Query([], description="Only requirements in these components (or with an alias there)."),
+    category_id: list[UUID] = Query(
+        [], description="Only requirements in these categories (or with an alias there); one in any listed component or category matches."
+    ),
     keyword: str | None = None,
     tag: list[str] = Query([], description="Only requirements carrying these tags (case-insensitive)."),
     tag_mode: Literal["any", "all"] = Query("any", description="Whether a requirement needs any or all of the `tag`s."),
@@ -300,7 +302,7 @@ def list_requirements(
     unfiltered = 0
 
     filters = RequirementFilters(
-        include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
+        include_archived=include_archived, is_completed=is_completed, component_ids=tuple(component_id), category_ids=tuple(category_id),
         tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword,
         external_systems=tuple(s.strip() for s in external_system if s.strip()), external_key=external_key, search=search, status=status_filter,
         target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,

@@ -43,6 +43,7 @@ import { FormGrid, FormGridFull } from "./FormGrid";
 import { InlineSelect, LabeledSelect } from "./LabeledSelect";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { Modal } from "./Modal";
+import { PrimaryPlaceField } from "./PrimaryPlaceField";
 import { PrincipalPicker } from "./PrincipalPicker";
 import { ProposedLinksEditor } from "./ProposedLinksEditor";
 import { TagField } from "./TagField";
@@ -149,8 +150,10 @@ export function ChangeRequestCreateModal({
       const lockable = reqs.filter((r) => r.is_locked);
       const requested = lockable.find((r) => r.id === defaultRequirementId);
       setRequirementId(requested?.id ?? lockable[0]?.id ?? "");
-      setComponentId(comps[0]?.id ?? "");
-      setCategoryId(cats.find((c) => c.component_id === comps[0]?.id)?.id ?? "");
+      // The first place that can be chosen: the first category of the first component that has one.
+      const firstCategory = cats.find((c) => c.component_id === comps.find((k) => cats.some((x) => x.component_id === k.id))?.id);
+      setComponentId(firstCategory?.component_id ?? comps[0]?.id ?? "");
+      setCategoryId(firstCategory?.id ?? "");
       setLoaded(true);
     })().catch((err) => { if (live) setError(toErrorMessage(err, strings.common.error)); });
     return () => { live = false; };
@@ -412,22 +415,12 @@ export function ChangeRequestCreateModal({
         </>
       ) : (
         <FormGrid minColumn="18rem">
-          <LabeledSelect help={strings.help.proposedRequirementComponent} required
-            label={strings.requirements.component}
-            value={componentId}
-            onChange={(nextComponentId) => {
-              setComponentId(nextComponentId);
-              setCategoryId(categories.find((c) => c.component_id === nextComponentId)?.id ?? "");
+          <PrimaryPlaceField
+            tree={{ components, categories }} categoryId={categoryId} help={strings.help.proposedRequirementPlace}
+            onChange={(place) => {
+              setComponentId(place.component_id);
+              setCategoryId(place.category_id ?? "");
             }}
-            options={components.map((c) => ({ value: c.id, label: c.name }))}
-            placeholder={null}
-          />
-          <LabeledSelect help={strings.help.proposedRequirementCategory} required
-            label={strings.requirements.category}
-            value={categoryId}
-            onChange={setCategoryId}
-            options={categories.filter((c) => c.component_id === componentId).map((c) => ({ value: c.id, label: c.name }))}
-            placeholder={null}
           />
           <FormGridFull>
             <TextField help={strings.help.proposedRequirementName} required

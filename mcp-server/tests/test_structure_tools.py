@@ -46,7 +46,8 @@ _SCRIPT = textwrap.dedent(
 
     async def main():
         names = ["create_component", "update_component", "move_component", "delete_component",
-                 "create_category", "update_category", "move_category", "delete_category"]
+                 "create_category", "update_category", "move_category", "move_category_to_component",
+                 "delete_category"]
         t = {n: (await server.mcp.get_tool(n)).fn for n in names}
         P, C, K = %(p)r, %(c)r, %(k)r
         await t["create_component"](P, name=" Software ", prefix=" sw ")
@@ -56,6 +57,10 @@ _SCRIPT = textwrap.dedent(
         await t["create_category"](P, component_id=C, name="Performance", prefix="perf")
         await t["update_category"](P, category_id=K, name="Perf", prefix="prf")
         await t["move_category"](P, category_id=K, direction="up")
+        await t["move_category_to_component"](P, category_id=K, component_id=%(o)r)
+        await t["create_component"](P, name="Power Supply")
+        await t["create_category"](P, component_id=C, name="Fuse Block")
+        await t["update_component"](P, component_id=C, name="Software")
         deleted = await t["delete_category"](P, category_id=K)
         errors = []
         for label, call in (
@@ -72,7 +77,7 @@ _SCRIPT = textwrap.dedent(
 
     asyncio.run(main())
     """
-) % {"p": PROJECT, "c": COMPONENT, "k": CATEGORY}
+) % {"p": PROJECT, "c": COMPONENT, "k": CATEGORY, "o": OTHER_COMPONENT}
 
 
 def test_the_write_tools_send_the_endpoints_requests_and_validate_first():
@@ -92,6 +97,11 @@ def test_the_write_tools_send_the_endpoints_requests_and_validate_first():
         ("POST", f"{base}/categories", {"component_id": COMPONENT, "name": "Performance", "prefix": "PERF"}),
         ("PATCH", f"{base}/categories/{CATEGORY}", {"name": "Perf", "prefix": "PRF"}),
         ("POST", f"{base}/categories/{CATEGORY}/move", {"direction": "up"}),
+        ("POST", f"{base}/categories/{CATEGORY}/move-to", {"component_id": OTHER_COMPONENT}),
+        # A prefix left out is sent as null, so the server suggests one (a create) or keeps the current one (an update).
+        ("POST", f"{base}/components", {"name": "Power Supply", "prefix": None}),
+        ("POST", f"{base}/categories", {"component_id": COMPONENT, "name": "Fuse Block", "prefix": None}),
+        ("PATCH", f"{base}/components/{COMPONENT}", {"name": "Software", "prefix": None}),
         # No `reassign_to` and no query string: the server refuses unless the category is empty.
         ("DELETE", f"{base}/categories/{CATEGORY}", None),
     ]
@@ -129,7 +139,7 @@ def test_the_structure_write_tools_are_absent_without_write_mode():
     assert {"list_components", "list_categories", "list_stages"} <= names
     assert not names & {
         "create_component", "update_component", "move_component", "delete_component",
-        "create_category", "update_category", "move_category", "delete_category",
+        "create_category", "update_category", "move_category", "move_category_to_component", "delete_category",
     }
 
 

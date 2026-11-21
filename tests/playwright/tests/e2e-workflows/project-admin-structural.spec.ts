@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, moveStageToPhase, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
+import { addStructureCategory, addStructureComponent, clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, moveStageToPhase, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving, structureRow } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -29,9 +29,9 @@ import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs
  * alone (see PROJECT_NAMES.delta1/gamma3/gamma4 in ./helpers.ts) rather than
  * repurposing one shared across many specs.
  *
- * Component/category/stage names are rendered as editable `<input>` value
- * attributes (the rename form), not text nodes — every locator below
- * matches `input[value="..."]` rather than using `getByText` for them.
+ * Stage names are rendered as editable `<input>` value attributes (the rename form), not text nodes — the stage
+ * locators below match `input[value="..."]`. Components and categories are the rows of the Structure tree, edited in a
+ * side panel (`addStructureComponent`, `structureRow` in ./helpers).
  *
  * Split into three independent tests (2026-10-04), each with its own
  * disposable project created via the API: as one test it ran ~25s of the
@@ -69,73 +69,31 @@ async function reassignTo(page: Page, label: string) {
 // sections' "Name"-placeholder fields never cross-hit.
 const stagesSectionOf = (page: Page) =>
   page.locator(".card", { has: page.getByRole("button", { name: "Project stages section" }) });
-const componentsSectionOf = (page: Page) =>
-  page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
 
 test.describe("project admin: structural rename/delete and archiving", () => {
   installCleanupHook();
 
   test("components and categories can be renamed and deleted with reassignment", async ({ page }) => {
     const { projectId, authHeaders } = await openStructuralProject(page, "Components");
-    const componentsSection = componentsSectionOf(page);
 
-    // Before any additions there are 3 "Name"-placeholder fields in
-    // "Components & categories" (Hardware's and Software's inline
-    // add-category forms, plus the bottom add-component form) and 2 "New
-    // category" buttons; each added component appends one more of each
-    // just before the bottom form, so its own form/button sits at a fixed
-    // index (2, then 3).
     await test.step("build a two-component tree", async () => {
       await selectProjectAdminGroup(page, "Structure");
-
-      await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Firmware");
-      await componentsSection.getByPlaceholder("Prefix").last().fill("FW");
-      await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-      await expect(page.locator('input.input[value="Firmware"]:not([placeholder])')).toBeVisible();
-
-      const firmwareCategoryName = componentsSection.getByPlaceholder("Name", { exact: true }).nth(2);
-      const firmwareCategoryPrefix = componentsSection.getByPlaceholder("Prefix").nth(2);
-      const firmwareNewCategoryButton = componentsSection.getByRole("button", { name: "New category" }).nth(2);
-      await firmwareCategoryName.fill("Timing");
-      await firmwareCategoryPrefix.fill("TIM");
-      await firmwareNewCategoryButton.click();
-      await expect(page.locator('input.input[value="Timing"]:not([placeholder])')).toBeVisible();
-
-      await firmwareCategoryName.fill("Safety");
-      await firmwareCategoryPrefix.fill("SAF");
-      await firmwareNewCategoryButton.click();
-      await expect(page.locator('input.input[value="Safety"]:not([placeholder])')).toBeVisible();
-
-      await componentsSection.getByPlaceholder("Name", { exact: true }).last().fill("Sensors");
-      await componentsSection.getByPlaceholder("Prefix").last().fill("SEN");
-      await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-      // Wait for Sensors' own row (and its add-category form) to actually
-      // render before computing fixed-index locators below — without this,
-      // .nth(3) can still resolve to the bottom add-component form (the
-      // pre-Sensors 4th "Name" field) if the creation request hasn't
-      // resolved yet, silently filling the wrong inputs.
-      await expect(page.locator('input.input[value="Sensors"]:not([placeholder])')).toBeVisible();
-      const sensorsCategoryName = componentsSection.getByPlaceholder("Name", { exact: true }).nth(3);
-      const sensorsCategoryPrefix = componentsSection.getByPlaceholder("Prefix").nth(3);
-      await sensorsCategoryName.fill("Calibration");
-      await sensorsCategoryPrefix.fill("CAL");
-      await componentsSection.getByRole("button", { name: "New category" }).nth(3).click();
-      await expect(page.locator('input.input[value="Calibration"]:not([placeholder])')).toBeVisible();
+      await addStructureComponent(page, "Firmware", "FW");
+      await addStructureCategory(page, "Firmware", "Timing", "TIM");
+      await addStructureCategory(page, "Firmware", "Safety", "SAF");
+      await addStructureComponent(page, "Sensors", "SEN");
+      await addStructureCategory(page, "Sensors", "Calibration", "CAL");
+      await expect(structureRow(page, "Timing")).toBeVisible();
+      await expect(structureRow(page, "Calibration")).toBeVisible();
     });
 
-    // Component order is Hardware(0)/Software(1)/Firmware(2)/Sensors(3);
-    // Hardware and Software each still have their own single seeded
-    // category, so all four currently show the *blocked* delete title —
-    // Firmware is nth(2) among those.
     await test.step("deleting a component with categories is blocked in the UI", async () => {
-      await expect(componentsSection.getByTitle("Delete or reassign this component's categories first.").nth(2)).toBeDisabled();
+      await page.getByRole("button", { name: "Actions for Firmware", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "Delete", exact: true })).toBeDisabled();
+      await page.keyboard.press("Escape");
     });
 
-    // Category order is Functional(HW,0)/Performance(SW,1)/Timing(FW,2)/
-    // Safety(FW,3)/Calibration(SEN,4); every category's delete button is
-    // always enabled, so this needs explicit indices too. A delete is plain
-    // first: only a category that still governs something opens the
-    // reassignment dialog.
+    // A delete is plain first: only a category that still governs something opens the reassignment dialog.
     await test.step("deleting a category that governs a requirement offers a reassignment, first within then across components", async () => {
       const base = `http://localhost:8000/api/v1/projects/${projectId}`;
       const components: { id: string; prefix: string }[] = await (await page.request.get(`${base}/components`, { headers: authHeaders })).json();
@@ -149,37 +107,102 @@ test.describe("project admin: structural rename/delete and archiving", () => {
         },
       });
       expect(created.ok()).toBeTruthy();
+      await page.reload();
+      await selectProjectAdminGroup(page, "Structure");
 
-      await componentsSection.getByTitle("Delete this category").nth(2).click(); // Timing
+      await page.getByRole("button", { name: "Actions for Timing", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
       await confirmDelete(page);
-      // The reassign dropdown always prefixes a category option with its
-      // owning component's name ("ComponentName / CategoryName"), even
-      // within the same component.
+      // The reassign dropdown always prefixes a category option with its owning component's name
+      // ("ComponentName / CategoryName"), even within the same component.
       await reassignTo(page, "Firmware / Safety");
-      await expect(page.locator('input.input[value="Timing"]:not([placeholder])')).toHaveCount(0);
+      await expect(structureRow(page, "Timing")).toHaveCount(0);
 
-      // Timing's removal shifted Safety from index 3 to index 2.
-      await componentsSection.getByTitle("Delete this category").nth(2).click(); // Safety
+      await page.getByRole("button", { name: "Actions for Safety", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
       await confirmDelete(page);
       await reassignTo(page, "Sensors / Calibration");
-      await expect(page.locator('input.input[value="Safety"]:not([placeholder])')).toHaveCount(0);
+      await expect(structureRow(page, "Safety")).toHaveCount(0);
     });
 
     await test.step("with no categories left, the now-empty component can be deleted", async () => {
-      // Firmware is now the only component with zero categories, so its
-      // delete button is uniquely titled "Delete this component" (not the
-      // blocked variant) — no index needed.
-      await componentsSection.getByTitle("Delete this component").click();
-      await page.getByRole("button", { name: "Confirm delete" }).click();
-      await expect(page.locator('input.input[value="Firmware"]:not([placeholder])')).toHaveCount(0);
+      await page.getByRole("button", { name: "Actions for Firmware", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+      await page.getByRole("dialog", { name: "Delete this component" }).getByRole("button", { name: "Confirm delete" }).click();
+      await expect(structureRow(page, "Firmware")).toHaveCount(0);
     });
 
     await test.step("an empty category is deleted with no replacement to choose", async () => {
-      // Hardware's seeded Functional category is still first and holds nothing.
-      await componentsSection.getByTitle("Delete this category").nth(0).click();
+      // Hardware's seeded Functional category holds nothing.
+      await page.getByRole("button", { name: "Expand Hardware", exact: true }).click();
+      await page.getByRole("button", { name: "Actions for Functional", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
       await confirmDelete(page);
-      await expect(page.locator('input.input[value="Functional"]:not([placeholder])')).toHaveCount(0);
+      await expect(structureRow(page, "Functional")).toHaveCount(0);
       await expect(page.getByRole("dialog")).toHaveCount(0);
+    });
+  });
+
+  test("a prefix is suggested from the name, edited, reordered and a category moved to another component", async ({ page }) => {
+    await openStructuralProject(page, "Suggestions");
+
+    await test.step("the suggestion fills the prefix and numbers a collision", async () => {
+      expect(await addStructureComponent(page, "Power Supply")).toBe("PS");
+      expect(await addStructureComponent(page, "Pressure Sensors")).toBe("PS2");
+      expect(await addStructureCategory(page, "Power Supply", "Fuse Block")).toBe("FB");
+      expect(await addStructureCategory(page, "Power Supply", "Fan Bay")).toBe("FB2");
+    });
+
+    await test.step("a typed prefix stays while the name changes", async () => {
+      await page.getByRole("button", { name: "Add component" }).click();
+      const panel = page.getByRole("dialog", { name: "Add component" });
+      await panel.getByRole("textbox", { name: "Name" }).fill("Cooling Loop");
+      await expect(panel.getByRole("textbox", { name: "Prefix" })).toHaveValue("CL");
+      await panel.getByRole("textbox", { name: "Prefix" }).fill("CLOOP");
+      await panel.getByRole("textbox", { name: "Name" }).fill("Cooling Loops");
+      await page.waitForTimeout(600);
+      await expect(panel.getByRole("textbox", { name: "Prefix" })).toHaveValue("CLOOP");
+      await clickAndAwaitSave(page, panel.getByRole("button", { name: "Save" }), "/components");
+      await expect(panel).toBeHidden();
+    });
+
+    await test.step("edit changes the name and prefix", async () => {
+      await page.getByRole("button", { name: "Actions for Cooling Loops", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+      const panel = page.getByRole("dialog", { name: "Edit component Cooling Loops" });
+      await panel.getByRole("textbox", { name: "Name" }).fill("Thermal Loops");
+      await expect(panel.getByRole("textbox", { name: "Prefix" })).toHaveValue("CLOOP");
+      await clickAndAwaitSave(page, panel.getByRole("button", { name: "Save" }), "/components/");
+      await expect(structureRow(page, "Thermal Loops")).toBeVisible();
+    });
+
+    await test.step("a component moves down and keeps its place after a reload", async () => {
+      await page.getByRole("button", { name: "Actions for Power Supply", exact: true }).click();
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/move") && r.request().method() === "POST"),
+        page.getByRole("menuitem", { name: "Move down", exact: true }).click(),
+      ]);
+      await page.reload();
+      await selectProjectAdminGroup(page, "Structure");
+      await expect(structureRow(page, "Pressure Sensors")).toBeVisible();
+      const names = await page.getByRole("treegrid", { name: "Components and categories" }).getByRole("button", { name: /^(Expand|Collapse) / }).allTextContents();
+      expect(names.indexOf("Pressure Sensors")).toBeLessThan(names.indexOf("Power Supply"));
+    });
+
+    await test.step("a category moves to another component and takes it there", async () => {
+      await page.getByRole("button", { name: "Actions for Fuse Block", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Move to another component…", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Move Fuse Block to another component" });
+      await dialog.getByRole("combobox", { name: /New component/ }).selectOption({ label: "Pressure Sensors (PS2)" });
+      await clickAndAwaitSave(page, dialog.getByRole("button", { name: "Move" }), "/move-to");
+      await expect(dialog).toBeHidden();
+      await expect(structureRow(page, "Fuse Block")).toBeVisible();
+    });
+
+    await test.step("a search opens the components that hold a match", async () => {
+      await page.getByRole("textbox", { name: "Search components and categories" }).fill("fan");
+      await expect(structureRow(page, "Fan Bay")).toBeVisible();
+      await expect(structureRow(page, "Thermal Loops")).toHaveCount(0);
     });
   });
 

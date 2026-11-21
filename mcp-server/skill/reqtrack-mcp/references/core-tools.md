@@ -64,15 +64,15 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 ## `create_category` (write)
 
-Creates a category under one component, at the end of that component's list. Needs the project manager role. A category cannot be moved to another component afterwards.
+Creates a category under one component, at the end of that component's list. Needs the project manager role. It can be moved to another component afterwards with `move_category_to_component`.
 
-Parameters: `project_id` (string), `component_id*` (string), `name*` (string), `prefix*` (string)
+Parameters: `project_id` (string), `component_id*` (string), `name*` (string), `prefix` (string)
 
 ## `create_component` (write)
 
 Creates a component (the top level of a project's structure) at the end of the list. Needs the project manager role.
 
-Parameters: `project_id` (string), `name*` (string), `prefix*` (string)
+Parameters: `project_id` (string), `name*` (string), `prefix` (string)
 
 ## `create_report_layout` (write)
 
@@ -414,9 +414,15 @@ Parameters: `project_id` (string), `requirement_id*` (string), `alias_id*` (stri
 
 ## `move_category` (write)
 
-Moves a category one place up or down among the categories of its component (never to another component). Needs the project manager role.
+Moves a category one place up or down among the categories of its component (to another component, use `move_category_to_component`). Needs the project manager role.
 
 Parameters: `project_id` (string), `category_id*` (string), `direction*` (string)
+
+## `move_category_to_component` (write)
+
+Moves a category under another component of the project, last among that component's categories. Needs the project manager role. The requirements in the category (with their further places, other placed records and proposed changes) go with it, so they now sit in the new component. Existing requirement codes never change; requirements created afterwards take the new component's prefix. Refused (400) when the new component already has a category with the same prefix, or when it is the category's own component.
+
+Parameters: `project_id` (string), `category_id*` (string), `component_id*` (string)
 
 ## `move_component` (write)
 
@@ -524,13 +530,13 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 Renames a category and/or changes its prefix. Needs the project manager role.
 
-Parameters: `project_id` (string), `category_id*` (string), `name*` (string), `prefix*` (string)
+Parameters: `project_id` (string), `category_id*` (string), `name*` (string), `prefix` (string)
 
 ## `update_component` (write)
 
 Renames a component and/or changes its prefix. Needs the project manager role.
 
-Parameters: `project_id` (string), `component_id*` (string), `name*` (string), `prefix*` (string)
+Parameters: `project_id` (string), `component_id*` (string), `name*` (string), `prefix` (string)
 
 ## `update_report_layout` (write)
 

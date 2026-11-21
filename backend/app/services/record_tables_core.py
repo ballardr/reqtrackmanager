@@ -210,6 +210,17 @@ def uuid_filter(filters: RecordFilters, key: str) -> uuid.UUID | None:
         raise HTTPException(422, f"{key} must be an id.") from None
 
 
+def uuid_filters(filters: RecordFilters, key: str) -> tuple[uuid.UUID, ...]:
+    """Every value of a repeatable UUID filter, or a 422 naming the parameter."""
+    found = []
+    for raw in filters.many(key):
+        try:
+            found.append(uuid.UUID(raw))
+        except ValueError:
+            raise HTTPException(422, f"{key} must be an id.") from None
+    return tuple(found)
+
+
 def enum_filter(filters: RecordFilters, key: str, enum_class: type[enum.Enum]) -> Any:
     """An enum filter by its stored value, or a 422 naming the parameter."""
     raw = filters.one(key)
@@ -268,7 +279,7 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
         db, project_id, user.id,
         requirement_service.RequirementFilters(
             include_archived=bool(filters.flag("include_archived")), is_completed=filters.flag("is_completed"),
-            component_id=uuid_filter(filters, "component_id"), category_id=uuid_filter(filters, "category_id"),
+            component_ids=uuid_filters(filters, "component_id"), category_ids=uuid_filters(filters, "category_id"),
             keyword=filters.one("keyword"), search=filters.one("search"),
             status=enum_filter(filters, "status", RequirementStatus), target_stage_id=uuid_filter(filters, "target_stage_id"),
             target_stage_from_id=uuid_filter(filters, "target_stage_from_id"),

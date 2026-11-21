@@ -50,10 +50,24 @@ test.describe("requirements list: component and target version range", () => {
     await expect(page.getByText(names[0])).toBeVisible();
 
     await test.step("the component filter keeps only that component", async () => {
-      await page.getByRole("combobox", { name: "Component" }).selectOption(sw.id);
+      await page.getByRole("button", { name: "Component and category", exact: true }).click();
+      const choices = page.getByRole("group", { name: "Component and category" });
+      await choices.getByRole("checkbox", { name: "Software", exact: true }).check();
       await expect(page.getByText(softwareName)).toBeVisible();
       await expect(page.getByText(names[0])).toHaveCount(0);
-      await page.getByRole("combobox", { name: "Component" }).selectOption("");
+      await expect(page).toHaveURL(/in_component=/);
+      await choices.getByRole("checkbox", { name: "Software", exact: true }).uncheck();
+      await expect(page.getByText(names[0])).toBeVisible();
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("an older link with the single component parameter opens as the shared filter", async () => {
+      await page.goto(`/projects/${projectId}/requirements?component=${sw.id}`);
+      await expect(page).toHaveURL(new RegExp(`in_component=${sw.id}`));
+      await expect(page).not.toHaveURL(/[?&]component=/);
+      await expect(page.getByText(softwareName)).toBeVisible();
+      await expect(page.getByText(names[0])).toHaveCount(0);
+      await page.goto(`/projects/${projectId}/requirements`);
       await expect(page.getByText(names[0])).toBeVisible();
     });
 

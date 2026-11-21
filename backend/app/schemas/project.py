@@ -29,6 +29,7 @@ from app.models.project import MAX_REPORT_NAME_LENGTH
 # importing `MoveDirection` from this very module.
 from app.schemas.org import ModuleRoleGrantOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.services.taxonomy import clean_name, clean_prefix
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
@@ -475,14 +476,29 @@ class StageReviewResponseOut(BaseModel):
     responded_at: datetime
 
 
-class ComponentCreate(BaseModel):
+class _StructureNode(BaseModel):
+    """The name and prefix a component or category is saved with, checked by one rule (`services.taxonomy`)."""
+
     name: str
-    prefix: str
+    prefix: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, value: str) -> str:
+        return clean_name(value)
+
+    @field_validator("prefix")
+    @classmethod
+    def _clean_prefix(cls, value: str | None) -> str | None:
+        return None if value is None else clean_prefix(value)
 
 
-class ComponentUpdate(BaseModel):
-    name: str
-    prefix: str
+class ComponentCreate(_StructureNode):
+    """`prefix` omitted: the server suggests one from the name (`services.taxonomy.suggest_prefix`)."""
+
+
+class ComponentUpdate(_StructureNode):
+    """`prefix` omitted keeps the current one."""
 
 
 class ComponentOut(BaseModel):
@@ -495,15 +511,14 @@ class ComponentOut(BaseModel):
     sort_order: int
 
 
-class CategoryCreate(BaseModel):
-    name: str
-    prefix: str
+class CategoryCreate(_StructureNode):
+    """`prefix` omitted: the server suggests one from the name among the component's categories."""
+
     component_id: UUID
 
 
-class CategoryUpdate(BaseModel):
-    name: str
-    prefix: str
+class CategoryUpdate(_StructureNode):
+    """`prefix` omitted keeps the current one."""
 
 
 class CategoryOut(BaseModel):
@@ -515,6 +530,34 @@ class CategoryOut(BaseModel):
     name: str
     prefix: str
     sort_order: int
+
+
+class CategoryMoveTo(BaseModel):
+    """Moves a category under another component of the project."""
+
+    component_id: UUID
+
+
+class PrefixSuggestion(BaseModel):
+    """A suggested prefix; empty when the name has no letter or digit."""
+
+    prefix: str
+
+
+class StructureComponentCounts(BaseModel):
+    """What one component holds: its categories and the active requirements whose own component it is."""
+
+    categories: int
+    requirements: int
+
+
+class StructureCountsOut(BaseModel):
+    """What sits in each component and category of a project (see `services.taxonomy.structure_counts`).
+
+    `categories` maps a category id to the active requirements whose own category it is."""
+
+    components: dict[UUID, StructureComponentCounts]
+    categories: dict[UUID, int]
 
 
 class MoveDirection(BaseModel):

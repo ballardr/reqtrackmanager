@@ -203,6 +203,9 @@ LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 PROPOSED_LINKS_PROJECT_NAME = "Zeta-1 Proposed Links Demo"
 ALIASES_PROJECT_NAME = "Eta-1 Requirement Aliases Demo"
 ALIASES_DISABLED_PROJECT_NAME = "Theta-1 Aliases Disabled Demo"
+# A project with several components and categories whose prefixes were suggested from the names (one collision
+# numbered, one long name abbreviated) and one empty component, for the Structure page's tree and suggestion.
+STRUCTURE_PROJECT_NAME = "Iota-1 Structure Tree Demo"
 
 # Fixed hierarchy fixture for project-hierarchy.spec.ts — Gamma-4 mirrors
 # all roles from Gamma-3 (forward), and Gamma-3 also consumes members from
@@ -794,6 +797,30 @@ def get_stakeholder_levels(headers: dict, org_id: str) -> dict[str, dict[str, st
     return {a["key"]: {lvl["name"]: lvl["id"] for lvl in a["levels"]} for a in r.json()["axes"]}
 
 
+def seed_structure_tree(headers: dict, project_id: str) -> None:
+    """Gives a project several components and categories, leaving every prefix to the server's suggestion.
+
+    "Power Supply" takes PS and "Pressure Sensors" the numbered PS2; "Power Distribution Unit Controller Board" is
+    abbreviated; "Spare Parts" has no categories.
+    """
+    components = {}
+    for name in ("Power Supply", "Pressure Sensors", "Power Distribution Unit Controller Board", "Spare Parts"):
+        r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name}, headers=headers, timeout=30)
+        r.raise_for_status()
+        components[name] = r.json()
+    for component, names in (
+        ("Power Supply", ("Fuse Block", "Fan Bay", "Cable Harness")),
+        ("Pressure Sensors", ("Calibration", "Housing")),
+        ("Power Distribution Unit Controller Board", ("Firmware",)),
+    ):
+        for name in names:
+            r = httpx.post(
+                f"{BASE}/projects/{project_id}/categories",
+                json={"name": name, "component_id": components[component]["id"]}, headers=headers, timeout=30,
+            )
+            r.raise_for_status()
+
+
 def add_requirement_alias(headers: dict, project: dict, requirement: dict) -> dict:
     """Places `requirement` in the other component and category of a `seed_project_content` project (its Software
     Performance when it sits in Hardware, else Hardware Functional) and returns the requirement with its alias."""
@@ -1101,6 +1128,12 @@ def main() -> None:
     theta1_aliased = add_requirement_alias(h_ab, theta1, theta1_reqs[0])
     r = httpx.put(f"{BASE}/projects/{theta1['id']}/requirement-aliases", json={"mode": "disabled"}, headers=h_ab, timeout=30)
     r.raise_for_status()
+
+    print(f"Creating {STRUCTURE_PROJECT_NAME!r} (components and categories with suggested prefixes, one empty component)...")
+    iota1 = create_project(
+        h_ab, alpha["id"], STRUCTURE_PROJECT_NAME, "E2E seed project holding a component and category tree.",
+    )
+    seed_structure_tree(h_ab, iota1["id"])
 
     print(f"Creating {FGAC_STANDARD_NAME!r} (compliance standard for Alpha, role-management.spec.ts's entity-picker fixture)...")
     fgac_standard = create_compliance_standard(h_ab, alpha["id"], reference=FGAC_STANDARD_REFERENCE, name=FGAC_STANDARD_NAME)

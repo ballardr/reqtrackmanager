@@ -265,6 +265,16 @@ def _require_structure_text(value: str, field_name: str) -> str:
     return cleaned
 
 
+def _optional_prefix(value: str | None) -> str | None:
+    """A component or category prefix upper-cased, or `None` when it was left out (the server then suggests one on a
+    create and keeps the current one on an update).
+
+    Raises:
+        ValueError: If a value was given but is blank after trimming.
+    """
+    return None if value is None else _require_structure_text(value, "prefix").upper()
+
+
 def _require_snippet_key(value: str) -> str:
     """Validates a report snippet key (lowercase, hyphens or underscores) before it is put in a URL path."""
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,59}", value):
@@ -2251,42 +2261,47 @@ if MCP_WRITES_ENABLED:
     # requirements to another category is done with `update_requirement`.
 
     @mcp.tool
-    async def create_component(project_id: str | None = None, *, name: str, prefix: str) -> dict:
+    async def create_component(project_id: str | None = None, *, name: str, prefix: str | None = None) -> dict:
         """Creates a component (the top level of a project's structure) at the end of the list. Needs the project
         manager role.
 
         Args:
             project_id: The project's UUID (from `list_projects`).
             name: The component's name, for example "Software".
-            prefix: A short code, upper-cased for you, unique among the project's components. It forms the start of
-                the code of every requirement created in it (`SW` gives `SW-PERF-014`). Renaming a prefix later
-                affects only requirements created afterwards; existing codes never change.
+            prefix: Optional. A short code, upper-cased for you, unique among the project's components. It forms the
+                start of the code of every requirement created in it (`SW` gives `SW-PERF-014`). Left out, the
+                server suggests one from the name (the initials of its words, numbered if taken), the same rule the
+                screen uses. Renaming a prefix later affects only requirements created afterwards; existing codes
+                never change.
 
         Returns:
             The new component's `id`, `name`, `prefix` and `sort_order`. Next: `create_category` under it.
         """
         pid = _require_project_id(project_id)
-        body = {"name": _require_structure_text(name, "name"), "prefix": _require_structure_text(prefix, "prefix").upper()}
+        body = {"name": _require_structure_text(name, "name"), "prefix": _optional_prefix(prefix)}
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/components", json=body)
         return response.json()
 
     @mcp.tool
-    async def update_component(project_id: str | None = None, *, component_id: str, name: str, prefix: str) -> dict:
+    async def update_component(
+        project_id: str | None = None, *, component_id: str, name: str, prefix: str | None = None
+    ) -> dict:
         """Renames a component and/or changes its prefix. Needs the project manager role.
 
         Args:
             project_id: The project's UUID (from `list_projects`).
             component_id: The component's UUID (from `list_components`).
             name: The component's name (pass the current one to keep it).
-            prefix: The prefix, upper-cased for you and unique among the components (pass the current one to keep
-                it). Existing requirement codes never change; only requirements created afterwards use the new one.
+            prefix: Optional. The prefix, upper-cased for you and unique among the components; left out, the current
+                one is kept. Existing requirement codes never change; only requirements created afterwards use the
+                new one.
 
         Returns:
             The component after the change.
         """
         pid = _require_project_id(project_id)
         cid = _require_uuid(component_id, "component_id")
-        body = {"name": _require_structure_text(name, "name"), "prefix": _require_structure_text(prefix, "prefix").upper()}
+        body = {"name": _require_structure_text(name, "name"), "prefix": _optional_prefix(prefix)}
         response = await _call_backend("PATCH", f"/api/v1/projects/{pid}/components/{cid}", json=body)
         return response.json()
 
@@ -2327,17 +2342,20 @@ if MCP_WRITES_ENABLED:
         return {"deleted": True, "component_id": cid}
 
     @mcp.tool
-    async def create_category(project_id: str | None = None, *, component_id: str, name: str, prefix: str) -> dict:
+    async def create_category(
+        project_id: str | None = None, *, component_id: str, name: str, prefix: str | None = None
+    ) -> dict:
         """Creates a category under one component, at the end of that component's list. Needs the project manager
-        role. A category cannot be moved to another component afterwards.
+        role. It can be moved to another component afterwards with `move_category_to_component`.
 
         Args:
             project_id: The project's UUID (from `list_projects`).
             component_id: The parent component's UUID (from `list_components`); it must belong to this project.
             name: The category's name, for example "Performance".
-            prefix: A short code, upper-cased for you, unique within the component. It forms the second part of the
-                code of every requirement created in it (`PERF` gives `SW-PERF-014`). Renaming a prefix later
-                affects only requirements created afterwards.
+            prefix: Optional. A short code, upper-cased for you, unique within the component. It forms the second
+                part of the code of every requirement created in it (`PERF` gives `SW-PERF-014`). Left out, the
+                server suggests one from the name, numbered if taken among the component's categories. Renaming a
+                prefix later affects only requirements created afterwards.
 
         Returns:
             The new category's `id`, `component_id`, `name`, `prefix` and `sort_order`: the `category_id` that
@@ -2347,35 +2365,38 @@ if MCP_WRITES_ENABLED:
         body = {
             "component_id": _require_uuid(component_id, "component_id"),
             "name": _require_structure_text(name, "name"),
-            "prefix": _require_structure_text(prefix, "prefix").upper(),
+            "prefix": _optional_prefix(prefix),
         }
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/categories", json=body)
         return response.json()
 
     @mcp.tool
-    async def update_category(project_id: str | None = None, *, category_id: str, name: str, prefix: str) -> dict:
+    async def update_category(
+        project_id: str | None = None, *, category_id: str, name: str, prefix: str | None = None
+    ) -> dict:
         """Renames a category and/or changes its prefix. Needs the project manager role.
 
         Args:
             project_id: The project's UUID (from `list_projects`).
             category_id: The category's UUID (from `list_categories`).
             name: The category's name (pass the current one to keep it).
-            prefix: The prefix, upper-cased for you and unique within its component (pass the current one to keep
-                it). Existing requirement codes never change; only requirements created afterwards use the new one.
+            prefix: Optional. The prefix, upper-cased for you and unique within its component; left out, the current
+                one is kept. Existing requirement codes never change; only requirements created afterwards use the
+                new one.
 
         Returns:
             The category after the change.
         """
         pid = _require_project_id(project_id)
         cid = _require_uuid(category_id, "category_id")
-        body = {"name": _require_structure_text(name, "name"), "prefix": _require_structure_text(prefix, "prefix").upper()}
+        body = {"name": _require_structure_text(name, "name"), "prefix": _optional_prefix(prefix)}
         response = await _call_backend("PATCH", f"/api/v1/projects/{pid}/categories/{cid}", json=body)
         return response.json()
 
     @mcp.tool
     async def move_category(project_id: str | None = None, *, category_id: str, direction: str) -> dict:
-        """Moves a category one place up or down among the categories of its component (never to another
-        component). Needs the project manager role.
+        """Moves a category one place up or down among the categories of its component (to another component, use
+        `move_category_to_component`). Needs the project manager role.
 
         Args:
             project_id: The project's UUID (from `list_projects`).
@@ -2390,6 +2411,28 @@ if MCP_WRITES_ENABLED:
         response = await _call_backend(
             "POST", f"/api/v1/projects/{pid}/categories/{cid}/move", json={"direction": _require_direction(direction)}
         )
+        return response.json()
+
+    @mcp.tool
+    async def move_category_to_component(project_id: str | None = None, *, category_id: str, component_id: str) -> dict:
+        """Moves a category under another component of the project, last among that component's categories. Needs
+        the project manager role. The requirements in the category (with their further places, other placed
+        records and proposed changes) go with it, so they now sit in the new component. Existing requirement codes
+        never change; requirements created afterwards take the new component's prefix. Refused (400) when the new
+        component already has a category with the same prefix, or when it is the category's own component.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            category_id: The category's UUID (from `list_categories`).
+            component_id: The UUID of the component to move it under (from `list_components`).
+
+        Returns:
+            The category after the move (its new `component_id` and `sort_order`).
+        """
+        pid = _require_project_id(project_id)
+        cid = _require_uuid(category_id, "category_id")
+        body = {"component_id": _require_uuid(component_id, "component_id")}
+        response = await _call_backend("POST", f"/api/v1/projects/{pid}/categories/{cid}/move-to", json=body)
         return response.json()
 
     @mcp.tool

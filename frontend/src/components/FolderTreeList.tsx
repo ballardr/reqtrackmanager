@@ -9,7 +9,8 @@
  * - Show the tree `utils/reportFolders` builds, generic over the item type, so the report chooser and the
  *   report setup list share one implementation of the shape.
  * - Sort each level by the Name column or a column that declares a `sortValue`: folders always come first, then
- *   items; a node marked `pinned` (Favourites) stays on top.
+ *   items; a node marked `pinned` (Favourites) stays on top. With `order="given"` the nodes keep the order the caller
+ *   passes (a list with its own manual order, such as the project's components) and no header sorts.
  * - Keyboard (an ARIA tree grid): Up/Down/Home/End move between visible rows, Right opens a folder (or moves to its
  *   first child), Left closes it (or moves to its parent), Enter opens an item or toggles a folder.
  * - Name an empty open folder with a muted "Empty folder" row, so an open folder never looks broken.
@@ -38,8 +39,10 @@ import { Badge } from "./Badge";
 export interface FolderTreeColumn<T> {
   id: string;
   header: string;
-  /** The cell for an item (a folder's cell is empty). */
+  /** The cell for an item. */
   render: (item: T) => ReactNode;
+  /** The cell for a folder; empty when omitted. */
+  renderFolder?: (node: FolderNode<T>) => ReactNode;
   /** Makes the header sortable by this value (numbers sort numerically, text without regard to case). */
   sortValue?: (item: T) => string | number;
   /** A CSS width for the column (default `minmax(6rem, 10rem)`). */
@@ -105,10 +108,10 @@ function sortLevel<T>(nodes: FolderNode<T>[], sort: SortState, columns: FolderTr
 }
 
 function flatten<T>(
-  nodes: FolderNode<T>[], expanded: ReadonlySet<string>, sort: SortState, columns: FolderTreeColumn<T>[],
+  nodes: FolderNode<T>[], expanded: ReadonlySet<string>, sort: SortState | null, columns: FolderTreeColumn<T>[],
   depth = 0, parentId: string | null = null,
 ): Row<T>[] {
-  const sorted = sortLevel(nodes, sort, columns);
+  const sorted = sort ? sortLevel(nodes, sort, columns) : nodes;
   return sorted.flatMap((node, index) => {
     const row: Row<T> = { node, depth, parentId, position: index + 1, setSize: sorted.length };
     if (node.kind !== "folder" || !expanded.has(node.id)) return [row];
@@ -131,9 +134,13 @@ function flatten<T>(
  * @param folderBadge The small count shown beside a folder's name.
  * @param checks Tick boxes before each row's icon, to choose rows (the setup list's copy mode); none when omitted.
  * @param emptyText Shown instead of the grid when there is nothing to list.
+ * @param order `"sorted"` (default) sorts each level by the Name column or a sortable column; `"given"` keeps the order of
+ *   `nodes`, and no header sorts.
+ * @param emptyFolderText The row shown in an open folder with nothing in it (default "Empty folder").
  */
 export function FolderTreeList<T>({
   nodes, label, expanded, onToggle, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, checks, emptyText,
+  order = "sorted", emptyFolderText,
 }: {
   nodes: FolderNode<T>[];
   label: string;
@@ -148,12 +155,15 @@ export function FolderTreeList<T>({
   folderBadge?: (node: FolderNode<T>) => string;
   checks?: FolderTreeChecks<T>;
   emptyText?: string;
+  order?: "sorted" | "given";
+  emptyFolderText?: string;
 }) {
   const text = useStrings().folderTreeList;
   const [sort, setSort] = useState<SortState>({ column: "name", descending: false });
   const [activeId, setActiveId] = useState<string | null>(null);
   const grid = useRef<HTMLDivElement>(null);
-  const rows = useMemo(() => flatten(nodes, expanded, sort, columns), [nodes, expanded, sort, columns]);
+  const given = order === "given";
+  const rows = useMemo(() => flatten(nodes, expanded, given ? null : sort, columns), [nodes, expanded, given, sort, columns]);
   const focusable = rows.filter((r) => !r.emptyOpen);
   const tabStop = focusable.find((r) => r.node.id === activeId)?.node.id ?? focusable[0]?.node.id;
   const hasActions = Boolean(renderItemActions || renderFolderActions);
@@ -226,12 +236,14 @@ export function FolderTreeList<T>({
   return (
     <div ref={grid} className="folder-tree-list" role="treegrid" aria-label={label} style={listStyle} onKeyDown={onKeyDown}>
       <div role="row" className="folder-tree-header">
-        <div role="columnheader" className="folder-tree-name-cell" aria-sort={ariaSort("name")}>
-          <SortButton label={text.nameHeader} active={sort.column === "name"} descending={sort.descending} onClick={() => sortBy("name")} />
+        <div role="columnheader" className="folder-tree-name-cell" aria-sort={given ? undefined : ariaSort("name")}>
+          {given ? text.nameHeader : (
+            <SortButton label={text.nameHeader} active={sort.column === "name"} descending={sort.descending} onClick={() => sortBy("name")} />
+          )}
         </div>
         {columns.map((c) => (
-          <div key={c.id} role="columnheader" aria-sort={c.sortValue ? ariaSort(c.id) : undefined} className={c.hideBelow ? "folder-tree-wide" : undefined}>
-            {c.sortValue ? <SortButton label={c.header} active={sort.column === c.id} descending={sort.descending} onClick={() => sortBy(c.id)} /> : c.header}
+          <div key={c.id} role="columnheader" aria-sort={c.sortValue && !given ? ariaSort(c.id) : undefined} className={c.hideBelow ? "folder-tree-wide" : undefined}>
+            {c.sortValue && !given ? <SortButton label={c.header} active={sort.column === c.id} descending={sort.descending} onClick={() => sortBy(c.id)} /> : c.header}
           </div>
         ))}
         {hasActions && <div role="columnheader"><span className="sr-only">{text.actionsHeader}</span></div>}
@@ -243,7 +255,7 @@ export function FolderTreeList<T>({
         if (row.emptyOpen) {
           return (
             <div key={node.id} role="row" aria-level={depth + 1} className={`folder-tree-row${band}`}>
-              <div role="gridcell" className="text-muted folder-tree-empty" style={indent}>{text.emptyFolder}</div>
+              <div role="gridcell" className="text-muted folder-tree-empty" style={indent}>{emptyFolderText ?? text.emptyFolder}</div>
             </div>
           );
         }
@@ -274,7 +286,9 @@ export function FolderTreeList<T>({
                 </button>
                 {folderBadge && <Badge>{folderBadge(node)}</Badge>}
               </div>
-              {columns.map((c) => <div key={c.id} role="gridcell" className={c.hideBelow ? "folder-tree-wide" : undefined} />)}
+              {columns.map((c) => (
+                <div key={c.id} role="gridcell" className={c.hideBelow ? "folder-tree-wide" : undefined}>{c.renderFolder?.(node)}</div>
+              ))}
               {hasActions && <div role="gridcell">{renderFolderActions?.(node)}</div>}
             </div>
           );

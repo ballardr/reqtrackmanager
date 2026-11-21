@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, deleteOrgOnCleanup, installCleanupHook, selectPreferencesGroup, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -121,57 +121,9 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // stages" section that also has its own "Name"-placeholder "add stage"
     // field — scope to "Components & categories" specifically.
     await selectProjectAdminGroup(page, "Structure");
-    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-    await componentsSection.getByPlaceholder("Name").first().fill("Software");
-    await componentsSection.getByPlaceholder("Prefix").first().fill("SW");
-    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
-    // concurrently, then two more awaited *sequentially* afterwards (org
-    // users, report templates) — unrelated to the categories tab, but
-    // still part of the same component's state, so each one still
-    // triggers a re-render ~150-300ms after "Software" itself first
-    // becomes visible (confirmed via a MutationObserver against the real
-    // running app), enough to reset whatever's mid-typed into the
-    // newly-created component's own "add category" form. Wait for the
-    // network to go idle to ride past that settling window before
-    // touching the form.
-    await page.waitForLoadState("networkidle");
-
-    // The component/category rename UI (each name/prefix rendered as an
-    // always-editable input) also means a page-wide getByPlaceholder("Name")
-    // is ambiguous once both "Software"'s own "add category" form and the
-    // standalone "add component" form exist — scope explicitly to
-    // "Software"'s own container (input -> row -> row -> the component's
-    // own stack div, three levels up) so this can't cross-hit the wrong
-    // form.
-    // `:not([placeholder])`: see golden-path.spec.ts's identical guard —
-    // the "add component" row's own Name field transiently shares this
-    // value right after creating "Software", which would otherwise let
-    // the xpath ancestor climb escape up to the shared "Structure" tab
-    // panel and pick up Stages' own "Name" field too.
-    const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
-    await softwareRow.getByPlaceholder("Name").fill("Performance");
-    await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    // The comment above describes *two* waves in this same reload()
-    // cascade — 7 requests concurrently, then 2 more awaited sequentially
-    // afterwards — and the first `waitForLoadState("networkidle")` above
-    // can resolve during the brief gap between those waves, not only after
-    // both. A real run caught this exact gap: "Prefix" (filled last)
-    // survived, but "Name" (filled first) had been silently reset back to
-    // empty by the second wave's re-render, leaving "New category"
-    // permanently disabled. Wait for the network to settle a second time,
-    // and only re-fill whichever field actually got wiped, rather than
-    // assuming which one (if either) was hit.
-    await page.waitForLoadState("networkidle");
-    if ((await softwareRow.getByPlaceholder("Name").inputValue()) !== "Performance") {
-      await softwareRow.getByPlaceholder("Name").fill("Performance");
-    }
-    if ((await softwareRow.getByPlaceholder("Prefix").inputValue()) !== "PERF") {
-      await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    }
-    await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
-    await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
+    await addStructureComponent(page, "Software", "SW");
+    await addStructureCategory(page, "Software", "Performance", "PERF");
+    await expect(structureRow(page, "Performance")).toBeVisible();
 
     // Custom fields now lives inside the merged "Fields & actions" group.
     await selectProjectAdminGroup(page, "Fields & actions");
@@ -331,7 +283,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
     await page.getByText("Project Admin").click();
     await selectProjectAdminGroup(page, "Structure");
-    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
+    await expect(structureRow(page, "Software")).toBeVisible();
     await selectProjectAdminGroup(page, "Fields & actions");
     await expect(page.getByText("Priority").first()).toBeVisible();
   });

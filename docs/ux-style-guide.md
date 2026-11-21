@@ -1600,6 +1600,28 @@ A settings panel that edits several fields per row (a scoring level's name, weig
 - **Foldable blocks.** Each block of a long panel (`ScoringSection`: default model, models shown, criteria, levels, rating bands) is a `CollapsibleSection`, and each repeated group inside it (one axis's levels) folds to its name and a count ("5 levels"), folded by default where the content is long and rarely changed. The fold is remembered per person; its preference key is at most 100 characters, so it never carries an id.
 - **Do not** put an input in a row without a column heading, size inputs with fixed `maxWidth` pixels that wrap at a narrow width, or add a `<textarea>` that is empty most of the time at its full height.
 
+## Pattern: structure tree (components and categories)
+
+The project's two-level component and category tree is edited as a **collapsible folder tree** and chosen from the same tree, never as a stack of inline inputs or two separate selects.
+
+```mermaid
+flowchart LR
+    P["Structure page<br/>StructurePanel"] --> T["FolderTreeList order=given"]
+    P --> F["StructureNodeForm<br/>SidePanel"]
+    F --> N["NameAndPrefixFields"]
+    I["Create dialog, first component<br/>InlineStructureForm"] --> N
+    N -- "name, debounced" --> S["server: suggest_prefix"]
+    R["Requirement and change request forms<br/>PrimaryPlaceField"] --> V["TreeSelectField single"]
+```
+
+- **The page** is `StructurePanel`: each component a row that opens to its categories, in the tree's own manual order (`FolderTreeList order="given"`, so no header sorts), with the prefix, the number of active requirements and the number of categories on the row. Components start closed; each person's open components are remembered (`useOpenFolders`), and a search opens every component that holds a match. Add component is the page's one primary button; **Add category** is on a component row's menu.
+- **Row actions** are one `ActionMenu` per row: Edit, Move up, Move down, Add category (a component), Move to another component (a category) and Delete. Opening a category row edits it. Delete is plain first: a category asks one confirmation and a refusal opens the replacement dialog; a component is deleted only once it has no categories (the menu item says why while it has).
+- **Create and edit are one form** in a `SidePanel` (`StructureNodeForm`) over one field group (`NameAndPrefixFields`), Save in the panel header. The prefix is **suggested by the server** from the name (`services.taxonomy.suggest_prefix`, never worked out in the browser) and follows the name until the person types one; a typed prefix is never overwritten, and clearing it resumes the suggestion. A name with no letter or digit leaves it empty and required. The dialog that creates a requirement in a project with no structure uses the same fields (`InlineStructureForm`).
+- **Choosing a place** for a requirement (its one component and category, which form its code) is `PrimaryPlaceField`: the shared tree selector in single-choice mode, each component a heading and a category the choice, so the pair is one value. Several places are `PlacementPicker`; a list filter is `ComponentFilterField`.
+- **Moving a category to another component** names how many requirements go with it and that their existing codes do not change; a prefix already used there is refused in the dialog.
+
+What this replaces: the inline name and prefix inputs with a pencil that appeared when a row changed, the always-drawn add form under every component, and the two selects whose category list had to be reset when the component changed.
+
 ## Pattern: graph canvas (nodes and connections)
 
 Any screen that draws boxes joined by lines uses `GraphCanvas` (`components/GraphCanvas.tsx`), never `@xyflow/react` directly (`scripts/check_graph_canvas_imports.py` fails otherwise).

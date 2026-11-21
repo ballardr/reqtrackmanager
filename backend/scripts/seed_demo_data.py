@@ -200,17 +200,20 @@ def place_requirement_in_component(headers: dict, project_id: str, requirement: 
     return r.json()
 
 
-def create_component(headers: dict, project_id: str, name: str, prefix: str) -> dict:
-    r = httpx.post(f"{BASE}/projects/{project_id}/components", json={"name": name, "prefix": prefix}, headers=headers, timeout=30)
+def create_component(headers: dict, project_id: str, name: str, prefix: str | None = None) -> dict:
+    """Creates a component; a prefix left out is suggested from the name by the server."""
+    body = {"name": name} if prefix is None else {"name": name, "prefix": prefix}
+    r = httpx.post(f"{BASE}/projects/{project_id}/components", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
-def create_category(headers: dict, project_id: str, component_id: str, name: str, prefix: str) -> dict:
-    r = httpx.post(
-        f"{BASE}/projects/{project_id}/categories",
-        json={"name": name, "prefix": prefix, "component_id": component_id}, headers=headers, timeout=30,
-    )
+def create_category(headers: dict, project_id: str, component_id: str, name: str, prefix: str | None = None) -> dict:
+    """Creates a category; a prefix left out is suggested from the name by the server."""
+    body = {"name": name, "component_id": component_id}
+    if prefix is not None:
+        body["prefix"] = prefix
+    r = httpx.post(f"{BASE}/projects/{project_id}/categories", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
 
@@ -3068,6 +3071,13 @@ def main() -> None:
         h_pm, drone["id"], drone_components,
         {"AV": ["PERF", "FN", "SAF"], "FW": ["SAF", "REG", "FN"], "PR": ["PERF"], "AF": ["FN"]},
     )
+    # Further components whose prefixes the server suggests: "Avionics Test Rig" takes ATR and "Antenna Tuning Relay"
+    # the numbered ATR2; "Spare Parts" stays empty, so the Structure page shows a component with no categories.
+    rig = create_component(h_pm, drone["id"], "Avionics Test Rig")
+    create_component(h_pm, drone["id"], "Antenna Tuning Relay")
+    create_component(h_pm, drone["id"], "Spare Parts")
+    create_category(h_pm, drone["id"], rig["id"], "Bench Calibration")
+    create_category(h_pm, drone["id"], rig["id"], "Bench Calibration Reports")
     create_custom_field(h_pm, drone["id"], "requirement", "Risk Level", "list", ["Low", "Medium", "High"])
     drone_design = create_stage(h_pm, drone["id"], "Detailed Design")
     drone_validation = create_stage(h_pm, drone["id"], "Verification & Validation", outsourced_workflow["id"])

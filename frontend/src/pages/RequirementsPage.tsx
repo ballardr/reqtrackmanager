@@ -110,10 +110,23 @@ export function RequirementsPage() {
   const [stageToParam, setStageToParam] = useUrlText("stage_to");
   const stageFrom = stageFromParam || legacyStage;
   const stageTo = stageToParam || legacyStage;
+  // Older links and bookmarks carry the single `component` and `category` filters; they move onto the shared
+  // component filter (`in_component`, `in_category`) so the page shows and keeps one choice.
+  const legacyComponent = searchParams.get("component");
+  const legacyCategory = searchParams.get("category");
+  useEffect(() => {
+    if (!legacyComponent && !legacyCategory) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("component");
+      next.delete("category");
+      if (legacyComponent && !next.getAll("in_component").includes(legacyComponent)) next.append("in_component", legacyComponent);
+      if (legacyCategory && !next.getAll("in_category").includes(legacyCategory)) next.append("in_category", legacyCategory);
+      return next;
+    }, { replace: true });
+  }, [legacyComponent, legacyCategory, setSearchParams]);
   // The phase that governs a requirement: its component's own track when component phases are on, else its stage's.
   const [phaseFilter, setPhaseFilter] = useUrlText("phase");
-  const [componentFilter, setComponentFilter] = useUrlText("component");
-  const [categoryFilter, setCategoryFilter] = useUrlText("category");
   const [hasCommentsOnly, setHasCommentsOnly] = useUrlFlag("comments");
   const [onlyWatched, setOnlyWatched] = useUrlFlag("watched");
   // An archived requirement's detail page has the Restore button; this filter is how the list reaches one.
@@ -151,8 +164,6 @@ export function RequirementsPage() {
     if (stageFrom) params.set("target_stage_from_id", stageFrom);
     if (stageTo) params.set("target_stage_to_id", stageTo);
     if (phaseFilter) params.set("phase", phaseFilter);
-    if (componentFilter) params.set("component_id", componentFilter);
-    if (categoryFilter) params.set("category_id", categoryFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
@@ -228,7 +239,7 @@ export function RequirementsPage() {
   }
 
   useLoadOnChange(reload, [
-    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter, componentFilter, categoryFilter,
+    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter,
     hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
   ]);
 
@@ -466,25 +477,11 @@ export function RequirementsPage() {
               allLabel={strings.requirements.allPhases}
               options={phaseNames.map((name) => ({ value: name, label: name }))}
             />
-            <FilterSelect
-              label={strings.requirements.component}
-              value={componentFilter}
-              onChange={setComponentFilter}
-              allLabel={strings.requirements.allComponents}
-              options={components.map((c) => ({ value: c.id, label: c.name }))}
-            />
-            <FilterSelect
-              label={strings.requirements.category}
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              allLabel={strings.requirements.allCategories}
-              options={categories.map((c) => ({ value: c.id, label: c.name }))}
-            />
             {/* C-G-11: completion is now an independent overlay marker, not a
                 status value — a separate checkbox alongside the Status
                 select above rather than one of its options. */}
             <ProjectScopeFilter scope={projectScope} />
-            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} components={false} />}
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
             <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
             <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
             <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
@@ -615,7 +612,7 @@ export function RequirementsPage() {
                   >
                     <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                       <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                        <RequirementListCode requirement={r} componentId={componentFilter} categoryId={categoryFilter} />
+                        <RequirementListCode requirement={r} componentIds={tagFilter.components} categoryIds={tagFilter.categories} />
                       </span>
                       {!r.from_project_id && (
                         <div className="row" style={{ gap: "var(--space-1)" }}>
@@ -719,7 +716,7 @@ export function RequirementsPage() {
                             )}
                           </td>
                         )}
-                        <td className="text-muted"><RequirementListCode requirement={r} componentId={componentFilter} categoryId={categoryFilter} /></td>
+                        <td className="text-muted"><RequirementListCode requirement={r} componentIds={tagFilter.components} categoryIds={tagFilter.categories} /></td>
                         <td>
                           <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}>{r.name}</Link>
                           <ProjectScopeLabel row={r} />

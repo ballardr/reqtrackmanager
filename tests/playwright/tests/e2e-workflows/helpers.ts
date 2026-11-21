@@ -529,6 +529,56 @@ export async function clickAndAwaitSave(page: Page, control: Locator, urlPart: s
 }
 
 /**
+ * Adds a component on the Structure page of project administration (the page must be open) through the Add component
+ * panel. A prefix left out is taken from the suggestion the form fills in from the name.
+ *
+ * @param page The page, on the Structure group.
+ * @param name The component's name.
+ * @param prefix The prefix to type; omit to keep the suggested one.
+ * @returns The prefix that was saved.
+ */
+export async function addStructureComponent(page: Page, name: string, prefix?: string): Promise<string> {
+  await page.getByRole("button", { name: "Add component" }).click();
+  const panel = page.getByRole("dialog", { name: "Add component" });
+  await panel.getByRole("textbox", { name: "Name" }).fill(name);
+  const prefixBox = panel.getByRole("textbox", { name: "Prefix" });
+  if (prefix === undefined) await expect(prefixBox).not.toHaveValue("");
+  else await prefixBox.fill(prefix);
+  const saved = await prefixBox.inputValue();
+  await clickAndAwaitSave(page, panel.getByRole("button", { name: "Save" }), "/components");
+  await expect(panel).toBeHidden();
+  return saved;
+}
+
+/**
+ * Adds a category under a component on the Structure page through the component row's menu and the Add category panel.
+ *
+ * @param page The page, on the Structure group.
+ * @param component The component's name.
+ * @param name The category's name.
+ * @param prefix The prefix to type; omit to keep the suggested one.
+ * @returns The prefix that was saved.
+ */
+export async function addStructureCategory(page: Page, component: string, name: string, prefix?: string): Promise<string> {
+  await page.getByRole("button", { name: `Actions for ${component}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: `Add category to ${component}`, exact: true }).click();
+  const panel = page.getByRole("dialog", { name: `Add category to ${component}`, exact: true });
+  await panel.getByRole("textbox", { name: "Name" }).fill(name);
+  const prefixBox = panel.getByRole("textbox", { name: "Prefix" });
+  if (prefix === undefined) await expect(prefixBox).not.toHaveValue("");
+  else await prefixBox.fill(prefix);
+  const saved = await prefixBox.inputValue();
+  await clickAndAwaitSave(page, panel.getByRole("button", { name: "Save" }), "/categories");
+  await expect(panel).toBeHidden();
+  return saved;
+}
+
+/** The row of a component or category in the Structure tree, by its name. */
+export function structureRow(page: Page, name: string): Locator {
+  return page.getByRole("treegrid", { name: "Components and categories" }).getByRole("row").filter({ hasText: name });
+}
+
+/**
  * Opens a requirement from the project's requirements list by its name,
  * searching first: the list is paginated (30 per page), and shared e2e
  * projects accumulate throwaway requirements across runs, so a freshly

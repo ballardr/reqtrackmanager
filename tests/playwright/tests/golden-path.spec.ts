@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, selectProjectAdminGroup } from "./e2e-workflows/helpers";
 import { chooseListAction, chooseExport } from "./listActions";
 
 /**
@@ -62,48 +62,9 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // field — scope to "Components & categories" specifically rather than
     // relying on page-wide Name/Prefix queries.
     await selectProjectAdminGroup(page, "Structure");
-    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-    // Component/category tree (C-G-07): with no components yet, the only
-    // Name/Prefix inputs in this section are the "add component" form's own.
-    await componentsSection.getByPlaceholder("Name").fill("Software");
-    await componentsSection.getByPlaceholder("Prefix").fill("SW");
-    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-    await expect(page.locator('input[value="Software"]').first()).toBeVisible();
-    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
-    // concurrently, then two more awaited *sequentially* afterwards
-    // (org users, report templates) — unrelated to the categories tab,
-    // but still part of the same component's state, so each one still
-    // triggers a re-render. That second wave lands ~150-300ms after the
-    // component itself first becomes visible (confirmed via a
-    // MutationObserver against the real running app) and is enough to
-    // reset whatever's mid-typed into the newly-created component's own
-    // "add category" form. Waiting for the network to go idle rides past
-    // that whole settling window before touching the form at all.
-    await page.waitForLoadState("networkidle");
-
-    // The component/category rename UI (each name/prefix rendered as an
-    // always-editable input, not static text) means a page-wide
-    // getByPlaceholder("Name").first() is also ambiguous on its own: the
-    // "Software" component's own nested "add category" form and the
-    // standalone "add component" form at the bottom both have
-    // Name/Prefix-placeholder inputs. Scope explicitly to the "Software"
-    // component's own container (input -> row -> row -> the component's
-    // own stack div, three levels up) so this can't cross-hit a sibling
-    // form.
-    // `:not([placeholder])`: the "add component" row's own Name field
-    // shares this same value transiently (not yet cleared) right after
-    // creating "Software", which — since Structure now shares one tab
-    // panel with Stages — would
-    // otherwise let the xpath ancestor climb below escape all the way up
-    // to that shared panel and pick up Stages' own "Name" field too, a
-    // real (if narrow-window) strict-mode violation. Only a genuine
-    // rename input for an existing row is ever placeholder-less (matches
-    // project-admin-structural.spec.ts's own established convention).
-    const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
-    await softwareRow.getByPlaceholder("Name").fill("Performance");
-    await softwareRow.getByPlaceholder("Prefix").fill("PERF");
-    await clickAndAwaitSave(page, softwareRow.getByRole("button", { name: "New category" }), "/categories");
-    await expect(page.locator('input[value="Performance"]').first()).toBeVisible();
+    await addStructureComponent(page, "Software", "SW");
+    await addStructureCategory(page, "Software", "Performance", "PERF");
+    await expect(structureRow(page, "Performance")).toBeVisible();
   });
 
   await test.step("add requirement", async () => {

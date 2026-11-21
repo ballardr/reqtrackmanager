@@ -1,6 +1,6 @@
 import { useMutation } from "../hooks/useMutation";
 import { usePhaseMove } from "../hooks/usePhaseMove";
-import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2 } from "lucide-react";
+import { Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -8,8 +8,6 @@ import { ApiError, api } from "../api/client";
 import type {
   ActionTypeDefinition,
   AssignByEmailOutcome,
-  Category,
-  Component,
   CustomFieldDefinition,
   CustomFieldEntityKind,
   CustomFieldType,
@@ -50,6 +48,7 @@ import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { ProjectExternalSystemsPanel } from "../components/ExternalSystemsPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
+import { StructurePanel } from "../components/StructurePanel";
 import { RequirementAliasSettingsPanel } from "../components/RequirementAliasSettingsPanel";
 import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
@@ -220,8 +219,6 @@ export function ProjectAdminPage() {
   const [newStageWorkflowId, setNewStageWorkflowId] = useState("");
   const [creatingWorkflow, setCreatingWorkflow] = useState(false);
   const [newWorkflowError, setNewWorkflowError] = useState<string | null>(null);
-  const [components, setComponents] = useState<Component[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupSearch, setGroupSearch] = useState("");
@@ -248,12 +245,6 @@ export function ProjectAdminPage() {
   const [newGroupModalOpen, setNewGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newStageName, setNewStageName] = useState("");
-  const [newComponentName, setNewComponentName] = useState("");
-  const [newComponentPrefix, setNewComponentPrefix] = useState("");
-  // Keyed by component id: each component's own inline "add category" form,
-  // since a category is now created nested under one specific component
-  // (the tree) rather than at project level.
-  const [newCategoryInputs, setNewCategoryInputs] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
 
   // Rename/delete state for stages/components/categories. Each "edits" map
@@ -263,13 +254,6 @@ export function ProjectAdminPage() {
   // half-typed rename after a reload.
   const [stageNameEdits, setStageNameEdits] = useState<Record<string, string>>({});
   const [deletingStageId, setDeletingStageId] = useState<string | null>(null);
-  const [componentEdits, setComponentEdits] = useState<Record<string, { name: string; prefix: string }>>({});
-  const [deletingComponentId, setDeletingComponentId] = useState<string | null>(null);
-  const [categoryEdits, setCategoryEdits] = useState<Record<string, { name: string; prefix: string }>>({});
-  // The category whose plain delete is awaiting confirmation, and the one a plain delete found in use (with
-  // the server's message), which opens the reassignment dialog.
-  const [confirmingCategoryId, setConfirmingCategoryId] = useState<string | null>(null);
-  const [categoryInUse, setCategoryInUse] = useState<{ id: string; message: string } | null>(null);
   const [structureError, setStructureError] = useState<string | null>(null);
 
   const [settingsName, setSettingsName] = useState("");
@@ -455,12 +439,10 @@ export function ProjectAdminPage() {
     // invoked — not whenever it happens to reach the `loadGroups` line
     // near the bottom. See `loadGroupsRequestIdRef`'s own comment.
     const groupsRequestId = ++loadGroupsRequestIdRef.current;
-    const [p, s, wf, c, cat, cf, at] = await Promise.all([
+    const [p, s, wf, cf, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<StageWorkflow[]>(`/api/v1/projects/${projectId}/stage-workflows`),
-      api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
-      api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
     ]);
@@ -485,8 +467,6 @@ export function ProjectAdminPage() {
     if (!terminologyDirtyRef.current) setTerminology(p.terminology);
     setStages(s);
     setStageWorkflows(wf);
-    setComponents(c);
-    setCategories(cat);
     await loadGroups(groupSearch, 0, false, groupSort, groupsRequestId);
     setCustomFields(cf);
     setActionTypes(at);
@@ -868,33 +848,6 @@ export function ProjectAdminPage() {
     reload();
   }
 
-  async function addComponent() {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/components`, { name: newComponentName, prefix: newComponentPrefix }), "add", "{component}"))) return;
-    setNewComponentName("");
-    setNewComponentPrefix("");
-    reload();
-  }
-
-  async function addCategory(componentId: string) {
-    const input = newCategoryInputs[componentId];
-    if (!input?.name || !input?.prefix) return;
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/categories`, {
-      name: input.name, prefix: input.prefix, component_id: componentId,
-    }), "add", "category"))) return;
-    setNewCategoryInputs((m) => ({ ...m, [componentId]: { name: "", prefix: "" } }));
-    reload();
-  }
-
-  async function moveComponent(id: string, direction: "up" | "down") {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/components/${id}/move`, { direction }), { failure: "Could not move {component}." }))) return;
-    reload();
-  }
-
-  async function moveCategory(id: string, direction: "up" | "down") {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/categories/${id}/move`, { direction }), { failure: "Could not move {category}." }))) return;
-    reload();
-  }
-
   async function renameStage(stageId: string, name: string) {
     setStructureError(null);
     try {
@@ -917,70 +870,6 @@ export function ProjectAdminPage() {
     await api.delete(`/api/v1/projects/${projectId}/stages/${stageId}?reassign_to=${reassignTo}`);
     showToast(strings.mutation.success("{stage}", strings.mutation.past.delete));
     reload();
-  }
-
-  async function renameComponent(componentId: string, name: string, prefix: string) {
-    setStructureError(null);
-    try {
-      await api.patch(`/api/v1/projects/${projectId}/components/${componentId}`, { name, prefix });
-      setComponentEdits((m) => {
-        const next = { ...m };
-        delete next[componentId];
-        return next;
-      });
-      showToast(strings.mutation.success("{component}", strings.mutation.past.rename));
-      reload();
-    } catch (err) {
-      setStructureError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
-
-  async function deleteComponent(componentId: string) {
-    setStructureError(null);
-    try {
-      await api.delete(`/api/v1/projects/${projectId}/components/${componentId}`);
-      setDeletingComponentId(null);
-      showToast(strings.mutation.success("{component}", strings.mutation.past.delete));
-      reload();
-    } catch (err) {
-      setStructureError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
-
-  async function renameCategory(categoryId: string, name: string, prefix: string) {
-    setStructureError(null);
-    try {
-      await api.patch(`/api/v1/projects/${projectId}/categories/${categoryId}`, { name, prefix });
-      setCategoryEdits((m) => {
-        const next = { ...m };
-        delete next[categoryId];
-        return next;
-      });
-      showToast(strings.mutation.success("{category}", strings.mutation.past.rename));
-      reload();
-    } catch (err) {
-      setStructureError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
-
-  /** Deletes a category. Without `reassignTo` the server removes it only when nothing is attached and answers
-   * 409 with the counts otherwise (the plain-delete-first contract Action Types use), which opens the
-   * reassignment dialog. Throws on a failure of the reassigning delete so `DeleteInUseDialog` can show the
-   * error in place; a failure of the plain delete is shown with the other structure errors. */
-  async function deleteCategory(categoryId: string, reassignTo?: string) {
-    await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}${reassignTo ? `?reassign_to=${reassignTo}` : ""}`);
-    showToast(strings.mutation.success("{category}", strings.mutation.past.delete));
-    reload();
-  }
-
-  async function attemptDeleteCategory(categoryId: string) {
-    setStructureError(null);
-    try {
-      await deleteCategory(categoryId);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) setCategoryInUse({ id: categoryId, message: err.message });
-      else setStructureError(err instanceof Error ? err.message : strings.common.error);
-    }
   }
 
   async function addActionType(name: string) {
@@ -1963,192 +1852,8 @@ export function ProjectAdminPage() {
       {activeGroup === "structure" && (
       <div className="stack">
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
-        {/* Audit finding: the tab bar used to call this "Categories" while
-            its content opened with an <h2> reading "Components" — actually
-            a two-level component -> category tree. This section's own
-            title now names both levels accurately instead of either alone. */}
         <CollapsibleSection sectionKey="projectAdmin.structure.componentsCategories" title={strings.admin.componentsAndCategories} defaultCollapsed={false}>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.admin.componentTreeHint}</p>
-        {components.map((c, idx) => {
-          const ownCategories = categories.filter((cat) => cat.component_id === c.id);
-          const categoryInput = newCategoryInputs[c.id] ?? { name: "", prefix: "" };
-          const componentEdit = componentEdits[c.id] ?? { name: c.name, prefix: c.prefix };
-          const componentDirty = componentEdit.name !== c.name || componentEdit.prefix !== c.prefix;
-          const otherComponents = components.filter((other) => other.id !== c.id);
-          return (
-            <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-4)" }}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div className="row">
-                  <InlineTextInput
-                    maxWidth={180} value={componentEdit.name} ariaLabel={`${strings.admin.name}: ${c.name}`}
-                    onChange={(next) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, name: next } }))}
-                  />
-                  <InlineTextInput
-                    maxWidth={80} value={componentEdit.prefix} ariaLabel={`${strings.admin.prefix}: ${c.name}`}
-                    onChange={(next) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: next.toUpperCase() } }))}
-                  />
-                  {componentDirty && componentEdit.name && componentEdit.prefix && (
-                    <button
-                      className="btn"
-                      title={strings.admin.rename}
-                      aria-label={strings.admin.rename}
-                      onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}
-                    >
-                      <Pencil />
-                    </button>
-                  )}
-                </div>
-                <div className="row">
-                  <button
-                    className="btn"
-                    disabled={idx === 0}
-                    title={strings.common.up}
-                    aria-label={strings.common.up}
-                    onClick={() => moveComponent(c.id, "up")}
-                  >
-                    <ArrowUp />
-                  </button>
-                  <button
-                    className="btn"
-                    disabled={idx === components.length - 1}
-                    title={strings.common.down}
-                    aria-label={strings.common.down}
-                    onClick={() => moveComponent(c.id, "down")}
-                  >
-                    <ArrowDown />
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    disabled={ownCategories.length > 0 || otherComponents.length === 0}
-                    title={
-                      ownCategories.length > 0
-                        ? strings.admin.deleteComponentHasCategoriesHint
-                        : otherComponents.length === 0
-                        ? strings.admin.deleteLastOneHint
-                        : strings.admin.deleteComponent
-                    }
-                    aria-label={
-                      ownCategories.length > 0
-                        ? strings.admin.deleteComponentHasCategoriesHint
-                        : otherComponents.length === 0
-                        ? strings.admin.deleteLastOneHint
-                        : strings.admin.deleteComponent
-                    }
-                    onClick={() => setDeletingComponentId(c.id)}
-                  >
-                    <Trash2 />
-                  </button>
-                </div>
-              </div>
-              {deletingComponentId === c.id && (
-                <ConfirmDialog
-                  title={strings.admin.deleteComponent}
-                  message={strings.admin.deleteComponentConfirm(c.name)}
-                  confirmLabel={strings.admin.confirmDelete}
-                  onConfirm={() => { setDeletingComponentId(null); deleteComponent(c.id); }}
-                  onCancel={() => setDeletingComponentId(null)}
-                />
-              )}
-              <div className="stack" style={{ paddingLeft: "var(--space-6)", gap: "var(--space-2)" }}>
-                {ownCategories.map((cat, catIdx) => {
-                  const categoryEdit = categoryEdits[cat.id] ?? { name: cat.name, prefix: cat.prefix };
-                  const categoryDirty = categoryEdit.name !== cat.name || categoryEdit.prefix !== cat.prefix;
-                  return (
-                  <div key={cat.id} className="stack" style={{ gap: "0.3rem" }}>
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                      <div className="row">
-                        <InlineTextInput
-                          maxWidth={180} value={categoryEdit.name} ariaLabel={`${strings.admin.name}: ${cat.name}`}
-                          onChange={(next) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, name: next } }))}
-                        />
-                        <InlineTextInput
-                          maxWidth={80} value={categoryEdit.prefix} ariaLabel={`${strings.admin.prefix}: ${cat.name}`}
-                          onChange={(next) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: next.toUpperCase() } }))}
-                        />
-                        {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
-                          <button
-                            className="btn"
-                            title={strings.admin.rename}
-                            aria-label={strings.admin.rename}
-                            onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}
-                          >
-                            <Pencil />
-                          </button>
-                        )}
-                      </div>
-                      <div className="row">
-                        <button
-                          className="btn"
-                          disabled={catIdx === 0}
-                          title={strings.common.up}
-                          aria-label={strings.common.up}
-                          onClick={() => moveCategory(cat.id, "up")}
-                        >
-                          <ArrowUp />
-                        </button>
-                        <button
-                          className="btn"
-                          disabled={catIdx === ownCategories.length - 1}
-                          title={strings.common.down}
-                          aria-label={strings.common.down}
-                          onClick={() => moveCategory(cat.id, "down")}
-                        >
-                          <ArrowDown />
-                        </button>
-                        <button
-                          className="btn btn-danger"
-                          title={strings.admin.deleteCategory}
-                          aria-label={strings.admin.deleteCategory}
-                          onClick={() => setConfirmingCategoryId(cat.id)}
-                        >
-                          <Trash2 />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  );
-                })}
-                <div className="row" style={{ alignItems: "flex-end" }}>
-                  <TextField helpNotNeeded
-                    label={strings.admin.name}
-                    placeholder={strings.admin.name}
-                    value={categoryInput.name}
-                    onChange={(next) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: next } }))}
-                  />
-                  <TextField help={strings.help.requirementPrefix}
-                    label={strings.admin.prefix}
-                    placeholder={strings.admin.prefix}
-                    value={categoryInput.prefix}
-                    onChange={(next) =>
-                      setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, prefix: next.toUpperCase() } }))
-                    }
-                    inputProps={{ style: { maxWidth: 100 } }}
-                  />
-                  <button
-                    className="btn"
-                    onClick={() => addCategory(c.id)}
-                    disabled={!categoryInput.name || !categoryInput.prefix}
-                  >
-                    <Plus /> {strings.admin.newCategory}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newComponentName} onChange={setNewComponentName} />
-          <TextField help={strings.help.requirementPrefix}
-            label={strings.admin.prefix}
-            placeholder={strings.admin.prefix}
-            value={newComponentPrefix}
-            onChange={(next) => setNewComponentPrefix(next.toUpperCase())}
-            inputProps={{ style: { maxWidth: 100 } }}
-          />
-          <button className="btn btn-primary" onClick={addComponent} disabled={!newComponentName || !newComponentPrefix}>
-            <Plus /> {strings.admin.newComponent}
-          </button>
-        </div>
+          {projectId && <StructurePanel projectId={projectId} onChanged={reload} />}
         </CollapsibleSection>
 
         <CollapsibleSection sectionKey="projectAdmin.structure.requirementAliases" title={strings.requirementAliases.settings.heading}>
@@ -2855,33 +2560,6 @@ export function ProjectAdminPage() {
           candidates={stages.filter((other) => other.id !== deletingStageId).map((other) => ({ id: other.id, label: other.name }))}
           onMove={(replacementId) => deleteStage(deletingStageId, replacementId)}
           onClose={() => setDeletingStageId(null)}
-        />
-      )}
-      {confirmingCategoryId && categories.some((cat) => cat.id === confirmingCategoryId) && (
-        <ConfirmDialog
-          title={strings.admin.deleteCategory}
-          message={strings.admin.deleteCategoryConfirm(categories.find((cat) => cat.id === confirmingCategoryId)!.name)}
-          confirmLabel={strings.admin.confirmDelete}
-          onConfirm={() => {
-            const id = confirmingCategoryId;
-            setConfirmingCategoryId(null);
-            void attemptDeleteCategory(id);
-          }}
-          onCancel={() => setConfirmingCategoryId(null)}
-        />
-      )}
-      {categoryInUse && categories.some((cat) => cat.id === categoryInUse.id) && (
-        <DeleteInUseDialog
-          title={strings.admin.deleteInUseTitle(categories.find((cat) => cat.id === categoryInUse.id)!.name)}
-          summary={categoryInUse.message}
-          candidates={categories
-            .filter((other) => other.id !== categoryInUse.id)
-            .map((other) => {
-              const otherComponent = components.find((comp) => comp.id === other.component_id);
-              return { id: other.id, label: `${otherComponent ? `${otherComponent.name} / ` : ""}${other.name}` };
-            })}
-          onMove={(replacementId) => deleteCategory(categoryInUse.id, replacementId)}
-          onClose={() => setCategoryInUse(null)}
         />
       )}
       </ResourceMenu>

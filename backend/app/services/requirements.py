@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import String, and_, cast, exists, func, or_, select
+from sqlalchemy import ColumnElement, String, and_, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest, ReviewComment
@@ -439,8 +439,8 @@ class RequirementFilters:
 
     include_archived: bool = False
     is_completed: bool | None = None
-    component_id: UUID | None = None
-    category_id: UUID | None = None
+    component_ids: tuple[UUID, ...] = ()
+    category_ids: tuple[UUID, ...] = ()
     tag_names: tuple[str, ...] = ()
     tag_match_all: bool = False
     external_systems: tuple[str, ...] = ()
@@ -563,12 +563,9 @@ def _sql_order(sort: str | None, descending: bool) -> list:
     return [*keys, Requirement.created_at, Requirement.id]
 
 
-def _alias_clause(**where: UUID):
-    """An EXISTS over the requirement's active aliases whose columns equal `where` (a component or category)."""
-    return exists().where(
-        RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False),
-        *(getattr(RequirementAlias, column) == value for column, value in where.items()),
-    )
+def _alias_clause(*where: ColumnElement[bool]) -> ColumnElement[bool]:
+    """An EXISTS over the requirement's active aliases that satisfy `where` (a component or category match)."""
+    return exists().where(RequirementAlias.requirement_id == Requirement.id, RequirementAlias.is_retired.is_(False), *where)
 
 
 def filter_requirement_rows(
@@ -608,10 +605,17 @@ def filter_requirement_rows(
     if filters.is_completed is not None:
         conditions.append(Requirement.is_completed.is_(filters.is_completed))
     # A requirement also sits in the places of its aliases, so a component or category filter matches those too.
-    if filters.component_id:
-        conditions.append(or_(Requirement.component_id == filters.component_id, _alias_clause(component_id=filters.component_id)))
-    if filters.category_id:
-        conditions.append(or_(Requirement.category_id == filters.category_id, _alias_clause(category_id=filters.category_id)))
+    # Several ids match as every other record list's placement filter does: a requirement in any listed component or
+    # any listed category.
+    if filters.component_ids or filters.category_ids:
+        places: list[ColumnElement[bool]] = []
+        if filters.component_ids:
+            places.append(Requirement.component_id.in_(filters.component_ids))
+            places.append(_alias_clause(RequirementAlias.component_id.in_(filters.component_ids)))
+        if filters.category_ids:
+            places.append(Requirement.category_id.in_(filters.category_ids))
+            places.append(_alias_clause(RequirementAlias.category_id.in_(filters.category_ids)))
+        conditions.append(or_(*places))
     if any(t.strip() for t in filters.tag_names):
         conditions.append(Requirement.id.in_(
             tag_service.tagged_ids(

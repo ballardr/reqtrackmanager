@@ -103,16 +103,17 @@ test.describe("requirements list filters and view-mode persistence", () => {
       await settled();
     });
 
-    await test.step("category filter narrows the list", async () => {
-      const categorySelect = page.getByLabel("Category");
-      const options = await categorySelect.locator("option").allTextContents();
-      const firstRealCategory = options.find((o) => o.trim() && o !== "All");
-      if (firstRealCategory) {
-        await categorySelect.selectOption({ label: firstRealCategory });
+    await test.step("component and category filter narrows the list", async () => {
+      await page.getByRole("button", { name: "Component and category", exact: true }).click();
+      const choices = page.getByRole("group", { name: "Component and category" });
+      const category = choices.getByRole("checkbox", { name: / \/ / }).first();
+      if (await category.count()) {
+        await category.check();
         await expect(page.getByText("No requirements to show.")).toHaveCount(0);
-        await categorySelect.selectOption("");
+        await category.uncheck();
         await settled();
       }
+      await page.keyboard.press("Escape");
     });
 
     await test.step("has-comments-only and only-watched checkboxes toggle without erroring", async () => {

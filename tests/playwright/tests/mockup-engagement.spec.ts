@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, chooseRecordAction, clickAndAwaitSave, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
+import { addStructureCategory, addStructureComponent, structureRow, approveRequirementFromDetail, chooseRecordAction, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
 
 /**
  * Coverage for the mockup-driven engagement features added on top of the
@@ -58,39 +58,9 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // field (which would otherwise be `.first()` and silently win) — scope
     // to "Components & categories" specifically.
     await selectProjectAdminGroup(page, "Structure");
-    const componentsSection = page.locator(".card", { has: page.getByRole("button", { name: "Components & categories section" }) });
-    await componentsSection.getByPlaceholder("Name").first().fill("Web");
-    await componentsSection.getByPlaceholder("Prefix").first().fill("WEB");
-    await clickAndAwaitSave(page, componentsSection.getByRole("button", { name: "New component" }), "/components");
-    // Wait for "Web" (and its own, now-rendered nested "add category" form)
-    // before filling it — otherwise the fill can race ahead of the reload
-    // and land on the wrong (not-yet-replaced) form.
-    await expect(page.locator('input[value="Web"]').first()).toBeVisible();
-    // ProjectAdminPage's reload() after a mutation fires 9 requests: 7
-    // concurrently, then two more awaited *sequentially* afterwards (org
-    // users, report templates) — unrelated to the categories tab, but
-    // still part of the same component's state, so each one still
-    // triggers a re-render ~150-300ms after "Web" itself first becomes
-    // visible (confirmed via a MutationObserver against the real running
-    // app), enough to reset whatever's mid-typed into the newly-created
-    // component's own "add category" form. Wait for the network to go
-    // idle to ride past that settling window before touching the form.
-    await page.waitForLoadState("networkidle");
-    // The component/category rename UI (each name/prefix rendered as an
-    // always-editable input) also means a page-wide getByPlaceholder("Name")
-    // is ambiguous once both "Web"'s own "add category" form and the
-    // standalone "add component" form exist — scope explicitly to "Web"'s
-    // own container (input -> row -> row -> the component's own stack
-    // div, three levels up) so this can't cross-hit the wrong form.
-    // `:not([placeholder])`: the "add component" row's own Name field
-    // shares this same value transiently (not yet cleared) right after
-    // creating "Web" — see golden-path.spec.ts's identical guard for the
-    // full reasoning.
-    const webRow = page.locator('input[value="Web"]:not([placeholder])').locator("xpath=../../..");
-    await webRow.getByPlaceholder("Name").fill("Functional");
-    await webRow.getByPlaceholder("Prefix").fill("FN");
-    await clickAndAwaitSave(page, webRow.getByRole("button", { name: "New category" }), "/categories");
-    await expect(page.locator('input[value="Functional"]').first()).toBeVisible();
+    await addStructureComponent(page, "Web", "WEB");
+    await addStructureCategory(page, "Web", "Functional", "FN");
+    await expect(structureRow(page, "Functional")).toBeVisible();
   });
 
   await test.step("create a requirement and open its card from the card-based list", async () => {

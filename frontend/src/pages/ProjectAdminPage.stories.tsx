@@ -112,6 +112,14 @@ function mockProjectAdminApis(
     if (path.endsWith("/stage-workflows")) return [buildStageWorkflow()];
     if (path.endsWith("/stage-workflows/hidden")) return [];
     if (path.includes("/stages")) return overrides.stages ?? stages;
+    if (path.endsWith("/structure-counts")) {
+      const tree = overrides.categories ?? categories;
+      return {
+        components: Object.fromEntries(components.map((c) => [c.id, { categories: tree.filter((k) => k.component_id === c.id).length, requirements: 0 }])),
+        categories: {},
+      };
+    }
+    if (path.includes("/suggest-prefix")) return { prefix: "SES" };
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return overrides.categories ?? categories;
     if (path.includes("/action-types")) return actionTypes;
@@ -592,6 +600,16 @@ export const StagesTabDeleteReassignsViaDialog: Story = {
   },
 };
 
+/** The Structure group shows the components as a tree; a category is reached by opening its component. */
+const openStructureRow = async (canvas: ReturnType<typeof within>, component: string) => {
+  await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+  await userEvent.click(await canvas.findByRole("button", { name: `Expand ${component}` }));
+};
+
+/** The action menu of a Structure row. */
+const openRowMenu = async (canvas: ReturnType<typeof within>, name: string) =>
+  userEvent.click(await canvas.findByRole("button", { name: `Actions for ${name}` }));
+
 /** A category is deleted with no target first, after a plain confirmation; an empty one (here the project's
  * only category) goes in one step. */
 export const StructureTabDeleteEmptyCategoryNeedsNoTarget: Story = {
@@ -601,10 +619,9 @@ export const StructureTabDeleteEmptyCategoryNeedsNoTarget: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
-    await waitFor(() => expect(canvas.getByDisplayValue("Login")).toBeInTheDocument());
-    const row = canvas.getByDisplayValue("Login").closest<HTMLElement>(".stack")!;
-    await userEvent.click(within(row).getByTitle("Delete this category"));
+    await openStructureRow(canvas, "Authentication");
+    await openRowMenu(canvas, "Login");
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Delete" }));
 
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Delete this category" }));
     await userEvent.click(dialog.getByRole("button", { name: "Confirm delete" }));
@@ -629,10 +646,9 @@ export const StructureTabDeleteCategoryInUseReassignsViaDialog: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
-    await waitFor(() => expect(canvas.getByDisplayValue("Logout")).toBeInTheDocument());
-    const row = canvas.getByDisplayValue("Logout").closest<HTMLElement>(".stack")!;
-    await userEvent.click(within(row).getByTitle("Delete this category"));
+    await openStructureRow(canvas, "Authentication");
+    await openRowMenu(canvas, "Logout");
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Delete" }));
     await userEvent.click(within(await within(document.body).findByRole("dialog", { name: "Delete this category" })).getByRole("button", { name: "Confirm delete" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/categories/cat2`));
 
@@ -646,22 +662,19 @@ export const StructureTabDeleteCategoryInUseReassignsViaDialog: Story = {
   },
 };
 
-/** A component with existing categories can't be deleted until they're
- * moved or removed first — `deleteComponentHasCategoriesHint`. */
-export const CategoriesTabDeleteBlockedWhileHasCategories: Story = {
+/** A component with existing categories can't be deleted until they're moved or removed first. */
+export const StructureTabDeleteBlockedWhileComponentHasCategories: Story = {
   beforeEach: () => mockProjectAdminApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Categories now lives inside the merged "Structure" tab, alongside
-    // Stages, as a "Components & categories" `CollapsibleSection`.
     await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
-    // Component/category names are editable <input>s here, not static text.
-    await waitFor(() => expect(canvas.getByDisplayValue("Login")).toBeInTheDocument());
-    await expect(canvas.getByTitle("Delete or reassign this component's categories first.")).toBeDisabled();
+    await openRowMenu(canvas, "Authentication");
+    await expect(await within(document.body).findByRole("menuitem", { name: "Delete" })).toBeDisabled();
   },
 };
 
-export const CategoriesTabAddCategory: Story = {
+/** Add category opens the side panel with the prefix suggested from the name, and Save creates it under that component. */
+export const StructureTabAddCategory: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
     spyOn(api, "post").mockResolvedValue(undefined);
@@ -669,22 +682,12 @@ export const CategoriesTabAddCategory: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: /New category/ })).toBeInTheDocument());
-    // Scoped to the "Components & categories" section specifically: Stages
-    // (now a sibling section on the same merged "Structure" tab) has its
-    // own "Name"-placeholder "add stage" field, so an unscoped query is
-    // ambiguous. Within this section, two "Name"/"Prefix"-placeholder
-    // inputs exist: the per-component "add category" row (first, inside
-    // the component's own block) and the "add component" row at the very
-    // bottom (last).
-    const componentsSection = within(
-      canvas.getByRole("button", { name: "Components & categories section" }).closest(".card")!
-    );
-    const [nameInput] = componentsSection.getAllByPlaceholderText("Name");
-    const [prefixInput] = componentsSection.getAllByPlaceholderText("Prefix");
-    await userEvent.type(nameInput, "Sessions");
-    await userEvent.type(prefixInput, "SES");
-    await userEvent.click(componentsSection.getByRole("button", { name: /New category/ }));
+    await openRowMenu(canvas, "Authentication");
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Add category to Authentication" }));
+    const panel = within(await within(document.body).findByRole("dialog", { name: "Add category to Authentication" }));
+    await userEvent.type(panel.getByRole("textbox", { name: "Name" }), "Sessions");
+    await waitFor(() => expect(panel.getByRole("textbox", { name: "Prefix" })).toHaveValue("SES"));
+    await userEvent.click(panel.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/categories`,

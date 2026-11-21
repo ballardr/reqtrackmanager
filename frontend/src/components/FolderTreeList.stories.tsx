@@ -33,8 +33,11 @@ const collect = (node: FolderNode<Doc>): string[] => (node.kind === "item" ? [no
 
 /** Hosts the list with its own open folders, so a story sees the chevrons and rows follow the clicks. */
 function Host({
-  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false,
-}: { docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean; ticks?: boolean }) {
+  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false, order, emptyFolderText,
+}: {
+  docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean;
+  ticks?: boolean; order?: "sorted" | "given"; emptyFolderText?: string;
+}) {
   const [open, setOpen] = useState(new Set(initiallyOpen));
   const [chosen, setChosen] = useState("");
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
@@ -46,7 +49,7 @@ function Host({
   return (
     <div style={width ? { width } : undefined}>
       <FolderTreeList
-        nodes={tree} label="Documents" expanded={open}
+        nodes={tree} label="Documents" expanded={open} order={order} emptyFolderText={emptyFolderText}
         onToggle={(id, isOpen) => setOpen((c) => { const n = new Set(c); if (isOpen) n.add(id); else n.delete(id); return n; })}
         itemView={(d) => ({ icon: d.kind === "pack" ? <Package /> : <FileText />, iconLabel: d.kind === "pack" ? "Pack" : "Report", description: d.note })}
         isSelected={(d) => d.id === chosen} onOpenItem={(d) => setChosen(d.id)} columns={columns}
@@ -270,5 +273,50 @@ export const TickBoxesChooseRowsAndAFolderCoversItsItems: Story = {
     await userEvent.click(within(grid).getByRole("button", { name: "Expand 2026" }));
     await userEvent.click(within(grid).getByRole("checkbox", { name: "Select Handover document" }));
     await expect(within(grid).getByRole("checkbox", { name: "Select Handover" })).toHaveAttribute("aria-checked", "mixed");
+  },
+};
+
+/** With the given order, folders keep the order of the nodes passed in (here a folder that sorts first is last), and no header sorts. */
+export const GivenOrderKeepsTheCallersOrderAndNoHeaderSorts: Story = {
+  args: {
+    order: "given", extraFolders: ["Aardvark"],
+    columns: [{ id: "version", header: "Version", render: (d: Doc) => `v${d.version}`, sortValue: (d: Doc) => d.version, width: "5rem" }],
+  },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const names = within(grid).getAllByRole("button", { name: /^(Expand|Collapse) / }).map((b) => b.textContent);
+    await expect(names[names.length - 1]).toBe("Aardvark");
+    await expect(within(grid).queryByRole("button", { name: /Sort by/ })).not.toBeInTheDocument();
+    await expect(within(grid).getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
+  },
+};
+
+/** Without it (the default) the same folder sorts first, by name. */
+export const SortedOrderPlacesThatFolderFirst: Story = {
+  args: { extraFolders: ["Aardvark"] },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const names = within(grid).getAllByRole("button", { name: /^(Expand|Collapse) / }).map((b) => b.textContent);
+    await expect(names[0]).toBe("Aardvark");
+  },
+};
+
+/** A column may draw a cell for a folder row as well as for an item row. */
+export const AFolderRowCanCarryAColumnCell: Story = {
+  args: {
+    columns: [{ id: "count", header: "Count", render: (d: Doc) => `v${d.version}`, renderFolder: (n: FolderNode<Doc>) => `${n.count} inside`, width: "6rem" }],
+  },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    await expect(within(grid).getAllByText(/inside$/).length).toBeGreaterThan(0);
+    await expect(within(grid).getByText("2 inside")).toBeInTheDocument();
+  },
+};
+
+/** An open folder with nothing in it can say so in the caller's words. */
+export const EmptyFolderTextIsTheCallers: Story = {
+  args: { extraFolders: ["Archive"], initiallyOpen: ["f:archive"], emptyFolderText: "Nothing filed yet." },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Nothing filed yet.")).toBeInTheDocument();
   },
 };

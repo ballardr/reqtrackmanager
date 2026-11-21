@@ -199,7 +199,8 @@ export const FilterByStatusBadge: Story = {
 };
 
 /** The component filter and the target version range are what narrow the list (and so its Export and Download
- * report): choosing them sends `component_id` and the two range ends, and clearing an end drops its parameter. */
+ * report): choosing a component from the shared tree filter sends `component_id` and the two range ends are sent as
+ * `target_stage_from_id` and `target_stage_to_id`; clearing an end drops its parameter. */
 export const ComponentAndTargetVersionRangeFiltersAreSent: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
@@ -209,8 +210,10 @@ export const ComponentAndTargetVersionRangeFiltersAreSent: Story = {
       const calls = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls;
       return String(calls[calls.length - 1][0]);
     };
-    await userEvent.selectOptions(canvas.getByLabelText("Component"), "c2");
+    await userEvent.click(await canvas.findByRole("button", { name: "Component and category" }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Reporting" }));
     await waitFor(() => expect(lastPath()).toContain("component_id=c2"));
+    await userEvent.keyboard("{Escape}");
     await userEvent.selectOptions(canvas.getByLabelText("Target version from"), "s2");
     await waitFor(() => expect(lastPath()).toContain("target_stage_from_id=s2"));
     await expect(lastPath()).not.toContain("target_stage_to_id");
@@ -416,21 +419,20 @@ export const NoComponentsMemberSeesLinkToAdmin: Story = {
   },
 };
 
-/** Changing the component in the create form resets the category to the
- * first one belonging to the newly-selected component — the tree/cascade
- * rule from help/01-overview.md. */
-export const CreateFormCascadesCategoryOnComponentChange: Story = {
+/** The create form chooses the component and category as one pair from the tree: it starts on the first category, and
+ * choosing a category of another component chooses that component with it. */
+export const CreateFormChoosesTheComponentAndCategoryAsOnePair: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
-    const componentSelect = within(panel).getByLabelText("Component");
-    const categorySelect = within(panel).getByLabelText("Category");
-    await expect(categorySelect).toHaveValue("cat1");
-    await userEvent.selectOptions(componentSelect, "c2");
-    await expect(categorySelect).toHaveValue("cat2");
+    const place = within(panel).getByRole("button", { name: "Component and category" });
+    await expect(place).toHaveTextContent("Authentication / Login");
+    await userEvent.click(place);
+    await userEvent.click(await within(document.body).findByRole("radio", { name: "Reporting / Export" }));
+    await expect(place).toHaveTextContent("Reporting / Export");
   },
 };
 
@@ -578,8 +580,7 @@ export const CreateFormFieldsAllHaveVisibleLabels: Story = {
     // Unchanged from before this fix — asserted here too so a regression
     // in one direction (removing a label these fields never had) doesn't
     // read as a pass just because the three new ones above did.
-    await expect(panel.getByLabelText("Component")).toBeInTheDocument();
-    await expect(panel.getByLabelText("Category")).toBeInTheDocument();
+    await expect(panel.getByRole("button", { name: "Component and category" })).toBeInTheDocument();
     await expect(panel.getByLabelText("Target version")).toBeInTheDocument();
     await expect(panel.getByLabelText("Level")).toBeInTheDocument();
   },
