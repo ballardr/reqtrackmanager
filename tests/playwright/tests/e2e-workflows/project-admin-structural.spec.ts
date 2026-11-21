@@ -153,6 +153,12 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       expect(await addStructureCategory(page, "Power Supply", "Fan Bay")).toBe("FB2");
     });
 
+    await test.step("a component row shows the component icon, not a folder", async () => {
+      const grid = page.getByRole("treegrid", { name: "Components and categories" });
+      await expect(grid.getByRole("button", { name: /^(Expand|Collapse) Power Supply$/ }).locator("svg.lucide-boxes")).toHaveCount(1);
+      await expect(grid.locator("svg.lucide-folder, svg.lucide-folder-open")).toHaveCount(0);
+    });
+
     await test.step("a typed prefix stays while the name changes", async () => {
       await page.getByRole("button", { name: "Add component" }).click();
       const panel = page.getByRole("dialog", { name: "Add component" });

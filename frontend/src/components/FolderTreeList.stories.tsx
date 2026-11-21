@@ -1,10 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { FileText, Package } from "lucide-react";
+import { FileText, Package, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
 import { buildFolderTree, type FolderNode } from "../utils/reportFolders";
 import { FolderTreeList, type FolderTreeColumn } from "./FolderTreeList";
+import { realFolderIcon } from "./folderTreeIcons";
 
 interface Doc {
   id: string;
@@ -33,10 +34,10 @@ const collect = (node: FolderNode<Doc>): string[] => (node.kind === "item" ? [no
 
 /** Hosts the list with its own open folders, so a story sees the chevrons and rows follow the clicks. */
 function Host({
-  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false, order, emptyFolderText,
+  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false, order, emptyFolderText, groupIcon = false,
 }: {
   docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean;
-  ticks?: boolean; order?: "sorted" | "given"; emptyFolderText?: string;
+  ticks?: boolean; order?: "sorted" | "given"; emptyFolderText?: string; groupIcon?: boolean;
 }) {
   const [open, setOpen] = useState(new Set(initiallyOpen));
   const [chosen, setChosen] = useState("");
@@ -50,6 +51,7 @@ function Host({
     <div style={width ? { width } : undefined}>
       <FolderTreeList
         nodes={tree} label="Documents" expanded={open} order={order} emptyFolderText={emptyFolderText}
+        folderIcon={groupIcon ? () => <Users aria-hidden="true" /> : realFolderIcon}
         onToggle={(id, isOpen) => setOpen((c) => { const n = new Set(c); if (isOpen) n.add(id); else n.delete(id); return n; })}
         itemView={(d) => ({ icon: d.kind === "pack" ? <Package /> : <FileText />, iconLabel: d.kind === "pack" ? "Pack" : "Report", description: d.note })}
         isSelected={(d) => d.id === chosen} onOpenItem={(d) => setChosen(d.id)} columns={columns}
@@ -258,6 +260,28 @@ export const FolderRowsCarryTheirOwnActions: Story = {
   },
 };
 
+/** The icon of a folder row is the list's own: a real folder shows a closed folder, and an open folder shows the open one. */
+export const RealFoldersShowTheFolderIcon: Story = {
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const icon = (name: string) => within(grid).getByRole("button", { name }).querySelector(".folder-tree-folder-icon svg");
+    await expect(icon("Expand Platform")).toHaveClass("lucide-folder");
+    await userEvent.click(within(grid).getByRole("button", { name: "Expand Platform" }));
+    await expect(icon("Collapse Platform")).toHaveClass("lucide-folder-open");
+  },
+};
+
+/** A list whose rows are not folders gives its own icon, and no folder icon is drawn. */
+export const AListCanGiveItsFolderRowsAnotherIcon: Story = {
+  args: { groupIcon: true },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const button = within(grid).getByRole("button", { name: "Expand Platform" });
+    await expect(button.querySelector(".folder-tree-folder-icon svg")).toHaveClass("lucide-users");
+    await expect(grid.querySelector(".lucide-folder, .lucide-folder-open")).toBeNull();
+  },
+};
+
 export const LightTheme: Story = { ...DeepFoldersIndent, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...DeepFoldersIndent, globals: { theme: "dark" } };
 
@@ -331,7 +355,7 @@ function RecordFolderHost() {
   const [chosen, setChosen] = useState("parent");
   return (
     <FolderTreeList
-      nodes={nodes} label="Records" expanded={new Set(["parent"])} onToggle={() => {}} order="given"
+      nodes={nodes} label="Records" expanded={new Set(["parent"])} onToggle={() => {}} order="given" folderIcon={() => <FileText aria-hidden="true" />}
       itemView={() => ({ icon: <FileText />, iconLabel: "Record" })}
       isSelected={(d) => d.id === chosen} onOpenItem={(d) => setChosen(d.id)}
     />

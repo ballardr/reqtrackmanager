@@ -292,6 +292,10 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await expect(page.getByRole("region", { name: `Members of Client ${suffix}` })).toBeVisible();
     await expect(grid.getByRole("row", { selected: true })).toHaveCount(1);
 
+    // --- A group is not a folder: a parent and a leaf group both draw the group icon, and no folder icon appears.
+    await expect(grid.getByRole("button", { name: `Collapse Acme ${suffix}`, exact: true }).locator("svg.lucide-users")).toHaveCount(1);
+    await expect(grid.locator("svg.lucide-folder, svg.lucide-folder-open")).toHaveCount(0);
+
     // --- A folder closed on this page stays closed after a reload.
     await grid.getByRole("button", { name: `Collapse Acme ${suffix}`, exact: true }).click();
     await expect(grid.getByRole("button", { name: `Acme Finance ${suffix}`, exact: true })).toHaveCount(0);

@@ -13,6 +13,8 @@
  *   passes (a list with its own manual order, such as the project's components) and no header sorts.
  * - Keyboard (an ARIA tree grid): Up/Down/Home/End move between visible rows, Right opens a folder (or moves to its
  *   first child), Left closes it (or moves to its parent), Enter opens an item or toggles a folder.
+ * - Draw the icon the consuming list gives its folder rows (`folderIcon`, required): a report folder is a folder, a
+ *   stakeholder group or a component is not, so the component never assumes one and keeps no kind-to-icon map.
  * - Name an empty open folder with a muted "Empty folder" row, so an open folder never looks broken.
  *
  * Design decisions: expansion is controlled by the caller (`expanded` / `onToggle`), as `TreeView`'s controlled mode
@@ -28,7 +30,7 @@
  *
  * Dependencies: `utils/reportFolders` (`FolderNode`), `lucide-react`, the `.folder-tree-*` rules in `theme.css`.
  */
-import { ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
@@ -50,6 +52,14 @@ export interface FolderTreeColumn<T> {
   /** Drop the column under 640px, where the row has no room for it. */
   hideBelow?: boolean;
 }
+
+/**
+ * The icon of a folder row, chosen by the list that owns the rows.
+ *
+ * @param open Whether the folder is expanded, for an icon that changes with it.
+ * @returns The icon element (decorative: the row's toggle button carries the name).
+ */
+export type FolderTreeFolderIcon = (open: boolean) => ReactNode;
 
 /** What an item's row shows besides its name. */
 export interface FolderTreeItemView {
@@ -125,6 +135,7 @@ function flatten<T>(
  * @param label Names the grid for assistive technology.
  * @param expanded The ids of the open folders.
  * @param onToggle Called with a folder's id and whether it should now be open.
+ * @param folderIcon The icon of a folder row: `realFolderIcon` (`folderTreeIcons`) where the rows are folders, otherwise the icon of what they are.
  * @param itemView The icon, icon name and description of an item's row.
  * @param onOpenItem Called when an item's name is activated.
  * @param isSelected Whether an item is the chosen one (highlighted, `aria-current`); also asked of a folder that carries an `item`.
@@ -139,13 +150,14 @@ function flatten<T>(
  * @param emptyFolderText The row shown in an open folder with nothing in it (default "Empty folder").
  */
 export function FolderTreeList<T>({
-  nodes, label, expanded, onToggle, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, checks, emptyText,
+  nodes, label, expanded, onToggle, folderIcon, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, checks, emptyText,
   order = "sorted", emptyFolderText,
 }: {
   nodes: FolderNode<T>[];
   label: string;
   expanded: ReadonlySet<string>;
   onToggle: (id: string, open: boolean) => void;
+  folderIcon: FolderTreeFolderIcon;
   itemView: (item: T) => FolderTreeItemView;
   onOpenItem: (item: T) => void;
   isSelected?: (item: T) => boolean;
@@ -270,7 +282,6 @@ export function FolderTreeList<T>({
         };
         if (node.kind === "folder") {
           const open = expanded.has(node.id);
-          const Icon = open ? FolderOpen : Folder;
           // A folder that carries an `item` (a record that has children of its own) can be the chosen row too.
           const folderSelected = node.item !== undefined && (isSelected?.(node.item as T) ?? false);
           return (
@@ -286,7 +297,7 @@ export function FolderTreeList<T>({
                   onClick={() => onToggle(node.id, !open)}
                 >
                   {open ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
-                  <Icon aria-hidden="true" className="folder-tree-folder-icon" />
+                  <span aria-hidden="true" className="folder-tree-folder-icon">{folderIcon(open)}</span>
                   <strong>{node.name}</strong>
                 </button>
                 {folderBadge && <Badge>{folderBadge(node)}</Badge>}

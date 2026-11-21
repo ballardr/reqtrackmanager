@@ -58,6 +58,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { FilterPanel } from "./FilterPanel";
 import { FilterSelect } from "./FilterSelect";
 import { FolderTreeList, type FolderTreeChecks, type FolderTreeColumn } from "./FolderTreeList";
+import { realFolderIcon } from "./folderTreeIcons";
 import { MenuButton } from "./MenuButton";
 import { ReportCopyDialog } from "./ReportCopyDialog";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
@@ -485,6 +486,7 @@ export function ReportSetupPanel({
         onToggle={(id, isOpen) => {
           if (!filtering) setFolderOpen(id, isOpen);
         }}
+        folderIcon={realFolderIcon}
         itemView={(row) => ({ icon: <ReportKindIcon kind={row.shape} />, iconLabel: strings.reportPicker.kind[row.shape], description: row.description })}
         onOpenItem={open}
         columns={columns}

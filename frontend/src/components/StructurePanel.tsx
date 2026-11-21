@@ -17,7 +17,7 @@
  * it as given and no header sorts. Every action is a call to `StructureApi`; the panel holds no rule of its own (the
  * prefix suggestion, uniqueness and the move's effects are the server's). Injectable `api` keeps stories off the network.
  */
-import { Layers, Plus } from "lucide-react";
+import { Boxes, Layers, Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import type { PlacementTree } from "../api/placements";
@@ -197,6 +197,7 @@ export function StructurePanel({
         onToggle={(id, open) => {
           if (!searching) setFolderOpen(id, open);
         }}
+        folderIcon={() => <Boxes aria-hidden="true" />}
         itemView={() => ({ icon: <Layers aria-hidden="true" />, iconLabel: strings.requirements.category })}
         onOpenItem={openCategory}
         columns={columns}

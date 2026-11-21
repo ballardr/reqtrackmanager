@@ -19524,3 +19524,19 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 **Review (identify → verify → remediate).** No authorization, audit, retention or tenant rule changed: the same usage call, which already omits a kind of record the caller cannot view (the dialog shows an empty state if the count includes records of such a kind). Nothing is logged that was not before. Remediated during the build: `scripts/check_sortable_columns.py` flagged the dialog's table, so its columns sort (`useTableSort`).
 
 **Review table.** Modular boundary: `TagUsageModal` is generic; no core file names a module. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP and perf: not applicable (no stored data or endpoint changed). Website: the Tags page's "See where a tag is used" row and the project administration summary are updated. The Phase 27 review note about the usage tables' column alignment no longer applies, as those tables are gone.
+
+## Platform review 2026-11-19, Phase 29: folder icons (2026-11-22)
+
+**Problem.** `FolderTreeList` drew a folder icon on every row that has children, so a Stakeholder group with child groups and a Structure component looked like a folder, while a group without children showed the group icon.
+
+**Decided by: User.**
+- *A Component's icon is `Boxes`* (chosen from `Boxes`, `Blocks` and `Component`); the category keeps `Layers`.
+
+**Decided by: Agent (revisable on its own judgement).**
+- *The consuming list chooses the folder row's icon.* `FolderTreeList` takes a required `folderIcon: (open) => icon`; no default, so every list states what its rows are, and core holds no kind-to-icon map. `realFolderIcon` (`folderTreeIcons.tsx`) is the shared icon for rows that really are folders (report picker, report setup list). Stakeholder Groups passes `Users`, Structure passes `Boxes`.
+- *Type-checking, not a unit test, is the guard.* The prop is required, so a new consumer that omits it fails the build; a test scanning sources would repeat that.
+- *Left as they are.* Surfaces outside `FolderTreeList` that draw no folder icon (`TreeView` users: the Architecture folder panel, the report folder chooser, the project tree), and the "Link from shared resources" buttons (`FolderOpen` opens the library of shared files).
+
+**Tests.** Storybook: `FolderTreeList` (real folders closed and open, another icon given), the report picker and setup list keep the folder icon, Structure shows the component icon, Stakeholder Groups the group icon, each asserting no folder icon is drawn where it is not a folder. Playwright: the Structure and Stakeholder groups specs assert the icons.
+
+**Review (identify → verify → remediate).** Presentation only: no authorization, audit, retention, tenant or data rule changed, nothing logged. **Review table.** Modular boundary: no core file names a module (the module's list passes its own icon). Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP and perf: not applicable. Website: the report organising page's "a folder icon and chevron on each folder" is still true; no other page names the icon, so phase W needs no change for this phase.

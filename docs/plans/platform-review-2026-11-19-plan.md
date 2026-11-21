@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 28 done 2026-11-22; phases 29 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 29 done 2026-11-22; phases 30 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-28 / 46 phases complete.
+29 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -38,7 +38,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes; signed off 2026-11-21: the shared `FolderTreeList` grid, members below it, a row actions menu | [x] |
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [x] |
 | 28 | Tags: usage in a dialog | The "Where tags are used" section becomes a dialog opened from the record count in the Used on column | [x] |
-| 29 | Folder icons: review and fix | Every folder-tree list shows an icon of what its rows are (a stakeholder group, not a folder); icon chosen by the consuming list, not a core map | [ ] |
+| 29 | Folder icons: review and fix | Every folder-tree list shows an icon of what its rows are (a stakeholder group, not a folder); icon chosen by the consuming list, not a core map | [x] |
 | 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [ ] |
 | 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [ ] |
 | 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [ ] |
@@ -462,7 +462,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 ### Phases 28 to 41 — Items from the review of 2026-11-22
 
-Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 29 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
+Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 30 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
 
 ### Phase 28 — Tags: usage in a dialog
 
@@ -481,6 +481,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Review first: list every use of the folder icon and of `FolderTreeList` / `useOpenFolders` (report folders, the Structure page, Stakeholder Groups, Architecture folders and collections, document folders, the rest the search finds) and state for each what a row is and which icon should show. The list is shown to the user before the fixes if it recommends an icon the product does not yet have.
 - The icon is chosen by the consuming list and passed to `FolderTreeList` (a generic prop, for example `rowIcon`); core never keeps a kind-to-icon map a module must add to (the module boundary rule). A module's own icon comes from its registration (`navIcons.ts` shows the mechanism).
 - Tests: Storybook for each changed list; a unit test that no folder-tree consumer relies on the default folder icon without stating that its rows are folders.
+
+- As built (**Decided by: User** for the Component icon, **Decided by: Agent** for the rest): the review found `FolderTreeList` is the only component that draws a folder icon, with four consumers. Report picker and report setup rows are real folders and keep it; Stakeholder Groups parents now show the group icon (`Users`); Structure's top level rows are Components and show `Boxes` (the user chose it from `Boxes`, `Blocks` and `Component`). `folderIcon` is a required prop (`(open) => icon`), so a list cannot rely on a default without saying its rows are folders; the type checker is the guard in place of a unit test, which would repeat it. `realFolderIcon` lives in `folderTreeIcons.tsx`. The Architecture folder panel, the report folder chooser and the project tree draw no folder icon (`TreeView`), and the "Link from shared resources" buttons keep `FolderOpen`, which opens a library of shared files. See `docs/decisions.md`.
 
 ### Phase 30 — Architecture elements and collections: UI review and an actions-menu rule
 

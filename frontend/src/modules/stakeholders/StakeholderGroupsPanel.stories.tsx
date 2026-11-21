@@ -67,6 +67,18 @@ export const ShowsTheTreeWithMemberCountsAndFlags: Story = {
   },
 };
 
+/** A group is not a folder: a parent group and a group without children both show the group icon, and no folder icon is drawn. */
+export const GroupRowsShowTheGroupIconNotAFolder: Story = {
+  beforeEach: () => mockReads(ORG_BASE, GROUPS),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const parent = await canvas.findByRole("button", { name: "Collapse Client" });
+    await expect(parent.querySelector(".folder-tree-folder-icon svg")).toHaveClass("lucide-users");
+    await expect(canvas.getAllByRole("img", { name: "Stakeholder group" }).length).toBeGreaterThan(0);
+    await expect(canvasElement.querySelector(".lucide-folder, .lucide-folder-open")).toBeNull();
+  },
+};
+
 /** A deeper tree: every column starts at the same x on every row, and each name is indented by its depth. */
 export const NestedGroupsAlignInColumns: Story = {
   beforeEach: () =>

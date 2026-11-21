@@ -2486,6 +2486,12 @@ th:has(> .th-with-action > .th-sort) {
 }
 .folder-tree-folder-icon {
   color: var(--color-info);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.folder-tree-folder-icon > svg {
+  height: 1rem;
+  width: 1rem;
 }
 .folder-tree-item {
   display: block;

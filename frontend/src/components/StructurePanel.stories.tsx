@@ -40,6 +40,19 @@ export const ComponentsStartClosedAndOpenOnClick: Story = {
   },
 };
 
+/** A component is not a folder: its row shows the component icon, the same whether it is closed or open, and no folder icon is drawn. */
+export const ComponentRowsShowTheComponentIconNotAFolder: Story = {
+  args: { api: buildStructureApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("button", { name: "Expand Hardware" });
+    await expect(toggle.querySelector(".folder-tree-folder-icon svg")).toHaveClass("lucide-boxes");
+    await userEvent.click(toggle);
+    await expect(canvas.getByRole("button", { name: "Collapse Hardware" }).querySelector(".folder-tree-folder-icon svg")).toHaveClass("lucide-boxes");
+    await expect(canvasElement.querySelector(".lucide-folder, .lucide-folder-open")).toBeNull();
+  },
+};
+
 /** A search opens every component that holds a match and hides the others. */
 export const SearchOpensEveryMatch: Story = {
   args: { api: buildStructureApi() },

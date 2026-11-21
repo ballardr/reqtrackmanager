@@ -299,6 +299,7 @@ export function StakeholderGroupsPanel({
         label="Stakeholder groups"
         expanded={expanded}
         onToggle={(id, open) => setCollapsed(id, !open)}
+        folderIcon={() => <Users aria-hidden="true" />}
         itemView={() => ({ icon: <Users aria-hidden="true" />, iconLabel: "Stakeholder group" })}
         onOpenItem={(g) => setSelectedId(g.id)}
         isSelected={(g) => g.id === selectedId}

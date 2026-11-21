@@ -31,6 +31,7 @@ import { useOpenFolders } from "../hooks/useOpenFolders";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { allFolderIds, buildFolderTree, type FolderNode } from "../utils/reportFolders";
 import { FolderTreeList } from "./FolderTreeList";
+import { realFolderIcon } from "./folderTreeIcons";
 import { ReportKindIcon, type ReportKind } from "./ReportKindIcon";
 import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
@@ -192,6 +193,7 @@ export function ReportPickerPanel({
           onToggle={(id, isOpen) => {
             if (!filtering) setFolderOpen(id, isOpen);
           }}
+          folderIcon={realFolderIcon}
           itemView={(item) => ({ icon: <ReportKindIcon kind={item.kind} />, iconLabel: text.kind[item.kind], description: item.description })}
           isSelected={(item) => item.id === selectedId}
           onOpenItem={(item) => onSelect(item.id)}
