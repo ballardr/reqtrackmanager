@@ -62,9 +62,9 @@ READ_ONLY_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/v1/projects/{project_id}/report-packs/{pack_id}/runs"),
     ("POST", "/api/v1/projects/{project_id}/custom-reports/{layout_id}/runs"),
     ("POST", "/api/v1/projects/{project_id}/change-requests/{cr_id}/watchers"),
-    ("DELETE", "/api/v1/projects/{project_id}/change-requests/{cr_id}/watchers/{group_type}/{group_id}"),
+    ("DELETE", "/api/v1/projects/{project_id}/change-requests/{cr_id}/watchers/{watcher_type}/{watcher_id}"),
     ("POST", "/api/v1/projects/{project_id}/requirements/{requirement_id}/watchers"),
-    ("DELETE", "/api/v1/projects/{project_id}/requirements/{requirement_id}/watchers/{group_type}/{group_id}"),
+    ("DELETE", "/api/v1/projects/{project_id}/requirements/{requirement_id}/watchers/{watcher_type}/{watcher_id}"),
 })
 
 

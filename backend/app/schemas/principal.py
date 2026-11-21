@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.models.enums import PrincipalType
 
@@ -38,9 +38,12 @@ class PrincipalOut(BaseModel):
 
 
 class WatcherCreate(BaseModel):
-    """Adds a group as a watcher of a requirement or change request (its members all follow it)."""
+    """Adds a user or group as a watcher of a requirement or change request (a group's members all follow it).
 
-    group: PrincipalRef
+    `group` is accepted as the earlier name of `principal`, for callers written when only a group could watch.
+    """
+
+    principal: PrincipalRef = Field(validation_alias=AliasChoices("principal", "group"))
 
 
 class PrincipalUsageItem(BaseModel):

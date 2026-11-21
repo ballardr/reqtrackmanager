@@ -3773,10 +3773,12 @@ def main() -> None:
         f"{BASE}/projects/{drone['id']}/change-requests/{drone_cr['id']}/tasks/{drone_cr_task['id']}",
         json={"assignee": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
     ).raise_for_status()
-    httpx.post(
-        f"{BASE}/projects/{drone['id']}/requirements/{preflight_req['id']}/watchers",
-        json={"group": {"type": "org_group", "id": architecture_board.json()["id"]}}, headers=h_pm, timeout=30,
-    ).raise_for_status()
+    # The Watching tab shows a group and a user side by side.
+    for watcher in ({"type": "org_group", "id": architecture_board.json()["id"]}, {"type": "user", "id": demo_engineer["user_id"]}):
+        httpx.post(
+            f"{BASE}/projects/{drone['id']}/requirements/{preflight_req['id']}/watchers",
+            json={"principal": watcher}, headers=h_pm, timeout=30,
+        ).raise_for_status()
     single_fc_decision = create_decision(
         h_pm, drone["id"], title="Use a single flight controller with hot-swap failover",
         decision_statement="Falcon-3 will ship with one primary flight controller board and a cold-spare"

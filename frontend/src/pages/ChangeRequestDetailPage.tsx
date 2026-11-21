@@ -34,7 +34,7 @@ import { RecordTags } from "../components/RecordTags";
 import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
+import { useWatchingTab } from "../hooks/useWatchingTab";
 import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Modal } from "../components/Modal";
 import { ProposedLinksSection } from "../components/ProposedLinksSection";
@@ -82,6 +82,10 @@ export function ChangeRequestDetailPage() {
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState<PrincipalRef | null>(null);
   const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
+  const watchingTab = useWatchingTab({
+    recordPath: projectId && crId ? `/api/v1/projects/${projectId}/change-requests/${crId}` : undefined,
+    organizationId, projectId, canManage: canManageTasks, refreshKey: cr?.is_subscribed,
+  });
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
@@ -289,6 +293,7 @@ export function ChangeRequestDetailPage() {
   return (
     <DetailLayout
       contained={false}
+      extraTabs={watchingTab ? [watchingTab] : []}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : undefined}
       aside={projectId ? <ArtefactLinksPanel projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : null}
     >
@@ -307,12 +312,6 @@ export function ChangeRequestDetailPage() {
           },
         ]}
       />
-      {projectId && (
-        <WatchingGroupsPanel
-          recordPath={`/api/v1/projects/${projectId}/change-requests/${crId}`}
-          organizationId={organizationId} projectId={projectId} canManage={canManageTasks}
-        />
-      )}
       <div className="stack">
       <DetailCard>
         <div className="row">

@@ -52,6 +52,19 @@ export const RendersContentAloneWithoutAnAside: Story = {
   },
 };
 
+/** A page's own tab (the record's Watching tab) follows Links, and is selected like the others. */
+export const ShowsAnExtraTabAfterLinks: Story = {
+  args: { extraTabs: [{ key: "watching", label: "Watching (2)", content: <div>Watching content</div> }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Links", "Watching (2)"]);
+    await expect(canvas.getByText("Watching content")).not.toBeVisible();
+    await userEvent.click(canvas.getByRole("tab", { name: "Watching (2)" }));
+    await expect(canvas.getByText("Watching content")).toBeVisible();
+    await expect(canvas.getByText("Aside content")).not.toBeVisible();
+  },
+};
+
 export const ShowsLinksAndActivityTabsWhenGivenBoth: Story = {
   args: { activity: <div className="card">Activity content</div> },
   play: async ({ canvasElement }) => {

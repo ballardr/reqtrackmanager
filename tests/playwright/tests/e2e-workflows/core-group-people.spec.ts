@@ -51,14 +51,17 @@ test.describe("Core records: groups as owners, reviewers, assignees and watchers
     await expect(page.getByText(/^Organisation group/).first()).toBeVisible();
     await expect(page.getByText(squadName).first()).toBeVisible();
 
-    // --- The board watches it; the panel lists it and lets the manager remove it again.
-    const watchers = page.getByRole("region", { name: "Watching groups" });
-    await watchers.getByRole("combobox", { name: "Add watching group" }).fill("Core Board");
+    // --- The board watches it; the Watching tab lists it and lets the manager remove it again.
+    await page.getByRole("tab", { name: "Watching" }).click();
+    await page.getByRole("button", { name: "Add watching user or group" }).click();
+    await page.getByRole("combobox", { name: "Add watching user or group" }).fill("Core Board");
     await page.getByRole("option", { name: new RegExp(boardName) }).click();
-    await expect(page.getByText("Watching group added.")).toBeVisible();
-    await expect(watchers.getByText(boardName)).toBeVisible();
+    await expect(page.getByText("Watcher added.")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Watching (1)" })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "Watching (1)" }).getByText(boardName)).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("region", { name: "Watching groups" }).getByText(boardName)).toBeVisible();
+    await page.getByRole("tab", { name: "Watching (1)" }).click();
+    await expect(page.getByRole("tabpanel", { name: "Watching (1)" }).getByText(boardName)).toBeVisible();
 
     // --- An Action can be assigned to the squad from the Actions page.
     await page.goto(`/projects/${project.id}/actions`);

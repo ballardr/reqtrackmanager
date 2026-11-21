@@ -16,7 +16,7 @@ If an organisation admin (or anyone holding the org-level **grant roles** permis
 
 ## Watching a requirement or change request
 
-**Subscribe** on a requirement or change request to be told about its comments. A project manager or administrator can also add a **group** under *Watching groups*: everyone in that group who can view the project is then told too, and a change to the group's membership takes effect straight away. A group member without access to the project is never notified, and deleting a group removes its watching.
+**Subscribe** on a requirement or change request to be told about its comments. A project manager or administrator can also add a **user** or a **group** on the *Watching* tab beside Links and Activity (the **+** button): a user is told of every new comment, and everyone in a group who can view the project is told too, with a change to the group's membership taking effect straight away. The tab shows the number of watchers, including people who subscribed themselves, and appears to other people only while someone is watching. A user must be able to view the project; a group member without access is never notified, and deleting a group removes its watching.
 
 ## Per-type preferences and digests
 

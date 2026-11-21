@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 23 done 2026-11-21; phases 24 to 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 24 done 2026-11-21; phases 25 to 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-23 / 32 phases complete.
+24 / 32 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -33,7 +33,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 21 | Service users with administrator-issued tokens | An organisation administrator creates a service user with no password and no sign-in, then issues and revokes its personal access tokens on its behalf; decision gate first | [x] |
 | 22 | Components and categories: prefix suggestion and a folder-tree page | Prefix suggested from the name and editable; the Structure page rebuilt as a collapsible tree like the report folders; the requirement component and category choice through the shared tree selector; UI review first | [x] |
 | 23 | Formatting toolbar only while a field is active | The Markdown and visual editors (and the policy editor) show their formatting buttons only while the field has focus | [x] |
-| 24 | Watching groups: compact, as a tab beside Activity | The panel leaves the top of the requirement and change request pages; empty by default with a `[+]` to add; sits in the Links and Activity card | [ ] |
+| 24 | Watching: compact, as a tab beside Activity, for users and groups | The panel leaves the top of the requirement and change request pages; empty by default with a `[+]` to add; sits in the Links and Activity card; a user can be a watcher too (raised during the phase) | [x] |
 | 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; Outstanding compliance items moves to the Overview only | [ ] |
 | 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes | [ ] |
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [ ] |
@@ -386,7 +386,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Tests: Storybook for the shown and hidden states of each editor; Vitest for focus-within (focus a toolbar button keeps it shown; blur to outside hides it; Escape does not hide it mid-edit); Playwright: open a record, no formatting buttons visible, click a description, they appear, apply bold with a toolbar click, and tab out and they disappear; the existing specs that click a toolbar button first focus the field (fix those specs, never the rule).
 - As built: `ActiveFieldFrame` and `ActiveFieldToolbar` (`components/ActiveFieldFrame.tsx`; the frame tracks focus and a context carries it, a nested frame tracks nothing) used by `MarkdownEditor`, `VisualMarkdownEditor` and `PolicyBodyEditor`; the hidden toolbar is rendered with `visibility: hidden`, which reserves its row and removes it from the tab order and the accessibility tree; a button press keeps focus in the text (`mousedown` default prevented) because Safari and Firefox on macOS do not focus a button on click. Write keeps its buttons in the header row beside the switch, so nothing is added there. Only the stories that used a button without focusing the field changed (`MarkdownEditor`, `PolicyBodyEditor`); the Playwright test is in `decision-markdown.spec.ts`. Focus-within is tested through Storybook, the project's only component test runner. See `docs/decisions.md`.
 
-### Phase 24 — Watching groups: compact, as a tab beside Activity
+### Phase 24 — Watching: compact, as a tab beside Activity, for users and groups
 
 **Why:** raised 2026-11-21: `WatchingGroupsPanel` is drawn as its own full-width block between the record header and the content on the requirement and change request pages, and for a record with no watching group it is still a large box with a picker. **Risk addressed:** a rarely used, mostly empty control that takes more space and attention than the record's own content, and a placement that differs from where other record metadata (links, activity) lives. **Outcome:** watching groups are a small, empty-by-default tab of the existing Links and Activity card, with a `[+]` to add.
 
@@ -395,6 +395,8 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Compact panel: the chips of watching groups with a remove `x` each (the existing `PrincipalBadge`), and one `[+]` button (icon button with `aria-label` "Add watching group" and a tooltip with the same text) that opens the `PrincipalPicker` in a `Popover`; no permanently drawn picker, heading or explanatory text (the explanation, "everyone in a watching group who can view the project is notified of comments", goes in a `(?)` on the tab content's caption per the style guide, one line for the group case and one for the person case). Add and remove show a toast, as now.
 - Every other page that shows the panel uses the same component (Change Request detail today; the audit in the phase lists any other record that gains watchers) so the change lands once; the component keeps its path and permission contract.
 - Tests: Storybook (empty for a manager, empty for a reader which renders nothing, with groups, the popover open, narrow layout fallback); Playwright: a manager adds and removes a group from the tab on a requirement and a change request, a reader sees the tab only when a group is watching, and the count updates.
+- Scope added by the user during the phase (**Decided by: User**, 2026-11-21): users can be set as watchers and are listed with the groups, so the tab, the API and the picker cover both (users and groups on parity).
+- As built: `DetailLayout` `extraTabs` (`DetailAsideTab`); `components/WatchingPanel` (chips with a remove button, one (+) opening `PrincipalPicker` for users and both group kinds in a popover, a `(?)` caption explaining each kind); `hooks/useWatchers` and `hooks/useWatchingTab` (label "Watching (n)", no tab for a reader while nobody watches, reload when the record's subscribed flag changes). Backend: one watcher list (`engagement.watching_out`, `add_watching`, `remove_watching`), `principal` on the add payload (`group` still accepted), a user must be able to view the project, an add of an existing watcher is not audited again. The fallback placement above the discussion was not needed (the aside always exists). Demo seed adds a user watcher; the website notifications page and the style guide's detail-page pattern are updated. See `docs/decisions.md`.
 
 ### Phase 25 — Compliance: one home per view
 

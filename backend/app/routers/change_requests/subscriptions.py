@@ -57,9 +57,9 @@ def list_change_request_watchers(
     project_id: UUID, cr_id: UUID,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """The groups watching this change request: every member who can view the project is notified of its comments."""
+    """The users and groups watching this change request: each user, and each group member who can view the project, is notified."""
     _get_cr_in_project(db, project_id, cr_id)
-    return engagement.watching_groups_out(db, "change_request", cr_id)
+    return engagement.watching_out(db, "change_request", cr_id)
 
 
 @router.post("/{cr_id}/watchers", response_model=list[PrincipalOut], status_code=status.HTTP_201_CREATED)
@@ -68,19 +68,19 @@ def add_change_request_watcher(
     current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Adds a group as a watcher (project managers and administrators). Returns the watching groups."""
+    """Adds a user or group as a watcher (project managers and administrators). Returns the watchers."""
     _get_cr_in_project(db, project_id, cr_id)
-    return engagement.add_watching_group(db, project, "change_request", cr_id, payload.group, current_user)
+    return engagement.add_watching(db, project, "change_request", cr_id, payload.principal, current_user)
 
 
-@router.delete("/{cr_id}/watchers/{group_type}/{group_id}", response_model=list[PrincipalOut])
+@router.delete("/{cr_id}/watchers/{watcher_type}/{watcher_id}", response_model=list[PrincipalOut])
 def remove_change_request_watcher(
-    project_id: UUID, cr_id: UUID, group_type: PrincipalType, group_id: UUID,
+    project_id: UUID, cr_id: UUID, watcher_type: PrincipalType, watcher_id: UUID,
     current_user: User = Depends(get_current_user), project: Project = Depends(require_project_manage),
     db: Session = Depends(get_db),
 ):
-    """Stops a group watching this change request. Returns the remaining watching groups."""
+    """Stops a user or group watching this change request. Returns the remaining watchers."""
     _get_cr_in_project(db, project_id, cr_id)
-    return engagement.remove_watching_group(
-        db, project, "change_request", cr_id, PrincipalRef(type=group_type, id=group_id), current_user,
+    return engagement.remove_watching(
+        db, project, "change_request", cr_id, PrincipalRef(type=watcher_type, id=watcher_id), current_user,
     )

@@ -35,7 +35,7 @@ import { RecordActivity } from "../components/RecordActivity";
 import { RecordTags } from "../components/RecordTags";
 import { RequirementPlaces } from "../components/RequirementPlaces";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
+import { useWatchingTab } from "../hooks/useWatchingTab";
 import { RequirementFields } from "../components/RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, type RequirementFieldValues } from "../components/requirementFieldValues";
 import { CommentThread } from "../components/CommentThread";
@@ -143,6 +143,10 @@ export function RequirementDetailPage() {
   // right after it (org users, link types) succeed for this user.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const watchingTab = useWatchingTab({
+    recordPath: projectId && requirementId ? `/api/v1/projects/${projectId}/requirements/${requirementId}` : undefined,
+    organizationId: organizationId ?? undefined, projectId, canManage: canArchive, refreshKey: requirement?.is_subscribed,
+  });
   const [showResourcePicker, setShowResourcePicker] = useState(false);
   // The project's own
   // `require_change_request_for_approved_links` plus the org's
@@ -587,6 +591,7 @@ export function RequirementDetailPage() {
   return (
     <DetailLayout
       activity={projectId && requirementId ? <RecordActivity projectId={projectId} artefactType="requirement" artefactId={requirementId} refreshToken={linksRefreshToken} /> : undefined}
+      extraTabs={watchingTab ? [watchingTab] : []}
       contained={false}
       aside={
         projectId && requirementId ? (
@@ -674,13 +679,6 @@ export function RequirementDetailPage() {
             if (updated) setRequirement(updated);
             void reload();
           }}
-        />
-      )}
-
-      {projectId && (
-        <WatchingGroupsPanel
-          recordPath={`/api/v1/projects/${projectId}/requirements/${requirementId}`}
-          organizationId={organizationId ?? undefined} projectId={projectId} canManage={canArchive}
         />
       )}
 
