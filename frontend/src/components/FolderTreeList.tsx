@@ -127,7 +127,7 @@ function flatten<T>(
  * @param onToggle Called with a folder's id and whether it should now be open.
  * @param itemView The icon, icon name and description of an item's row.
  * @param onOpenItem Called when an item's name is activated.
- * @param isSelected Whether an item is the chosen one (highlighted, `aria-current`).
+ * @param isSelected Whether an item is the chosen one (highlighted, `aria-current`); also asked of a folder that carries an `item`.
  * @param columns Further columns to the right of Name.
  * @param renderItemActions The trailing controls of an item's row (a favourite star), after the last column.
  * @param renderFolderActions The trailing controls of a folder's row (the setup list's New folder, Rename and Delete).
@@ -271,8 +271,13 @@ export function FolderTreeList<T>({
         if (node.kind === "folder") {
           const open = expanded.has(node.id);
           const Icon = open ? FolderOpen : Folder;
+          // A folder that carries an `item` (a record that has children of its own) can be the chosen row too.
+          const folderSelected = node.item !== undefined && (isSelected?.(node.item as T) ?? false);
           return (
-            <div key={node.id} {...common} aria-expanded={open} className={`folder-tree-row folder-tree-folder${band}`}>
+            <div
+              key={node.id} {...common} aria-expanded={open} aria-selected={node.item !== undefined && isSelected ? folderSelected : undefined}
+              className={`folder-tree-row folder-tree-folder${band}${folderSelected ? " folder-tree-selected" : ""}`}
+            >
               <div role="gridcell" className="folder-tree-name folder-tree-name-cell" style={indent}>
                 {checks && <RowCheck node={node} checks={checks} />}
                 <button

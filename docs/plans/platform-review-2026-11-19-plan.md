@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 25 done 2026-11-21; phases 26 and 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 26 done 2026-11-21; phase 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-25 / 32 phases complete.
+26 / 32 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -35,7 +35,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 23 | Formatting toolbar only while a field is active | The Markdown and visual editors (and the policy editor) show their formatting buttons only while the field has focus | [x] |
 | 24 | Watching: compact, as a tab beside Activity, for users and groups | The panel leaves the top of the requirement and change request pages; empty by default with a `[+]` to add; sits in the Links and Activity card; a user can be a watcher too (raised during the phase) | [x] |
 | 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; signed off 2026-11-21: By standard and Outstanding become tabs of the Standards page (Organisation filter), not Resources sections or Overview widgets | [x] |
-| 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes | [ ] |
+| 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes; signed off 2026-11-21: the shared `FolderTreeList` grid, members below it, a row actions menu | [x] |
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 27 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -418,6 +418,8 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Review first, with a screenshot of the live page and of a sibling (Personas, Stakeholders): list every misaligned element (title row, actions, filters, tree or list rows, add and edit controls, empty state), say which shared component it should be (`ListPageLayout`, `DirectoryTable`, `DefinitionList layout="grid"`, `FormActions`, the shared create form) and which one-off markup it replaces. The register is shown to the user before the fixes if it recommends more than alignment (for example a different component, or the project page `ProjectStakeholderGroupsPage` sharing the panel).
 - Fix through the shared components, not by padding and fixed widths (the style guide forbids fixed `maxWidth` inputs that wrap); the Org and project pages share one panel so both are fixed together, and the other Org Resources panels are checked against the same list in case the cause is common.
 - Tests: Storybook for the panel in its empty, populated, nested and narrow states; a Playwright check that the title, actions and first row share their left edges (bounding boxes) in the page, so the alignment is pinned and not only photographed.
+
+- As built: [the register](platform-review-2026-11-19-stakeholder-groups-register.md); signed off with the user 2026-11-21 (**Decided by: User**): the shared `FolderTreeList` grid (Name, Code, Members, Scope in a project, Rule) with the selected group's members below it as a `DirectoryTable`, and one `ActionMenu` per row. `FolderTreeList` gained one generic behaviour (a folder that carries its `item` can be the selected row). Collapsed folders are remembered (`useOpenFolders`), every folder starts open. The sibling check found the Stakeholders list's Code wrapping over three lines; fixed in the shared record list. `stakeholder-groups.spec.ts` pins the column and title edges by bounding box. Website `stakeholder-groups.md` and the style guide's folder tree pattern updated. See `docs/decisions.md`.
 
 ### Phase 27 — Tags page: creation on demand, and a style guide rule
 

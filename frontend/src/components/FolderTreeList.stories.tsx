@@ -320,3 +320,34 @@ export const EmptyFolderTextIsTheCallers: Story = {
     await expect(within(canvasElement).getByText("Nothing filed yet.")).toBeInTheDocument();
   },
 };
+
+/** A record with children of its own is a folder that carries its record as `item`. */
+function RecordFolderHost() {
+  const record = (id: string): Doc => ({ id, title: id, folder: "", kind: "report", version: 1, note: "" });
+  const nodes: FolderNode<Doc>[] = [{
+    id: "parent", kind: "folder", name: "Parent", path: "parent", item: record("parent"), count: 1,
+    children: [{ id: "child", kind: "item", name: "Child", path: "parent", item: record("child"), count: 0, children: [] }],
+  }];
+  const [chosen, setChosen] = useState("parent");
+  return (
+    <FolderTreeList
+      nodes={nodes} label="Records" expanded={new Set(["parent"])} onToggle={() => {}} order="given"
+      itemView={() => ({ icon: <FileText />, iconLabel: "Record" })}
+      isSelected={(d) => d.id === chosen} onOpenItem={(d) => setChosen(d.id)}
+    />
+  );
+}
+
+/** A folder that carries an `item` is outlined and marked selected like an item row; a folder without one is not selectable. */
+export const AFolderThatCarriesAnItemCanBeTheSelectedRow: Story = {
+  render: () => <RecordFolderHost />,
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Records" });
+    const rowOf = (name: string) => within(grid).getByText(name).closest<HTMLElement>('[role="row"]')!;
+    await expect(rowOf("Parent")).toHaveAttribute("aria-selected", "true");
+    await expect(rowOf("Parent")).toHaveClass("folder-tree-selected");
+    await userEvent.click(within(grid).getByRole("button", { name: "Child" }));
+    await expect(rowOf("Parent")).toHaveAttribute("aria-selected", "false");
+    await expect(rowOf("Child")).toHaveAttribute("aria-selected", "true");
+  },
+};

@@ -250,7 +250,7 @@ export function RecordListView<R extends ListedRecord, V>({
 
   const columns: DirectoryColumn<R>[] = [
     { key: "name", label: "Name", sortable: true, render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
-    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
+    { key: "code", label: "Code", sortable: true, render: (r) => <span className="text-muted" style={{ whiteSpace: "nowrap" }}><ScopedRecordCode record={r} /></span> },
     ...columnsBeforeType,
     ...(typeName
       ? [{

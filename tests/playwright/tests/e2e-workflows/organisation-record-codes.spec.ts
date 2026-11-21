@@ -108,7 +108,7 @@ test.describe("organisation-owned record codes", () => {
 
     await test.step("the group tree shows each group's code", async () => {
       await page.goto(`/projects/${pid}/modules/stakeholders/groups`);
-      const tree = page.getByRole("tree", { name: "Stakeholder groups" });
+      const tree = page.getByRole("treegrid", { name: "Stakeholder groups" });
       await expect(tree.getByText(`${world.orgCode}-SGP-001`, { exact: true })).toBeVisible();
       await expect(tree.getByText(`${project.code}-SGP-001`, { exact: true })).toBeVisible();
     });

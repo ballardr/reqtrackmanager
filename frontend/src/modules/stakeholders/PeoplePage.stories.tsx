@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
 import type { EffectivePersonaType, Persona, Stakeholder, StakeholderGroup } from "./types";
@@ -79,7 +79,7 @@ const withPeopleRoute: Decorator = (Story, context) => {
 const meta: Meta<typeof PeoplePage> = {
   title: "Modules/Stakeholders/PeoplePage",
   component: PeoplePage,
-  decorators: [withPeopleRoute, withToast()],
+  decorators: [withPeopleRoute, withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 
