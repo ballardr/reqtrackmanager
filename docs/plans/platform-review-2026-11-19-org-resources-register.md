@@ -63,7 +63,7 @@ The plan counted five modules; the code has four, with nine sections.
 | Context and Strategy | Strategy, Future State, Guiding Principle | Organisation-owned records | Resources |
 | Stakeholders | Personas, Stakeholders, Stakeholder Groups | Organisation-owned records | Resources |
 | Product Feedback | Request inbox | Organisation-owned records | Resources |
-| Compliance | By standard, Outstanding | Status tables computed from project assessments | Resources (**Decided by: User**, against the proposal to keep figures on the Overview) |
+| Compliance | By standard, Outstanding | Status tables computed from project assessments | Resources (**Decided by: User**, against the proposal to keep figures on the Overview); **moved on 2026-11-21 to tabs of the Standards page** ([compliance register](platform-review-2026-11-19-compliance-register.md)) |
 
 Dashboards stay on the Overview, with Manage dashboards, Reports and the Files and Settings icon links.
 
@@ -81,7 +81,6 @@ flowchart TB
         R4["Architecture elements and collections"]
         R5["Decision templates"]
         R6["Reports: layouts, packs, snippets, configuration"]
-        R7["Compliance: by standard, outstanding"]
         R8["Tags"]
     end
     subgraph ST["Organisation Settings"]
@@ -102,7 +101,7 @@ flowchart TB
 ## Behaviour to preserve in phases 8 and 9
 
 - Every moved section keeps its endpoint permission; the page decides nothing about access.
-- Old `/orgs/:id/overview/:section` and `/orgs/:id/admin/:group/:section` addresses redirect, including those used by notification targets, search results and saved bookmarks.
+- Old `/orgs/:id/overview/:section` and `/orgs/:id/admin/:group/:section` addresses redirected in the first build; the redirects were removed on 2026-11-21 (**Decided by: User**, see `docs/decisions.md`, phase 25).
 - A person who cannot use a section is not offered it (module enablement and sub-component filtering as today).
 
 ## Sign-off

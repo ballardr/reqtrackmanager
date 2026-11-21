@@ -5,7 +5,7 @@ import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
 import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -98,7 +98,6 @@ import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useFederatedModules } from "../hooks/useFederatedModules";
 import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu";
-import { findMovedOrgAdminPath } from "../modules/orgResources";
 import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
@@ -220,7 +219,6 @@ export function OrgAdminPage() {
   const run = useMutation();
   const strings = useStrings();
   const { orgId, group: groupParam, section: sectionParam } = useParams<{ orgId: string; group?: string; section?: string }>();
-  const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
@@ -1713,10 +1711,6 @@ export function OrgAdminPage() {
     setImportMergeResolutions({});
     setImportMergeError(null);
   }
-
-  // A section that now lives on Org Resources (Reports, Tags, a module's record lists) keeps its old address working.
-  const movedTo = orgId ? findMovedOrgAdminPath(orgId, groupParam, sectionParam, CORE_ORG_ADMIN_GROUP_KEYS) : null;
-  if (movedTo) return <Navigate to={`${movedTo}${location.search}${location.hash}`} replace />;
 
   const orgIsDisabled = loadError?.toLowerCase().includes("disabled") ?? false;
 

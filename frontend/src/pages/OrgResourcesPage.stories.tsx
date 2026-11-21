@@ -4,8 +4,8 @@
  * a two-section group and a section tied to a sub-component, so the page is exercised without depending on any real
  * module. Nothing renders a fixture unless a story's mock reports its module as enabled.
  *
- * The router decorator mounts both the Org Resources route and the Organisation Overview route and prints the current
- * address, so a redirect is asserted by where the person ends up.
+ * The router decorator mounts the Org Resources route and prints the current address, so a redirect is asserted by
+ * where the person ends up.
  */
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -16,8 +16,6 @@ import type { OrgEnabledModule, Organization } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
-import { OrgAdminPage } from "./OrgAdminPage";
-import { OrgOverviewPage } from "./OrgOverviewPage";
 import { OrgResourcesPage } from "./OrgResourcesPage";
 
 const ORG_ID = "org-1";
@@ -83,7 +81,6 @@ function mockApis(options: { modules?: OrgEnabledModule[]; subComponentOff?: boo
     if (path === `/api/v1/orgs/${ORG_ID}/tags`) return buildVocabulary({ own_mode: null });
     if (path === `/api/v1/orgs/${ORG_ID}/tags/usage`) return buildUsage();
     if (path === "/api/v1/orgs?mine=true") return options.siblingOrg ? [org, { ...org, id: "org-2", name: "Globex Corporation" }] : [org];
-    // The Overview page mounted by the redirect story requests more before it redirects; nothing there is asserted.
     return [];
   });
   spyOn(api, "post").mockImplementation(async () => ({ results: {} }));
@@ -99,8 +96,6 @@ const withRoutes: Decorator = (Story, context) => (
   <MemoryRouter initialEntries={[(context.parameters.initialPath as string | undefined) ?? `/orgs/${ORG_ID}/resources`]}>
     <Routes>
       <Route path="/orgs/:orgId/resources/:group?/:section?" element={<Story />} />
-      <Route path="/orgs/:orgId/overview/:group?" element={<OrgOverviewPage />} />
-      <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
     </Routes>
     <LocationProbe />
   </MemoryRouter>
@@ -251,49 +246,6 @@ export const ThePageNeverAsksForTheAdministratorOnlyModuleList: Story = {
     const paths = (api.get as unknown as { mock: { calls: string[][] } }).mock.calls.map((c) => c[0]);
     await expect(paths.some((p) => p.endsWith("/modules") || p.includes("/subcomponents"))).toBe(false);
     await expect(paths).toContain(`/api/v1/orgs/${ORG_ID}/enabled-modules`);
-  },
-};
-
-/** The Organisation Overview address a section used to have redirects here, keeping the query string. */
-export const AnEarlierOverviewAddressRedirectsKeepingTheQuery: Story = {
-  parameters: { initialPath: `/orgs/${ORG_ID}/overview/fixture-plain?filter=open` },
-  beforeEach: () => mockApis(),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(await canvas.findByText(`Fixture records for org ${ORG_ID}`)).toBeInTheDocument();
-    await expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/fixture-plain?filter=open`);
-  },
-};
-
-/** The Organisation Settings addresses of what moved here redirect, keeping the query string: Reports and Tags by their
- * key, and a module's record list by its section key, alone or under the group it had in Settings. */
-export const EarlierSettingsAddressesRedirectKeepingTheQuery: Story = {
-  parameters: { initialPath: `/orgs/${ORG_ID}/admin/reports?tab=packs` },
-  beforeEach: () => mockApis(),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/reports?tab=packs`));
-    await expect(await canvas.findByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
-  },
-};
-
-export const ASettingsTagsAddressRedirects: Story = {
-  parameters: { initialPath: `/orgs/${ORG_ID}/admin/tags` },
-  beforeEach: () => mockApis(),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/tags`));
-    await expect(await canvas.findByRole("table", { name: "Tags" })).toBeInTheDocument();
-  },
-};
-
-export const AModuleSectionUnderItsOldSettingsGroupRedirects: Story = {
-  parameters: { initialPath: `/orgs/${ORG_ID}/admin/old-group/fixture-plain` },
-  beforeEach: () => mockApis(),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(probe(canvas)).toHaveTextContent(`/orgs/${ORG_ID}/resources/fixture-plain`));
-    await expect(await canvas.findByText(`Fixture records for org ${ORG_ID}`)).toBeInTheDocument();
   },
 };
 

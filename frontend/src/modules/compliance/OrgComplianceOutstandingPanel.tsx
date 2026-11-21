@@ -1,8 +1,8 @@
 /**
  * Module: modules/compliance/OrgComplianceOutstandingPanel
  *
- * The org-wide counterpart to `OutstandingPanel.tsx` (the
- * per-project "what remains outstanding" summary) — §22's own explicit
+ * The Outstanding tab of the Standards page (`StandardsTabs.tsx`; `ComplianceStatusPage.tsx` hosts it): the org-wide
+ * counterpart to `OutstandingPanel.tsx` (the per-project "what remains outstanding" summary) — §22's own explicit
  * list of things a Compliance Manager must be able to identify across
  * every project at once: Non-Compliant requirements, outstanding Required
  * Actions, expired/expiring evidence, overdue compliance reviews, and
@@ -15,8 +15,8 @@
  * Read-only by design, mirroring `OutstandingPanel`'s own posture — acting
  * on a row happens on the linked project's own Compliance page.
  *
- * A "Category"/"Evidence status" filter pair reads an
- * initial value off `?category=`/`?validity=` so `OrgComplianceWidgets.tsx`'s
+ * A "Category"/"Evidence status" filter pair is kept in
+ * `?category=`/`?validity=` (as is every other filter) so `OrgComplianceWidgets.tsx`'s
  * top-grid tiles ("Projects with outstanding actions," "...expired
  * evidence," "...evidence approaching expiry," "...overdue compliance
  * reviews," "Assessments awaiting approval") can link straight to the one
@@ -31,12 +31,8 @@
  * Real filtering sits on top of the category picker: Project,
  * Standard, Standard version, and (once a single standard is picked)
  * Sub-section — following `OrgComplianceStandardsPanel.tsx`'s own
- * client-side-derived-options pattern — and moves the filter panel from a
- * `layout="top"` bar to the standard `layout="side"` sidebar (`side-grid`),
- * per `FilterPanel.tsx`'s own documented placement rule: `"top"` is for
- * wide, many-column *tables*, and this panel is a stack of card sections,
- * exactly the shape `OrgComplianceStandardsPanel` already uses `"side"`
- * for. Standard/Standard version/Sub-section only affect the four
+ * client-side-derived-options pattern — in the side filter panel of `ListPageLayout`, the
+ * placement a stack of card sections takes (`FilterPanel.tsx`'s own placement rule). Standard/Standard version/Sub-section only affect the four
  * requirement-adjacent sections (Non-compliant, Pending approval,
  * Outstanding actions, Reviews) — `Evidence` isn't scoped to a standard at
  * all in the data model (an evidence row can be linked to requirements
@@ -58,11 +54,11 @@
  * aren't passed through.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
-import { PageActions } from "../../components/PageActions";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -83,35 +79,38 @@ import {
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useStrings } from "../../context/TerminologyContext";
+import { t } from "../../i18n/strings";
+import { useUrlChoice, useUrlText } from "../../hooks/useUrlFilter";
+import type { ComplianceStatusFrame } from "./StandardsTabs";
 import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 import { markdownPlainText } from "../../utils/markdownPlain";
 
 type Category = "" | "non_compliant" | "pending" | "actions" | "evidence" | "reviews";
 type EvidenceValidityFilter = "" | Extract<ComplianceEvidenceValidityState, "expired" | "expiring_soon">;
 
-const CATEGORIES: Category[] = ["non_compliant", "pending", "actions", "evidence", "reviews"];
-const EVIDENCE_VALIDITY_FILTERS: EvidenceValidityFilter[] = ["expired", "expiring_soon"];
+const CATEGORIES: Exclude<Category, "">[] = ["non_compliant", "pending", "actions", "evidence", "reviews"];
+const EVIDENCE_VALIDITY_FILTERS: Exclude<EvidenceValidityFilter, "">[] = ["expired", "expiring_soon"];
 
 function ProjectLink({ projectId, projectName }: { projectId: string; projectName: string }) {
   return <Link to={`/projects/${projectId}/modules/compliance`}>{projectName}</Link>;
 }
 
-export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
+/**
+ * @param orgId The organisation whose outstanding items are shown.
+ * @param frame The Standards page's title-row parts (tab strip, tab panel attributes, Organisation filter).
+ */
+export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string; frame: ComplianceStatusFrame }) {
   const strings = useStrings();
   const { showToast } = useToast();
-  const [searchParams] = useSearchParams();
-  const [category, setCategory] = useState<Category>(() => {
-    const initial = searchParams.get("category");
-    return initial && CATEGORIES.includes(initial as Category) ? (initial as Category) : "";
-  });
-  const [evidenceValidity, setEvidenceValidity] = useState<EvidenceValidityFilter>(() => {
-    const initial = searchParams.get("validity");
-    return initial && EVIDENCE_VALIDITY_FILTERS.includes(initial as EvidenceValidityFilter) ? (initial as EvidenceValidityFilter) : "";
-  });
-  const [projectFilter, setProjectFilter] = useState("");
-  const [standardFilter, setStandardFilter] = useState("");
-  const [versionFilter, setVersionFilter] = useState("");
-  const [subSectionFilter, setSubSectionFilter] = useState("");
+  // Every filter is in the URL, so the view comes back as it was left after a visit to a project's page, and the
+  // summary widget's tiles open it already narrowed (`?category=evidence&validity=expired`).
+  const [category, setCategory] = useUrlChoice<Exclude<Category, "">>("category", CATEGORIES);
+  const [evidenceValidity, setEvidenceValidity] = useUrlChoice<Exclude<EvidenceValidityFilter, "">>("validity", EVIDENCE_VALIDITY_FILTERS);
+  const [projectFilter, setProjectFilter] = useUrlText("project");
+  const [standardFilter, setStandardFilter] = useUrlText("standard");
+  const [versionFilter, setVersionFilter] = useUrlText("version");
+  const [subSectionFilter, setSubSectionFilter] = useUrlText("section");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [requirementsById, setRequirementsById] = useState<Map<string, ComplianceRequirement>>(new Map());
   const [nonCompliant, setNonCompliant] = useState<OrgNonCompliantRequirement[] | null>(null);
   const [pending, setPending] = useState<OrgPendingApproval[] | null>(null);
@@ -134,7 +133,10 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
         setExpiringEvidence(ee);
         setReviewsDue(rd);
       })
-      .catch((err) => showToast(toErrorMessage(err, "Could not load organisation outstanding items."), "error"));
+      .catch((err) => {
+        setLoadFailed(true);
+        showToast(toErrorMessage(err, "Could not load organisation outstanding items."), "error");
+      });
   }, [orgId, showToast]);
 
   // Sub-section options come from every version of the selected standard's
@@ -244,8 +246,17 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  if (nonCompliant === null || pending === null || outstandingActions === null || expiringEvidence === null || reviewsDue === null) {
-    return <Spinner />;
+  const loading =
+    nonCompliant === null || pending === null || outstandingActions === null || expiringEvidence === null || reviewsDue === null;
+  if (loading) {
+    return (
+      <ListPageLayout
+        title={t().standardsPage.title} tabs={frame.tabs} contentProps={frame.contentProps} ready={false}
+        filter={<FilterPanel sectionKey="orgCompliance.outstanding">{frame.orgFilter}</FilterPanel>}
+      >
+        {loadFailed ? <p className="text-muted">{t().standardsPage.noStatusAccess}</p> : <Spinner />}
+      </ListPageLayout>
+    );
   }
 
   const filteredNonCompliant = nonCompliant.filter(
@@ -270,12 +281,71 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
         ? "Evidence expiring soon"
         : "Evidence expired or expiring";
 
+  const filter = (
+    <FilterPanel sectionKey="orgCompliance.outstanding">
+      {frame.orgFilter}
+
+        <FilterSelect
+          label="Category"
+          value={category}
+          onChange={setCategory}
+          allLabel="All categories"
+          options={[{ value: "non_compliant", label: "Non-compliant requirements" }, { value: "pending", label: "Pending approval" }, { value: "actions", label: "Outstanding required actions" }, { value: "evidence", label: "Evidence expired or expiring" }, { value: "reviews", label: "Reviews due or overdue" }]}
+        />
+        <FilterSelect
+          label="Evidence status"
+          value={evidenceValidity}
+          onChange={setEvidenceValidity}
+          allLabel="All"
+          options={[{ value: "expired", label: "Expired" }, { value: "expiring_soon", label: "Expiring soon" }]}
+          disabled={category !== "" && category !== "evidence"}
+        />
+        <FilterSelect
+          label={strings.filters.project}
+          value={projectFilter}
+          onChange={setProjectFilter}
+          allLabel={strings.filters.allProjects}
+          options={projects.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standard}
+          value={standardFilter}
+          onChange={(v) => {
+              setStandardFilter(v);
+              setVersionFilter("");
+              setSubSectionFilter("");
+            }}
+          allLabel="All standards"
+          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standardVersion}
+          value={versionFilter}
+          onChange={setVersionFilter}
+          allLabel="All versions"
+          options={versions.map((v) => ({ value: v.id, label: v.label }))}
+          disabled={!standardFilter}
+        />
+        {standardFilter && (
+          <FilterSelect
+            label={COMPLIANCE_FILTER_LABEL.subSection}
+            value={subSectionFilter}
+            onChange={setSubSectionFilter}
+            allLabel="All sub-sections"
+            options={subSections.map((s) => ({ value: s.id, label: s.reference ? `${s.reference} — ${s.name}` : s.name }))}
+          />
+        )}
+    </FilterPanel>
+  );
+
   return (
-    <div className="side-grid">
-      <div className="stack">
-        <PageActions>
-          <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
-        </PageActions>
+    <ListPageLayout
+      title={t().standardsPage.title}
+      actions={<ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />}
+      tabs={frame.tabs}
+      contentProps={frame.contentProps}
+      filter={filter}
+    >
         {(category === "" || category === "non_compliant") && (
           <section className="card stack">
             <h3 style={{ margin: 0 }}>Non-compliant requirements ({filteredNonCompliant.length})</h3>
@@ -366,60 +436,6 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
             )}
           </section>
         )}
-      </div>
-
-      <FilterPanel sectionKey="orgCompliance.outstanding">
-        <FilterSelect
-          label="Category"
-          value={category}
-          onChange={setCategory}
-          allLabel="All categories"
-          options={[{ value: "non_compliant", label: "Non-compliant requirements" }, { value: "pending", label: "Pending approval" }, { value: "actions", label: "Outstanding required actions" }, { value: "evidence", label: "Evidence expired or expiring" }, { value: "reviews", label: "Reviews due or overdue" }]}
-        />
-        <FilterSelect
-          label="Evidence status"
-          value={evidenceValidity}
-          onChange={setEvidenceValidity}
-          allLabel="All"
-          options={[{ value: "expired", label: "Expired" }, { value: "expiring_soon", label: "Expiring soon" }]}
-          disabled={category !== "" && category !== "evidence"}
-        />
-        <FilterSelect
-          label={strings.filters.project}
-          value={projectFilter}
-          onChange={setProjectFilter}
-          allLabel={strings.filters.allProjects}
-          options={projects.map((p) => ({ value: p.id, label: p.name }))}
-        />
-        <FilterSelect
-          label={COMPLIANCE_FILTER_LABEL.standard}
-          value={standardFilter}
-          onChange={(v) => {
-              setStandardFilter(v);
-              setVersionFilter("");
-              setSubSectionFilter("");
-            }}
-          allLabel="All standards"
-          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
-        />
-        <FilterSelect
-          label={COMPLIANCE_FILTER_LABEL.standardVersion}
-          value={versionFilter}
-          onChange={setVersionFilter}
-          allLabel="All versions"
-          options={versions.map((v) => ({ value: v.id, label: v.label }))}
-          disabled={!standardFilter}
-        />
-        {standardFilter && (
-          <FilterSelect
-            label={COMPLIANCE_FILTER_LABEL.subSection}
-            value={subSectionFilter}
-            onChange={setSubSectionFilter}
-            allLabel="All sub-sections"
-            options={subSections.map((s) => ({ value: s.id, label: s.reference ? `${s.reference} — ${s.name}` : s.name }))}
-          />
-        )}
-      </FilterPanel>
-    </div>
+    </ListPageLayout>
   );
 }

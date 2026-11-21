@@ -15,3 +15,26 @@ export function projectCompliancePath(projectId: string, tab?: "standards" | "ev
 export function evidencePath(projectId: string, evidenceId: string): string {
   return `/projects/${projectId}/modules/compliance/evidence/${evidenceId}`;
 }
+
+/** The views of the Standards page: the standards list and the two organisation-wide status tabs. */
+export type StandardsView = "standards" | "by-standard" | "outstanding";
+
+/** Matches the address of a status tab (`/standards/by-standard`, `/standards/outstanding`). */
+export const STANDARDS_STATUS_PATH = /^\/standards\/(by-standard|outstanding)\/?$/;
+
+/** Matches a standard's own workspace (`/standards/:standardId...`), never the settings or a status tab; capture 1 is the standard id. */
+export const STANDARD_WORKSPACE_PATH = /^\/standards\/(?!(?:settings|by-standard|outstanding)(?:\/|$))([^/]+)/;
+
+/**
+ * The address of a Standards page view.
+ *
+ * @param view The view.
+ * @param params Query parameters (a status tab reads `org` and its own filters from them); empty values are left out.
+ */
+export function standardsViewPath(view: StandardsView, params: Record<string, string | undefined> = {}): string {
+  const base = view === "standards" ? "/standards" : `/standards/${view}`;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
+  const text = query.toString();
+  return text ? `${base}?${text}` : base;
+}

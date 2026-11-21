@@ -44,7 +44,14 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "../../context/AuthContext";
 import * as complianceApi from "./api";
 
-let cachedVisible = false;
+interface Snapshot extends complianceApi.ComplianceNavVisibility {
+  /** False until the first answer for the current user arrives (a failed request counts as an answer). */
+  loaded: boolean;
+}
+
+const NOT_LOADED: Snapshot = { visible: false, status_organization_ids: [], loaded: false };
+const NOT_VISIBLE: Snapshot = { ...NOT_LOADED, loaded: true };
+let cached: Snapshot = NOT_LOADED;
 let cachedForUserId: string | null = null;
 let fetchInFlightForUserId: string | null = null;
 const listeners = new Set<() => void>();
@@ -58,10 +65,10 @@ function fetchFor(userId: string): void {
   complianceApi
     .getNavVisibility()
     .then((r) => {
-      cachedVisible = r.visible;
+      cached = { ...r, loaded: true };
     })
     .catch(() => {
-      cachedVisible = false;
+      cached = NOT_VISIBLE;
     })
     .finally(() => {
       cachedForUserId = userId;
@@ -72,9 +79,9 @@ function fetchFor(userId: string): void {
 
 function ensureFetchedFor(userId: string | null): void {
   if (userId === null) {
-    if (cachedForUserId !== null || cachedVisible) {
+    if (cachedForUserId !== null || cached.visible) {
       cachedForUserId = null;
-      cachedVisible = false;
+      cached = NOT_LOADED;
       notify();
     }
     return;
@@ -88,8 +95,8 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-function getSnapshot(): boolean {
-  return cachedVisible;
+function getSnapshot(): Snapshot {
+  return cached;
 }
 
 /** Forces a refetch for the current session's user and notifies every
@@ -100,7 +107,7 @@ export function refreshComplianceNavVisibility(): void {
   fetchFor(cachedForUserId);
 }
 
-export function useComplianceNavVisibility(): boolean {
+function useCachedVisibility(): Snapshot {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   // A `useEffect`, not a direct call during render — triggering the lazy
@@ -112,4 +119,20 @@ export function useComplianceNavVisibility(): boolean {
     ensureFetchedFor(userId);
   }, [userId]);
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/** Whether the current user sees the "Compliance Standards" nav entry (and so the page's Standards tab). */
+export function useComplianceNavVisibility(): boolean {
+  return useCachedVisibility().visible;
+}
+
+/**
+ * The organisations where the current user may read the organisation-wide status views (the Standards page's By
+ * standard and Outstanding tabs).
+ *
+ * @returns `ids`: empty while loading and for a person who can only read standards; `loaded`: whether the answer is in.
+ */
+export function useComplianceStatusOrganizations(): { ids: readonly string[]; loaded: boolean } {
+  const { status_organization_ids: ids, loaded } = useCachedVisibility();
+  return { ids, loaded };
 }

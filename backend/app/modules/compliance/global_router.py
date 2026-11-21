@@ -104,6 +104,11 @@ def get_nav_visibility(
       union direct `compliance_manager` grant), or
     - that org has at least one non-archived `ComplianceStandard`.
 
+    `status_organization_ids` lists the organisations (of those, compliance enabled) where the caller may read the
+    organisation-wide status views, the Compliance Manager gate those endpoints enforce (a manager, an organisation
+    administrator or a server administrator): the Standards page offers its By standard and Outstanding tabs, and
+    its Organisation filter, from it. Only the caller's own grants are listed.
+
     A caller with no org memberships at all gets `False` — there is no org
     to find a `True` condition in, regardless of server-admin status,
     matching how every other module-gated surface in this codebase treats
@@ -118,13 +123,17 @@ def get_nav_visibility(
         select(UserOrgRole.organization_id).distinct().where(UserOrgRole.user_id == current_user.id)
     ).all()
 
+    visible = False
+    status_organization_ids: list[UUID] = []
     for organization_id in org_ids:
         if not is_module_enabled(db, organization_id, _MODULE_KEY):
             continue
-        if current_user.is_server_admin:
-            return ComplianceNavVisibilityOut(visible=True)
-        if current_user.id in get_effective_compliance_managers(db, organization_id):
-            return ComplianceNavVisibilityOut(visible=True)
+        if current_user.is_server_admin or current_user.id in get_effective_compliance_managers(db, organization_id):
+            visible = True
+            status_organization_ids.append(organization_id)
+            continue
+        if visible:
+            continue
         has_standard = (
             db.scalar(
                 select(ComplianceStandard.id)
@@ -136,10 +145,9 @@ def get_nav_visibility(
             )
             is not None
         )
-        if has_standard:
-            return ComplianceNavVisibilityOut(visible=True)
+        visible = visible or has_standard
 
-    return ComplianceNavVisibilityOut(visible=False)
+    return ComplianceNavVisibilityOut(visible=visible, status_organization_ids=status_organization_ids)
 
 
 @router.get("/standards/{standard_id}", response_model=ComplianceStandardOut)

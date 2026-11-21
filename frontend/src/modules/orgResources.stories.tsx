@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, within } from "storybook/test";
 
-import { collectOrgResourceSections, CORE_ORG_RESOURCE_GROUP_KEYS, findMovedOrgAdminPath, findOrgResourceSectionPath, orgResourcesPath } from "./orgResources";
+import { collectOrgResourceSections, CORE_ORG_RESOURCE_GROUP_KEYS, orgResourcesPath } from "./orgResources";
 import { installedModules } from "./registry";
 import type { OrgAdminSectionDef, TierAModuleDefinition } from "./types";
 
@@ -74,23 +74,13 @@ export const CollidingSectionsAreDropped: Story = {
   },
 };
 
-/** Addresses: the page, a section by key, and the full address of a section across every installed module. */
+/** Addresses: the page and a section by key. */
 export const AddressesAreStable: Story = {
-  args: {
-    value: (() => {
-      const real = installedModules.flatMap((m) => m.orgResourceSections ?? []);
-      return [
-        orgResourcesPath("o1"), orgResourcesPath("o1", "x"),
-        findOrgResourceSectionPath("o1", real[0]?.key ?? ""), findOrgResourceSectionPath("o1", "no-such-section"),
-      ];
-    })(),
-  },
+  args: { value: [orgResourcesPath("o1"), orgResourcesPath("o1", "x")] },
   play: async ({ canvasElement }) => {
-    const [page, bySection, found, missing] = read(canvasElement);
+    const [page, bySection] = read(canvasElement);
     await expect(page).toBe("/orgs/o1/resources");
     await expect(bySection).toBe("/orgs/o1/resources/x");
-    await expect(found).toMatch(/^\/orgs\/o1\/resources\/.+/);
-    await expect(missing).toBeNull();
   },
 };
 
@@ -113,37 +103,6 @@ export const InstalledModuleSectionsDoNotCollide: Story = {
   },
 };
 
-/** An earlier Settings address redirects when its section moved: a core section by its key, a module section by its key
- * (alone or under its old group), and never an address Settings still owns. */
-export const MovedSettingsAddressesRedirect: Story = {
-  args: {
-    value: (() => {
-      const moved = installedModules.flatMap((m) => m.orgResourceSections ?? [])[0]?.key ?? "";
-      const settings = installedModules.flatMap((m) => m.orgAdminSections ?? [])[0]?.key ?? "";
-      const core = ["overview", "users"];
-      return {
-        reports: findMovedOrgAdminPath("o1", "reports", undefined, core),
-        tags: findMovedOrgAdminPath("o1", "tags", undefined, core),
-        moduleAlone: findMovedOrgAdminPath("o1", moved, undefined, core),
-        moduleUnderOldGroup: findMovedOrgAdminPath("o1", "old-group", moved, core),
-        settingsCore: findMovedOrgAdminPath("o1", "users", undefined, core),
-        settingsModule: findMovedOrgAdminPath("o1", settings, undefined, core),
-        bare: findMovedOrgAdminPath("o1", undefined, undefined, core),
-        unknown: findMovedOrgAdminPath("o1", "no-such-section", undefined, core),
-        moved,
-      };
-    })(),
-  },
-  play: async ({ canvasElement }) => {
-    const r = read(canvasElement);
-    await expect(r.reports).toBe("/orgs/o1/resources/reports");
-    await expect(r.tags).toBe("/orgs/o1/resources/tags");
-    await expect(r.moduleAlone).toMatch(new RegExp(`^/orgs/o1/resources/.*${r.moved}$`));
-    await expect(r.moduleUnderOldGroup).toBe(r.moduleAlone);
-    for (const kept of [r.settingsCore, r.settingsModule, r.bare, r.unknown]) await expect(kept).toBeNull();
-  },
-};
-
 /** Settings and Resources never share a key or a group key, so a moved address cannot swallow a Settings one, and no
  * module section uses a key core reserves for Reports or Tags. */
 export const SettingsAndResourcesKeysAreDisjoint: Story = {
@@ -156,5 +115,24 @@ export const SettingsAndResourcesKeysAreDisjoint: Story = {
   },
   play: async ({ canvasElement }) => {
     await expect(read(canvasElement)).toEqual({ shared: [], reserved: [] });
+  },
+};
+
+/** The Compliance status views have one home: tabs of the Standards page, so the module contributes no Org Resources
+ * section, and each tab has a route of its own. */
+export const ComplianceStatusViewsAreStandardsTabsOnly: Story = {
+  args: {
+    value: (() => {
+      const compliance = installedModules.find((m) => m.key === "compliance");
+      return {
+        resourceSections: (compliance?.orgResourceSections ?? []).map((s) => s.key),
+        routes: (compliance?.globalRoutes ?? []).map((r) => r.path).filter((path) => path.startsWith("/standards/")).sort(),
+      };
+    })(),
+  },
+  play: async ({ canvasElement }) => {
+    const r = read(canvasElement);
+    await expect(r.resourceSections).toEqual([]);
+    await expect(r.routes).toEqual(expect.arrayContaining(["/standards/by-standard", "/standards/outstanding"]));
   },
 };

@@ -1,6 +1,8 @@
 /**
  * Module: modules/compliance/OrgComplianceStandardsPanel
  *
+ * The By standard tab of the Standards page (`StandardsTabs.tsx`; `ComplianceStatusPage.tsx` hosts it).
+ *
  * §22's "Organisation Compliance View" table — the org-wide "Standard |
  * Projects | Compliant | Non-Compliant | In Progress" summary, grouped
  * client-side (mirroring `api.ts::buildRequirementTree`'s
@@ -61,11 +63,11 @@
  */
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
-import { PageActions } from "../../components/PageActions";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -78,6 +80,9 @@ import {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { useStrings } from "../../context/TerminologyContext";
+import { t } from "../../i18n/strings";
+import { useUrlChoice, useUrlText } from "../../hooks/useUrlFilter";
+import type { ComplianceStatusFrame } from "./StandardsTabs";
 import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 
 type GroupBy = "standard" | "project";
@@ -142,19 +147,23 @@ function groupByVersion(rows: ProjectComplianceStatus[]): VersionGroup[] {
 
 const COMPLIANCE_OVERALL_STATES = Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[];
 
-export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
+/**
+ * @param orgId The organisation whose assignments are shown.
+ * @param frame The Standards page's title-row parts (tab strip, tab panel attributes, Organisation filter).
+ */
+export function OrgComplianceStandardsPanel({ orgId, frame }: { orgId: string; frame: ComplianceStatusFrame }) {
   const strings = useStrings();
   const { showToast } = useToast();
-  const [searchParams] = useSearchParams();
   const [statusRows, setStatusRows] = useState<ProjectComplianceStatus[] | null>(null);
-  const [groupBy, setGroupBy] = useState<GroupBy>(() => (searchParams.get("groupBy") === "project" ? "project" : "standard"));
-  const [standardFilter, setStandardFilter] = useState("");
-  const [versionFilter, setVersionFilter] = useState("");
-  const [projectFilter, setProjectFilter] = useState("");
-  const [stateFilter, setStateFilter] = useState<ComplianceOverallState | "">(() => {
-    const initial = searchParams.get("state");
-    return initial && COMPLIANCE_OVERALL_STATES.includes(initial as ComplianceOverallState) ? (initial as ComplianceOverallState) : "";
-  });
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Every filter is in the URL, so the view comes back as it was left after a visit to a project's page, and the
+  // summary widget's tiles can open it already narrowed (`?groupBy=project&state=non_compliant`).
+  const [groupByChoice, setGroupBy] = useUrlChoice<GroupBy>("groupBy", ["standard", "project"]);
+  const groupBy: GroupBy = groupByChoice || "standard";
+  const [standardFilter, setStandardFilter] = useUrlText("standard");
+  const [versionFilter, setVersionFilter] = useUrlText("version");
+  const [projectFilter, setProjectFilter] = useUrlText("project");
+  const [stateFilter, setStateFilter] = useUrlChoice<ComplianceOverallState>("state", COMPLIANCE_OVERALL_STATES);
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
   const [expandedVersionKeys, setExpandedVersionKeys] = useState<Set<string>>(new Set());
 
@@ -162,7 +171,10 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     complianceApi
       .listOrgProjectComplianceStatus(orgId)
       .then(setStatusRows)
-      .catch((err) => showToast(toErrorMessage(err, "Could not load organisation compliance status."), "error"));
+      .catch((err) => {
+        setLoadFailed(true);
+        showToast(toErrorMessage(err, "Could not load organisation compliance status."), "error");
+      });
   }, [orgId, showToast]);
 
   const standards = useMemo(() => {
@@ -239,14 +251,70 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  if (statusRows === null) return <Spinner />;
+  const filter = (
+    <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows?.length ?? 0}>
+      {frame.orgFilter}
+
+        <FilterSelect
+          label={strings.filters.groupBy}
+          value={groupBy}
+          onChange={(v) => {
+              setGroupBy(v === "standard" ? "" : v);
+              // Different group keys (project ids vs standard ids) can
+              // coincidentally overlap in value; simplest to just start
+              // collapsed again rather than risk a stale expand carrying
+              // over onto an unrelated group under the new pivot.
+              setExpandedGroupKeys(new Set());
+            }}
+          options={[{ value: "standard", label: "Standard" }, { value: "project", label: "Project" }]}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standard}
+          value={standardFilter}
+          onChange={(v) => {
+              setStandardFilter(v);
+              setVersionFilter("");
+            }}
+          allLabel="All standards"
+          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standardVersion}
+          value={versionFilter}
+          onChange={setVersionFilter}
+          allLabel="All versions"
+          options={versions.map((v) => ({ value: v.id, label: v.label }))}
+        />
+        <FilterSelect
+          label={strings.filters.project}
+          value={projectFilter}
+          onChange={setProjectFilter}
+          allLabel={strings.filters.allProjects}
+          options={projects.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <FilterSelect
+          label="Compliance state"
+          value={stateFilter}
+          onChange={setStateFilter}
+          allLabel="All states"
+          options={(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => ({ value: state, label: COMPLIANCE_OVERALL_STATE_LABEL[state] }))}
+        />
+    </FilterPanel>
+  );
 
   return (
-    <div className="side-grid">
-      <div className="stack">
-        <PageActions>
-          <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
-        </PageActions>
+    <ListPageLayout
+      title={t().standardsPage.title}
+      actions={<ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />}
+      tabs={frame.tabs}
+      contentProps={frame.contentProps}
+      filter={filter}
+      ready={statusRows !== null}
+    >
+      {statusRows === null ? (
+        loadFailed ? <p className="text-muted">{t().standardsPage.noStatusAccess}</p> : <Spinner />
+      ) : (
+        <>
         {groups.length === 0 ? (
           <p className="text-muted">No compliance assignments match these filters.</p>
         ) : (
@@ -393,54 +461,8 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
             </table>
           </div>
         )}
-      </div>
-
-      <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows.length}>
-        <FilterSelect
-          label={strings.filters.groupBy}
-          value={groupBy}
-          onChange={(v) => {
-              setGroupBy(v);
-              // Different group keys (project ids vs standard ids) can
-              // coincidentally overlap in value; simplest to just start
-              // collapsed again rather than risk a stale expand carrying
-              // over onto an unrelated group under the new pivot.
-              setExpandedGroupKeys(new Set());
-            }}
-          options={[{ value: "standard", label: "Standard" }, { value: "project", label: "Project" }]}
-        />
-        <FilterSelect
-          label={COMPLIANCE_FILTER_LABEL.standard}
-          value={standardFilter}
-          onChange={(v) => {
-              setStandardFilter(v);
-              setVersionFilter("");
-            }}
-          allLabel="All standards"
-          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
-        />
-        <FilterSelect
-          label={COMPLIANCE_FILTER_LABEL.standardVersion}
-          value={versionFilter}
-          onChange={setVersionFilter}
-          allLabel="All versions"
-          options={versions.map((v) => ({ value: v.id, label: v.label }))}
-        />
-        <FilterSelect
-          label={strings.filters.project}
-          value={projectFilter}
-          onChange={setProjectFilter}
-          allLabel={strings.filters.allProjects}
-          options={projects.map((p) => ({ value: p.id, label: p.name }))}
-        />
-        <FilterSelect
-          label="Compliance state"
-          value={stateFilter}
-          onChange={setStateFilter}
-          allLabel="All states"
-          options={(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => ({ value: state, label: COMPLIANCE_OVERALL_STATE_LABEL[state] }))}
-        />
-      </FilterPanel>
-    </div>
+        </>
+      )}
+    </ListPageLayout>
   );
 }

@@ -90,7 +90,7 @@ function mockLayoutApis(
     // during the story regardless of which module made it. `false` keeps
     // every existing story's nav-rail assertions unaffected; visibility
     // itself is covered by `ComplianceGlobalNavLink.stories.tsx` instead.
-    if (path === "/api/v1/compliance/nav-visibility") return { visible: false };
+    if (path === "/api/v1/compliance/nav-visibility") return { visible: false, status_organization_ids: [] };
     throw new Error(`unmocked path in Layout story: ${path}`);
   });
 }

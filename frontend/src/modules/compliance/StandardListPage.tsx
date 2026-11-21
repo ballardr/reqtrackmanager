@@ -25,6 +25,9 @@
  * row opens `/standards/:standardId`. A "Compliance settings" link per org
  * opens `/standards/settings/:orgId` (`ComplianceSettingsPage.tsx`).
  *
+ * The page is the first tab of the Standards page: when the person may read compliance status, By standard and
+ * Outstanding sit beside it (`StandardsTabs.tsx`).
+ *
  * Standard-level import/export: the "New standard"
  * button is a `SplitButtonTrigger`: the default action opens
  * `StandardFormModal`, and an "Import standard" alternative
@@ -40,6 +43,7 @@
  */
 import { Plus } from "lucide-react";
 import { Spinner } from "../../components/Spinner";
+import { t } from "../../i18n/strings";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -56,6 +60,7 @@ import type { StandardAcrossOrgsRow } from "./api";
 import { refreshComplianceNavVisibility } from "./useComplianceNavVisibility";
 import { StandardFormModal, type EditableStandardFieldValues, type StandardFormValues } from "./StandardFormModal";
 import { StandardImportModal } from "./StandardImportModal";
+import { useStandardsTabs } from "./StandardsTabs";
 import type { StandardImportResult } from "./types";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
@@ -76,6 +81,7 @@ export function StandardListPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [viewMode, setViewMode] = useViewMode("standards");
+  const { tabs, contentProps } = useStandardsTabs("standards");
 
   async function reload() {
     setRows(null);
@@ -133,7 +139,9 @@ export function StandardListPage() {
   return (
     <div className="stack">
       <ListPageLayout
-        title="Compliance Standards"
+        title={t().standardsPage.title}
+        tabs={tabs}
+        contentProps={contentProps}
         actions={
           <SplitButtonTrigger
             icon={<Plus size={16} />}

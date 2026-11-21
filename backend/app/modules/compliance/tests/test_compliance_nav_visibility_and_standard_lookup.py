@@ -98,7 +98,7 @@ def test_nav_visibility_false_for_plain_member_with_no_role_and_no_standards(cli
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(member_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": False}
+    assert resp.json() == {"visible": False, "status_organization_ids": []}
 
 
 def test_nav_visibility_true_for_compliance_manager_grant(client, admin_token, org_id):
@@ -108,7 +108,7 @@ def test_nav_visibility_true_for_compliance_manager_grant(client, admin_token, o
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(manager_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": True}
+    assert resp.json() == {"visible": True, "status_organization_ids": [str(org_id)]}
 
 
 def test_nav_visibility_true_for_org_admin(client, admin_token, org_id):
@@ -117,7 +117,7 @@ def test_nav_visibility_true_for_org_admin(client, admin_token, org_id):
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(org_admin_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": True}
+    assert resp.json() == {"visible": True, "status_organization_ids": [str(org_id)]}
 
 
 def test_nav_visibility_true_for_server_admin_via_plain_membership(client, admin_token, org_id):
@@ -133,7 +133,9 @@ def test_nav_visibility_true_for_server_admin_via_plain_membership(client, admin
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(admin_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": True}
+    body = resp.json()
+    assert body["visible"] is True
+    assert str(second_org["id"]) in body["status_organization_ids"]
 
 
 def test_nav_visibility_false_for_user_with_no_org_memberships_at_all(client, admin_token, org_id):
@@ -149,7 +151,19 @@ def test_nav_visibility_false_for_user_with_no_org_memberships_at_all(client, ad
 
     resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(orgless_token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"visible": False}
+    assert resp.json() == {"visible": False, "status_organization_ids": []}
+
+
+def test_nav_visibility_lists_no_status_organisation_for_a_member_who_only_sees_a_standard(client, admin_token, org_id):
+    """A plain member sees the Standards tab because the organisation has a standard, but holds no role that reads the
+    status views, so the By standard and Outstanding tabs (and the Organisation filter) must not list the organisation."""
+    _create_standard(client, admin_token, org_id, reference="NAV-VIS-1", name="Visible Standard")
+    create_org_user(client, admin_token, org_id, "nav-reader@example.com", role="member")
+    reader_token = login(client, "nav-reader@example.com", "Password123!")
+
+    resp = client.get("/api/v1/compliance/nav-visibility", headers=auth_headers(reader_token))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"visible": True, "status_organization_ids": []}
 
 
 # --- standards/{id} ---------------------------------------------------------------

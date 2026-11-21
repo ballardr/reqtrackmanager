@@ -45,7 +45,12 @@ Every applicability/status/approval change is logged to the same audit trail eve
 
 For each assignment, the module calculates a compliance percentage (compliant applicable requirements ÷ all applicable requirements), an overall compliance state (Compliant / Non-Compliant / In Progress / Not Applicable), and an overall approval state — kept as two separate figures, since a project can be 100% compliant while still Pending Approval. For example, an assignment with 50 applicable requirements, 42 of them Compliant and the rest In Progress, reports 84% and an overall state of In Progress — its approval state is tracked and shown alongside that, independently, rather than folded into the same number.
 
-A project's own Compliance page shows this per assigned standard, with drill-downs into Non-Compliant requirements, outstanding required actions, expiring/expired evidence, and reviews due. An organisation's Compliance overview rolls the same figures up across every project, with the equivalent cross-project drill-downs and a "standards with the most outstanding issues" summary.
+A project's own Compliance page shows this per assigned standard, with drill-downs into Non-Compliant requirements, outstanding required actions, expiring/expired evidence, and reviews due. The organisation-wide figures are on the Organisation Overview (the Compliance summary and Compliance attention widgets, including a "standards with the most outstanding issues" summary) and on two tabs of the **Compliance Standards** page, beside the list of standards:
+
+- **By standard** shows each standard with the projects assigned to it and their states, or each project with its standards.
+- **Outstanding** lists the Non-Compliant requirements, assessments awaiting approval, outstanding required actions, expired or expiring evidence, and reviews due or overdue, across every project.
+
+Both tabs are filtered, and exported, from the side panel. They are offered to a person who holds the Compliance Manager role (or is an organisation administrator) in at least one organisation; a person in several organisations chooses the organisation with the **Organisation** filter. The tiles of the Compliance summary widget open the matching tab already filtered.
 
 ## Where this fits
 

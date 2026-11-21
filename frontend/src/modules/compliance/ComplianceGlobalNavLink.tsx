@@ -7,6 +7,8 @@
  * `useComplianceNavVisibility()` says so, since this tab is niche (unlike
  * Projects, which `Layout.tsx` always shows unconditionally).
  *
+ * The link also stays active on the Standards page's By standard and Outstanding tabs, which are addresses of their own.
+ *
  * Uses `NavRailLink`, exported from `components/Layout.tsx` for exactly
  * this kind of module-owned reuse, so this link renders indistinguishably
  * from every core rail entry.
@@ -14,10 +16,16 @@
 import { ListChecks } from "lucide-react";
 
 import { NavRailLink } from "../../components/NavRailLink";
+import { STANDARDS_STATUS_PATH } from "./paths";
 import { useComplianceNavVisibility } from "./useComplianceNavVisibility";
 
 export function ComplianceGlobalNavLink({ railCollapsed }: { railCollapsed: boolean }) {
   const visible = useComplianceNavVisibility();
   if (!visible) return null;
-  return <NavRailLink to="/standards" exact label="Compliance Standards" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />;
+  return (
+    <NavRailLink
+      to="/standards" exact alsoActiveOn={STANDARDS_STATUS_PATH} label="Compliance Standards"
+      icon={<ListChecks size={16} />} railCollapsed={railCollapsed}
+    />
+  );
 }

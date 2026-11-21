@@ -6,17 +6,11 @@
  * - `collectOrgResourceSections`: the sections of enabled modules (and enabled sub-components), minus any whose key
  *   would collide with another section or a reserved core group.
  * - `orgResourcesPath`: the address of the page, or of one section by its key.
- * - `findOrgResourceSectionPath`: the address of a section by key across every installed module, enablement
- *   ignored, so an earlier address (the Organisation Overview section it used to be) can be redirected.
- * - `findMovedOrgAdminPath`: the Resources address that replaces an Organisation Settings address for a section that
- *   moved (the Reports group, Tags and the record lists modules used to contribute to Settings).
  *
  * It reads only the generic section shape and the registry and names no module, so core never imports a module's
  * directory for Org Resources. A section is addressed `/orgs/:orgId/resources/:group/:section` (see
- * `adminMenu.ts`), the same grouping and redirect rules as the administration pages.
+ * `adminMenu.ts`), the same grouping rules as the administration pages.
  */
-import { adminSectionPath } from "./adminMenu";
-import { installedModules } from "./registry";
 import type { OrgAdminSectionDef, TierAModuleDefinition } from "./types";
 
 /** Section keys the Org Resources page itself declares (the organisation's report resources and tag vocabulary); a
@@ -28,55 +22,6 @@ export const CORE_ORG_RESOURCE_GROUP_KEYS: readonly string[] = ["reports", "tags
 export function orgResourcesPath(orgId: string, sectionKey?: string): string {
   const base = `/orgs/${orgId}/resources`;
   return sectionKey ? `${base}/${sectionKey}` : base;
-}
-
-/**
- * The full Org Resources address of the section with this key, found across every installed module.
- *
- * @param orgId The organisation the address is for.
- * @param sectionKey The section key (an earlier Overview address used it as its `:group` segment).
- * @returns The address, or `null` when no installed module declares the key.
- */
-export function findOrgResourceSectionPath(orgId: string, sectionKey: string): string | null {
-  for (const module of installedModules) {
-    const section = (module.orgResourceSections ?? []).find((s) => s.key === sectionKey);
-    if (section) return adminSectionPath(orgResourcesPath(orgId), section);
-  }
-  return null;
-}
-
-/**
- * The Org Resources address that replaces an earlier Organisation Settings address, for a section that has moved.
- *
- * Settings addresses are `/admin/:group/:section?`. A moved core section answers to its own key (`/admin/reports`); a
- * moved module section is found by its section key across every installed module, enablement ignored, so a bookmark
- * keeps working and the Resources page then decides whether to offer it. An address that Settings still owns (a core
- * group, or a key some module still contributes to `orgAdminSections`) is never redirected.
- *
- * @param orgId The organisation the address is for.
- * @param groupParam The `:group` segment of the Settings address, if any.
- * @param sectionParam The `:section` segment, if any.
- * @param settingsCoreKeys The group keys Organisation Settings declares itself.
- * @returns The Resources address, or `null` when the address is not a moved one.
- */
-export function findMovedOrgAdminPath(
-  orgId: string,
-  groupParam: string | undefined,
-  sectionParam: string | undefined,
-  settingsCoreKeys: readonly string[],
-): string | null {
-  if (!groupParam || settingsCoreKeys.includes(groupParam)) return null;
-  if (!sectionParam && CORE_ORG_RESOURCE_GROUP_KEYS.includes(groupParam)) return orgResourcesPath(orgId, groupParam);
-  const key = sectionParam ?? groupParam;
-  const settingsKeys = new Set<string>();
-  for (const module of installedModules) {
-    for (const section of module.orgAdminSections ?? []) {
-      settingsKeys.add(section.key);
-      if (section.group) settingsKeys.add(section.group.key);
-    }
-  }
-  if (settingsKeys.has(key)) return null;
-  return findOrgResourceSectionPath(orgId, key);
 }
 
 /**

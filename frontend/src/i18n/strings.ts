@@ -1300,23 +1300,6 @@ const en = {
     // disable toggle table any module gets, not a home for a specific
     // module's own content).
     groupCompliance: "Compliance",
-    // The org-
-    // wide compliance dashboard/reporting surface (§22/§23), separate flat
-    // top-level groups from "Compliance" above (standards management)
-    // rather than a fourth tab on that group's panel — the style guide's
-    // own "split into more flat groups, don't nest" addendum, since these
-    // are different jobs for a different (if overlapping) audience.
-    // Originally one combined "Compliance overview" group with its own
-    // internal `Tabs` (Dashboard / Compliance by standard / Outstanding);
-    // The same addendum applies a second time, one level deeper —
-    // that inner `Tabs` was itself a second, redundant navigation
-    // mechanism nested inside the `ResourceMenu` group's own left-hand
-    // menu, so the three tabs became three flat top-level
-    // `orgResourceSections` entries instead (`ResourceMenu → Tabs →
-    // content`, three deep, collapsed to `ResourceMenu → content`, two).
-    groupComplianceDashboard: "Compliance dashboard",
-    groupComplianceByStandard: "Compliance by standard",
-    groupComplianceOutstanding: "Outstanding compliance items",
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
@@ -4787,6 +4770,16 @@ const en = {
   // Org Resources: the page of records and content an organisation owns and shares with its projects.
   orgResources: {
     menuAria: "Organisation resources",
+  },
+  // The Standards page (Compliance module): the standards list and the two organisation-wide status tabs.
+  standardsPage: {
+    title: "Compliance Standards",
+    tabStandards: "Standards",
+    tabByStandard: "By standard",
+    tabOutstanding: "Outstanding",
+    organisationHelp: (orgLabel: string) =>
+      `The ${orgLabel} whose compliance is shown. Only those where you hold the Compliance Manager role are listed.`,
+    noStatusAccess: "Compliance status is available to compliance managers.",
   },
   orgDashboards: {
     noun: "dashboard",

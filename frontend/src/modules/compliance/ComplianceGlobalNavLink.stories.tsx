@@ -40,7 +40,7 @@ type Story = StoryObj<typeof ComplianceGlobalNavLink>;
 export const VisibleWhenGranted: Story = {
   decorators: [withAuth(buildUser()), withRouter("/projects")],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue({ visible: true });
+    spyOn(api, "get").mockResolvedValue({ visible: true, status_organization_ids: [] });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -51,7 +51,7 @@ export const VisibleWhenGranted: Story = {
 export const HiddenWhenNotVisible: Story = {
   decorators: [withAuth(buildUser()), withRouter("/projects")],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue({ visible: false });
+    spyOn(api, "get").mockResolvedValue({ visible: false, status_organization_ids: [] });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -72,7 +72,7 @@ export const HiddenWhenNotVisible: Story = {
 export const ActiveOnTheStandardsListPath: Story = {
   decorators: [withAuth(buildUser()), withRouter("/standards")],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue({ visible: true });
+    spyOn(api, "get").mockResolvedValue({ visible: true, status_organization_ids: [] });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -86,11 +86,24 @@ export const ActiveOnTheStandardsListPath: Story = {
 export const NotActiveOnAStandardsSubRoute: Story = {
   decorators: [withAuth(buildUser()), withRouter("/standards/standard-1")],
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue({ visible: true });
+    spyOn(api, "get").mockResolvedValue({ visible: true, status_organization_ids: [] });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const link = await waitFor(() => canvas.getByRole("link", { name: "Compliance Standards" }));
     await expect(link).not.toHaveClass("active");
+  },
+};
+
+/** The status tabs have addresses of their own, and the link stays active on them. */
+export const ActiveOnAStatusTab: Story = {
+  decorators: [withAuth(buildUser()), withRouter("/standards/outstanding?org=org-1")],
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ visible: true, status_organization_ids: ["org-1"] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await waitFor(() => canvas.getByRole("link", { name: "Compliance Standards" }));
+    await expect(link).toHaveClass("active");
   },
 };

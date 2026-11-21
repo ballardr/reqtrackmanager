@@ -34,8 +34,11 @@ function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStanda
  * backend listing endpoint exists, so the page fans out `listStandards`
  * per org (`GET /orgs?mine=true`) — mocked here per org id below.
  */
-function mockStandardListApis(orgs: Organization[], standardsByOrg: Record<string, ComplianceStandard[]>) {
+function mockStandardListApis(
+  orgs: Organization[], standardsByOrg: Record<string, ComplianceStandard[]>, statusOrganizationIds: string[] = [],
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === "/api/v1/compliance/nav-visibility") return { visible: true, status_organization_ids: statusOrganizationIds };
     if (path === "/api/v1/orgs?mine=true") return orgs;
     const match = /\/api\/v1\/orgs\/([^/]+)\/modules\/compliance\/standards/.exec(path);
     if (match) return standardsByOrg[match[1]] ?? [];
@@ -183,5 +186,30 @@ export const ImportStandardViaSplitButtonMenu: Story = {
     await waitFor(() => expect(api.postFile).toHaveBeenCalledWith(
       "/api/v1/orgs/org-1/modules/compliance/standards/import", file, undefined
     ));
+  },
+};
+
+// The nav-visibility answer is cached per user id, so each of these stories signs in its own user.
+
+/** A person who may read compliance status gets By standard and Outstanding beside the list. */
+export const StatusTabsOfferedToACompliancePersonWhoReadsStatus: Story = {
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false }))],
+  beforeEach: () => mockStandardListApis([org()], { "org-1": [standard()] }, ["org-1"]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("tab", { name: "By standard" })).toBeInTheDocument());
+    await expect(canvas.getByRole("tab", { name: "Standards" })).toHaveAttribute("aria-selected", "true");
+    await expect(canvas.getByRole("tab", { name: "Outstanding" })).toBeInTheDocument();
+  },
+};
+
+/** A person who can only read standards sees the list alone, with no tab strip. */
+export const NoTabsForAPersonWhoOnlyReadsStandards: Story = {
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false }))],
+  beforeEach: () => mockStandardListApis([org()], { "org-1": [standard()] }, []),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
+    await expect(canvas.queryByRole("tab")).not.toBeInTheDocument();
   },
 };

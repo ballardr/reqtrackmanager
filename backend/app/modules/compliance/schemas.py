@@ -1143,14 +1143,18 @@ class ComplianceNavVisibilityOut(BaseModel):
     """Response of `GET /api/v1/compliance/nav-visibility` (`global_router.
     py`) — whether the caller should see the top-level "Compliance
     Standards" nav-rail tab at all.
-    Deliberately a single boolean, not a per-org breakdown: the frontend
-    hook this feeds gates one nav item, not a list, and a per-org
-    breakdown would leak which specific orgs have compliance-relevant data
-    to a caller who may not otherwise be able to see into all of them."""
+    `visible` is a single boolean, not a per-org breakdown: the nav item is
+    one entry, and a breakdown of standards would leak which specific orgs
+    have compliance-relevant data to a caller who may not otherwise see into
+    all of them. `status_organization_ids` is the exception, and lists only
+    the organisations where the caller's own role lets them read the
+    organisation-wide status views (the Standards page's By standard and
+    Outstanding tabs)."""
 
     model_config = {"from_attributes": True}
 
     visible: bool
+    status_organization_ids: list[UUID] = []
 
 
 # --- standard-scoped RBAC (standards_manager/standards_contributor) ----

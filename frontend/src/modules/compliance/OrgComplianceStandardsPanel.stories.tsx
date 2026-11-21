@@ -42,13 +42,13 @@ function mockApis(rows: ProjectComplianceStatus[]) {
   });
 }
 
-const DEFAULT_PATH = "/orgs/org-1/resources/compliance-by-standard";
+const DEFAULT_PATH = "/standards/by-standard?org=org-1";
 
 const meta: Meta<typeof OrgComplianceStandardsPanel> = {
   title: "Modules/Compliance/OrgComplianceStandardsPanel",
   component: OrgComplianceStandardsPanel,
   decorators: [withToast()],
-  args: { orgId: ORG_ID },
+  args: { orgId: ORG_ID, frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined } },
 };
 export default meta;
 
@@ -146,7 +146,7 @@ export const FilterByProject: Story = {
  * "Non-compliant projects" tile can link straight into a pre-filtered,
  * project-pivoted view. */
 export const GroupedByProjectViaUrl: Story = {
-  decorators: [withRouter(`${DEFAULT_PATH}?groupBy=project&state=non_compliant`)],
+  decorators: [withRouter(`${DEFAULT_PATH}&groupBy=project&state=non_compliant`)],
   beforeEach: () => mockApis(STATUS_ROWS),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

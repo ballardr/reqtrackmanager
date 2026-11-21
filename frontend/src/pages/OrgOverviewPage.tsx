@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Files, LayoutDashboard, Settings } from "lucide-react";
-import { Link, Navigate, useLocation, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Organization, OrgDashboard, OrgOverviewStats } from "../api/types";
@@ -16,7 +16,6 @@ import { Spinner } from "../components/Spinner";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useReportCatalogue } from "../hooks/useReportCatalogue";
 import { useReportPackEntries } from "../hooks/useReportPackEntries";
-import { findOrgResourceSectionPath } from "../modules/orgResources";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 
 /** Prefix of the route segment (`/orgs/:orgId/overview/:group`) that names a dashboard page; a section key never starts with it. */
@@ -39,8 +38,7 @@ const OVERVIEW_GROUP_KEY = "overview";
  * organisation's administrators added, each optionally limited to chosen people or groups). A dashboard is the same
  * widget grid the project overview uses (`OrgDashboardView`); modules contribute widgets to it through
  * `orgOverviewWidgets`, so this core page never imports a module. The organisation's records and tables are on Org
- * Resources (`OrgResourcesPage`); an earlier address of one of those sections here redirects to it, keeping the query
- * string. Any other unknown address returns to the Overview.
+ * Resources (`OrgResourcesPage`). An unknown address returns to the Overview.
  *
  * Actions in the title row: a section's own actions (its Export, a dashboard's Customise) are portalled in through
  * `PageActions`, just before Reports, so they stay level with Reports and the group does not shift when switching;
@@ -52,7 +50,6 @@ const OVERVIEW_GROUP_KEY = "overview";
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
-  const location = useLocation();
   const strings = useStrings();
   const orgLabelCap = useOrgLabelCapitalized();
   const [org, setOrg] = useState<Organization | null>(null);
@@ -75,9 +72,6 @@ export function OrgOverviewPage() {
   useLoadOnChange(loadDashboards, [orgId]);
 
   if (!orgId) return null;
-  // A section that moved to Org Resources keeps working at its earlier address (bookmarks, saved links).
-  const movedTo = groupParam === undefined ? null : findOrgResourceSectionPath(orgId, groupParam);
-  if (movedTo) return <Navigate to={`${movedTo}${location.search}${location.hash}`} replace />;
   if (!org || !stats || !dashboards || reportCatalogue.loading || reportPacks.loading) return <Spinner />;
 
   const hasReports = reportCatalogue.entries.length > 0 || reportPacks.entries.length > 0;

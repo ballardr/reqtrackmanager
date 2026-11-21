@@ -38,13 +38,13 @@ function mockApis(overrides: {
   });
 }
 
-const DEFAULT_PATH = "/orgs/org-1/resources/compliance-outstanding";
+const DEFAULT_PATH = "/standards/outstanding?org=org-1";
 
 const meta: Meta<typeof OrgComplianceOutstandingPanel> = {
   title: "Modules/Compliance/OrgComplianceOutstandingPanel",
   component: OrgComplianceOutstandingPanel,
   decorators: [withToast()],
-  args: { orgId: ORG_ID },
+  args: { orgId: ORG_ID, frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined } },
 };
 export default meta;
 
@@ -131,7 +131,7 @@ export const WithOutstandingItems: Story = {
  * evidence" tile links here with `?category=evidence&validity=expired`, so
  * only the Evidence section renders, narrowed to the expired row alone. */
 export const CategoryFilteredViaUrl: Story = {
-  decorators: [withRouter(`${DEFAULT_PATH}?category=evidence&validity=expired`)],
+  decorators: [withRouter(`${DEFAULT_PATH}&category=evidence&validity=expired`)],
   beforeEach: () =>
     mockApis({
       nonCompliant: NON_COMPLIANT, pending: PENDING, outstandingActions: OUTSTANDING_ACTIONS,

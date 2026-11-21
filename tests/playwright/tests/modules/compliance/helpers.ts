@@ -61,3 +61,22 @@ export async function selectFilterOption(page: Page, fieldLabel: string, optionL
   // caption and the select, so the select is found by its accessible name rather than as the caption's sibling.
   await page.getByRole("combobox", { name: fieldLabel, exact: true }).selectOption({ label: optionLabel });
 }
+
+/**
+ * Opens one of the Standards page's organisation-wide status tabs (By standard, Outstanding) for an organisation, from
+ * the Standards page, the way a person reaches it. The Organisation filter is present only for a person who may read
+ * the status of more than one organisation, so it is used when it is there.
+ *
+ * @param page The page.
+ * @param tab The tab's label.
+ * @param orgName The organisation whose status to show.
+ */
+export async function openComplianceStatusTab(page: Page, tab: "By standard" | "Outstanding", orgName: string): Promise<void> {
+  await page.goto("/standards");
+  await page.getByRole("tab", { name: tab, exact: true }).click();
+  await expect(page.getByRole("tab", { name: tab, exact: true })).toHaveAttribute("aria-selected", "true");
+  // The page draws its heading once the organisations are known, so the filter (if any) is there by then.
+  await expect(page.getByRole("heading", { name: "Compliance Standards" })).toBeVisible();
+  const organisation = page.getByRole("combobox", { name: "Organisation", exact: true });
+  if (await organisation.count()) await organisation.selectOption({ label: orgName });
+}

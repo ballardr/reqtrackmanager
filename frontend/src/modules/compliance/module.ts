@@ -6,14 +6,13 @@ import {
   COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL, COMPLIANCE_STANDARD_VERSION_STATUS_LABEL, COMPLIANCE_STATUS_LABEL,
 } from "./types";
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
+import { ComplianceStatusPage } from "./ComplianceStatusPage";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
 import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
 import { CreateEvidenceDialog } from "./CreateEvidenceDialog";
 import { EvidenceDetailPage } from "./EvidenceDetailPage";
-import { evidencePath, projectCompliancePath } from "./paths";
+import { evidencePath, projectCompliancePath, STANDARD_WORKSPACE_PATH } from "./paths";
 import { OrgComplianceAttentionWidget, OrgComplianceSummaryWidget } from "./OrgComplianceWidgets";
-import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
-import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
 import { StandardListPage } from "./StandardListPage";
 import { StandardNavSection } from "./StandardNavSection";
@@ -46,22 +45,14 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * `orgAdminSections` is empty. Standards, action types and mapping types
  * management lives on the top-level `/standards` nav-rail tab
  * (`StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
- * `ComplianceSettingsPage.tsx`), and the cross-project view lives on Org Resources (`orgResourceSections`) and as
- * Organisation Overview widgets (`orgOverviewWidgets`) below. Labels are read from `i18n/strings.ts`'s own `t()` (the same static
+ * `ComplianceSettingsPage.tsx`), and the cross-project views live on that same page as its By standard and Outstanding
+ * tabs (`ComplianceStatusPage.tsx`) and as Organisation Overview widgets (`orgOverviewWidgets`) below. Labels are read from `i18n/strings.ts`'s own `t()` (the same static
  * English table `useStrings()` layers terminology substitution on top of)
  * rather than duplicated as literals here — none of this module's group
  * labels contain `{term}` tokens, so the plain, unsubstituted `t()` call
  * (this file isn't a component and can't call the `useStrings()` hook)
  * already returns the exact same string `OrgAdminPage`/`OrgResourcesPage`
  * would resolve for every other group's label.
- *
- * `orgResourceSections` (`modules/types.ts`): two flat top-level entries
- * (Compliance by standard / Outstanding) on `pages/OrgResourcesPage.tsx`, each rendering its
- * panel component directly, using the same `{key, label, render({orgId})}`
- * shape `orgAdminSections` established. There is deliberately no inner `Tabs`:
- * `ResourceMenu → Tabs → content` was one navigation layer too many (the style
- * guide's own "when one resource-menu group outgrows itself, split it into
- * more flat top-level groups — don't add nested sub-navigation" addendum).
  *
  * `orgOverviewWidgets` (`modules/types.ts`): the compliance posture as two
  * widgets for the organisation's overview dashboards (a summary of the headline
@@ -80,6 +71,7 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  *
  * `globalRoutes` (`modules/types.ts`): this module's always-
  * mounted top-level page routes — `StandardListPage.tsx` (`/standards`),
+ * `ComplianceStatusPage.tsx` (`/standards/by-standard`, `/standards/outstanding`),
  * `StandardWorkspacePage.tsx` (`/standards/:standardId/:section?/
  * :versionId?` — the trailing `:versionId?` lets a specific
  * version be deep-linked/opened directly from `StandardNavSection.tsx`'s
@@ -112,7 +104,6 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * section for them. A clause belongs to an organisation-level standard, so its
  * path is the Standards page rather than a project page.
  */
-const strings = t();
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "compliance",
@@ -147,20 +138,10 @@ export const moduleDefinition: TierAModuleDefinition = {
   ],
   globalRoutes: [
     { path: "/standards", element: createElement(StandardListPage) },
+    { path: "/standards/by-standard", element: createElement(ComplianceStatusPage, { view: "by-standard" }) },
+    { path: "/standards/outstanding", element: createElement(ComplianceStatusPage, { view: "outstanding" }) },
     { path: "/standards/settings/:orgId/:group?", element: createElement(ComplianceSettingsPage) },
     { path: "/standards/:standardId/:section?/:versionId?", element: createElement(StandardWorkspacePage) },
-  ],
-  orgResourceSections: [
-    {
-      key: "compliance-by-standard",
-      label: strings.orgAdmin.groupComplianceByStandard,
-      render: ({ orgId }) => createElement(OrgComplianceStandardsPanel, { orgId }),
-    },
-    {
-      key: "compliance-outstanding",
-      label: strings.orgAdmin.groupComplianceOutstanding,
-      render: ({ orgId }) => createElement(OrgComplianceOutstandingPanel, { orgId }),
-    },
   ],
   orgOverviewWidgets: [
     { key: "summary", render: ({ orgId }) => createElement(OrgComplianceSummaryWidget, { orgId }) },
@@ -179,7 +160,7 @@ export const moduleDefinition: TierAModuleDefinition = {
       // — that path also starts with `/standards/` but names an org, not a
       // standard, and has no "Standard" nav section of its own (it's a
       // `ResourceMenu` page, not a project-like drill-down).
-      matchPath: /^\/standards\/(?!settings\/)([^/]+)/,
+      matchPath: STANDARD_WORKSPACE_PATH,
       render: ({ entityId, railCollapsed }) => createElement(StandardNavSection, { entityId, railCollapsed }),
     },
   ],
@@ -189,7 +170,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "standard",
       label: t().search.scopeThisStandard,
-      match: (pathname) => /^\/standards\/(?!settings\/)([^/]+)/.exec(pathname)?.[1] ?? null,
+      match: (pathname) => STANDARD_WORKSPACE_PATH.exec(pathname)?.[1] ?? null,
     },
   ],
   // One tile per assigned standard, as an ordinary overview widget (placed, sized, hidden or removed like any other).

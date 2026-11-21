@@ -110,7 +110,13 @@ function projectBase(projectId: string): string {
 // `getStandardById` resolves a standard's owning org from its own id,
 // mirroring how a project's own id already resolves to its org).
 
-export function getNavVisibility(): Promise<{ visible: boolean }> {
+/** `status_organization_ids`: the organisations where the caller may read the organisation-wide status views. */
+export interface ComplianceNavVisibility {
+  visible: boolean;
+  status_organization_ids: string[];
+}
+
+export function getNavVisibility(): Promise<ComplianceNavVisibility> {
   return api.get(`/api/v1/compliance/nav-visibility`);
 }
 
@@ -126,6 +132,11 @@ export function listStandards(orgId: string, includeArchived = false): Promise<C
 
 export interface StandardAcrossOrgsRow extends ComplianceStandard {
   organization_name: string;
+}
+
+/** The active organisations the caller belongs to. */
+export async function listMyActiveOrganizations(): Promise<Organization[]> {
+  return (await api.get<Organization[]>("/api/v1/orgs?mine=true")).filter((o) => o.is_active);
 }
 
 /**
@@ -144,7 +155,7 @@ export interface StandardAcrossOrgsRow extends ComplianceStandard {
 export async function listStandardsAcrossMyOrgs(
   includeArchived = false
 ): Promise<{ orgs: Organization[]; rows: StandardAcrossOrgsRow[] }> {
-  const orgs = (await api.get<Organization[]>("/api/v1/orgs?mine=true")).filter((o) => o.is_active);
+  const orgs = await listMyActiveOrganizations();
 
   const perOrg = await Promise.allSettled(
     orgs.map(async (org) => {

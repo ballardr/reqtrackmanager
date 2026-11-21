@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 24 done 2026-11-21; phases 25 to 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 25 done 2026-11-21; phases 26 and 27 not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes. Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-24 / 32 phases complete.
+25 / 32 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -17,7 +17,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 5 | Licences in the Policies area | Public read-only Licences group; separate from the policy tables | [x] |
 | 6 | Licence model: decision and change | Options paper and the user's choice (a decision gate); then the licence files, contribution terms and website page; decided 2026-11-19: AGPLv3 + commercial, CLA | [x] |
 | 7 | Org Resources: review | [Register](platform-review-2026-11-19-org-resources-register.md) classifying every Organisation Settings group and Overview section; signed off 2026-11-19: Resources holds what is shared with projects (Tags, Reports, Compliance and the module record lists) | [x] |
-| 8 | Org Resources: page and extension point | `/orgs/:orgId/resources`, registry-driven sections, redirects, navigation entry | [x] |
+| 8 | Org Resources: page and extension point | `/orgs/:orgId/resources`, registry-driven sections, navigation entry | [x] |
 | 9 | Org Resources: move sections | Move what the review approved; Organisation Settings keeps configuration only | [x] |
 | 10 | Record codes: organisation and project prefixes | Prefix per record type, project override, nested fallback; applied inside `generate_unique_code` | [x] |
 | 11 | External references: shared table | One core table keyed by record type; organisation systems; Product Feedback migrated onto it | [x] |
@@ -34,7 +34,7 @@ Source: seven review notes. Each was checked against the code before planning. F
 | 22 | Components and categories: prefix suggestion and a folder-tree page | Prefix suggested from the name and editable; the Structure page rebuilt as a collapsible tree like the report folders; the requirement component and category choice through the shared tree selector; UI review first | [x] |
 | 23 | Formatting toolbar only while a field is active | The Markdown and visual editors (and the policy editor) show their formatting buttons only while the field has focus | [x] |
 | 24 | Watching: compact, as a tab beside Activity, for users and groups | The panel leaves the top of the requirement and change request pages; empty by default with a `[+]` to add; sits in the Links and Activity card; a user can be a watcher too (raised during the phase) | [x] |
-| 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; Outstanding compliance items moves to the Overview only | [ ] |
+| 25 | Compliance: one home per view | Review of Compliance across Org Resources, its own Standards page and the Organisation Overview; signed off 2026-11-21: By standard and Outstanding become tabs of the Standards page (Organisation filter), not Resources sections or Overview widgets | [x] |
 | 26 | Stakeholder Groups page: alignment | UI review of the Org Resources page against the aligned-rows pattern, then the fixes | [ ] |
 | 27 | Tags page: creation on demand, and a style guide rule | The new-tag controls open on request; "Pattern: creation controls on demand" added to the style guide and applied to the other always-visible create forms the review finds | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 27 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
@@ -95,7 +95,7 @@ Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 2
 - **Code overrides at project level as well as organisation level** (**Decided by: User**, 2026-11-19). Resolution per record type: the project, then its nearest ancestor project that sets one, then the organisation, then the built-in default (**Decided by: Agent**: the nested-project rule applies to a sparse override map as it does to a definition table, so a child project inherits instead of silently reverting).
 - **External references as one generic shared table** (**Decided by: User**, 2026-11-19): organisation-defined systems (name, optional URL template), several references per record (system, key, optional URL), keyed by registered type string like tags and placements, so a new type needs no code. Product Feedback's own table migrates onto it (**Decided by: Agent**: leaving both is the duplicated-mechanism failure this project's rules exist to stop).
 - **Markdown for Decisions and every long-text field** (**Decided by: User**, 2026-11-19), staged as in finding 6. Stored format is Markdown source (**Decided by: Agent**).
-- **Org Resources is a page, not a project** (**Decided by: Agent**; finding 3). Old Overview section addresses redirect.
+- **Org Resources is a page, not a project** (**Decided by: Agent**; finding 3). The first build redirected the old Overview section addresses; removed 2026-11-21 (**Decided by: User**).
 - **Licences live in the Policies area but not in the policy tables** (**Decided by: Agent**): they are static, build-generated and have no author, version, audience or acknowledgement; the Policies page gains a built-in read-only "Licences" group. A consequence: the Policies page then always exists, where it today redirects away when nothing is published.
 - **One notification target resolver** (**Decided by: Agent**): the email button opens `/notifications/:id`, which resolves the target in the browser with the same function the bell uses (including module `artefactPaths`) and passes through sign-in (phase 1). The alternative, duplicating every module's route templates on the server, would drift.
 - **Return path rules** (**Decided by: Agent**): same-origin relative paths only, never an authentication route, kept in the router state and `sessionStorage` (so it survives a reload, the SSO redirect and the 2FA hand-off), used once, and it takes precedence over the landing preference.
@@ -179,7 +179,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Route `/orgs/:orgId/resources/:group?/:section?`, `ListPageLayout`-style `ResourceMenu`, navigation-rail entry beside Organisation Overview; sections from a new generic `TierAModuleDefinition.orgResourceSections` (`orgOverviewSections` is renamed, not kept beside it) filtered by module state exactly as `orgAdminSections` is; a collision check as in `OrgAdminPage`.
 - `/orgs/:orgId/overview/:section` addresses redirect to the new page; notification targets and search results that point at organisation sections are updated.
 - Tests: redirect, module gating, access, a stories-and-Playwright pass; the route table guard from phase 3 includes it.
-- As built: `OrgResourcesPage`, `modules/orgResources.ts` (collection, collision rule, address helpers), the rename to `orgResourceSections` (so the nine existing sections move here now; phase 9 moves the core groups and the two `orgAdminSections` record lists), `/org-resources` and a navigation-rail entry, redirects from the old Overview addresses keeping the query string, and the back links and Compliance widget links of the organisation record pages. The phase 3 route guard needed no change (no notification kind opens a section). Stories for the page and helpers, Playwright `org-resources.spec.ts` plus the updated `org-overview.spec.ts` (module gating, redirect, empty state). See `docs/decisions.md`.
+- As built: `OrgResourcesPage`, `modules/orgResources.ts` (collection, collision rule, address helpers), the rename to `orgResourceSections` (so the nine existing sections move here now; phase 9 moves the core groups and the two `orgAdminSections` record lists), `/org-resources` and a navigation-rail entry, redirects from the old Overview addresses keeping the query string, and the back links and Compliance widget links of the organisation record pages. The phase 3 route guard needed no change (no notification kind opens a section). The redirects from the earlier Overview addresses were removed on 2026-11-21 (phase 25). Stories for the page and helpers, Playwright `org-resources.spec.ts` plus the updated `org-overview.spec.ts` (module gating, redirect, empty state). See `docs/decisions.md`.
 
 ### Phase 9 — Org Resources: move sections
 
@@ -188,7 +188,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Move the five modules' sections, then the core groups the user approved; each keeps its permission rule; `OrgAdminPage` shrinks accordingly (extract rather than leave dead code).
 - Redirect every old settings address; update help and the nav-label registry keys; seeds.
 - Tests: each moved section reachable at its new address, old address redirects, role gating unchanged (a guard in `test_*` comparing permissions before and after).
-- As built: Reports (`OrgReportsResources`, with its own configuration form) and Tags are core sections of the page (`CORE_ORG_RESOURCE_GROUP_KEYS`); Architecture Elements and Collections and Decision Templates became `orgResourceSections`; `OrgAdminPage` dropped the two groups and the report-configuration state. Earlier Settings addresses (and `templates-reports`) redirect through `findMovedOrgAdminPath`. A defect from phase 8 was fixed on the way: the page read the administrator-only module list, so a member would have been left on the spinner; the new member-readable `GET /orgs/{id}/enabled-modules` (keys only) replaces it and also hides a section whose sub-component is off. The empty state is gone (core always contributes). The permission guard is a pair of stories (configuration hidden without administrator access, exact five-field save) and a backend test of the new endpoint, because the page decides no access and no endpoint changed. See `docs/decisions.md`.
+- As built: Reports (`OrgReportsResources`, with its own configuration form) and Tags are core sections of the page (`CORE_ORG_RESOURCE_GROUP_KEYS`); Architecture Elements and Collections and Decision Templates became `orgResourceSections`; `OrgAdminPage` dropped the two groups and the report-configuration state. The earlier Settings addresses redirected in the first build; the redirects were removed on 2026-11-21 (phase 25). A defect from phase 8 was fixed on the way: the page read the administrator-only module list, so a member would have been left on the spinner; the new member-readable `GET /orgs/{id}/enabled-modules` (keys only) replaces it and also hides a section whose sub-component is off. The empty state is gone (core always contributes). The permission guard is a pair of stories (configuration hidden without administrator access, exact five-field save) and a backend test of the new endpoint, because the page decides no access and no endpoint changed. See `docs/decisions.md`.
 
 ### Phase 10 — Record codes: organisation and project prefixes
 
@@ -409,6 +409,8 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - Docs: `docs/modules.md` compliance section, the Org Resources register (updated, not duplicated), `docs/website/` checked in phase W.
 - Tests: no section appears in both Resources and Standards for the same rows; the old Outstanding address redirects; Storybook for the Overview widget; Playwright that follows the old link and finds the item on the Overview; `orgResources.stories.tsx` and the section-key tests updated.
 
+- As built: [the register](platform-review-2026-11-19-compliance-register.md); signed off with the user 2026-11-21, which changed the expected result: the user chose **tabs of the Standards page** for both views over the Overview, and an **Organisation filter** for the organisation. `ComplianceStatusPage` (`/standards/by-standard`, `/standards/outstanding`, `?org=`), `StandardsTabs` (`useStandardsTabs`), the two panels now draw their own `ListPageLayout` with every filter in the address, `nav-visibility` returns `status_organization_ids` so only readable organisations and a status reader get the tabs, no redirect from the earlier addresses (the user had the generic redirect field removed, then the phase 8 and 9 redirects too), and the summary widget's tiles link to the tabs. The Attention widget, the standard workspace's Projects section and the settings page stay. Website: the Compliance assessing-a-project page was updated in the change. See `docs/decisions.md`.
+
 ### Phase 26 — Stakeholder Groups page: alignment
 
 **Why:** raised 2026-11-21: the Stakeholder Groups page in Org Resources (`stakeholders-org-groups`, rendered by `StakeholderGroupsPanel`) is visibly unaligned (controls, headings and rows do not line up). **Risk addressed:** an organisation-level page that looks unfinished, and a panel written without the aligned-rows pattern (which the style guide's "Pattern: aligned rows and foldable blocks in a settings panel" and the list-layout rules state). **Outcome:** the page's elements line up, and share their shape with the other Org Resources lists.
@@ -484,7 +486,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 - **Server renderer dependence (phase 17):** the renderer is a small third-party project running in the converter container; mitigated by pinning exact versions with hashes, the container's isolation, the spike's maintenance check, `pip-audit` in phase S, and the fallback decided above. Text widths can differ from a browser's by a fraction of a pixel unless the same font is used on both sides.
 - **Same engine and font on both sides:** a Mermaid upgrade, a font change or a theme change must move the frontend and the server together; the agreement test is what keeps it true.
 - **Product Feedback migration:** moves live data between tables; needs a tested, reversible migration and a backup note in the upgrade documentation.
-- **Reordering sections:** old bookmarks, saved reports and notification links to organisation sections must keep working through redirects.
+- **Moved sections:** old bookmarks to organisation sections no longer redirect (removed 2026-11-21 on the user's instruction); notification links and search results use the new addresses.
 - **Phase 18 changes how every test runs:** a shared fixture, a template database or a shard boundary can hide an ordering assumption that a serial run never exposed; mitigated by the guardrails and the shuffled and repeated passes. It is also the one phase whose benefit comes from landing early, while the others only need it before R.
 - **No performance run is planned in the phases;** phase W reviews whether a new lookup on every create and a long-text render moved a measured number, and phase C does not run load scenarios (the project decided against performance tests in CI).
 

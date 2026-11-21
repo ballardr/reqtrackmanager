@@ -1,25 +1,21 @@
 import { expect, test } from "@playwright/test";
 
-import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgResourcesGroup } from "../../e2e-workflows/helpers";
-import { createStandardWithVersion, selectFilterOption } from "./helpers";
+import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { createStandardWithVersion, openComplianceStatusTab, selectFilterOption } from "./helpers";
 
 /**
  * Job to be done: the org-level Organisation Compliance View + Dashboard (§22/§23): the compliance summary is a
- * widget on the Organisation Overview's dashboard, and "Compliance by standard" / "Outstanding compliance items" are
- * two flat `ResourceMenu` groups on the core "Org Resources" page (`/orgs/:orgId/resources`) — see
- * `frontend/src/modules/compliance/module.ts`'s `orgResourceSections` for
- * how these moved off `OrgAdminPage.tsx` (where they originally lived, as
- * one combined "Compliance overview" group), and for
- * why that group's internal `Tabs` were collapsed into three flat
- * top-level groups instead (one navigation layer too many). This spec also
- * covers the summary widget (`OrgComplianceWidgets.tsx`), which the
- * built-in dashboard shows with no click into any group required.
+ * widget on the Organisation Overview's dashboard, and "By standard" / "Outstanding" are two tabs of the Standards page
+ * (`/standards/by-standard`, `/standards/outstanding`), beside the standards list — see
+ * `frontend/src/modules/compliance/ComplianceStatusPage.tsx` for why they are there and not Org Resources sections.
+ * This spec also covers the summary widget (`OrgComplianceWidgets.tsx`), which the
+ * built-in dashboard shows with no click into any tab required.
  *
  * Covers the read/drill-down path: author and publish a standard,
  * assign it to a project and assess a requirement Non-Compliant,
  * then confirm the headline gauges, the org-wide Dashboard
- * group, the "Compliance by standard" table (with its project filter), and
- * the "Outstanding" group all surface that project/requirement, and that
+ * tab, the By standard table (with its project filter), and
+ * the Outstanding tab all surface that project/requirement, and that
  * the standard table's drill-down link actually opens the underlying
  * project's own Compliance page.
  *
@@ -101,13 +97,13 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await expect(page.getByText("Overall compliance", { exact: true })).toBeVisible();
 
     // --- Compliance summary widget: the non-compliant project count is a headline
-    // tile that drills through to "Compliance by standard"
+    // tile that drills through to the By standard tab
     //     pre-filtered/pre-pivoted to exactly the projects it counted,
     //     rather than listing them inline on the tile itself.
     const nonCompliantTile = page.getByRole("link", { name: /Non-compliant projects/ });
     await expect(nonCompliantTile).toBeVisible();
     await nonCompliantTile.click();
-    await expect(page).toHaveURL(/\/orgs\/[^/]+\/resources\/compliance-by-standard\?groupBy=project&state=non_compliant/);
+    await expect(page).toHaveURL(/\/standards\/by-standard\?org=[^&]+&groupBy=project&state=non_compliant/);
     const expandProjectButton = page.getByRole("button", { name: `Expand standards for ${PROJECT_NAMES.alpha1}`, exact: true });
     await expect(expandProjectButton).toBeVisible();
     await expandProjectButton.click();
@@ -117,23 +113,21 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await expect(page.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
 
     // --- download the organisation-wide compliance report,
-    //     behind the "Export" popover trigger (Principle 11), in the title row of the Compliance sections.
-    await selectOrgResourcesGroup(page, "Compliance by standard");
+    //     behind the "Export" popover trigger (Principle 11), in the title row of the status tabs.
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("menuitem", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toContain("compliance-by-standard-report.pdf");
 
-    // --- "Compliance by standard" group: the standard groups the project,
-    //     and drilling down opens the project's own Compliance page. The section is already open from the export step,
-    //     with the project pivot the summary tile linked to, so go through the other section to open it fresh.
-    await selectOrgResourcesGroup(page, "Outstanding compliance items");
-    await selectOrgResourcesGroup(page, "Compliance by standard");
+    // --- By standard tab: the standard groups the project, and drilling down opens the project's own Compliance
+    //     page. The tab is already open from the export step, with the project pivot the summary tile linked to, so
+    //     open it afresh from the Standards page.
+    await openComplianceStatusTab(page, "By standard", ORG_NAMES.alpha);
 
     // This panel's own Export trigger carries its active Standard
     // filter as a query param too — "export what I'm looking at" applies
-    // here the same way it does to the Outstanding group (covered in the
+    // here the same way it does to the Outstanding tab (covered in the
     // dedicated filter test below).
     await selectFilterOption(page, "Standard", `${reference} — ${standardName}`);
     const standardsReportRequestPromise = page.waitForRequest(
@@ -152,17 +146,15 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await projectLink.click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
-    // --- Outstanding group: the non-compliant requirement is listed,
+    // --- Outstanding tab: the non-compliant requirement is listed,
     //     tagged with the project it belongs to.
-    await page.goto("/org-resources");
-    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgResourcesGroup(page, "Outstanding compliance items");
+    await openComplianceStatusTab(page, "Outstanding", ORG_NAMES.alpha);
     await expect(page.getByText(requirementName)).toBeVisible();
     await expect(page.getByRole("link", { name: PROJECT_NAMES.alpha1 }).first()).toBeVisible();
   });
 
   /**
-   * "Compliance by standard"'s
+   * The By standard tab's
    * default (group-by-standard) expanded row now groups its projects by
    * `standard_version_id` first (39d), each version's projects indented a
    * level deeper (39c), rather than one flat list of projects each
@@ -224,9 +216,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await assignStandard(PROJECT_NAMES.alpha1, "v1.0");
     await assignStandard(PROJECT_NAMES.alpha2, "v2.0");
 
-    await page.goto("/org-resources");
-    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgResourcesGroup(page, "Compliance by standard");
+    await openComplianceStatusTab(page, "By standard", ORG_NAMES.alpha);
     await page.getByRole("button", { name: new RegExp(`Expand projects for ${reference}`) }).click();
 
     // More than one version behind this standard — each is its own
@@ -261,8 +251,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
   });
 
   /**
-   * The "Outstanding compliance
-   * items" group gets a real Standard/Standard version/Sub-section filter
+   * The Outstanding tab gets a real Standard/Standard version/Sub-section filter
    * set (on top of the pre-existing Category/Evidence status pair), and
    * moves its `FilterPanel` from a full-width top bar to the standard
    * right-hand sidebar (`layout="side"`), per the style guide's own
@@ -275,7 +264,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
    * confirms picking the *other* top-level requirement as the sub-section
    * filter hides it while picking its real parent keeps it.
    */
-  test("the Outstanding group's Standard/Standard version/Sub-section filters narrow rows, and its filter panel renders as a sidebar", async ({ page }) => {
+  test("the Outstanding tab's Standard/Standard version/Sub-section filters narrow rows, and its filter panel renders as a sidebar", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-ORG-FILTER-${suffix}`;
     const standardName = `E2E Org Outstanding Filter Standard ${suffix}`;
@@ -331,16 +320,14 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
 
-    // --- Outstanding group: sidebar layout, then the new filters.
-    await page.goto("/org-resources");
-    await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await selectOrgResourcesGroup(page, "Outstanding compliance items");
+    // --- Outstanding tab: sidebar layout, then the new filters.
+    await openComplianceStatusTab(page, "Outstanding", ORG_NAMES.alpha);
     await expect(page.getByText(childRequirementName)).toBeVisible();
 
     // 40a: the filter panel is the right-hand sidebar, not a full-width top
     // bar — `.filter-panel-top` must not render here at all.
     await expect(page.locator(".filter-panel-top")).toHaveCount(0);
-    await expect(page.locator(".side-grid")).toBeVisible();
+    await expect(page.locator(".list-page__filter")).toBeVisible();
 
     // 40b/40c: filtering by this standard narrows to its own rows and
     // reveals the standard-scoped "Standard version"/"Sub-section" fields.
