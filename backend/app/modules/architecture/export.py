@@ -44,9 +44,9 @@ Design decisions:
   An import re-applies each realisation through the same rule as the editor and drops, with a warning, one that no
   longer holds, and drops a box whose connection is not an outer connection of the imported diagram's scope.
 - Folders: a project's folders travel as `{kind, path, sort_order}` (parents before children) and the organisation's element
-  folders in its bundle; a record names its folder by path (`folder`), never by id. An import reuses a folder that already
-  has the path and creates the rest (also for a record whose path the folder list lacks), so a record is never dropped
-  for its folder. The folder list is template configuration; a record's path is part of the record.
+  and symbol folders in its bundle; a record, or an uploaded symbol, names its folder by path (`folder`), never by id. An
+  import reuses a folder that already has the path and creates the rest (also for a record whose path the folder list
+  lacks), so a record is never dropped for its folder. The folder list is template configuration; a record's path is part of the record.
 - Sharing: a collection and its members (element codes) travel in its owner's bundle, **grants never do**, so
   an import can never publish anything to a project or a group by itself. An organisation bundle carries the
   organisation-owned elements (ports, no tags or places, which an organisation-owned record does not have) and
@@ -299,13 +299,17 @@ def _add_rows(
 
 
 def _symbol_entries(db: Session, rows: Sequence[ArchitectureSymbol], assets: dict[UUID, FileAsset]) -> list[dict[str, Any]]:
-    """Symbol rows in bundle form: name, order and either the built-in key or the file (added to `assets`)."""
+    """Symbol rows in bundle form: name, order, folder path and either the built-in key or the file (added to `assets`)."""
+    folder_paths = folder_rules.paths_for(db, (r.folder_id for r in rows))
     files = {
         a.id: a for a in db.scalars(select(FileAsset).where(FileAsset.id.in_([r.file_asset_id for r in rows if r.file_asset_id])))
     } if any(r.file_asset_id for r in rows) else {}
     out = []
     for row in rows:
-        entry: dict[str, Any] = {"name": row.name, "sort_order": row.sort_order, "builtin_key": row.builtin_key}
+        entry: dict[str, Any] = {
+            "name": row.name, "sort_order": row.sort_order, "builtin_key": row.builtin_key,
+            "folder": folder_paths.get(row.folder_id) if row.folder_id else None,
+        }
         asset = files.get(row.file_asset_id) if row.file_asset_id else None
         if asset is not None:
             assets[asset.id] = asset
@@ -318,10 +322,12 @@ def _symbol_entries(db: Session, rows: Sequence[ArchitectureSymbol], assets: dic
 def _import_symbols(
     db: Session, entries: list[dict[str, Any]], file_bytes: dict[str, bytes], *, project_id: UUID | None,
     organization_id: UUID, actor_id: UUID, taken: set[str], warnings: BundleImportWarnings,
+    folder_importer: folder_rules.FolderImporter,
 ) -> None:
     """Recreates the bundle's symbols for one owner. A name the owner already lists is skipped; a built-in whose key is
     unknown, or an upload with no file or an unsafe one, is reported. A file is checked and sanitised again, as an upload
-    is, and stored under the importing organisation."""
+    is, and stored under the importing organisation. An upload is filed in the folder its path names (created when
+    missing); a built-in stays at the top level."""
     for entry in entries:
         name = str(entry.get("name") or "").strip()[:100]
         if not name or name.lower() in taken:
@@ -347,10 +353,22 @@ def _import_symbols(
                 db, organization_id=organization_id, uploaded_by=actor_id, filename=str(entry.get("filename") or f"{name}.svg"),
                 content_type=report_images.SVG_TYPE, data=clean,
             )
-            fields = {"file_asset_id": asset.id}
+            fields = {"file_asset_id": asset.id, "folder_id": folder_importer.ensure("symbol", entry.get("folder"))}
         SYMBOLS.create(db, project_id=project_id, organization_id=organization_id, name=name, **fields)
         taken.add(name.lower())
     db.flush()
+
+
+def _symbol_folder_importer(
+    db: Session, owner: ElementOwner, actor_id: UUID, folders: list[dict[str, Any]], warnings: BundleImportWarnings,
+) -> folder_rules.FolderImporter:
+    """A folder importer with the bundle's `symbol` folders already created, so their order is kept; the symbols are imported
+    before the rest of the folders (the types and elements name them), so these cannot wait for that pass."""
+    importer = folder_rules.FolderImporter(db, owner, actor_id, warnings)
+    for folder in folders:
+        if folder.get("kind") == "symbol":
+            importer.ensure("symbol", folder.get("path"), folder.get("sort_order"))
+    return importer
 
 
 def _symbol_lookup(
@@ -474,6 +492,9 @@ def import_org_files(
     _import_symbols(
         db, data.get(ORG_SYMBOLS_KEY, []), file_bytes, project_id=None, organization_id=org.id, actor_id=actor.id,
         taken={r.name.lower() for r in SYMBOLS.org_rows(db, org.id)}, warnings=warnings,
+        folder_importer=_symbol_folder_importer(
+            db, ElementOwner.of_organization(org), actor.id, data.get(ORG_FOLDERS_KEY, []), warnings,
+        ),
     )
 
 
@@ -1340,6 +1361,9 @@ def import_project_data(
         db, data.get(PROJECT_SYMBOLS_KEY, []), file_bytes_by_ref, project_id=project.id, organization_id=project.organization_id,
         actor_id=current_user.id,
         taken={r.name.lower() for r in SYMBOLS.resolve_effective(db, project.id, project.organization_id).rows}, warnings=warnings,
+        folder_importer=_symbol_folder_importer(
+            db, ElementOwner.of_project(project), current_user.id, data.get(FOLDERS_KEY, []), warnings,
+        ),
     )
     for name in SYMBOLS.hide_by_names(db, project.id, project.organization_id, data.get(HIDDEN_SYMBOLS_KEY, [])):
         warnings.add(f"Symbol {name!r} was hidden in the source project but the organisation has no such symbol.")

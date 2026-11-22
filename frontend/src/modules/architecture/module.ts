@@ -36,9 +36,10 @@ import { ARCHITECTURE_INACTIVE_STATUSES, ARCHITECTURE_STATUS_LABEL } from "./typ
  * something to list.
  * `linkedRecordCreators`: "Create new" element or diagram in another record's Links panel. A connection needs two elements, so it
  * is created from the Connections list or an element's page.
- * `projectAdminSections` / `orgAdminSections`: the two type vocabularies and the symbol library at each level, under
- * one "System Architecture" group. `orgResourceSections`: the organisation's own elements and collections, which
- * projects share, on Org Resources.
+ * `projectAdminSections` / `orgAdminSections`: the element types, connection types and domains at each level, and the project's
+ * symbol library (the same `SymbolLibraryPanel` the organisation's page renders), under one "System Architecture" group.
+ * `orgResourceSections`: the organisation's own elements and collections, which projects share, and its symbol library (an
+ * uploaded asset library that grows, shared with every project), on Org Resources.
  */
 
 /** The architecture settings share one expandable entry in the project and organisation admin menus. */
@@ -136,15 +137,15 @@ export const moduleDefinition: TierAModuleDefinition = {
       key: "architecture-domains", label: "Domains", group: ARCHITECTURE_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ArchitectureTypesPanel, { scope: { kind: "org", organizationId: orgId }, kind: "domain" }),
     },
-    {
-      key: "architecture-symbols", label: "Symbols", group: ARCHITECTURE_ADMIN_GROUP,
-      render: ({ orgId }) => createElement(SymbolLibraryPanel, { scope: { kind: "org", organizationId: orgId } }),
-    },
   ],
   orgResourceSections: [
     {
       key: "architecture-elements", label: "Architecture Elements and Collections",
       render: ({ orgId }) => createElement(OrgElementsPanel, { orgId }),
+    },
+    {
+      key: "architecture-symbols", label: "Architecture Symbols", subComponent: "architecture_type",
+      render: ({ orgId }) => createElement(SymbolLibraryPanel, { scope: { kind: "org", organizationId: orgId } }),
     },
   ],
 };

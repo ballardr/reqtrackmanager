@@ -50,7 +50,8 @@ Access is the rule the endpoint already enforces; this phase changes none. "Admi
 | Stakeholders | Persona Types, Stakeholder Types, Scoring | Vocabulary and scoring configuration | Settings |
 | Risk Management | Risk Types, Risk Scoring | Vocabulary and scoring configuration | Settings |
 | Product Feedback | Request Scoring, External Systems | Scoring and vocabulary configuration | Settings |
-| Architecture | Element Types, Connection Types, Domains, Symbols | Vocabularies and symbol library | Settings |
+| Architecture | Element Types, Connection Types, Domains | Vocabularies | Settings |
+| Architecture | **Symbols** | The symbol library: uploaded assets that grow, shared with projects | **Resources** (**Decided by: User**, 2026-11-22: a library that grows belongs with what the organisation owns; was Settings) |
 | Architecture | **Elements and Collections** | Organisation-owned architecture records | **Resources** (a record list in Settings today) |
 | Decisions | **Decision Templates** | Authored templates new decisions start from | **Resources** (authored content) |
 

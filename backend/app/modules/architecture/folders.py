@@ -1,11 +1,12 @@
 """
 Module: modules.architecture.folders
 
-Folders: a tree per kind (elements, connections, diagrams) that organises a list. Navigation only.
+Folders: a tree per kind (elements, connections, diagrams, symbols) that organises a list. Navigation only.
 
-A folder belongs to a project or to the organisation (`records.ElementOwner`); the organisation has element folders
-only. A record is in one folder or none (the top level). A folder has no code, is not linkable and means nothing to the
-roll-up, the resolver or a report.
+A folder belongs to a project or to the organisation (`records.ElementOwner`); the organisation has element and symbol
+folders only. A record is in one folder or none (the top level). A symbol is the one filed thing that is not a record
+(no version, no archive); the built-in symbols are seeded and shared, so they stay at the top level. A folder has no code,
+is not linkable and means nothing to the roll-up, the resolver or a report.
 
 Responsibilities:
 - Create, rename, move and delete folders (no cycle, depth cap 12, a unique name among siblings, no `/` in a name).
@@ -40,6 +41,7 @@ from app.modules.architecture.models import (
     ArchitectureDiagram,
     ArchitectureElement,
     ArchitectureFolder,
+    ArchitectureSymbol,
 )
 from app.modules.architecture.records import ElementOwner, RuleError
 from app.modules.architecture.schemas import FolderCreate, FolderOut, FolderUpdate
@@ -57,7 +59,11 @@ RECORD_MODELS: dict[str, Any] = {
     FolderKind.ELEMENT.value: ArchitectureElement,
     FolderKind.CONNECTION.value: ArchitectureConnection,
     FolderKind.DIAGRAM.value: ArchitectureDiagram,
+    FolderKind.SYMBOL.value: ArchitectureSymbol,
 }
+
+#: The kinds an organisation may own folders of (a project owns every kind).
+ORGANIZATION_KINDS = frozenset({FolderKind.ELEMENT.value, FolderKind.SYMBOL.value})
 
 
 def _owner_filter(owner: ElementOwner) -> ColumnElement[bool]:
@@ -76,14 +82,14 @@ def _audit(db: Session, folder_id: uuid.UUID, action: str, actor: User, owner: E
 
 
 def check_kind(owner: ElementOwner, kind: FolderKind | str) -> str:
-    """The kind's value, after checking the owner may have folders of it (the organisation: elements only).
+    """The kind's value, after checking the owner may have folders of it (the organisation: elements and symbols only).
 
     Raises:
         RuleError: 400 for an organisation's connection or diagram folder.
     """
     value = kind.value if isinstance(kind, FolderKind) else kind
-    if owner.project is None and value != FolderKind.ELEMENT.value:
-        raise RuleError("An organisation has element folders only.", 400)
+    if owner.project is None and value not in ORGANIZATION_KINDS:
+        raise RuleError("An organisation has element and symbol folders only.", 400)
     return value
 
 
@@ -272,6 +278,11 @@ def update_folder(
     return folder
 
 
+def _version_bump(model: Any) -> dict[str, Any]:
+    """The `version` increment a move makes on a record's row; a symbol has no version, so it adds nothing."""
+    return {"version": model.version + 1} if hasattr(model, "version") else {}
+
+
 def delete_folder(db: Session, owner: ElementOwner, actor: User, folder_id: uuid.UUID) -> None:
     """Deletes a folder; its records and sub-folders move to its parent (nothing else is deleted). The caller commits.
 
@@ -287,7 +298,7 @@ def delete_folder(db: Session, owner: ElementOwner, actor: User, folder_id: uuid
             )
     model = RECORD_MODELS[folder.kind]
     moved = affected_rows(db.execute(
-        update(model).where(model.folder_id == folder.id).values(folder_id=folder.parent_id, version=model.version + 1)
+        update(model).where(model.folder_id == folder.id).values(folder_id=folder.parent_id, **_version_bump(model))
         .execution_options(synchronize_session="fetch")
     ))
     for child in subfolders:
@@ -305,7 +316,8 @@ def move_records(
     commits. Returns how many records changed (one already there is not counted).
 
     Raises:
-        RuleError: 400 for a folder that is not the owner's of that kind, 404 for a record that is not the owner's.
+        RuleError: 400 for a folder that is not the owner's of that kind or a built-in symbol, 404 for a record that is
+            not the owner's.
     """
     value = check_kind(owner, kind)
     if folder_id is not None:
@@ -316,10 +328,13 @@ def move_records(
     owned = {r.id for r in rows if (r.project_id == owner.project_id if owner.project is not None else r.organization_id == owner.organization_id)}
     if owned != wanted:
         raise RuleError("A record to move was not found.", 404)
+    if any(getattr(r, "builtin_key", None) is not None for r in rows):
+        raise RuleError("A built-in symbol stays at the top level.", 400)
     changed = [r for r in rows if r.folder_id != folder_id]
     for row in changed:
         row.folder_id = folder_id
-        row.version += 1
+        if hasattr(row, "version"):
+            row.version += 1
     db.flush()
     if changed:
         # One event for the move (the records' own History shows the folder through its field name).
@@ -389,13 +404,13 @@ def resolve_path(db: Session, owner: ElementOwner, kind: str, path: str) -> uuid
 
 
 def record_counts(db: Session, owner: ElementOwner, kind: str) -> dict[uuid.UUID, int]:
-    """How many live records of `kind` sit directly in each folder."""
+    """How many live records (symbols: all) of `kind` sit directly in each folder."""
     model = RECORD_MODELS[kind]
     owner_column = model.project_id == owner.project.id if owner.project is not None else model.organization_id == owner.organization_id
-    rows = db.execute(
-        select(model.folder_id, func.count()).where(owner_column, model.folder_id.is_not(None), model.is_archived.is_(False))
-        .group_by(model.folder_id)
-    ).tuples()
+    query = select(model.folder_id, func.count()).where(owner_column, model.folder_id.is_not(None))
+    if hasattr(model, "is_archived"):
+        query = query.where(model.is_archived.is_(False))
+    rows = db.execute(query.group_by(model.folder_id)).tuples()
     return {folder_id: count for folder_id, count in rows if folder_id is not None}
 
 

@@ -153,6 +153,7 @@ class FolderKind(str, enum.Enum):
     ELEMENT = "element"
     CONNECTION = "connection"
     DIAGRAM = "diagram"
+    SYMBOL = "symbol"
 
 
 class StateKind(str, enum.Enum):

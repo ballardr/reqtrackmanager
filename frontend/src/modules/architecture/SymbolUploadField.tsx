@@ -1,8 +1,9 @@
 /**
  * Module: modules/architecture/SymbolUploadField
  *
- * The "Upload a symbol" file control with the server's refusal shown under it, shared by the Symbols settings panel and
- * the symbol picker. It owns no upload logic: the caller passes the state from `useSymbolUpload`.
+ * The "Upload a symbol" file control with the server's refusal shown under it, used by the symbol picker's Upload view (the
+ * library page has its own several-file dialog, `SymbolUploadDialog`). It owns no upload logic: the caller passes the state
+ * from `useSymbolUpload`.
  */
 import { UploadField } from "../../components/FormFields";
 import { ARCHITECTURE_HELP } from "./help";

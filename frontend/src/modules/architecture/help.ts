@@ -120,6 +120,13 @@ export const ARCHITECTURE_HELP = {
   baselineKind: "Stage: written automatically when a stage entered a locked phase.\nManual: taken on request, with no stage.",
   symbolUpload: "An SVG drawing (or an EPS or PDF when conversion is available). It is sanitised on upload. Upload only artwork the organisation is licensed to use.",
   symbolPickerUpload: "Adds a drawing to the symbol library and chooses it here. The library is shared: everyone in this project (or organisation) can then choose it, not only this record. In a project that uses its parent's library, the first upload copies the parent's symbols into this project. The choice is saved with the form. Rename or remove the symbol later in the Symbols settings.",
+  symbolSource: "Built-in: drawn by the product, cannot be renamed or filed.\nUploaded: a file added to the library.",
+  symbolUsed: "Used: an element type or an element refers to the symbol.\nNot used: nothing refers to it, so it can be deleted.",
+  symbolFileType: "The kind of file the symbol was uploaded as.\nSVG: an SVG drawing.\nEPS and PDF: converted to SVG when uploaded; offered only while the converter is available.",
+  symbolFolder: "The symbol's folder. Folders only organise the library; they never change a diagram or an element.",
+  symbolUsedBy: "Where the symbol is used: the owners (projects, or the organisation) when there are one or two, else the number of records. Select it for the full list.",
+  symbolUploadFiles: "One or more SVG drawings (or EPS or PDF when conversion is available). Each is sanitised on upload and refused on its own, so one bad file does not stop the others. Upload only artwork the organisation is licensed to use.",
+  symbolUploadFolder: "The folder the uploaded symbols are filed in. Leave it empty for the top level.",
   symbolPickerList: "Shows the symbol names as a list.",
   symbolPickerGallery: "Shows each symbol's drawing as a scrolling grid.",
 } as const;

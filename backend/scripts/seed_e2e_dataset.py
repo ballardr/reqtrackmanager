@@ -875,6 +875,14 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> None:
             json={"name": name, "shape": shape, "domain_ids": [domains[domain]], "symbol_id": symbols.get(symbol)},
         )
         r.raise_for_status()
+    # A symbol in a folder of the organisation's library (Org Resources, Architecture Symbols), for the library page.
+    folder = httpx.post(f"{org_base}/symbol-folders", headers=headers, timeout=30, json={"name": "E2E network"})
+    folder.raise_for_status()
+    router = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>'
+    httpx.post(
+        f"{org_base}/symbols", headers=headers, timeout=30, data={"name": "E2E router", "folder_id": folder.json()["id"]},
+        files={"file": ("e2e-router.svg", router, "image/svg+xml")},
+    ).raise_for_status()
     element_types = {row["name"]: row["id"] for row in get(f"{base}/element-types")}
     connection_types = {row["name"]: row["id"] for row in get(f"{base}/connection-types")}
 

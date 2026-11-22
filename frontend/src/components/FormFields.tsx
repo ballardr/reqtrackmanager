@@ -337,7 +337,7 @@ export function FileField({
  * @param children The trigger button's content.
  */
 export function UploadField({
-  id, label, labelExtra, accept, disabled, onSelect, children, help, required,
+  id, label, labelExtra, accept, disabled, onSelect, onSelectMany, children, help, required,
 }: FieldHelpProps & {
   id: string;
   label: string;
@@ -345,12 +345,14 @@ export function UploadField({
   accept?: string;
   disabled?: boolean;
   onSelect: (file: File) => void;
+  /** Several files at once (the picker accepts more than one); called in place of `onSelect`. */
+  onSelectMany?: (files: File[]) => void;
   children: ReactNode;
 }) {
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption htmlFor={id} label={label} extra={labelExtra} help={help} required={required} />
-      <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect}>
+      <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect} onSelectMany={onSelectMany}>
         {children}
       </FileUploadTrigger>
     </div>

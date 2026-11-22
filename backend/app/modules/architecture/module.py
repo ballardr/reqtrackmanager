@@ -6,7 +6,7 @@ registry via `MODULE_DEFINITION`. As built so far it delivers the element type a
 connection type vocabularies (an organisation's defaults, a project's own rows, and
 hiding and restoring a default in a project), the project's and the organisation's elements, ports and
 connections, sharing (collections of elements granted to projects and groups, read through `visibility`), the
-symbol library (built-in and uploaded SVG drawings an element type or element is shown with) and diagrams (saved
+symbol library (built-in and uploaded SVG drawings an element type or element is shown with, filterable and filed in folders) and diagrams (saved
 views with placements, notes and view toggles, resolved by one rule into nodes and lines and drawn as a server SVG).
 
 Registered contributions:

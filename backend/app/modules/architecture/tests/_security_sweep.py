@@ -33,7 +33,7 @@ def routes(app) -> Iterator[tuple[str, str, APIRoute]]:
 
 def segment_kind(path: str) -> str:
     """What a `{record_id}`, `{diagram_id}`, `{folder_id}` or `{type_id}` path names, from the path's words."""
-    for word in ("state-machine-diagrams", "element-folders", "connection-folders", "diagram-folders", "element-types",
+    for word in ("state-machine-diagrams", "element-folders", "connection-folders", "diagram-folders", "symbol-folders", "element-types",
                  "connection-types", "domains", "symbols", "elements", "connections", "diagrams"):
         if f"/{word}" in path:
             return word
@@ -47,7 +47,7 @@ def fill(path: str, owner: dict[str, str], ids: dict[str, str]) -> str:
         path: A route path with `{name}` parameters.
         owner: `project_id` and `organization_id` to use.
         ids: The records, keyed `element`, `connection`, `diagram`, `machine`, `state`, `transition`, `port`, `collection`,
-            `grant`, `baseline`, `item`, `folder_element`, `folder_connection`, `folder_diagram`, `element_type`,
+            `grant`, `baseline`, `item`, `folder_element`, `folder_connection`, `folder_diagram`, `folder_symbol`, `element_type`,
             `connection_type`, `domain` and `symbol`.
     """
     kind = segment_kind(path)
@@ -56,7 +56,7 @@ def fill(path: str, owner: dict[str, str], ids: dict[str, str]) -> str:
                       "state-machine-diagrams": "machine"}.get(kind, "element"),
         "diagram_id": "machine" if "state-machine-diagrams" in path else "diagram",
         "folder_id": {"element-folders": "folder_element", "connection-folders": "folder_connection",
-                      "diagram-folders": "folder_diagram"}.get(kind, "folder_element"),
+                      "diagram-folders": "folder_diagram", "symbol-folders": "folder_symbol"}.get(kind, "folder_element"),
         "type_id": {"element-types": "element_type", "connection-types": "connection_type", "domains": "domain",
                     "symbols": "symbol"}.get(kind, "element_type"),
         "baseline_id": "baseline", "item_id": "item", "collection_id": "collection", "grant_id": "grant",

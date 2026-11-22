@@ -28,6 +28,8 @@ import type {
   ArchitectureRecordStatus,
   ArchitectureState,
   ArchitectureSymbol,
+  SymbolLibraryPage,
+  SymbolUsage,
   CollectionGrant,
   CollectionGrantValues,
   CollectionMember,
@@ -148,11 +150,48 @@ export const capabilitiesApi = {
   orgGet: (organizationId: string) => api.get<{ manage_types: boolean }>(`${orgBase(organizationId)}/capabilities`),
 };
 
+/** The filters, sort and page of the symbol library page, by the names its endpoint takes. */
+export interface SymbolLibraryFilters {
+  search?: string;
+  source?: string;
+  file_type?: string;
+  used?: string;
+  /** A folder path; with `folder_scope` `organization` it names an organisation folder (a project's view). */
+  folder?: string;
+  folder_scope?: "own" | "organization";
+  subfolders?: boolean;
+  sort?: string;
+  order?: string;
+  offset?: number;
+  limit?: number;
+}
+
+/** The query string of a library listing: only the filters that are set. */
+function symbolLibraryQuery(filters: SymbolLibraryFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+/** The form fields of an upload beside the file: the name and the folder, when given. */
+function uploadFields(name?: string, folderId?: string | null): Record<string, string> | undefined {
+  const fields: Record<string, string> = {};
+  if (name) fields.name = name;
+  if (folderId) fields.folder_id = folderId;
+  return Object.keys(fields).length > 0 ? fields : undefined;
+}
+
 /** The symbol library of a project or an organisation (an upload is a file, so there is no JSON create). */
 export const symbolApi = {
   projectList: (projectId: string) => api.get<ArchitectureSymbol[]>(`${projectBase(projectId)}/symbols`),
-  projectUpload: (projectId: string, file: File, name?: string) =>
-    api.postFile<ArchitectureSymbol>(`${projectBase(projectId)}/symbols`, file, name ? { name } : undefined),
+  projectUpload: (projectId: string, file: File, name?: string, folderId?: string | null) =>
+    api.postFile<ArchitectureSymbol>(`${projectBase(projectId)}/symbols`, file, uploadFields(name, folderId)),
+  projectLibrary: (projectId: string, filters: SymbolLibraryFilters) =>
+    api.get<SymbolLibraryPage>(`${projectBase(projectId)}/symbols/library${symbolLibraryQuery(filters)}`),
+  projectUsage: (projectId: string, id: string) => api.get<SymbolUsage>(`${projectBase(projectId)}/symbols/${id}/usage`),
   projectRename: (projectId: string, id: string, name: string) =>
     api.patch<ArchitectureSymbol>(`${projectBase(projectId)}/symbols/${id}`, { name }),
   projectMove: (projectId: string, id: string, direction: "up" | "down") =>
@@ -162,8 +201,11 @@ export const symbolApi = {
   projectRestore: (projectId: string, orgTypeIds?: string[]) =>
     api.post<unknown>(`${projectBase(projectId)}/symbols/restore`, { org_type_ids: orgTypeIds ?? null }),
   orgList: (organizationId: string) => api.get<ArchitectureSymbol[]>(`${orgBase(organizationId)}/symbols`),
-  orgUpload: (organizationId: string, file: File, name?: string) =>
-    api.postFile<ArchitectureSymbol>(`${orgBase(organizationId)}/symbols`, file, name ? { name } : undefined),
+  orgUpload: (organizationId: string, file: File, name?: string, folderId?: string | null) =>
+    api.postFile<ArchitectureSymbol>(`${orgBase(organizationId)}/symbols`, file, uploadFields(name, folderId)),
+  orgLibrary: (organizationId: string, filters: SymbolLibraryFilters) =>
+    api.get<SymbolLibraryPage>(`${orgBase(organizationId)}/symbols/library${symbolLibraryQuery(filters)}`),
+  orgUsage: (organizationId: string, id: string) => api.get<SymbolUsage>(`${orgBase(organizationId)}/symbols/${id}/usage`),
   orgRename: (organizationId: string, id: string, name: string) =>
     api.patch<ArchitectureSymbol>(`${orgBase(organizationId)}/symbols/${id}`, { name }),
   orgMove: (organizationId: string, id: string, direction: "up" | "down") =>
@@ -382,7 +424,7 @@ function collectionCalls(base: string) {
 export const projectCollectionApi = (projectId: string) => collectionCalls(projectBase(projectId));
 export const orgCollectionApi = (organizationId: string) => collectionCalls(orgBase(organizationId));
 
-/** Folders of one kind in a project, or (elements only) in an organisation: a tree that organises a list. */
+/** Folders of one kind in a project, or (elements and symbols only) in an organisation: a tree that organises a list. */
 function folderCalls(base: string, kind: FolderKind) {
   const url = `${base}/${kind}-folders`;
   return {
@@ -398,7 +440,7 @@ function folderCalls(base: string, kind: FolderKind) {
 }
 
 export const projectFolderApi = (projectId: string, kind: FolderKind) => folderCalls(projectBase(projectId), kind);
-export const orgFolderApi = (organizationId: string) => folderCalls(orgBase(organizationId), "element");
+export const orgFolderApi = (organizationId: string, kind: FolderKind = "element") => folderCalls(orgBase(organizationId), kind);
 
 /** The allocation endpoints of a project: a requirement's or an element's view, accepting, dismissing and restoring. */
 export const projectAllocationApi = (projectId: string) => {

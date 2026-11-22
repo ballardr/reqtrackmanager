@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 46 done 2026-11-22; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 47 to 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 47 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 48 and 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-46 / 54 phases complete.
+47 / 54 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -56,7 +56,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 44 | Round collapse toggles | The navigation and filter-panel collapse buttons are circles again | [x] |
 | 45 | Markdown field chrome: tabs, empty height, controls | The Visual, Write and Preview tabs are caption-sized, an empty field is the most compact box and the same height in every view, and the view switch and toolbar take no room while the field is not in use; a decision gate first | [x] |
 | 46 | Grids and tables: long text never breaks the layout | Fix the Connection Types grid, audit every grid and table-like view for the same defect, and add a shared cell component, a stress test and agent rules that stop it recurring | [x] |
-| 47 | Architecture symbols: Org Resources, filter panel, folders | The organisation's symbol library moves to Org Resources as a filtered list; a decision gate first on folders and on how a project sees them | [ ] |
+| 47 | Architecture symbols: Org Resources, filter panel, folders | The organisation's symbol library moves to Org Resources as a filtered list; a decision gate first on folders and on how a project sees them | [x] |
 | 48 | Tree selector: indent and scroll edges | Smaller indent between levels, a fixed search header, and a shared scroll region with themed edges for every capped list | [ ] |
 | 49 | Section list fits the viewport from the first view | The section list is sized to the space left below its starting position, so a page that fits the window never needs a page scroll to reach the end of the list (follow-up to phase 33) | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 49 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
@@ -696,6 +696,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Seeds and probes:** `seed_demo_data.py` and `seed_e2e_dataset.py` give the organisation enough symbols across folders to show the filters and the tree; a symbol is not a registered artefact type, so no probe or generator is added, and the decision log says so.
 - **Security:** folder names and symbol names are user text (escaped, no `/` in a folder name, depth capped as today), a folder belongs to its owner and a symbol may be placed only in a folder of the same owner (`usable_folder`), cross-organisation moves are rejected, and each change writes one audit event with ids and counts. Reading a symbol keeps `visible_symbol_ids` unchanged.
 - Tests: backend for the folder kind (create, rename, move, delete, cycle and depth, same-owner check, bulk move, bundle round trip, filters including Used with a flat statement count), Storybook for the library page (filters, folders, a long name, empty library and an empty filter result, in light and dark), Playwright: upload several symbols into a folder, filter by folder and source, open the library from Org Resources, confirm Settings no longer lists it, and a project sees the organisation's symbols in the read-only branch.
+
+- As built (**Decided by: User** at the gate: symbols move and the three vocabularies stay in Settings; the list is a table or tiles; folders with the stated defaults (b, c, d); a project's read-only Organisation branch; "Used by" short with a dialog; the rest **Decided by: Agent**): `FolderKind.SYMBOL` on the existing folder table (organisation and project owned), `ArchitectureSymbol.folder_id`, migration `0208` (also the file foreign key now cascades, which fixed an organisation delete that failed while an uploaded symbol existed); `symbol_library.py` and `GET .../symbols/library` and `.../symbols/{id}/usage` (server filter, sort and page; owners named only where the reader may open the project; element names never listed); upload takes `folder_id`, several files go one request each from `SymbolUploadDialog`; `SymbolLibraryPanel` is a `ListPageLayout` page rendered by Org Resources (`architecture-symbols`, "Architecture Symbols") and Project Settings, with `SymbolLibraryTable` and `SymbolLibraryTiles`, `FolderPanel organization` for the read-only branch, `RestoreOrgDefaultsDialog` in the actions menu and a "Manage symbols" link in the picker; bundles carry a symbol's folder path; seeds updated. The Org Resources rule is restated in `docs/modules.md`. See `docs/decisions.md`. A local database that ran the first form of `0208` needs its `architecture_symbols.file_asset_id` foreign key changed to `ON DELETE CASCADE` (or a reset).
 
 ### Phase 48 — Tree selector: indent and scroll edges
 

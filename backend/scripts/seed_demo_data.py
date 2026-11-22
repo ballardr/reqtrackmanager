@@ -2631,6 +2631,35 @@ def seed_architecture(headers: dict, org_id: str, project_id: str) -> dict[str, 
     )
     uploaded.raise_for_status()
 
+    # The symbol library is organised in folders: the organisation's own drawings (Org Resources, Architecture Symbols) under
+    # Network and its Switches, and the drone's own upload in a folder of the project's library, so the filters and the tree show.
+    def drawing(inner: str) -> bytes:
+        return (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" '
+            f'stroke-linecap="round" stroke-linejoin="round">{inner}</svg>'
+        ).encode()
+
+    network = make_folder(org_arch, "symbol", "Network")
+    switches = make_folder(org_arch, "symbol", "Switches", network)
+    for symbol_name, symbol_folder, inner in (
+        ("Core router", network, '<circle cx="32" cy="32" r="22"/><path d="M32 12v40M12 32h40M20 20l24 24M44 20L20 44"/>'),
+        ("Edge switch", switches, '<rect x="6" y="20" width="52" height="24" rx="3"/><path d="M14 32h.01M24 32h.01M34 32h.01M44 32h.01"/>'),
+        (
+            "Load balancer", switches,
+            '<rect x="24" y="6" width="16" height="12" rx="2"/><path d="M32 18v10M32 28L12 44M32 28l20 16"/>'
+            '<rect x="4" y="44" width="16" height="12" rx="2"/><rect x="44" y="44" width="16" height="12" rx="2"/>',
+        ),
+    ):
+        httpx.post(
+            f"{org_arch}/symbols", headers=headers, timeout=30, data={"name": symbol_name, "folder_id": symbol_folder},
+            files={"file": (f"{symbol_name.lower().replace(' ', '-')}.svg", drawing(inner), "image/svg+xml")},
+        ).raise_for_status()
+    airframe_symbols = make_folder(base, "symbol", "Airframe")
+    httpx.post(
+        f"{base}/symbol-folders/move-records", headers=headers, timeout=30,
+        json={"record_ids": [uploaded.json()["id"]], "folder_id": airframe_symbols},
+    ).raise_for_status()
+
     def element(
         name: str, type_name: str, description: str, *, parent: str | None = None, ports: tuple = (), symbol: str | None = None,
         folder: str | None = None, note: str = "",

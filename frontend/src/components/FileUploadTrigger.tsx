@@ -34,6 +34,8 @@ export const FileUploadTrigger = forwardRef<
   HTMLInputElement,
   {
     onSelect: (file: File) => void;
+    /** Several files at once: the input accepts more than one and this is called with all of them (in place of `onSelect`). */
+    onSelectMany?: (files: File[]) => void;
     children: ReactNode;
     id?: string;
     accept?: string;
@@ -47,7 +49,7 @@ export const FileUploadTrigger = forwardRef<
     showTrigger?: boolean;
   }
 >(function FileUploadTrigger(
-  { onSelect, children, id, accept, disabled, title, "aria-label": ariaLabel, className, showTrigger = true },
+  { onSelect, onSelectMany, children, id, accept, disabled, title, "aria-label": ariaLabel, className, showTrigger = true },
   ref
 ) {
   const { fileUploadsDisabledBy: disabledBy } = useBranding();
@@ -55,8 +57,13 @@ export const FileUploadTrigger = forwardRef<
   const unavailable = disabledBy !== null;
 
   function handleChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) onSelect(file);
+    if (onSelectMany) {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length > 0) onSelectMany(files);
+    } else {
+      const file = e.target.files?.[0];
+      if (file) onSelect(file);
+    }
     e.target.value = "";
   }
 
@@ -65,6 +72,7 @@ export const FileUploadTrigger = forwardRef<
       ref={ref}
       id={id}
       type="file"
+      multiple={onSelectMany !== undefined}
       accept={accept}
       disabled={disabled || unavailable}
       style={{ display: "none" }}

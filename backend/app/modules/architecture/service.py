@@ -932,6 +932,11 @@ class SymbolLibrary(ArchitectureVocabulary):
     rows). A built-in cannot be renamed, since a bundle names it by its key.
     """
 
+    def copied_columns(self) -> tuple[str, ...]:
+        """The base columns without `folder_id`: a folder is per-owner content, so a project's copy of an inherited symbol
+        is filed nowhere rather than in a folder of the project it was copied from."""
+        return tuple(c for c in super().copied_columns() if c != "folder_id")
+
     def add_builtins(self, db: Session, organization_id: uuid.UUID) -> dict[str, uuid.UUID]:
         """Adds the built-in symbols to a new organisation and returns `{builtin key: row id}`. The ids are set here, not at
         the flush, so a type can name its symbol without a read; the caller owns the transaction."""

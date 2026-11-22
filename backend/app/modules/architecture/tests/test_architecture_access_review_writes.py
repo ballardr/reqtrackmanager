@@ -204,6 +204,9 @@ def test_folders_and_collections_cannot_be_moved_into_or_out_of_another_owner(cl
         _refused(client, world, "PUT", f"{base}/element-folders/{mine['id']}", {"parent_id": ids["folder_element"]})
         _refused(client, world, "PUT", f"{base}/element-folders/{ids['folder_element']}", {"name": "Taken"})
         _refused(client, world, "DELETE", f"{base}/element-folders/{ids['folder_element']}")
+        _refused(client, world, "POST", f"{base}/symbol-folders", {"name": "Child", "parent_id": ids["folder_symbol"]})
+        _refused(client, world, "PUT", f"{base}/symbol-folders/{ids['folder_symbol']}", {"name": "Taken"})
+        _refused(client, world, "DELETE", f"{base}/symbol-folders/{ids['folder_symbol']}")
         # A collection takes only its owner's elements and is read and changed only through its owner.
         collection = own["collection"]["id"]
         _refused(client, world, "POST", f"{base}/collections/{collection}/members", {"element_ids": [ids["element"]]})

@@ -70,8 +70,8 @@ def _post(client, token, url, body, expect=201):
 
 def records(client, token, project: dict, label: str) -> dict[str, str]:
     """The records of one project a review attacks, named `Secret<label>...`: two elements with a port, a connection, a
-    block diagram, a state machine diagram with states and a transition, a folder of each kind, a collection, a baseline and
-    a project-tier type of each vocabulary."""
+    block diagram, a state machine diagram with states and a transition, a folder of each kind (elements, connections,
+    diagrams and symbols), a collection, a baseline and a project-tier type of each vocabulary."""
     base = project_base(project["id"])
     ids: dict[str, str] = {}
     first = make_element(client, token, project["id"], f"Secret{label}Alpha", activate=True)
@@ -86,7 +86,7 @@ def records(client, token, project: dict, label: str) -> dict[str, str]:
     transition = add_transition(client, token, project["id"], machine["id"], start["id"], running["id"], event=f"Secret{label}Go")
     folders = {
         kind: _post(client, token, f"{base}/{kind}-folders", {"name": f"Secret{label}{kind.title()}Folder"})["id"]
-        for kind in ("element", "connection", "diagram")
+        for kind in ("element", "connection", "diagram", "symbol")
     }
     collection = make_collection(client, token, base, f"Secret{label}Collection", members=[first["id"]])
     element_type = _post(client, token, f"{base}/element-types", {"name": f"Secret{label}ElementType", "shape": "rectangle"})
@@ -100,7 +100,7 @@ def records(client, token, project: dict, label: str) -> dict[str, str]:
         "element": first["id"], "element2": second["id"], "port": port["id"], "connection": connection["id"],
         "diagram": diagram["id"], "machine": machine["id"], "state": start["id"], "state2": running["id"],
         "transition": transition["id"], "folder_element": folders["element"], "folder_connection": folders["connection"],
-        "folder_diagram": folders["diagram"], "collection": collection["id"], "element_type": element_type["id"],
+        "folder_diagram": folders["diagram"], "folder_symbol": folders["symbol"], "collection": collection["id"], "element_type": element_type["id"],
         "connection_type": connection_type["id"], "domain": domain["id"], "baseline": baseline["id"], "item": item,
         "version": str(diagram["version"]),
     })
