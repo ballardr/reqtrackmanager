@@ -37,9 +37,9 @@
  * "New standard".
  *
  * The `ViewToggle` tile/list split `docs/ux-style-guide.md`'s
- * "Pattern: view toggle" already requires of any list page like this one —
- * `ProjectListPage.tsx`'s own tile card is the direct precedent for the
- * tiles-mode render below (name + org + status, in card form).
+ * "Pattern: view toggle" requires of any list page like this one; the tiles
+ * are the shared `TileCard` (the title links to the standard), the same card
+ * the Projects page draws.
  */
 import { Plus } from "lucide-react";
 import { Spinner } from "../../components/Spinner";
@@ -52,6 +52,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { SplitButtonTrigger } from "../../components/SplitButtonTrigger";
+import { TileCard, TileGrid } from "../../components/TileCard";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -195,24 +196,18 @@ export function StandardListPage() {
               />
             )}
             {rows !== null && filtered.length > 0 && viewMode === "tiles" && (
-              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+              <TileGrid>
                 {filtered.map((s) => (
-                  <Link
-                    key={s.id}
-                    to={`/standards/${s.id}`}
-                    className="card stack"
-                    style={{ gap: "var(--space-3)", color: "inherit", textDecoration: "none" }}
-                  >
-                    <div style={{ fontWeight: 600, fontSize: "1.05rem" }}>{s.name}</div>
+                  <TileCard key={s.id} title={s.name} to={`/standards/${s.id}`}>
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>{s.reference}</div>
                     {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.organization_name}</div>}
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                       Issuing organisation: {s.issuing_organisation ?? "—"}
                     </div>
                     <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.is_archived ? "Archived" : "Active"}</div>
-                  </Link>
+                  </TileCard>
                 ))}
-              </div>
+              </TileGrid>
             )}
             {rows !== null && rows.length === 0 && <p className="text-muted">No compliance standards yet.</p>}
           </div>

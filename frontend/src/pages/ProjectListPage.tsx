@@ -40,6 +40,7 @@ import { ProjectNestingFields } from "../components/ProjectNestingFields";
 import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
 import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
+import { TileCard, TileGrid } from "../components/TileCard";
 import { Tooltip } from "../components/Tooltip";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
@@ -618,46 +619,33 @@ export function ProjectListPage() {
             {viewMode !== "tree" && !projects && <Spinner />}
             {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
             {projects && projects.length > 0 && viewMode === "tiles" && (
-              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+              <TileGrid>
                 {projects.map((p) => p.is_member === false ? (
-                  <div key={p.id} className="card stack text-muted" style={{ gap: "var(--space-3)" }}>
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
-                      <span style={{ fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.name}>
-                        {p.name}
-                      </span>
-                      <ManageUsersGear project={p} onOpen={setManagedProject} />
-                    </div>
+                  <TileCard key={p.id} title={p.name} muted actions={<ManageUsersGear project={p} onOpen={setManagedProject} />}>
                     <div className="row" style={{ gap: "var(--space-2)" }}>
                       <Badge>{strings.projects.notMember}</Badge>
                       {p.is_template && <Badge>{strings.projects.template}</Badge>}
                     </div>
                     {showOrgColumn && <div style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
                     <ProjectHierarchyLabels project={{ ...p, children: [] }} />
-                  </div>
+                  </TileCard>
                 ) : (
-                  <div key={p.id} className="card stack" style={{ gap: "var(--space-3)" }}>
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
-                      <Link
-                        to={`/projects/${p.id}`}
-                        style={{
-                          fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
-                          textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}
-                        title={p.name}
-                      >
-                        {p.name}
-                      </Link>
-                      {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
+                  <TileCard
+                    key={p.id}
+                    title={p.name}
+                    to={`/projects/${p.id}`}
+                    titleBadges={p.is_template ? <Badge>{strings.projects.template}</Badge> : undefined}
+                    actions={
                       <button
                         className="btn"
                         onClick={() => toggleFavorite(p)}
                         title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
                         aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                        style={{ flexShrink: 0 }}
                       >
                         <Star fill={p.is_favorite ? "currentColor" : "none"} />
                       </button>
-                    </div>
+                    }
+                  >
                     {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
                     <ProjectHierarchyLabels project={p} />
                     {p.current_stage_name && (
@@ -687,9 +675,9 @@ export function ProjectListPage() {
                     <div className="text-muted" style={{ fontSize: "0.8rem" }}>
                       {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
                     </div>
-                  </div>
+                  </TileCard>
                 ))}
-              </div>
+              </TileGrid>
             )}
             {projects && projects.length > 0 && viewMode === "list" && (
               <div className="card" style={{ overflowX: "auto" }}>

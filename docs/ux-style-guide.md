@@ -544,6 +544,14 @@ A long free-text field is written in Markdown, or is plain text with a stated re
 
 **Second usage shape, not literally the shared `ViewToggle` component.** `ViewToggle`/`useViewMode` are specifically about *tile vs. list* (`LayoutGrid`/`List` icons, a `"tiles" | "list"` mode). The broader pattern underneath, a small two-button toggle with `aria-pressed` on each, backed by `useUiPreference` so the choice is remembered per user, applies to any pair of alternate representations of the *same* data. Use the icons that name the two views (not `LayoutGrid`/`List`, which mean tile vs. list), call `useUiPreference` directly rather than through `useViewMode` (its `ViewMode` type is hardcoded to `"tiles" | "list"`), and do not generalise `ViewToggle` itself until a third concrete case wants the same parameterisation. The delivery plan page (`ProjectStagePhasesPage`, table and timeline) is the first screen to use it; a record's history and activity are tabs in the detail aside instead (Pattern: detail page with a links aside).
 
+## Pattern: tile cards
+
+Every tile view (the "tiles" mode of a `ViewToggle`) draws its rows with `TileGrid` and `TileCard` (`components/TileCard.tsx`), never a hand-written `.card` inside a hand-written grid: Projects, Favourites, Compliance Standards, Requirements and Change Requests share them, so the same kind of object looks the same on every page.
+
+- **The title is the link**, drawn as every link in the product (the link colour, never `color: inherit` with no underline), cut with an ellipsis and carrying its full text as a tooltip. The whole card is never a link: a card holds actions (a favourite star, a row menu) and filter badges, and a link around them nests interactive controls. A card the person cannot open passes no `to` and reads muted.
+- **Slots, not variants.** `titleBadges` follow the title on its row, `actions` sit at the right of it, `eyebrow` is a row above it (a record code), `accentColor` is the entity stripe (`ENTITY_ACCENT_COLOR`, or a module's own `entityAccentColor`), and the body is the children. A module's card passes its own content through these; the component knows no record type.
+- A new list with a tile view uses them; a page that needs a shape they cannot express extends the component with a generic slot, and does not copy it.
+
 ## Pattern: file-upload trigger
 
 *(New 2026-08-24 — see [File upload triggers: three different visual treatments](plans/completed/ux-audit-2026-08.md#file-upload-triggers-three-different-visual-treatments).)*

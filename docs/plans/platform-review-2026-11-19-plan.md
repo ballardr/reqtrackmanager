@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 38 done 2026-11-22; phases 39 to 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 39 done 2026-11-22; phases 40 and 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-37 / 47 phases complete.
+39 / 47 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -48,7 +48,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [x] |
 | 37 | Text styling toolbar: compact, and a mathematics button | Small grouped toolbar buttons; Inline equation and Equation block buttons with a live preview panel; equations drawn in the Visual view; mathematics on Decisions, Product Feedback, Open Questions, Pain Points and change requests; decided 2026-11-22 | [x] |
 | 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [x] |
-| 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [ ] |
+| 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [x] |
 | 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [ ] |
 | 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [ ] |
 | 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [ ] |
@@ -581,6 +581,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 
 - Review the project card (title as a link, secondary text, status, actions menu) and the standard card; extract the shared card component if it is not yet shared and move the Projects page onto it too (the shared-component rule), then use it for standards, passing the module-specific content as children or slots. The title is the link, styled as the product styles links elsewhere; the whole card does not become a link where it holds actions.
 - Tests: Storybook for both cards side by side in light and dark themes; Playwright opens a standard from its title.
+
+- As built (**Decided by: Agent**): `components/TileCard.tsx` (`TileGrid`, `TileCard`) is the one tile card: the title is the link (link colour, ellipsis, tooltip), with `titleBadges`, `actions`, `eyebrow`, `accentColor` and `muted` slots. Projects (both card kinds), Favourites, Standards, Requirements and Change Requests all use it, so no page keeps its own copy. See `docs/decisions.md` and the style guide's "Pattern: tile cards".
 
 ### Phase 40 — Compliance standards: organisation filter
 

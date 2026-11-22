@@ -19679,3 +19679,18 @@ Each group of the navigation rail has a chevron that folds its entries: Project,
 
 **Review (identify → verify → remediate).** Presentation and a per-person display preference only: no endpoint, authorization, audit, retention, tenant, logging or bundle change; no new stored data beyond a few boolean keys the user's own bag already allows. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill. Website: a "Folding navigation groups" section was added beside "Project navigation order".
 
+## Platform review 2026-11-19, Phase 39: one tile card for every tile view (2026-11-22)
+
+**Decided by: Agent** (no question to the user; the shared-component rule in `CLAUDE.md` decides the scope).
+
+The Compliance Standards tile was a whole-card `Link` with `color: inherit; text-decoration: none`, so its title did not read as a link, and it had none of the project card's structure (a title row with badges and actions). The project card itself existed as three hand-written copies (Projects, Favourites, and the same grid and card chrome again on Requirements and Change Requests).
+
+- **One component.** `components/TileCard.tsx` (`TileGrid`, `TileCard`, `.tile-grid` and `.tile-card*` in `theme.css`): the title is the link (link colour, ellipsis, full text as tooltip), with `titleBadges`, `actions`, `eyebrow`, `accentColor`, `muted` and children as slots. The card is never one link, because cards hold actions and filter badges.
+- **Every call site moved**, not only the new one: Projects (member and non-member cards), Favourites, Standards, Requirements (record code and move buttons as the eyebrow) and Change Requests, so no page keeps its own copy. Requirement and change request titles are now cut with an ellipsis like a project's (the list view shows them whole).
+- **Standard cards** now show the name as the link, then reference, organisation (when more than one is visible), issuing organisation and state, the content they had. The organisation filter and the organisation on each standard are phase 40.
+- No stylesheet or enum of a module changed; the module passes `accentColor` if it wants a stripe.
+
+**Tests.** Storybook `TileCard` (project and standard cards together in light and dark, muted without a link, accent and eyebrow, long title); the six affected page stories pass unchanged in behaviour. Playwright `standards-tiles.spec.ts` opens a standard from its title, asserts the title is the only link and that a standard card and a project card compute the same border, radius and shadow; the neighbouring Standards, Favourites, role-display and mobile grid specs pass.
+
+**Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging or bundle change. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill. Website: no page describes the card's markup, and the visible change (a standard's title is now a link) needs no new text.
+

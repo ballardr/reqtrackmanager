@@ -149,7 +149,7 @@ export const TogglesBetweenTilesAndListView: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
 
-    // Defaults to tiles: no table role, but the standard's card is a link.
+    // Defaults to tiles: no table role, and the card's title is the link to the standard.
     await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /ISO 27001/ })).toHaveAttribute("href", "/standards/std-1");
 

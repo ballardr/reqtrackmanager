@@ -26,6 +26,7 @@ import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
 import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
+import { TileCard, TileGrid } from "../components/TileCard";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useStrings, useTerm } from "../context/TerminologyContext";
 import { useLatest } from "../hooks/useLatest";
@@ -345,16 +346,14 @@ export function ChangeRequestsPage() {
               </div>
             )}
             {crs && crs.length > 0 && viewMode === "tiles" && (
-              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+              <TileGrid>
                 {crs.map((cr) => (
-                  <div
+                  <TileCard
                     key={cr.id}
-                    className="card stack entity-accent-card"
-                    style={{ gap: "var(--space-3)", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
+                    title={crTitle(cr)}
+                    to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`}
+                    accentColor={ENTITY_ACCENT_COLOR.change_request}
                   >
-                    <Link to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>
-                      {crTitle(cr)}
-                    </Link>
                     <small className="text-muted"><RecordCode code={cr.unique_code} ownerProjectCode={cr.from_project_code} /></small>
                     <ProjectScopeLabel row={cr} />
                     <div className="row" style={{ gap: "var(--space-2)" }}>
@@ -378,9 +377,9 @@ export function ChangeRequestsPage() {
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                       {new Date(cr.created_at).toLocaleString()}
                     </div>
-                  </div>
+                  </TileCard>
                 ))}
-              </div>
+              </TileGrid>
             )}
             {crs && <LoadMoreButton loaded={crs.length} total={total} onClick={() => loadChangeRequests(crs.length, true)} />}
           </div>

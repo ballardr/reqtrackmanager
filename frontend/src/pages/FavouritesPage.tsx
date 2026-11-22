@@ -10,6 +10,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
+import { TileCard, TileGrid } from "../components/TileCard";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useFavourites } from "../context/FavouritesContext";
@@ -105,30 +106,23 @@ export function FavouritesPage() {
       {viewMode !== "tree" && !projects && <Spinner />}
       {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
       {viewMode !== "tree" && projects && projects.length > 0 && viewMode === "tiles" && (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+        <TileGrid>
           {projects.map((p) => (
-            <div key={p.id} className="card stack" style={{ gap: "var(--space-3)" }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
-                <Link
-                  to={`/projects/${p.id}`}
-                  style={{
-                    fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}
-                  title={p.name}
-                >
-                  {p.name}
-                </Link>
+            <TileCard
+              key={p.id}
+              title={p.name}
+              to={`/projects/${p.id}`}
+              actions={
                 <button
                   className="btn"
                   onClick={() => unfavorite(p)}
                   title={strings.projects.unfavorite}
                   aria-label={strings.projects.unfavorite}
-                  style={{ flexShrink: 0 }}
                 >
                   <Star fill="currentColor" />
                 </button>
-              </div>
+              }
+            >
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>
               <ProjectHierarchyLabels project={p} />
               {p.current_stage_name && (
@@ -145,9 +139,9 @@ export function FavouritesPage() {
               <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                 {strings.projects.requirementCount}: {p.requirement_count}
               </div>
-            </div>
+            </TileCard>
           ))}
-        </div>
+        </TileGrid>
       )}
       {viewMode !== "tree" && projects && projects.length > 0 && viewMode === "list" && (
         <div className="card" style={{ overflowX: "auto" }}>

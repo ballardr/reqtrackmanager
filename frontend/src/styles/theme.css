@@ -3483,6 +3483,40 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   padding-left: var(--space-2);
 }
 
+/* Tile view (`TileGrid`, `TileCard`): the one grid and card of every list's tiles. The title is the link; badges follow
+   it on the row and an actions control sits at the right, so a long title is cut with an ellipsis, not the actions. */
+.tile-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+}
+.tile-card {
+  gap: var(--space-3);
+}
+.tile-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: var(--space-3);
+}
+.tile-card-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-3);
+}
+.tile-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.tile-card-head > :not(.tile-card-heading),
+.tile-card-heading > :not(.tile-card-title) {
+  flex-shrink: 0;
+}
+
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
 .badge-after {
   margin-inline-start: var(--space-3);

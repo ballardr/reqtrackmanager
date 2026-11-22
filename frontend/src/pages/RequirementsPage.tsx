@@ -37,6 +37,7 @@ import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
 import { ReferencesCell } from "../components/ReferencesCell";
 import { Spinner } from "../components/Spinner";
+import { TileCard, TileGrid } from "../components/TileCard";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -603,31 +604,31 @@ export function RequirementsPage() {
             {!requirements && <Spinner />}
             {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
             {requirements && requirements.length > 0 && viewMode === "tiles" && (
-              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+              <TileGrid>
                 {requirements.map((r) => (
-                  <div
+                  <TileCard
                     key={r.id}
-                    className="card stack entity-accent-card"
-                    style={{ gap: "var(--space-3)", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
+                    title={r.name}
+                    to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}
+                    accentColor={ENTITY_ACCENT_COLOR.requirement}
+                    eyebrow={
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                          <RequirementListCode requirement={r} componentIds={tagFilter.components} categoryIds={tagFilter.categories} />
+                        </span>
+                        {!r.from_project_id && (
+                          <div className="row" style={{ gap: "var(--space-1)" }}>
+                            <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
+                              <ArrowUp />
+                            </button>
+                            <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
+                              <ArrowDown />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    }
                   >
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                        <RequirementListCode requirement={r} componentIds={tagFilter.components} categoryIds={tagFilter.categories} />
-                      </span>
-                      {!r.from_project_id && (
-                        <div className="row" style={{ gap: "var(--space-1)" }}>
-                          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                            <ArrowUp />
-                          </button>
-                          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                            <ArrowDown />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`} style={{ fontWeight: 600 }}>
-                      {r.name}
-                    </Link>
                     <ProjectScopeLabel row={r} />
                     {r.reasoning && (
                       <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
@@ -659,9 +660,9 @@ export function RequirementsPage() {
                     <div className="text-muted" style={{ fontSize: "0.8rem" }}>
                       Target: {targetText(r)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
                     </div>
-                  </div>
+                  </TileCard>
                 ))}
-              </div>
+              </TileGrid>
             )}
             {requirements && requirements.length > 0 && viewMode === "list" && (
               <div className="card" style={{ overflowX: "auto" }}>
