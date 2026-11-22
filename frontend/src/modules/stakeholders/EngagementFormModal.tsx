@@ -90,7 +90,7 @@ export function EngagementFormModal({
           <DateField helpNotNeeded required label="Date" value={date} onChange={setDate} />
           {!compact && (
             <FormGridFull>
-              <TextAreaField markdown help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" rows={2} value={purpose} onChange={setPurpose} />
+              <TextAreaField markdown help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" value={purpose} onChange={setPurpose} />
             </FormGridFull>
           )}
           <FormGridFull>

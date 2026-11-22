@@ -5,6 +5,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { OrgGroup, OrgUser, ProjectGroup } from "../../api/types";
 import { DecisionFormModal } from "./DecisionFormModal";
+import { chooseMarkdownView } from "../../testing/markdownViews";
 import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Decision, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
@@ -114,8 +115,8 @@ export const WritesMarkdownAndADocument: Story = {
     await userEvent.type(body.getByLabelText("Decision statement"), "We **adopt** a queue.");
     await userEvent.type(body.getByLabelText("Document"), "## Plan");
     // Every Markdown field offers Write and Preview.
-    await expect(body.getAllByRole("tab", { name: "Preview" }).length).toBeGreaterThan(8);
-    await userEvent.click(body.getAllByRole("tab", { name: "Preview" })[0]);
+    await expect(document.body.querySelectorAll(".markdown-editor").length).toBeGreaterThan(8);
+    await chooseMarkdownView(document.body, "Preview", 0);
     await expect(body.getByText("adopt").tagName).toBe("STRONG");
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(

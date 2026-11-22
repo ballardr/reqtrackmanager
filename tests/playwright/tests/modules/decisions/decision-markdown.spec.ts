@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "../../e2e-workflows/helpers";
+import { chooseMarkdownView, markdownField, offeredMarkdownViews, shownMarkdownView } from "../../markdownViews";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -54,13 +55,18 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
       await page.goto(`/projects/${project.id}/modules/decisions`);
       await page.getByRole("button", { name: "New decision" }).click();
       const dialog = page.getByRole("dialog", { name: "New decision" });
-      // The fields open in the Visual view; the source is typed in Write (the choice applies to every field not yet chosen).
-      await expect(dialog.getByRole("tab", { name: "Visual", selected: true }).first()).toBeVisible();
-      await dialog.getByRole("tab", { name: "Write" }).first().click();
+      // The fields open in the Visual view; the source is typed in Write, chosen for each field (a choice changes that field only).
+      const fieldNamed = (name: string) => dialog.locator(".markdown-editor").filter({ has: page.getByRole("textbox", { name }) });
+      await expect(shownMarkdownView(markdownField(dialog, 0), "Visual")).toHaveCount(1);
+      await expect(offeredMarkdownViews(markdownField(dialog, 0))).toHaveCount(3);
+      await chooseMarkdownView(fieldNamed("Decision statement"), "Write");
+      // Another field on the form is unchanged by that choice.
+      await expect(shownMarkdownView(fieldNamed("Context"), "Visual")).toHaveCount(1);
+      await chooseMarkdownView(fieldNamed("Document"), "Write");
       await dialog.getByLabel("Decision title").fill("Adopt a standby controller");
       await dialog.getByLabel("Decision statement").fill("We **adopt** a standby controller.");
       await dialog.getByRole("textbox", { name: "Document" }).fill(document);
-      await dialog.getByRole("tab", { name: "Preview" }).last().click();
+      await chooseMarkdownView(fieldNamed("Document"), "Preview");
       await expect(dialog.getByRole("heading", { name: "Failover plan" })).toBeVisible();
       await expect(dialog.getByRole("cell", { name: "Moderate" })).toBeVisible();
       await expect(dialog.getByRole("img", { name: "Diagram: flowchart" })).toBeVisible({ timeout: 30_000 });
@@ -112,18 +118,19 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
     const statement = dialog.getByRole("textbox", { name: "Decision statement" });
 
     await test.step("no formatting buttons are drawn before a field is used", async () => {
-      await expect(dialog.getByRole("tab", { name: "Visual", selected: true }).first()).toBeVisible();
+      await expect(shownMarkdownView(markdownField(dialog, 0), "Visual")).toHaveCount(1);
       await expect(statement).toBeVisible();
       await expect(dialog.getByRole("toolbar")).toHaveCount(0);
       await expect(bold).toHaveCount(0);
     });
 
-    await test.step("clicking a field shows its buttons without moving the field, and a button applies to the text", async () => {
+    await test.step("clicking a field shows its buttons, which take the room of their own row only, and a button applies to the text", async () => {
       const before = (await statement.boundingBox())?.y;
       await statement.click();
       await page.keyboard.type("adopt");
       await expect(bold).toHaveCount(1);
-      expect((await statement.boundingBox())?.y).toBe(before);
+      // The toolbar is a row of its own that exists only while the field is in use, so the field sits below it.
+      expect((await statement.boundingBox())?.y).toBeGreaterThan(before ?? 0);
       await page.keyboard.press("ControlOrMeta+A");
       await bold.click();
       await expect(statement.locator("strong", { hasText: "adopt" })).toBeVisible();
@@ -154,7 +161,7 @@ test.describe("Decision Management: Markdown and the long-form Document", () => 
     await page.getByRole("button", { name: "New decision" }).click();
     const dialog = page.getByRole("dialog", { name: "New decision" });
     await dialog.getByLabel("Decision title").fill("Adopt a standby controller");
-    await expect(dialog.getByRole("tab", { name: "Visual", selected: true }).first()).toBeVisible();
+    await expect(shownMarkdownView(markdownField(dialog, 0), "Visual")).toHaveCount(1);
 
     await test.step("typing Markdown shortcuts formats the text and a diagram is drawn", async () => {
       const statement = dialog.getByRole("textbox", { name: "Decision statement" });

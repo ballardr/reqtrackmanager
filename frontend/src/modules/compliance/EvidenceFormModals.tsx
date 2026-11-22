@@ -70,7 +70,7 @@ export function EvidenceFormModal({
             <TextField helpNotNeeded required label="Title" ariaLabel="Evidence title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           <TextField help={COMPLIANCE_HELP.issuingOrganisation} label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
           <DateField helpNotNeeded label="Issued date" value={issuedDate} onChange={setIssuedDate} />
@@ -83,7 +83,7 @@ export function EvidenceFormModal({
             />
           )}
           <FormGridFull>
-            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} />
           </FormGridFull>
           {!initial && (
             <FormGridFull>
@@ -162,7 +162,7 @@ export function RevalidateModal({
         <FormGrid minColumn="18rem">
           <DateField help={COMPLIANCE_HELP.evidenceNewExpiry} label="New expiry date" value={newExpiryDate} onChange={setNewExpiryDate} />
           <FormGridFull>
-            <TextAreaField markdown="simple" helpNotNeeded label="Justification" value={justification} onChange={setJustification} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Justification" value={justification} onChange={setJustification} />
           </FormGridFull>
         </FormGrid>
         <FormActions

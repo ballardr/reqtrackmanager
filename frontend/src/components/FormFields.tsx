@@ -142,15 +142,23 @@ export function TextAreaField({
 }) {
   const id = useId();
   const controlId = inputProps?.id ?? id;
-  return (
-    <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required} separateCaption={Boolean(markdown)}>
-      {markdown ? (
+  if (markdown) {
+    // The caption line carries the editor's view switch, so the editor draws the caption beside it.
+    return (
+      <div className="stack" style={{ gap: "var(--space-1)" }}>
         <MarkdownEditor
           value={value} onChange={onChange} rows={rows} ariaLabel={ariaLabel ?? label} disabled={disabled}
           simple={markdown === "simple"} math={markdown === "math"}
           textareaProps={{ ...inputProps, id: controlId, required: required ?? inputProps?.required, "aria-required": required || undefined }}
+          renderCaption={(viewSwitch) => <FieldCaption htmlFor={controlId} label={label} extra={labelExtra} help={help} required={required} actions={viewSwitch} />}
         />
-      ) : !fixedHeight ? (
+        {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}
+      </div>
+    );
+  }
+  return (
+    <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required}>
+      {!fixedHeight ? (
         <AutoGrowTextarea {...inputProps} rows={rows} required={required ?? inputProps?.required} aria-required={required || undefined} id={controlId} value={value} onChange={onChange} aria-label={ariaLabel ?? label} disabled={disabled} />
       ) : (
         <textarea

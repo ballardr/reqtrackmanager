@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { chooseMarkdownView, markdownField, offeredMarkdownViews } from "../markdownViews";
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
@@ -38,9 +39,9 @@ test.describe("Markdown for every long-text field", () => {
 
     await test.step("the description is edited as source, previewed with formatting and its equation drawn, the source untouched", async () => {
       // Reasoning, clarification and description hold equations: they offer Visual (which draws each equation), Write and Preview.
-      await expect(page.getByRole("tab", { name: "Visual" }).first()).toBeVisible();
+      await expect(offeredMarkdownViews(markdownField(page, 0))).toHaveCount(3);
       await expect(page.getByRole("textbox", { name: "Description" })).toHaveValue(DESCRIPTION);
-      await page.getByRole("tab", { name: "Preview" }).nth(2).click();
+      await chooseMarkdownView(markdownField(page, 2), "Preview");
       const preview = page.locator(".markdown-preview");
       await expect(preview.locator("strong", { hasText: "range" })).toBeVisible();
       await expect(preview.locator("li")).toHaveCount(2);

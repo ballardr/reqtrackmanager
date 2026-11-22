@@ -37,6 +37,7 @@ import Italic from "@tiptap/extension-italic";
 import Paragraph from "@tiptap/extension-paragraph";
 import Strike from "@tiptap/extension-strike";
 import { TableKit } from "@tiptap/extension-table";
+import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 
@@ -98,10 +99,12 @@ const InlineMarks = [Bold, Italic, Strike, Code].map((mark) => mark.extend({ add
  * @param mathNode The equation node, for a field that holds mathematics (the editor passes one with its view); none
  *   leaves equations as ordinary text.
  * @param pictureNode The picture node (the editor passes one with its view).
+ * @param placeholder The field's hint, drawn while the document is empty.
  * @returns The extensions of the visual Markdown editor.
  */
 export function visualMarkdownExtensions(
   codeBlock: AnyExtension = MarkdownCodeBlock, mathNode: AnyExtension | null = null, pictureNode: AnyExtension = PictureNode,
+  placeholder = "",
 ): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -114,6 +117,8 @@ export function visualMarkdownExtensions(
     TableKit.configure({ table: { resizable: false } }),
     ...(mathNode ? [mathNode] : []),
     pictureNode,
+    // The field's hint, drawn while the document is empty (the Write view's own placeholder).
+    Placeholder.configure({ placeholder }),
     Markdown,
   ];
 }

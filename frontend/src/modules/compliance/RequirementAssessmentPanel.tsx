@@ -366,7 +366,7 @@ export function RequirementAssessmentPanel({
                 rows={2}
               />
             )}
-            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} />
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
               disabled={status === "non_compliant" && !statusJustification.trim()}

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "../../e2e-workflows/helpers";
+import { chooseMarkdownView, markdownField } from "../../markdownViews";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -79,7 +80,7 @@ test.describe("Decision Management: equations", () => {
     await test.step("in the Visual view the equation is drawn and changed in the same panel", async () => {
       await page.getByRole("button", { name: "Edit", exact: true }).click();
       const edit = page.getByRole("dialog", { name: /^Edit/ });
-      await edit.getByRole("tab", { name: "Visual" }).first().click();
+      await chooseMarkdownView(markdownField(edit, 0), "Visual");
       const statement = edit.getByRole("textbox", { name: "Decision statement" });
       await expect(statement.locator(".math-text")).toBeVisible({ timeout: 30_000 });
       await statement.getByRole("button", { name: /Change equation/ }).click();

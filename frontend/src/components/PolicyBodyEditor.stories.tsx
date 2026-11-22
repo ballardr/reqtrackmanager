@@ -86,14 +86,14 @@ export const LinkWithNoSelectionInsertsTheAddress: Story = {
   },
 };
 
-/** Showing the toolbar does not move the editable area. */
-export const ShowingTheToolbarDoesNotMoveTheText: Story = {
+/** The toolbar is a row of its own that exists only while the field is in use, so the text sits below it once shown. */
+export const TheToolbarTakesNoRoomWhileTheFieldRests: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const box = await canvas.findByRole("textbox", { name: "Policy text" });
     const before = box.getBoundingClientRect().top;
     await userEvent.click(box);
     await canvas.findByRole("toolbar", { name: "Text formatting" });
-    await expect(box.getBoundingClientRect().top).toBe(before);
+    await expect(box.getBoundingClientRect().top).toBeGreaterThan(before);
   },
 };

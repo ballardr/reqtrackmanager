@@ -116,7 +116,7 @@ export function CommentThreadView({
           </ItemRow>
           {editing?.id === c.id ? (
             <div className="stack" style={{ gap: "var(--space-1)" }}>
-              <MarkdownEditor simple toolbar={false} rows={2} value={editing.body} onChange={(body) => setEditing({ id: c.id, body })} ariaLabel={text.edit} />
+              <MarkdownEditor simple toolbar={false} value={editing.body} onChange={(body) => setEditing({ id: c.id, body })} ariaLabel={text.edit} />
               <div className="row">
                 <button type="button" className="btn btn-sm btn-primary" disabled={busy || !editing.body.trim()} onClick={() => void saveEdit()}>
                   {text.save}
@@ -134,7 +134,7 @@ export function CommentThreadView({
       {canReply && onReply && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>
           <MarkdownEditor
-            simple toolbar={false} rows={2} value={reply} onChange={setReply} ariaLabel={text.reply}
+            simple toolbar={false} value={reply} onChange={setReply} ariaLabel={text.reply}
             textareaProps={{ placeholder: text.replyPlaceholder }}
           />
           <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { chooseMarkdownView, markdownViewState } from "../testing/markdownViews";
 import { buildFileAsset } from "../testing/storybook-helpers";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { MarkdownImageSourceProvider } from "./MarkdownImageSource";
@@ -61,13 +62,13 @@ export const PreviewShowsTheFormattedText: Story = {
   render: () => <Harness initial={"## Heading\n\n- one\n- two\n\n```mermaid\nflowchart LR\n  A --> B\n```"} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await chooseMarkdownView(canvasElement, "Preview");
     await expect(canvas.getByRole("heading", { level: 4, name: "Heading" })).toBeInTheDocument();
     await expect(canvas.getAllByRole("listitem")).toHaveLength(2);
     await expect(await canvas.findByRole("img", { name: "Diagram: flowchart" }, { timeout: 20_000 })).toBeInTheDocument();
     // The toolbar belongs to the Write view.
     await expect(canvas.queryByRole("button", { name: "Bold" })).toBeNull();
-    await userEvent.click(canvas.getByRole("tab", { name: "Write" }));
+    await chooseMarkdownView(canvasElement, "Write");
     await expect((canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement).value).toContain("## Heading");
   },
 };
@@ -76,7 +77,7 @@ export const EmptyPreviewSaysSo: Story = {
   render: () => <Harness />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await chooseMarkdownView(canvasElement, "Preview");
     await expect(canvas.getByText("Nothing to preview.")).toBeInTheDocument();
   },
 };
@@ -95,12 +96,12 @@ export const OpensInTheVisualViewUntilWriteIsChosen: Story = {
   render: () => <Harness initial="Some **bold** text" />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("tab", { name: "Visual", selected: true })).toBeInTheDocument();
+    await waitFor(() => expect(canvasElement.querySelector(".visual-markdown-content")).not.toBeNull());
     // The Visual view's toolbar appears once the person works in the field.
     await expect(canvas.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
     await userEvent.click(await canvas.findByRole("textbox", { name: "Notes" }));
     await expect(await canvas.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("tab", { name: "Write" }));
+    await chooseMarkdownView(canvasElement, "Write");
     await expect((canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement).value).toBe("Some **bold** text");
     // The choice is remembered for the next field.
     await expect(localStorage.getItem(VIEW_KEY)).toBe("write");
@@ -112,7 +113,7 @@ export const ATextTheVisualViewWouldChangeOpensInWriteWithTheReason: Story = {
   render: () => <Harness initial={"A task list:\n\n- [ ] open\n- [x] done"} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("tab", { name: "Write", selected: true })).toBeInTheDocument());
+    await waitFor(() => expect(canvasElement.querySelector("textarea")).not.toBeNull());
     await expect(canvas.getByRole("status")).toHaveTextContent("The Visual view is unavailable");
     await expect((canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement).value).toContain("- [ ] open");
     // A fallback is not a choice: the stored preference is unchanged.
@@ -140,10 +141,9 @@ export const SimpleEditorHasNoVisualTab: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByRole("tab", { name: "Visual" })).toBeNull();
-    await expect(canvas.getByRole("tab", { name: "Write" })).toHaveAttribute("aria-selected", "true");
+    await expect(await markdownViewState(canvasElement)).toEqual({ offered: ["Write", "Preview"], shown: "Write" });
     await userEvent.type(canvas.getByRole("textbox", { name: "Comment" }), "Needs **review**");
-    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await chooseMarkdownView(canvasElement, "Preview");
     await waitFor(() => expect(canvasElement.querySelector("strong")).toHaveTextContent("review"));
   },
 };
@@ -159,10 +159,10 @@ export const MathEditorDrawsEquationsInPreview: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("tab", { name: "Visual" })).toBeInTheDocument();
+    await expect((await markdownViewState(canvasElement)).offered).toEqual(["Visual", "Write", "Preview"]);
     // The source stays exactly as stored (the underscore is not escaped).
     await expect(canvas.getByRole("textbox", { name: "Description" })).toHaveValue("The gain is \\( g_1 \\) at **all** times.");
-    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await chooseMarkdownView(canvasElement, "Preview");
     await waitFor(() => expect(canvasElement.querySelector(".math-text")).not.toBeNull());
     await expect(canvasElement.querySelector("strong")).toHaveTextContent("all");
   },
@@ -284,21 +284,23 @@ export const SimpleEditorLeavesTheRememberedViewAlone: Story = {
   },
   render: () => <MarkdownEditor simple value="" onChange={() => {}} ariaLabel="Comment" rows={2} />,
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByRole("tab", { name: "Write" })).toHaveAttribute("aria-selected", "true");
-    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
-    await userEvent.click(canvas.getByRole("tab", { name: "Write" }));
+    await expect((await markdownViewState(canvasElement)).shown).toBe("Write");
+    await chooseMarkdownView(canvasElement, "Preview");
+    await chooseMarkdownView(canvasElement, "Write");
     await expect(localStorage.getItem(VIEW_KEY)).toBe("visual");
   },
 };
 
-/** A narrow pop-over leaves the formatting buttons out; the Write and Preview tabs stay. */
+/** A narrow pop-over leaves the formatting buttons out; the view switch stays. */
 export const ToolbarCanBeLeftOut: Story = {
-  render: () => <MarkdownEditor simple toolbar={false} value="" onChange={() => {}} ariaLabel="Reply" rows={2} />,
+  render: () => <MarkdownEditor simple toolbar={false} value="" onChange={() => {}} ariaLabel="Reply" />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("toolbar")).toBeNull();
-    await expect(canvas.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    await expect((await markdownViewState(canvasElement)).offered).toContain("Preview");
+    await userEvent.click(canvas.getByRole("textbox", { name: "Reply" }));
+    await expect(await canvas.findByRole("group", { name: "Editor view" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("toolbar")).toBeNull();
   },
 };
 
@@ -314,6 +316,8 @@ export const WriteToolbarShowsOnlyWhileTheFieldIsActive: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("toolbar")).toBeNull();
     await expect(canvas.queryByRole("button", { name: "Bold" })).toBeNull();
+    // A resting field shows neither the toolbar nor the view switch.
+    await expect(canvas.queryByRole("group", { name: "Editor view" })).toBeNull();
     const area = canvas.getByRole("textbox", { name: "Notes" });
     await userEvent.click(area);
     await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
@@ -325,10 +329,11 @@ export const WriteToolbarShowsOnlyWhileTheFieldIsActive: Story = {
     await expect(canvas.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Outside" }));
     await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
+    await expect(canvas.queryByRole("group", { name: "Editor view" })).toBeNull();
   },
 };
 
-/** Tab from the Write tab into the toolbar keeps it shown; Tab out of the field hides it. */
+/** Tab into the field shows its toolbar and Shift+Tab reaches it; Tab out of the field hides it. */
 export const KeyboardReachesTheToolbarAndLeavingHidesIt: Story = {
   render: () => (
     <>
@@ -338,26 +343,166 @@ export const KeyboardReachesTheToolbarAndLeavingHidesIt: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    canvas.getByRole("tab", { name: "Write" }).focus();
-    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
     await userEvent.tab();
-    await expect(canvas.getByRole("button", { name: "Bold" })).toHaveFocus();
+    await expect(canvas.getByRole("textbox", { name: "Notes" })).toHaveFocus();
+    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    // The last control of the toolbar row is the view switch.
+    await userEvent.tab({ shift: true });
+    await expect(canvas.getByRole("button", { name: "Preview" })).toHaveFocus();
     await expect(canvas.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
     canvas.getByRole("button", { name: "Outside" }).focus();
     await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
   },
 };
 
-/** Showing the toolbar does not move the field: its text area sits at the same place with the toolbar hidden or shown. */
-export const ShowingTheToolbarDoesNotMoveTheField: Story = {
-  render: () => <MarkdownEditor value="text" onChange={() => {}} ariaLabel="Notes" rows={3} />,
+/** The toolbar is a row of its own that appears when the field is first used, so the field moves down by that row only. */
+export const TheToolbarRowTakesNoRoomWhileTheFieldRests: Story = {
+  render: () => (
+    <>
+      <MarkdownEditor value="text" onChange={() => {}} ariaLabel="Notes" />
+      <button type="button">After</button>
+    </>
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const area = canvas.getByRole("textbox", { name: "Notes" });
     const before = area.getBoundingClientRect().top;
     await userEvent.click(area);
-    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    const toolbar = await canvas.findByRole("toolbar", { name: "Formatting" });
+    await waitFor(() => expect(area.getBoundingClientRect().top).toBeGreaterThan(before));
+    // The shift is the toolbar row and the gap under it, nothing more: no band was reserved while the field rested.
+    const shift = area.getBoundingClientRect().top - before;
+    const slot = toolbar.closest<HTMLElement>("[data-active-field-toolbar]")!;
+    const gap = parseFloat(getComputedStyle(slot.parentElement!).rowGap) || 0;
+    await expect(Math.abs(shift - (slot.getBoundingClientRect().height + gap))).toBeLessThan(2);
+  },
+};
+
+/** A press that first uses the field draws the toolbar on release, so the text does not move between press and release. */
+export const TheToolbarAppearsAfterThePointerIsReleased: Story = {
+  render: () => <MarkdownEditor value="text" onChange={() => {}} ariaLabel="Notes" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const area = canvas.getByRole("textbox", { name: "Notes" });
+    const before = area.getBoundingClientRect().top;
+    // One user session, so the release belongs to the press.
+    const user = userEvent.setup();
+    await user.pointer({ keys: "[MouseLeft>]", target: area });
+    await expect(canvas.queryByRole("toolbar")).toBeNull();
     await expect(area.getBoundingClientRect().top).toBe(before);
+    await user.pointer({ keys: "[/MouseLeft]", target: area });
+    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+  },
+};
+
+/** The box of an empty field is the same height in Visual, Write and Preview, and stays equal after typing and clearing. */
+export const EmptyFieldIsOneHeightInEveryView: Story = {
+  beforeEach: () => { localStorage.setItem(VIEW_KEY, "visual"); },
+  render: () => {
+    function Both() {
+      const [value, setValue] = useState("");
+      return <MarkdownEditor math value={value} onChange={setValue} ariaLabel="Notes" />;
+    }
+    return <Both />;
+  },
+  play: async ({ canvasElement }) => {
+    const heights = () => Math.round(canvasElement.querySelector<HTMLElement>(".md-box")?.getBoundingClientRect().height ?? 0);
+    await waitFor(() => expect(canvasElement.querySelector(".visual-markdown-content")).not.toBeNull());
+    const visual = heights();
+    await chooseMarkdownView(canvasElement, "Write");
+    const write = heights();
+    await chooseMarkdownView(canvasElement, "Preview");
+    const preview = heights();
+    await expect([visual, write, preview]).toEqual([write, write, write]);
+    // Two lines of the field's own line height plus its padding and border, the same as the boxes beside it.
+    await expect(write).toBeLessThan(90);
+    await chooseMarkdownView(canvasElement, "Write");
+    const area = within(canvasElement).getByRole("textbox", { name: "Notes" });
+    await userEvent.type(area, "a");
+    await userEvent.clear(area);
+    await expect(heights()).toBe(write);
+  },
+};
+
+/** A field given more lines keeps that minimum in every view. */
+export const RowsSetTheMinimumOfEveryView: Story = {
+  beforeEach: () => { localStorage.setItem(VIEW_KEY, "visual"); },
+  render: () => <MarkdownEditor value="" onChange={() => {}} ariaLabel="Notes" rows={5} />,
+  play: async ({ canvasElement }) => {
+    const heights = () => Math.round(canvasElement.querySelector<HTMLElement>(".md-box")?.getBoundingClientRect().height ?? 0);
+    await waitFor(() => expect(canvasElement.querySelector(".visual-markdown-content")).not.toBeNull());
+    const visual = heights();
+    await chooseMarkdownView(canvasElement, "Write");
+    const write = heights();
+    await chooseMarkdownView(canvasElement, "Preview");
+    await expect([visual, write]).toEqual([heights(), heights()]);
+    await expect(write).toBeGreaterThan(110);
+  },
+};
+
+/** Pressing the Preview box (which can take focus) uses the field again and brings the view switch back. */
+export const PressingThePreviewBringsTheViewSwitchBack: Story = {
+  render: () => (
+    <>
+      <MarkdownEditor simple value="**formatted**" onChange={() => {}} ariaLabel="Notes" />
+      <button type="button">Outside</button>
+    </>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await chooseMarkdownView(canvasElement, "Preview");
+    await userEvent.click(canvas.getByRole("button", { name: "Outside" }));
+    await waitFor(() => expect(canvas.queryByRole("group", { name: "Editor view" })).toBeNull());
+    await userEvent.click(canvas.getByRole("region", { name: "Preview" }));
+    await expect(await canvas.findByRole("group", { name: "Editor view" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Preview" })).toHaveAttribute("aria-pressed", "true");
+  },
+};
+
+/** With a caption line the switch ends it: nothing is added or moved when the field is used, in any view. */
+export const TheViewSwitchSitsOnTheCaptionLineAndNothingMoves: Story = {
+  beforeEach: () => { localStorage.setItem(VIEW_KEY, "write"); },
+  render: () => (
+    <MarkdownEditor
+      value="" onChange={() => {}} ariaLabel="Notes" simple toolbar={false}
+      renderCaption={(viewSwitch) => <span className="field-caption"><span>Notes</span><span className="field-caption__actions">{viewSwitch}</span></span>}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const area = canvas.getByRole("textbox", { name: "Notes" });
+    const caption = canvasElement.querySelector<HTMLElement>(".field-caption")!;
+    const captionBefore = caption.getBoundingClientRect().height;
+    const areaBefore = area.getBoundingClientRect().top;
+    await expect(canvas.queryByRole("group", { name: "Editor view" })).toBeNull();
+    await userEvent.click(area);
+    const group = await canvas.findByRole("group", { name: "Editor view" });
+    await expect(caption.contains(group)).toBe(true);
+    await expect(caption.getBoundingClientRect().height).toBe(captionBefore);
+    await expect(area.getBoundingClientRect().top).toBe(areaBefore);
+    // Pressing Preview replaces the text area, and the switch stays to return to Write.
+    await userEvent.click(canvas.getByRole("button", { name: "Preview" }));
+    await expect(await canvas.findByRole("group", { name: "Editor view" })).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".md-box")!.getBoundingClientRect().top).toBe(areaBefore);
+  },
+};
+
+/** Choosing a view changes that field only: the other fields on the form keep theirs, and a field drawn later starts in the choice. */
+export const AViewIsChosenPerField: Story = {
+  beforeEach: () => { localStorage.setItem(VIEW_KEY, "visual"); return () => localStorage.removeItem(VIEW_KEY); },
+  render: () => (
+    <>
+      <MarkdownEditor value="" onChange={() => {}} ariaLabel="First" />
+      <MarkdownEditor value="" onChange={() => {}} ariaLabel="Second" />
+    </>
+  ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelectorAll(".visual-markdown-content")).toHaveLength(2));
+    await chooseMarkdownView(canvasElement, "Write", 0);
+    await waitFor(() => expect(canvasElement.querySelectorAll("textarea")).toHaveLength(1));
+    // The second field is still Visual and has not moved to Write.
+    await expect(canvasElement.querySelectorAll(".visual-markdown-content")).toHaveLength(1);
+    await expect(localStorage.getItem(VIEW_KEY)).toBe("write");
   },
 };
 

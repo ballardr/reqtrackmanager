@@ -737,7 +737,7 @@ function RequirementFormModal({
             <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField markdown helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
+            <TextAreaField markdown helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
           </FormGridFull>
         </FormGrid>
         <FormActions
@@ -784,7 +784,7 @@ function RequiredActionFormModal({
           />
           <TextField helpNotNeeded required label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
+            <TextAreaField markdown helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           <CheckboxField help={COMPLIANCE_HELP.complianceMandatory} label="Mandatory" checked={isMandatory} onChange={setIsMandatory} />
         </FormGrid>

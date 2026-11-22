@@ -6,11 +6,17 @@
  * It owns no value; the caller holds the text.
  *
  * Responsibilities:
- * - Show the formatting toolbar only while focus is inside the field (`ActiveFieldFrame`).
+ * - Show the formatting toolbar and the view switch only while the field is in use (`ActiveFieldFrame`): the toolbar is
+ *   a row of its own that is absent while the field rests; the view switch is a group of three icon buttons at the end
+ *   of the field's caption line (`renderCaption`), hidden but keeping its place, so no view moves the field.
  * - Apply a toolbar action to the textarea's selection through `utils/markdownEdit` and restore the selection.
- * - Grow with the text like every long field (`AutoGrowTextarea`); `rows` is the minimum height.
- * - Switch between the views with the shared `Tabs`; Preview shows `MarkdownView`.
- * - Open in the person's remembered view (Visual unless they chose Write), and fall back to Write with a stated
+ * - Draw the three views in one box (`.md-box`), so an empty field is the same height in every view, `rows` lines
+ *   (default 2) at the smallest, and each view grows with its text from there (`AutoGrowTextarea` for Write).
+ * - Switch between the views with the shared `ViewSwitch`; Preview shows `MarkdownView` in a focusable box, so pressing
+ *   or tabbing into it brings the switch back.
+ * - Without a caption of its own (a comment box) the view switch ends the toolbar row, which holds just the switch in Preview.
+ * - Open in the person's remembered view (Visual unless they chose Write) and keep it until this field's own view is
+ *   chosen (a choice never changes another field already drawn), and fall back to Write with a stated
  *   reason when the text cannot be edited visually without changing it.
  * - `simple` offers Write and Preview only (a comment box, which does not need a document editor).
  * - A Picture button (`PictureToolbarButton`) appears in both toolbars wherever the field sits inside a record page that
@@ -22,12 +28,13 @@
  * Design decisions:
  * - The stored value is always the Markdown source, so what the author sees in Write is what is saved.
  * - The visual editor is loaded on first use (`lazy`), so a form that never shows it does not download TipTap.
- * - Only a tab the person clicks is remembered; a fallback to Write, and Preview, are not.
+ * - Only a view the person chooses is remembered, as the starting view of fields drawn later; a fallback to Write, and
+ *   Preview, are not.
  * - The textarea keeps the field's accessible name and id, so the shared field label, help and form tests treat it
  *   as the plain text field it replaces.
  */
-import { Code, Heading2, Italic, Link2, List, ListOrdered, Quote, Table, Workflow, Bold } from "lucide-react";
-import { lazy, memo, Suspense, useCallback, useEffect, useId, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { Bold, Code, Eye, FileCode, Heading2, Italic, Link2, List, ListOrdered, Quote, Table, Type, Workflow } from "lucide-react";
+import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { useMarkdownEditorView } from "../hooks/useMarkdownEditorView";
@@ -38,13 +45,18 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { MarkdownView } from "./MarkdownView";
 import { MathToolbarButton } from "./MathEditPopover";
 import { PictureToolbarButton, type PictureChoice } from "./PicturePicker";
-import { Tabs, tabPanelProps } from "./Tabs";
 import { ToolbarButton } from "./ToolbarButton";
+import { ViewSwitch, type ViewSwitchOption } from "./ViewSwitch";
 
 // The visual editor (and TipTap with it) is downloaded when a Visual view is first shown, not with every form.
 const VisualMarkdownEditor = lazy(() => import("./VisualMarkdownEditor").then((module) => ({ default: module.VisualMarkdownEditor })));
 
 type View = "visual" | "write" | "preview";
+
+/** The minimum height of a view's box, in lines of its text (read by `.md-box`). */
+function boxStyle(rows: number): CSSProperties {
+  return { "--md-rows": rows } as CSSProperties;
+}
 
 /**
  * The Write view's formatting buttons. Memoised: a form with many Markdown fields re-renders every one of them on each
@@ -94,15 +106,17 @@ type TextAreaExtras = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" 
 /**
  * @param value The Markdown source.
  * @param onChange Called with the new source after every edit.
- * @param rows Minimum visible lines of the Write view.
+ * @param rows Minimum visible lines of every view (default 2, the smallest box that holds a placeholder and a caret with room); each view grows past it.
  * @param ariaLabel The text area's accessible name.
  * @param disabled Whether editing is unavailable.
  * @param textareaProps Further attributes for the text area (id, maxLength, required).
  * @param simple Offer Write and Preview only, with no visual view.
  * @param math The text holds equations (`\( x \)`, `$$ x $$`): the views draw them and the toolbars offer the equation buttons.
  * @param toolbar Whether the Write view shows the formatting buttons (default true); a narrow pop-over leaves them out.
+ * @param renderCaption Draws the field's caption line, given the view switch to put at its end (`FieldCaption` `actions`);
+ * without it the switch ends the toolbar row.
  */
-export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled, textareaProps, simple, math, toolbar = true }: {
+export function MarkdownEditor({ value, onChange, rows = 2, ariaLabel, disabled, textareaProps, simple, math, toolbar = true, renderCaption }: {
   value: string;
   onChange: (value: string) => void;
   rows?: number;
@@ -112,16 +126,19 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
   simple?: boolean;
   math?: boolean;
   toolbar?: boolean;
+  renderCaption?: (viewSwitch: ReactNode) => ReactNode;
 }) {
   const sourceOnly = Boolean(simple);
   const strings = useStrings();
   const text = strings.markdown;
-  const idPrefix = useId();
   const [preferred, remember] = useMarkdownEditorView();
   // Set when the text cannot be edited visually: the field falls back to Write and says why.
   const [blocker, setBlocker] = useState<VisualBlocker | null>(null);
   const [chosen, setChosen] = useState<View | null>(null);
-  const view: View = chosen ?? (sourceOnly && preferred === "visual" ? "write" : preferred);
+  // The remembered view is the starting view of a field when it is first drawn; choosing a view changes this field only,
+  // so working in one field never reshapes the others on the form.
+  const [startView] = useState(preferred);
+  const view: View = chosen ?? (sourceOnly && startView === "visual" ? "write" : startView);
   const area = useRef<HTMLTextAreaElement>(null);
   const onBlocked = useCallback((reason: VisualBlocker) => {
     setBlocker(reason);
@@ -176,40 +193,57 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
     return el ? latest.current.value.slice(el.selectionStart, el.selectionEnd) : "";
   }, []);
 
+  const options: ViewSwitchOption<View>[] = [
+    ...(sourceOnly ? [] : [{ key: "visual" as const, label: text.visual, icon: Type }]),
+    { key: "write" as const, label: text.write, icon: FileCode },
+    { key: "preview" as const, label: text.preview, icon: Eye },
+  ];
+  const viewSwitch = <ViewSwitch label={text.editorView} options={options} active={view} onChange={choose} disabled={disabled} />;
+  // A field with a caption line carries the switch there; one without ends its toolbar row with it. The switch keeps
+  // its place in that row whichever view shows (Visual draws the row inside its own toolbar), so pressing it never
+  // replaces the element that has the focus.
+  const trailing = renderCaption ? undefined : viewSwitch;
+  const writeToolbar = view === "write" && toolbar;
+  const writeButtons = (
+    <WriteToolbar
+      onFormat={apply} onMath={math ? applyMath : undefined} onPicture={sourceOnly ? undefined : applyPicture}
+      readSelection={readSelection} disabled={disabled}
+    />
+  );
+  const style = boxStyle(rows);
+
   return (
     <ActiveFieldFrame className="markdown-editor stack" style={{ gap: "var(--space-1)" }}>
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-1)" }}>
-        <Tabs
-          idPrefix={idPrefix} active={view} onChange={choose}
-          tabs={[
-            ...(sourceOnly ? [] : [{ key: "visual" as const, label: text.visual }]),
-            { key: "write" as const, label: text.write }, { key: "preview" as const, label: text.preview },
-          ]}
-        />
-        {view === "write" && toolbar && <ActiveFieldToolbar><WriteToolbar onFormat={apply} onMath={math ? applyMath : undefined} onPicture={sourceOnly ? undefined : applyPicture} readSelection={readSelection} disabled={disabled} /></ActiveFieldToolbar>}
-      </div>
+      {renderCaption?.(<ActiveFieldToolbar reserveSpace>{viewSwitch}</ActiveFieldToolbar>)}
+      {renderCaption ? (
+        writeToolbar && <ActiveFieldToolbar>{writeButtons}</ActiveFieldToolbar>
+      ) : view !== "visual" && (
+        <ActiveFieldToolbar>
+          <div className="row" style={{ justifyContent: "space-between", flexWrap: "nowrap", alignItems: "flex-start" }}>
+            {writeToolbar ? writeButtons : <span />}
+            {trailing}
+          </div>
+        </ActiveFieldToolbar>
+      )}
       {blocker && view === "write" && (
         <p className="text-muted" role="status">
           {blocker === "mathematics" ? strings.richText.visualUnavailableMathematics : strings.richText.visualUnavailableFormat}
         </p>
       )}
       {view === "visual" ? (
-        <div {...tabPanelProps(idPrefix, "visual")}>
-          <Suspense fallback={<p className="text-muted" role="status">{text.visualLoading}</p>}>
-            <VisualMarkdownEditor
-              value={value} onChange={onChange} onBlocked={onBlocked} rows={rows} ariaLabel={ariaLabel} disabled={disabled}
-              textareaProps={textareaProps} math={math}
-            />
-          </Suspense>
-        </div>
-      ) : view === "write" ? (
-        <div {...tabPanelProps(idPrefix, "write")}>
-          <AutoGrowTextarea
-            {...textareaProps} textareaRef={area} rows={rows} value={value} onChange={onChange} aria-label={ariaLabel} disabled={disabled}
+        <Suspense fallback={<p className="text-muted" role="status">{text.visualLoading}</p>}>
+          <VisualMarkdownEditor
+            value={value} onChange={onChange} onBlocked={onBlocked} rows={rows} ariaLabel={ariaLabel} disabled={disabled}
+            textareaProps={textareaProps} math={math} toolbarTrailing={trailing}
           />
-        </div>
+        </Suspense>
+      ) : view === "write" ? (
+        <AutoGrowTextarea
+          {...textareaProps} className="input md-box" style={style} textareaRef={area} rows={rows} value={value} onChange={onChange}
+          aria-label={ariaLabel} disabled={disabled}
+        />
       ) : (
-        <div {...tabPanelProps(idPrefix, "preview")} className="markdown-preview card">
+        <div role="region" aria-label={text.preview} tabIndex={0} className="md-box markdown-preview" style={style}>
           {value.trim() === "" ? <p className="text-muted">{text.previewEmpty}</p> : <MarkdownView text={value} math={math} />}
         </div>
       )}

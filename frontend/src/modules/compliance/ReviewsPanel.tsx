@@ -213,7 +213,7 @@ function ReviewFormModal({
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+            <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} />
           </FormGridFull>
         </FormGrid>
         <FormActions
@@ -253,7 +253,7 @@ function CompleteReviewModal({
           options={OUTCOME_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_REVIEW_OUTCOME_LABEL[opt] }))}
           placeholder={null}
         />
-        <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+        <TextAreaField markdown="simple" helpNotNeeded label="Notes" value={notes} onChange={setNotes} />
         <FormActions onCancel={onCancel} onSave={() => onSave({ outcome, notes })} saveLabel="Complete" />
       </div>
     </Modal>

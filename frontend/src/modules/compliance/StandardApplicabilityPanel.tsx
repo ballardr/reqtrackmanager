@@ -214,7 +214,7 @@ function ExcludeProjectModal({
             placeholder="Select a project…"
           />
         )}
-        <TextAreaField markdown="simple" helpNotNeeded required label="Reason" value={reason} onChange={setReason} rows={2} />
+        <TextAreaField markdown="simple" helpNotNeeded required label="Reason" value={reason} onChange={setReason} />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ project_id: projectId, reason })}

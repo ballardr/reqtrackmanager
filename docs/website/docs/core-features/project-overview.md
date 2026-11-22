@@ -56,6 +56,6 @@ An organisation administrator sets the organisation default under **Projects →
 
 ## Text widgets
 
-A text widget is written in Markdown. Its **Text** field has a **Write** view (the source, with a formatting toolbar) and a **Preview** view that shows the result. It supports headings (`# Title`), bullet and numbered lists, **bold**, *italic*, `code`, fenced code, quotations (`> text`), tables, rules (`---`) and links in the form `[text](https://example.com)`. Raw HTML and images are not shown, and only `http`, `https` and `mailto` links are links.
+A text widget is written in Markdown. Its **Text** field has **Visual** (formatted editing), **Write** (the source, with a formatting toolbar) and **Preview** (the result) views; the three view buttons and the formatting toolbar appear while you are working in the field. It supports headings (`# Title`), bullet and numbered lists, **bold**, *italic*, `code`, fenced code, quotations (`> text`), tables, rules (`---`) and links in the form `[text](https://example.com)`. Raw HTML and images are not shown, and only `http`, `https` and `mailto` links are links.
 
 A fenced block that starts with ```` ```mermaid ```` is drawn as a diagram (flowchart, sequence diagram and the other [Mermaid](https://mermaid.js.org/) types). The drawing follows the light or dark theme, and the diagram text stays available under **Diagram source**; a diagram that cannot be drawn shows its text and the reason. A diagram is limited to 20,000 characters and 300 connections.

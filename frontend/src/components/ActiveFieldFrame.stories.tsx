@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
 
-/** The frame that shows a rich text field's toolbar only while focus is inside the field. */
+/** The frame that shows a rich text field's controls (toolbar row, view switch) only while the field is in use. */
 const meta: Meta = { title: "Components/ActiveFieldFrame" };
 export default meta;
 
@@ -54,6 +55,64 @@ export const PressingAButtonKeepsTheToolbarAndTheFocus: Story = {
     await expect(area).toHaveFocus();
     await userEvent.keyboard("{Escape}");
     await expect(canvas.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+  },
+};
+
+/** A reserved control keeps its place while hidden, so a line that exists anyway never changes height. */
+export const ReservedControlKeepsItsPlaceWhileHidden: Story = {
+  render: () => (
+    <>
+      <ActiveFieldFrame className="stack">
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span>Caption</span>
+          <ActiveFieldToolbar reserveSpace><button type="button">Switch</button></ActiveFieldToolbar>
+        </div>
+        <textarea aria-label="Notes" />
+      </ActiveFieldFrame>
+      <button type="button">Outside</button>
+    </>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const area = canvas.getByRole("textbox", { name: "Notes" });
+    const before = area.getBoundingClientRect().top;
+    // Hidden: out of the accessibility tree and the tab order, but still taking its room.
+    await expect(canvas.queryByRole("button", { name: "Switch" })).toBeNull();
+    await userEvent.tab();
+    await expect(area).toHaveFocus();
+    await expect(await canvas.findByRole("button", { name: "Switch" })).toBeInTheDocument();
+    await expect(area.getBoundingClientRect().top).toBe(before);
+  },
+};
+
+/** A focused control removed without a blur (a view replacing the editor) does not leave the field in use for good. */
+export const RemovingTheFocusedControlEndsUseAtTheNextFocusElsewhere: Story = {
+  render: () => {
+    function Swap() {
+      const [first, setFirst] = useState(true);
+      return (
+        <>
+          <ActiveFieldFrame className="stack">
+            <ActiveFieldToolbar><div role="toolbar" aria-label="Formatting"><button type="button">Bold</button></div></ActiveFieldToolbar>
+            {first
+              ? <textarea aria-label="Source" onKeyDown={(event) => { if (event.key === "Escape") setFirst(false); }} />
+              : <div role="region" aria-label="Preview" />}
+          </ActiveFieldFrame>
+          <button type="button">Outside</button>
+        </>
+      );
+    }
+    return <Swap />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("textbox", { name: "Source" }));
+    await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    // Escape removes the focused text area in one step, with no blur.
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.getByRole("region", { name: "Preview" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Outside" }));
+    await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
   },
 };
 

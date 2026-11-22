@@ -271,21 +271,21 @@ export function ChangeRequestCreateModal({
       case "reasoning":
         return (
           <MarkdownEditor
-            math rows={2} value={proposed.reasoning} ariaLabel={strings.requirements.reasoning}
+            math value={proposed.reasoning} ariaLabel={strings.requirements.reasoning}
             onChange={(value) => setProposed((p) => ({ ...p, reasoning: value }))}
           />
         );
       case "clarification":
         return (
           <MarkdownEditor
-            math rows={2} value={proposed.clarification} ariaLabel={strings.requirements.clarification}
+            math value={proposed.clarification} ariaLabel={strings.requirements.clarification}
             onChange={(value) => setProposed((p) => ({ ...p, clarification: value }))}
           />
         );
       case "description":
         return (
           <MarkdownEditor
-            math rows={2} value={proposed.description} ariaLabel={strings.requirements.description}
+            math value={proposed.description} ariaLabel={strings.requirements.description}
             onChange={(value) => setProposed((p) => ({ ...p, description: value }))}
           />
         );

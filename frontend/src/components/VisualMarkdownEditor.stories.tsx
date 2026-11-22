@@ -14,15 +14,15 @@ export default meta;
 type Story = StoryObj;
 
 /** Holds the value as a form would, and shows what is stored. */
-function Harness({ initial = "", onReport, onBlocked, math, source }: {
-  initial?: string; onReport?: (value: string) => void; onBlocked?: () => void; math?: boolean;
+function Harness({ initial = "", onReport, onBlocked, math, source, placeholder }: {
+  initial?: string; placeholder?: string; onReport?: (value: string) => void; onBlocked?: () => void; math?: boolean;
   /** The record's attachments and upload, as its page supplies them; omitted for a field with no record (a create form). */
   source?: { files: FileAsset[]; upload?: (file: File) => Promise<FileAsset> };
 }) {
   const [value, setValue] = useState(initial);
   const change = useCallback((next: string) => { setValue(next); onReport?.(next); }, [onReport]);
   const blocked = useCallback(() => onBlocked?.(), [onBlocked]);
-  const editor = <VisualMarkdownEditor value={value} onChange={change} onBlocked={blocked} ariaLabel="Notes" rows={4} math={math} />;
+  const editor = <VisualMarkdownEditor value={value} onChange={change} onBlocked={blocked} ariaLabel="Notes" rows={4} math={math} textareaProps={placeholder ? { placeholder } : undefined} />;
   return (
     <>
       {source ? <MarkdownImageSourceProvider files={source.files} upload={source.upload}>{editor}</MarkdownImageSourceProvider> : editor}
@@ -201,7 +201,7 @@ export const AValueChangedFromOutsideReplacesTheContent: Story = {
   },
 };
 
-/** The Visual view's toolbar shows while focus is in the field and its space is kept while it is hidden. */
+/** The Visual view's toolbar shows while the field is in use and takes no room while it rests. */
 export const ToolbarShowsOnlyWhileTheFieldIsActive: Story = {
   render: () => (
     <>
@@ -216,7 +216,7 @@ export const ToolbarShowsOnlyWhileTheFieldIsActive: Story = {
     const before = box.getBoundingClientRect().top;
     await userEvent.click(box);
     await expect(await canvas.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
-    await expect(box.getBoundingClientRect().top).toBe(before);
+    await expect(box.getBoundingClientRect().top).toBeGreaterThan(before);
     // The link entry is part of the field: working in it keeps the toolbar.
     await userEvent.click(canvas.getByRole("button", { name: "Link" }));
     await expect(canvas.getByRole("textbox", { name: "Web address" })).toHaveFocus();
@@ -343,5 +343,18 @@ export const AnImageWithAnOutsideAddressStillFallsBackToWrite: Story = {
   render: () => <Harness initial="![tracker](https://example.com/pixel.png)" onBlocked={fn()} source={{ files: [PLOT] }} />,
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).queryByRole("textbox", { name: "Notes" })).toBeNull());
+  },
+};
+
+/** An empty field shows its hint in the Visual view as the Write view does, and the hint is not part of the text. */
+export const EmptyFieldShowsItsHint: Story = {
+  render: () => <Harness placeholder="Describe the requirement" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByRole("textbox", { name: "Notes" });
+    await waitFor(() => expect(getComputedStyle(box.querySelector("p")!, "::before").content).toContain("Describe the requirement"));
+    await userEvent.type(box, "x");
+    await waitFor(() => expect(getComputedStyle(box.querySelector("p")!, "::before").content).not.toContain("Describe"));
+    await waitFor(() => expect(canvas.getByTestId("stored")).toHaveTextContent(/^x$/));
   },
 };

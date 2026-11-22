@@ -27,7 +27,7 @@ import {
   BetweenHorizontalEnd, BetweenVerticalEnd, Bold, Code, Columns3, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered,
   Minus, Quote, Redo2, Rows3, SquareCode, Table, Trash2, Undo2, Unlink, Workflow,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { SAFE_LINK } from "../utils/markdownIt";
@@ -53,8 +53,9 @@ export interface RichTextFeatures {
  * @param editor The editor the toolbar commands apply to.
  * @param features Optional parts to show.
  * @param disabled Whether editing is unavailable.
+ * @param trailing Drawn at the end of the first row (the Markdown editor's view switch when its field has no caption line).
  */
-export function RichTextToolbar({ editor, features = {}, disabled }: { editor: Editor; features?: RichTextFeatures; disabled?: boolean }) {
+export function RichTextToolbar({ editor, features = {}, disabled, trailing }: { editor: Editor; features?: RichTextFeatures; disabled?: boolean; trailing?: ReactNode }) {
   const text = useStrings().richText;
   const [linkOpen, setLinkOpen] = useState(false);
   const [address, setAddress] = useState("");
@@ -140,6 +141,7 @@ export function RichTextToolbar({ editor, features = {}, disabled }: { editor: E
         {separator}
         {button(Undo2, text.undo, () => chain().undo().run(), undefined, !state.canUndo)}
         {button(Redo2, text.redo, () => chain().redo().run(), undefined, !state.canRedo)}
+        {trailing && <span style={{ marginInlineStart: "auto" }}>{trailing}</span>}
       </div>
       {linkOpen && (
         <div className="row" style={{ alignItems: "flex-start" }}>

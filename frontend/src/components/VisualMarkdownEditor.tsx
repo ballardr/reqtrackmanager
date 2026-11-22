@@ -11,7 +11,8 @@
  *   `onBlocked` and drawing nothing, so the field falls back to Write.
  * - Offer to convert pasted text that looks like Markdown (a notice under the toolbar: Convert to formatting, or
  *   Keep as typed), replacing only the pasted range.
- * - Show the toolbar only while focus is inside the field (`ActiveFieldFrame`; the Markdown editor's frame when nested).
+ * - Show the toolbar only while the field is in use (`ActiveFieldFrame`; the Markdown editor's frame when nested).
+ * - Draw in the shared field box (`.md-box`), the same size as the Write and Preview views.
  * - Draw a `mermaid` code block as an editable source with a live diagram beneath it.
  * - In a field that holds mathematics (`math`), draw each equation as an equation; pressing one opens the same panel
  *   the toolbar's equation buttons use, with a live preview, to change its TeX.
@@ -31,7 +32,7 @@
  * `MermaidDiagram`, `MathEditPopover`, `PicturePicker`, `MarkdownPicture`, `MathEquation` (loaded on first use).
  */
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type Editor, type NodeViewProps } from "@tiptap/react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type TextareaHTMLAttributes } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 import { toErrorMessage } from "../context/ToastContext";
 import { useStrings } from "../context/TerminologyContext";
@@ -176,13 +177,14 @@ type TextAreaExtras = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" 
  * @param value The Markdown source.
  * @param onChange Called with the Markdown after an edit.
  * @param onBlocked Called once, on opening, with the reason the text cannot be edited visually.
- * @param rows Minimum visible lines (sets the minimum height).
+ * @param rows Minimum visible lines (sets the minimum height; default 2).
  * @param ariaLabel The editable area's accessible name.
  * @param disabled Whether editing is unavailable.
- * @param textareaProps Attributes shared with the Write view (id, required) applied to the editable area.
+ * @param textareaProps Attributes shared with the Write view (id, required, placeholder) applied to the editable area.
  * @param math Whether the field holds mathematics: equations are drawn as equations and the toolbar offers them.
+ * @param toolbarTrailing Drawn at the end of the toolbar row (the view switch of a field with no caption line).
  */
-export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ariaLabel, disabled, textareaProps, math }: {
+export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 2, ariaLabel, disabled, textareaProps, math, toolbarTrailing }: {
   value: string;
   onChange: (value: string) => void;
   onBlocked: (reason: VisualBlocker) => void;
@@ -191,6 +193,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   disabled?: boolean;
   textareaProps?: TextAreaExtras;
   math?: boolean;
+  toolbarTrailing?: ReactNode;
 }) {
   const text = useStrings().richText;
   const [pictureError, setPictureError] = useState<string | null>(null);
@@ -209,7 +212,11 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   const report = useRef(onChange);
   useEffect(() => { report.current = onChange; }, [onChange]);
 
-  const extensions = useMemo(() => visualMarkdownExtensions(VisualCodeBlock, math ? VisualMathNode : null, VisualPictureNode), [math]);
+  const placeholder = textareaProps?.placeholder ?? "";
+  const extensions = useMemo(
+    () => visualMarkdownExtensions(VisualCodeBlock, math ? VisualMathNode : null, VisualPictureNode, placeholder),
+    [math, placeholder],
+  );
   const editor = useEditor({
     extensions,
     content: initial,
@@ -220,7 +227,6 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
         ...(textareaProps?.id ? { id: textareaProps.id } : {}), role: "textbox", "aria-multiline": "true", "aria-label": ariaLabel,
         ...(textareaProps?.required ? { "aria-required": "true" } : {}),
         class: "visual-markdown-content markdown-view",
-        style: `min-height: ${Math.max(rows, 3) * 1.6}em`,
       },
       handleDrop: (_view, event) => attachPictureFiles(event.dataTransfer?.files, event),
       handlePaste: (view, event) => {
@@ -329,7 +335,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   return (
     <ActiveFieldFrame className="stack" style={{ gap: "var(--space-1)" }}>
       <ActiveFieldToolbar>
-        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true, math, picture: true }} disabled={disabled} />
+        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true, math, picture: true }} disabled={disabled} trailing={toolbarTrailing} />
       </ActiveFieldToolbar>
       {pictureError && <div role="alert" style={{ color: "var(--color-danger)" }}>{pictureError}</div>}
       {pasted && (
@@ -339,7 +345,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
           <button type="button" className="btn" onClick={() => setPasted(null)}>{text.pasteKeep}</button>
         </div>
       )}
-      <div className="policy-editor visual-markdown-editor">
+      <div className="md-box visual-markdown-editor" style={{ "--md-rows": rows } as CSSProperties}>
         <EditorContent editor={editor} />
       </div>
     </ActiveFieldFrame>

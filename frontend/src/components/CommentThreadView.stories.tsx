@@ -3,6 +3,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { userEvent as pointer } from "vitest/browser";
 
 import { buttonHeightViolations } from "../testing/buttonHeights";
+import { markdownViewState } from "../testing/markdownViews";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 import { buildComment, buildPin } from "../testing/recordCommentsFake";
 import { CommentThreadView } from "./CommentThreadView";
@@ -120,11 +121,8 @@ export const CommentsAreFormattedAndRepliesAreWrittenInSimpleMarkdown: Story = {
     comments: [buildComment({ id: "c-9", pin_id: "p-1", body: "Please **check** the wiring:\n\n- left rail\n- right rail" })],
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
     await expect(canvasElement.querySelector("strong")).toHaveTextContent("check");
     await expect(canvasElement.querySelectorAll("li")).toHaveLength(2);
-    await expect(canvas.queryByRole("tab", { name: "Visual" })).toBeNull();
-    await expect(canvas.getByRole("tab", { name: "Write" })).toBeInTheDocument();
-    await expect(canvas.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    await expect((await markdownViewState(canvasElement)).offered).toEqual(["Write", "Preview"]);
   },
 };

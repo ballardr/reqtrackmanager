@@ -36,7 +36,7 @@ function PromptEditModal({
   return (
     <Modal title="Edit session prompt" onClose={onCancel} size="lg">
       <div className="stack">
-        <TextAreaField markdown helpNotNeeded required label="Prompt" rows={2} value={text} onChange={setText} />
+        <TextAreaField markdown helpNotNeeded required label="Prompt" value={text} onChange={setText} />
         <TextAreaField markdown helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
         <FormActions
           onCancel={onCancel}

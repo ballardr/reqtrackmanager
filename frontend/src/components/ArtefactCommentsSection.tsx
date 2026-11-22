@@ -122,7 +122,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             {renderMeta?.(c)}
             {isEditing ? (
               <div className="stack" style={{ gap: "var(--space-2)" }}>
-                <MarkdownEditor simple rows={2} value={editBody} onChange={setEditBody} ariaLabel="Edit comment" />
+                <MarkdownEditor simple value={editBody} onChange={setEditBody} ariaLabel="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (

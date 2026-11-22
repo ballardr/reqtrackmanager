@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 44 done 2026-11-22; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 45 to 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 45 done 2026-11-22; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 46 to 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-44 / 54 phases complete.
+45 / 54 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -54,7 +54,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [x] |
 | 43 | Compliance status tables: organisation column | The organisation of a standard or row is its own column, aligned down the table, not text inside the expand button | [x] |
 | 44 | Round collapse toggles | The navigation and filter-panel collapse buttons are circles again | [x] |
-| 45 | Markdown field chrome: tabs, empty height, controls | The Visual, Write and Preview tabs are caption-sized, an empty field is the most compact box and the same height in every view, and the view switch and toolbar take no room while the field is not in use; a decision gate first | [ ] |
+| 45 | Markdown field chrome: tabs, empty height, controls | The Visual, Write and Preview tabs are caption-sized, an empty field is the most compact box and the same height in every view, and the view switch and toolbar take no room while the field is not in use; a decision gate first | [x] |
 | 46 | Grids and tables: long text never breaks the layout | Fix the Connection Types grid, audit every grid and table-like view for the same defect, and add a shared cell component, a stress test and agent rules that stop it recurring | [ ] |
 | 47 | Architecture symbols: Org Resources, filter panel, folders | The organisation's symbol library moves to Org Resources as a filtered list; a decision gate first on folders and on how a project sees them | [ ] |
 | 48 | Tree selector: indent and scroll edges | Smaller indent between levels, a fixed search header, and a shared scroll region with themed edges for every capped list | [ ] |
@@ -666,6 +666,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
   - Options: (a) **one controls strip in the field's caption line**, right-aligned on the same line as the label and its `(?)`, shown only while the field is active: the line exists anyway, so no row is added, reserved or removed and nothing moves in any view; it needs a slot on the caption (`FieldCaption` takes an `actions` slot that `TextAreaField` passes through to the editor, no per-page code), and falls to a second line only when the toolbar does not fit beside the label at a narrow width (recommended); (b) hide and keep the row (visibility): nothing moves, but the blank band the user dislikes stays; (c) collapse the rows and accept the shift (the literal request); (d) the tabs stay always visible and only the toolbar is hidden, in the tab row (the smaller change, with the compact tabs of this phase).
   - Whichever is chosen: a click on a Preview panel or on a resting field's box activates it (to the last edit view, Visual or Write, if it was in Preview); the controls stay out of the tab order and the accessibility tree while hidden and a keyboard user reaches them by tabbing into the field; `ActiveFieldFrame`'s documented decisions are rewritten to the latest state (not the history); the compact tabs are still used wherever tabs show.
 - Tests: Storybook for the empty field in all three views at the compact height (the three outer boxes have the same measured height, in `simple` and `math` too, and the height stays equal after typing and clearing), the compact tabs beside a caption (the tab text size does not exceed the caption's), focus entering and leaving without the field's top edge moving (for the chosen option), the resting field showing no tabs or toolbar, and a click on a Preview panel bringing them back; a Playwright spec on the new requirement form switches each field between Visual, Write and Preview empty and asserts one box height, focuses each field and asserts the fields below do not move (the heights of the form's other controls before and after) and that the tab text is no larger than the caption's.
+
+- As built (**Decided by: User** at the gate: the Visual, Write and Preview tabs become three toolbar-style buttons in the caption line, hidden while the field is not in use with the place kept; the toolbar row collapses; an empty field is two lines; the rest **Decided by: Agent**): `ViewSwitch` (icon buttons, `aria-pressed`) through `FieldCaption` `actions` and `MarkdownEditor renderCaption`; `ActiveFieldToolbar reserveSpace` for the switch and a collapsing toolbar row; the frame draws the row on pointer release and settles blur and removed-focus cases; `.md-box` is one box for the three views with `rows` (default 2) as its minimum; the compact `Tabs` size was not needed. See `docs/decisions.md`.
 
 ### Phase 46 — Grids and tables: long text never breaks the layout
 
