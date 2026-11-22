@@ -3,7 +3,7 @@
  *
  * The one expand/collapse tree shell: an indented list where every node with
  * children gets a chevron toggle and the caller renders each node's own
- * content (a link, a checkbox, a row of actions). Extracted from
+ * content (a link, a checkbox, a row of actions); the chevron is the shared plain `TreeToggle`. Extracted from
  * `ProjectTree` so the project hierarchy, the Stakeholder group manager and
  * `TreeSelect` share one implementation of the chevron, indentation, ARIA
  * (`aria-expanded`, named toggle) and expand state instead of three copies.
@@ -12,8 +12,9 @@
  * `expanded` and `onToggle`, as the report picker does to open every folder while a search is active); the data and
  * every mutation stay with the caller (the page/component split `ViewToggle` set).
  */
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
+
+import { TreeToggle, TreeToggleGap } from "./TreeToggle";
 
 /** The minimum a node must be: an id and its children. */
 export interface TreeViewNode<N> {
@@ -87,18 +88,9 @@ function TreeViewRow<N extends TreeViewNode<N>>({
     <li>
       <div className="row" style={{ gap: "var(--space-1)", alignItems: "center", paddingLeft: `${depth * 1.5}rem`, minHeight: "2rem" }}>
         {hasChildren ? (
-          <button
-            className="btn"
-            style={{ padding: "0.15rem" }}
-            onClick={() => setExpanded((e) => !e)}
-            title={expanded ? "Collapse" : "Expand"}
-            aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
-            aria-expanded={expanded}
-          >
-            {expanded ? <ChevronDown /> : <ChevronRight />}
-          </button>
+          <TreeToggle expanded={expanded} name={label} onToggle={() => setExpanded((e) => !e)} />
         ) : (
-          <span style={{ width: "1.65rem", display: "inline-block" }} />
+          <TreeToggleGap />
         )}
         {renderNode(node)}
       </div>

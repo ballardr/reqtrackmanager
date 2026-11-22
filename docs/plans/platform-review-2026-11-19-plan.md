@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 34 done 2026-11-22; phases 35 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 35 done 2026-11-22; phases 36 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-34 / 46 phases complete.
+35 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -44,7 +44,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [x] |
 | 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [x] |
 | 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [x] |
-| 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [ ] |
+| 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [x] |
 | 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [ ] |
 | 37 | Text styling toolbar: compact, and a mathematics button | Smaller toolbar buttons; a decision gate on a mathematics button and how it works | [ ] |
 | 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [ ] |
@@ -541,6 +541,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Placement (**Decided by: User**, 2026-11-22): the chevron stays on the left, indented by depth, beside the label; the checkbox moves to a **column on the right edge**, so every checkbox lines up whatever the depth or label length (a checkbox beside the indented chevron would step across the list with each level). The whole row stays the click target for the choice, a row highlight on hover and focus ties a distant checkbox to its label, and a single-choice tree has no checkbox column (the row itself is the choice). Review in Storybook that a narrow dropdown still keeps the label and the checkbox readable together, and that a parent row's checkbox means the same as a child's (the existing selection rule is unchanged).
 - Check `FolderTreeList`, `TreeView` and `ProjectTree` for the same chevron styling and fix them through the one shared chevron if they differ.
 - Tests: Storybook for single and multiple selection with several depths; Playwright expands, selects and navigates by keyboard.
+
+- As built (**Decided by: User** for the placement, **Decided by: Agent** for the rest): `components/TreeToggle.tsx` (`TreeToggle`, `TreeChevron`, `TreeToggleGap`, `.tree-toggle` in `theme.css`) is the one chevron, used by `TreeView` (so `ProjectTree`, `TreeSelect`, the report pickers, the architecture outlines), `RequirementTree` and, as the glyph, `FolderTreeList`. `TreeSelect` draws each multiple-choice row as label then checkbox, the boxes in one column at the right edge, the row highlighting on hover and focus; a single-choice tree is unchanged. See `docs/decisions.md` and the style guide's "Choosing from a tree".
 
 ### Phase 36 — Requirements: Make change request in the actions menu
 

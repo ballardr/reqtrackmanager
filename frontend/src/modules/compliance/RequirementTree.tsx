@@ -45,7 +45,7 @@
  * to its name (tree, list, and detail panel) with the clarification count
  * and, on hover/click, its most recent clarification note.
  */
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Link2, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Link2, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -55,6 +55,7 @@ import { FilterSelect } from "../../components/FilterSelect";
 import { Modal } from "../../components/Modal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
+import { TreeToggle } from "../../components/TreeToggle";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import * as complianceApi from "./api";
 import { RequirementMappingsModal } from "./RequirementMappingsModal";
@@ -313,14 +314,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
       <li key={node.id} style={{ marginLeft: node.depth === 0 ? 0 : "1.25rem" }}>
         <div className="card stack" style={{ padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-2)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <button
-              type="button"
-              className="btn"
-              aria-label={isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
-              onClick={() => toggleExpand(node.id)}
-            >
-              {isExpanded ? <ChevronDown /> : <ChevronRight />}
-            </button>
+            <TreeToggle expanded={isExpanded} name={node.name} onToggle={() => toggleExpand(node.id)} />
             <div className="stack" style={{ gap: "0.1rem", flex: 1, marginLeft: "var(--space-3)" }}>
               <strong className="row" style={{ gap: "var(--space-2)" }}>
                 {node.reference && <span className="text-muted">{node.reference} — </span>}

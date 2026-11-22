@@ -49,6 +49,41 @@ export const PicksSeveralNodes: Story = {
   },
 };
 
+/** The chevron stays beside the label and is plain; every checkbox sits in one column at the right edge whatever its depth. */
+export const CheckboxesShareOneColumnAtTheRightEdge: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Groups" }));
+    const popover = within(document.body);
+    const chevron = popover.getByRole("button", { name: "Collapse Acme" });
+    await expect(chevron).toHaveClass("tree-toggle");
+    await expect(chevron).not.toHaveClass("btn");
+    const rights = ["Client", "Acme", "Acme — Finance", "Operations"].map(
+      (name) => popover.getByRole("checkbox", { name }).getBoundingClientRect().right,
+    );
+    for (const right of rights) await expect(Math.abs(right - rights[0])).toBeLessThan(1);
+    // The box is right of its label, and the chevron left of it.
+    const label = popover.getByText("Acme — Finance", { exact: true }).getBoundingClientRect();
+    await expect(popover.getByRole("checkbox", { name: "Acme — Finance" }).getBoundingClientRect().left).toBeGreaterThan(label.right - 1);
+    await expect(chevron.getBoundingClientRect().right).toBeLessThanOrEqual(popover.getByText("Acme", { exact: true }).getBoundingClientRect().left);
+  },
+};
+
+/** Pressing the label chooses the row, and the chevron works from the keyboard without choosing anything. */
+export const TheRowIsTheTargetAndTheChevronIsKeyboardOperable: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Groups" }));
+    const popover = within(document.body);
+    await userEvent.click(popover.getByText("Beta Ltd", { exact: true }));
+    await expect(popover.getByRole("checkbox", { name: "Beta Ltd" })).toBeChecked();
+    popover.getByRole("button", { name: "Collapse Client" }).focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(popover.queryByRole("checkbox", { name: "Acme" })).not.toBeInTheDocument();
+    await expect(popover.getByRole("button", { name: "Expand Client" })).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.getByRole("button", { name: "Groups" })).toHaveTextContent("Beta Ltd");
+  },
+};
+
 export const WithDisabledNode: Story = {
   args: {
     nodes: [{ ...NODES[0], disabled: true, title: "Organisation groups are edited by an organisation admin." }, NODES[1]],

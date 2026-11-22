@@ -42,6 +42,21 @@ export const Default: Story = {
   },
 };
 
+/** The chevron is the shared plain toggle (not a bordered button), and leaves keep its width so labels line up. */
+export const ChevronIsPlain: Story = {
+  args: { nodes: NODES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const chevron = canvas.getByRole("button", { name: "Collapse Acme" });
+    await expect(chevron).toHaveClass("tree-toggle");
+    await expect(chevron).not.toHaveClass("btn");
+    await expect(getComputedStyle(chevron).borderTopStyle).toBe("none");
+    await expect(chevron.getBoundingClientRect().width).toBeGreaterThanOrEqual(24);
+    // A leaf's label starts where a branch's label starts at the same depth.
+    await expect(canvas.getByText("Beta Ltd").getBoundingClientRect().left).toBe(canvas.getByText("Acme").getBoundingClientRect().left);
+  },
+};
+
 export const StartsCollapsed: Story = {
   args: { nodes: NODES, defaultExpanded: false },
   play: async ({ canvasElement }) => {

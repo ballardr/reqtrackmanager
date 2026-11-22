@@ -2535,6 +2535,72 @@ th:has(> .th-with-action > .th-sort) {
   grid-column: 1 / -1;
 }
 
+/* `TreeToggle` (components/TreeToggle.tsx): the one expand/collapse chevron of every tree. A plain
+   disclosure control (no border, background or padding of a button) that keeps a 1.75rem hit area. */
+.tree-toggle,
+.tree-toggle-gap {
+  flex-shrink: 0;
+  height: 1.75rem;
+  width: 1.75rem;
+}
+.tree-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+.tree-toggle > svg {
+  height: 1rem;
+  width: 1rem;
+}
+.tree-toggle:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+.tree-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.tree-toggle-gap {
+  display: inline-block;
+}
+
+/* `TreeSelect` row: the label takes the row and its checkbox sits in one column at the right edge, so the
+   boxes line up whatever the depth. The whole row is the click target and highlights to tie the box to its label. */
+.tree-select-option {
+  align-items: center;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 0;
+  font-size: 0.85rem;
+  gap: var(--space-3);
+  justify-content: space-between;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+}
+.tree-select-option:hover,
+.tree-select-option:focus-within {
+  background: var(--color-surface-alt);
+}
+.tree-select-option:has(input:disabled) {
+  cursor: not-allowed;
+}
+.tree-select-option-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tree-select-option > input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+}
+
 /* Borderless expand/collapse control that fills its own table cell — for a
    plain disclosure toggle whose label and chevron are one single clickable
    unit (unlike `.nav-link-row-toggle`, which sits beside a separately

@@ -28,14 +28,15 @@
  * has a minimum width and wraps; when the columns still do not fit (a phone) the list scrolls sideways inside its own
  * region with the Name column held at the left edge, and the page never scrolls or clips.
  *
- * Dependencies: `utils/reportFolders` (`FolderNode`), `lucide-react`, the `.folder-tree-*` rules in `theme.css`.
+ * Dependencies: `utils/reportFolders` (`FolderNode`), `lucide-react`, the shared `TreeChevron`, the `.folder-tree-*` rules in `theme.css`.
  */
-import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import type { FolderNode } from "../utils/reportFolders";
 import { Badge } from "./Badge";
+import { TreeChevron } from "./TreeToggle";
 
 /** A column to the right of Name. */
 export interface FolderTreeColumn<T> {
@@ -296,7 +297,7 @@ export function FolderTreeList<T>({
                   aria-label={text.toggle(node.name, open)} title={text.toggle(node.name, open)}
                   onClick={() => onToggle(node.id, !open)}
                 >
-                  {open ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+                  <TreeChevron expanded={open} />
                   <span aria-hidden="true" className="folder-tree-folder-icon">{folderIcon(open)}</span>
                   <strong>{node.name}</strong>
                 </button>

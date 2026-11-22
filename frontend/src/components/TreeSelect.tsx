@@ -8,6 +8,9 @@
  * node. Used where a record can be in several places of a taxonomy at once
  * (a Stakeholder's groups). The tree shell is the shared `TreeView`; checking a
  * node never checks its ancestors or descendants, since each id is independent.
+ * The chevron stays beside the label, indented by depth, and the checkboxes sit in
+ * one column at the right edge so they line up at every depth; the whole row is the
+ * click target and highlights on hover and focus.
  *
  * Presentational: the caller owns `selectedIds` and applies `onChange`. A
  * node may be `disabled` (with a `title` explaining why) to show a position in
@@ -63,19 +66,21 @@ function SingleChoiceRow({
   );
 }
 
-/** One checkbox (or, in a one-choice picker, selectable row) of the opened tree; a disabled node explains why in a tooltip. */
+/** One row of the opened tree, its checkbox at the right edge (or, in a one-choice picker, a selectable row with no checkbox); a disabled node explains why in a tooltip. */
 function TreeSelectOption({
   n, checked, onToggle, single,
 }: { n: TreeSelectNode; checked: boolean; onToggle: () => void; single: boolean }) {
   const row = single ? (
     <SingleChoiceRow label={n.pathLabel ?? n.label} checked={checked} disabled={n.disabled} onChoose={onToggle} />
   ) : (
-    <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem" }}>
+    <label className="tree-select-option">
+      <span className="tree-select-option-label">{n.label}</span>
       <input type="checkbox" checked={checked} disabled={n.disabled} aria-label={n.pathLabel ?? n.label} onChange={onToggle} />
-      {n.label}
     </label>
   );
-  return n.disabled && n.title ? <Tooltip label={n.title} wrap>{row}</Tooltip> : row;
+  return n.disabled && n.title ? (
+    <Tooltip label={n.title} wrap style={{ display: "flex", flex: "1 1 0", minWidth: 0 }}>{row}</Tooltip>
+  ) : row;
 }
 
 export function TreeSelect({
