@@ -8,7 +8,7 @@
  * Responsibilities:
  * - Offer the two status tabs only to a person who may read compliance status in some organisation
  *   (`useComplianceStatusOrganizations`); everyone else sees the list alone, with no strip.
- * - Keep the chosen organisation (`?org=`) when moving between the two status tabs.
+ * - Keep the chosen organisation (`?org=`, none meaning every organisation) when moving between the two status tabs.
  *
  * Design decisions: a hook returning the `tabs` and `contentProps` a `ListPageLayout` takes, so each of the three
  * pages places the strip the same way (under the title and its actions) and wires the tab panel the same way.
@@ -16,6 +16,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
+import type { Organization } from "../../api/types";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { t } from "../../i18n/strings";
 import { standardsViewPath, type StandardsView } from "./paths";
@@ -29,6 +30,10 @@ export interface ComplianceStatusFrame {
   contentProps: HTMLAttributes<HTMLDivElement> | undefined;
   /** The Organisation filter, first in the panel's filters; `undefined` for a person in one organisation. */
   orgFilter: ReactNode | undefined;
+  /** The organisations the tab reads: the one chosen in the filter, or every organisation the person may read. */
+  orgs: Organization[];
+  /** True when more than one organisation is read, so each row states its organisation. */
+  showOrg: boolean;
 }
 
 const strings = t().standardsPage;
@@ -36,7 +41,8 @@ const ID_PREFIX = "standards-view";
 
 /**
  * @param active The view the page shows.
- * @param org The organisation a status tab is showing (`""` or omitted for the list), kept when switching status tab.
+ * @param org The organisation a status tab is filtered to (`""` or omitted for every organisation), kept when
+ *   switching status tab.
  * @returns `tabs` (the strip, `undefined` when the person has only the list) and `contentProps` for the list column.
  */
 export function useStandardsTabs(

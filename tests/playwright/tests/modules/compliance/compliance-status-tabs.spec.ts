@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
-import { openComplianceStatusTab } from "./helpers";
+import { createStandardWithVersion, openComplianceStatusTab } from "./helpers";
 
 /**
  * Job to be done: the organisation-wide compliance views (By standard, Outstanding) have one home, the Standards
@@ -17,13 +17,13 @@ test.describe("Compliance Module: status tabs of the Standards page", () => {
     await expect(page.getByRole("tab", { name: "Standards", exact: true })).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: "By standard", exact: true }).click();
-    // The list has no organisation, so the tab opens on the first one the person may read.
+    // The list has no organisation chosen, so the tab reads every organisation the person may read.
     await expect(page).toHaveURL(/\/standards\/by-standard$/);
     await expect(page.getByRole("tab", { name: "By standard", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("navigation").getByRole("link", { name: "Compliance Standards" })).toHaveClass(/\bactive\b/);
 
     await page.getByRole("tab", { name: "Outstanding", exact: true }).click();
-    await expect(page).toHaveURL(/\/standards\/outstanding\?org=/);
+    await expect(page).toHaveURL(/\/standards\/outstanding$/);
 
     await page.getByRole("tab", { name: "Standards", exact: true }).click();
     await expect(page).toHaveURL(/\/standards$/);
@@ -39,6 +39,49 @@ test.describe("Compliance Module: status tabs of the Standards page", () => {
     // Switching tab keeps the organisation.
     await page.getByRole("tab", { name: "By standard", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/standards/by-standard\\?org=${new URL(betaUrl).searchParams.get("org")}`));
+  });
+
+  test("the status tabs read every organisation until the filter chooses one", async ({ page }) => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.goto("/standards/by-standard");
+    const organisation = page.getByRole("combobox", { name: "Organisation", exact: true });
+    await expect(organisation).toHaveValue("");
+    await expect(organisation.locator("option").first()).toHaveText("All organisations");
+    await expect(organisation.locator("option")).toContainText(["All organisations", ORG_NAMES.alpha, ORG_NAMES.beta]);
+    // A report is made for one organisation, so Export appears once the filter chooses one.
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
+    await organisation.selectOption({ label: ORG_NAMES.alpha });
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+    await organisation.selectOption({ label: "All organisations" });
+    await expect(page).toHaveURL(/\/standards\/by-standard$/);
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
+  });
+
+  test("the Standards list has an Organisation filter, every organisation by default, and names each standard's organisation", async ({ page }) => {
+    const suffix = Date.now();
+    const alphaName = `E2E Org Filter Alpha ${suffix}`;
+    const betaName = `E2E Org Filter Beta ${suffix}`;
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference: `OFA-${suffix}`, name: alphaName });
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.beta, reference: `OFB-${suffix}`, name: betaName });
+
+    await page.goto("/standards");
+    await page.getByRole("textbox", { name: "Search standards" }).fill(String(suffix));
+    const alphaCard = page.locator(".tile-card", { hasText: alphaName });
+    const betaCard = page.locator(".tile-card", { hasText: betaName });
+    await expect(alphaCard).toBeVisible();
+    await expect(betaCard).toBeVisible();
+    // Each standard states its organisation.
+    await expect(alphaCard).toContainText(ORG_NAMES.alpha);
+    await expect(betaCard).toContainText(ORG_NAMES.beta);
+
+    // The filter is in the filter panel, shows every organisation and narrows the list, kept in the address.
+    const organisation = page.locator(".filter-panel").getByRole("combobox", { name: "Organisation", exact: true });
+    await expect(organisation).toHaveValue("");
+    await organisation.selectOption({ label: ORG_NAMES.beta });
+    await expect(page).toHaveURL(/[?&]org=/);
+    await expect(betaCard).toBeVisible();
+    await expect(alphaCard).toHaveCount(0);
   });
 
   test("Org Resources no longer lists a Compliance section", async ({ page }) => {

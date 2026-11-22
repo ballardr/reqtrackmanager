@@ -7,7 +7,8 @@ import { ComplianceStatusPage } from "./ComplianceStatusPage";
 
 /**
  * The By standard and Outstanding tabs of the Standards page: the tab strip, the Organisation filter that appears
- * only for a person in more than one organisation, and the message for a person with no organisation to read.
+ * only for a person in more than one organisation (every organisation until one is chosen), and the message for a
+ * person with no organisation to read.
  */
 // Each story gives its own `buildUser()` (a fresh id): the nav-visibility answer is cached per user id, so a shared
 // user would hand the second story the first one's answer.
@@ -36,7 +37,7 @@ export default meta;
 
 type Story = StoryObj<typeof ComplianceStatusPage>;
 
-/** A person who reads the status of two organisations gets the three tabs and an Organisation filter. */
+/** A person who reads the status of two organisations gets the three tabs and an Organisation filter, set to all. */
 export const ByStandardWithOrganisationFilter: Story = {
   args: { view: "by-standard" },
   decorators: [withAuth(buildUser()), withRouter("/standards/by-standard")],
@@ -47,11 +48,17 @@ export const ByStandardWithOrganisationFilter: Story = {
     await expect(canvas.getByRole("tab", { name: "Standards" })).toBeInTheDocument();
     await expect(canvas.getByRole("tab", { name: "Outstanding" })).toBeInTheDocument();
     const filter = await canvas.findByLabelText("Organisation");
-    await expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual(["Acme", "Globex"]);
-    // The first organisation is read until another is chosen; choosing one loads that organisation's rows.
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-1/modules/compliance/project-compliance?include_archived=false"));
+    await expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual(["All organisations", "Acme", "Globex"]);
+    await expect(filter).toHaveValue("");
+    // Every organisation is read until one is chosen; choosing one narrows to that organisation's rows.
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-1/modules/compliance/project-compliance?include_archived=false");
+      expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-2/modules/compliance/project-compliance?include_archived=false");
+    });
+    (api.get as unknown as { mockClear: () => void }).mockClear();
     await userEvent.selectOptions(filter, "org-2");
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-2/modules/compliance/project-compliance?include_archived=false"));
+    await expect(api.get).not.toHaveBeenCalledWith("/api/v1/orgs/org-1/modules/compliance/project-compliance?include_archived=false");
   },
 };
 
@@ -68,15 +75,18 @@ export const OutstandingForOneOrganisation: Story = {
   },
 };
 
-/** An address naming an organisation the person cannot read falls back to the first one they can. */
-export const UnreadableOrganisationInTheAddressFallsBack: Story = {
+/** An address naming an organisation the person cannot read reads every organisation they can. */
+export const UnreadableOrganisationInTheAddressReadsEveryOrganisation: Story = {
   args: { view: "by-standard" },
   decorators: [withAuth(buildUser()), withRouter("/standards/by-standard?org=org-9")],
   beforeEach: () => mockApis(["org-1", "org-2"]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByLabelText("Organisation");
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-1/modules/compliance/project-compliance?include_archived=false"));
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-1/modules/compliance/project-compliance?include_archived=false");
+      expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-2/modules/compliance/project-compliance?include_archived=false");
+    });
     await expect(api.get).not.toHaveBeenCalledWith("/api/v1/orgs/org-9/modules/compliance/project-compliance?include_archived=false");
   },
 };

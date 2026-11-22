@@ -64,6 +64,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
+import { OrganisationNote } from "./OrganisationNote";
 import {
   COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL,
   COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
@@ -96,10 +97,13 @@ function ProjectLink({ projectId, projectName }: { projectId: string; projectNam
 }
 
 /**
- * @param orgId The organisation whose outstanding items are shown.
- * @param frame The Standards page's title-row parts (tab strip, tab panel attributes, Organisation filter).
+ * @param frame The Standards page's title-row parts (tab strip, tab panel attributes, Organisation filter) and the
+ *   organisations whose outstanding items are shown.
  */
-export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string; frame: ComplianceStatusFrame }) {
+export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStatusFrame }) {
+  const { orgs, showOrg } = frame;
+  // Export is a per-organisation report; it is offered once the Organisation filter narrows to one.
+  const exportOrgId = orgs.length === 1 ? orgs[0].id : null;
   const strings = useStrings();
   const { showToast } = useToast();
   // Every filter is in the URL, so the view comes back as it was left after a visit to a project's page, and the
@@ -112,19 +116,19 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
   const [subSectionFilter, setSubSectionFilter] = useUrlText("section");
   const [loadFailed, setLoadFailed] = useState(false);
   const [requirementsById, setRequirementsById] = useState<Map<string, ComplianceRequirement>>(new Map());
-  const [nonCompliant, setNonCompliant] = useState<OrgNonCompliantRequirement[] | null>(null);
-  const [pending, setPending] = useState<OrgPendingApproval[] | null>(null);
-  const [outstandingActions, setOutstandingActions] = useState<OutstandingRequiredAction[] | null>(null);
-  const [expiringEvidence, setExpiringEvidence] = useState<OrgExpiringEvidence[] | null>(null);
-  const [reviewsDue, setReviewsDue] = useState<OrgReviewDue[] | null>(null);
+  const [nonCompliant, setNonCompliant] = useState<complianceApi.InOrganization<OrgNonCompliantRequirement>[] | null>(null);
+  const [pending, setPending] = useState<complianceApi.InOrganization<OrgPendingApproval>[] | null>(null);
+  const [outstandingActions, setOutstandingActions] = useState<complianceApi.InOrganization<OutstandingRequiredAction>[] | null>(null);
+  const [expiringEvidence, setExpiringEvidence] = useState<complianceApi.InOrganization<OrgExpiringEvidence>[] | null>(null);
+  const [reviewsDue, setReviewsDue] = useState<complianceApi.InOrganization<OrgReviewDue>[] | null>(null);
 
   useEffect(() => {
     Promise.all([
-      complianceApi.listOrgNonCompliantRequirements(orgId),
-      complianceApi.listOrgPendingApprovals(orgId),
-      complianceApi.listOrgOutstandingRequiredActions(orgId),
-      complianceApi.listOrgExpiringEvidence(orgId),
-      complianceApi.listOrgReviewsDue(orgId),
+      complianceApi.collectAcrossOrgs(orgs, (orgId) => complianceApi.listOrgNonCompliantRequirements(orgId)),
+      complianceApi.collectAcrossOrgs(orgs, (orgId) => complianceApi.listOrgPendingApprovals(orgId)),
+      complianceApi.collectAcrossOrgs(orgs, (orgId) => complianceApi.listOrgOutstandingRequiredActions(orgId)),
+      complianceApi.collectAcrossOrgs(orgs, (orgId) => complianceApi.listOrgExpiringEvidence(orgId)),
+      complianceApi.collectAcrossOrgs(orgs, (orgId) => complianceApi.listOrgReviewsDue(orgId)),
     ])
       .then(([nc, pa, oa, ee, rd]) => {
         setNonCompliant(nc);
@@ -137,21 +141,37 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
         setLoadFailed(true);
         showToast(toErrorMessage(err, "Could not load organisation outstanding items."), "error");
       });
-  }, [orgId, showToast]);
+  }, [orgs, showToast]);
 
   // Sub-section options come from every version of the selected standard's
   // own requirement tree — fetched fresh whenever the standard filter
   // changes, not derived from the (possibly already version-narrowed) rows
   // already on screen, so switching the version filter afterward doesn't
   // require a second fetch.
-  useResetOnChange([orgId, standardFilter], () => setRequirementsById(new Map()));
+  useResetOnChange([standardFilter], () => setRequirementsById(new Map()));
+
+  const standards = useMemo(() => {
+    const map = new Map<string, { id: string; reference: string; name: string; orgId: string; orgName: string }>();
+    for (const row of nonCompliant ?? []) map.set(row.standard_id, { id: row.standard_id, reference: row.standard_reference, name: row.standard_name, orgId: row.organization_id, orgName: row.organization_name });
+    for (const row of pending ?? []) map.set(row.standard_id, { id: row.standard_id, reference: row.standard_reference, name: row.standard_name, orgId: row.organization_id, orgName: row.organization_name });
+    for (const row of outstandingActions ?? []) map.set(row.standard_id, { id: row.standard_id, reference: row.standard_reference, name: row.standard_name, orgId: row.organization_id, orgName: row.organization_name });
+    for (const row of reviewsDue ?? []) {
+      if (row.review.standard_id && row.review.standard_reference) {
+        map.set(row.review.standard_id, { id: row.review.standard_id, reference: row.review.standard_reference, name: row.review.standard_name ?? "", orgId: row.organization_id, orgName: row.organization_name });
+      }
+    }
+    return [...map.values()].sort((a, b) => a.reference.localeCompare(b.reference));
+  }, [nonCompliant, pending, outstandingActions, reviewsDue]);
+
+  // A standard belongs to one organisation; its requirement structure is read from that organisation.
+  const standardOrgId = standards.find((s) => s.id === standardFilter)?.orgId ?? "";
 
   useEffect(() => {
-    if (!standardFilter) return;
+    if (!standardFilter || !standardOrgId) return;
     let cancelled = false;
     complianceApi
-      .listStandardVersions(orgId, standardFilter)
-      .then((versions) => Promise.all(versions.map((v) => complianceApi.listRequirements(orgId, standardFilter, v.id))))
+      .listStandardVersions(standardOrgId, standardFilter)
+      .then((versions) => Promise.all(versions.map((v) => complianceApi.listRequirements(standardOrgId, standardFilter, v.id))))
       .then((lists) => {
         if (cancelled) return;
         const map = new Map<string, ComplianceRequirement>();
@@ -162,20 +182,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
     return () => {
       cancelled = true;
     };
-  }, [orgId, standardFilter, showToast]);
-
-  const standards = useMemo(() => {
-    const map = new Map<string, { id: string; reference: string; name: string }>();
-    for (const row of nonCompliant ?? []) map.set(row.standard_id, { id: row.standard_id, reference: row.standard_reference, name: row.standard_name });
-    for (const row of pending ?? []) map.set(row.standard_id, { id: row.standard_id, reference: row.standard_reference, name: row.standard_name });
-    for (const row of outstandingActions ?? []) map.set(row.standard_id, { id: row.standard_id, reference: row.standard_reference, name: row.standard_name });
-    for (const row of reviewsDue ?? []) {
-      if (row.review.standard_id && row.review.standard_reference) {
-        map.set(row.review.standard_id, { id: row.review.standard_id, reference: row.review.standard_reference, name: row.review.standard_name ?? "" });
-      }
-    }
-    return [...map.values()].sort((a, b) => a.reference.localeCompare(b.reference));
-  }, [nonCompliant, pending, outstandingActions, reviewsDue]);
+  }, [standardOrgId, standardFilter, showToast]);
 
   const versions = useMemo(() => {
     const map = new Map<string, { id: string; label: string }>();
@@ -234,7 +241,8 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
       // `category`/`evidenceValidity` have no report-side equivalent (the
       // exported report always covers every category) and aren't passed
       // through.
-      const blob = await complianceApi.downloadOrgComplianceReport(orgId, kind, {
+      if (!exportOrgId) return;
+      const blob = await complianceApi.downloadOrgComplianceReport(exportOrgId, kind, {
         projectId: projectFilter || undefined,
         standardId: standardFilter || undefined,
         standardVersionId: versionFilter || undefined,
@@ -316,7 +324,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
               setSubSectionFilter("");
             }}
           allLabel="All standards"
-          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}${showOrg ? ` (${s.orgName})` : ""}` }))}
         />
         <FilterSelect
           label={COMPLIANCE_FILTER_LABEL.standardVersion}
@@ -341,7 +349,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
   return (
     <ListPageLayout
       title={t().standardsPage.title}
-      actions={<ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />}
+      actions={exportOrgId && <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />}
       tabs={frame.tabs}
       contentProps={frame.contentProps}
       filter={filter}
@@ -355,7 +363,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredNonCompliant.map((row) => (
                   <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
+                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
                     {row.justification && <span className="text-muted"> — {markdownPlainText(row.justification)}</span>}
                   </li>
                 ))}
@@ -373,7 +381,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredPending.map((row) => (
                   <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
+                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
                     <span className="text-muted"> ({COMPLIANCE_STATUS_LABEL[row.compliance_status]})</span>
                   </li>
                 ))}
@@ -391,7 +399,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredActions.map((row) => (
                   <li key={row.required_action_assessment_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name} — {row.required_action_name}
+                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name} — {row.required_action_name}
                     {row.due_date && <span className="text-muted"> (due {row.due_date})</span>}
                   </li>
                 ))}
@@ -409,7 +417,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredEvidence.map((row) => (
                   <li key={row.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.title}
+                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — {row.title}
                     <Badge className="badge-after">{COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[row.validity_state]}</Badge>
                     {row.expiry_date && <span className="text-muted"> (expires {row.expiry_date})</span>}
                   </li>
@@ -428,7 +436,7 @@ export function OrgComplianceOutstandingPanel({ orgId, frame }: { orgId: string;
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredReviewsDue.map((row) => (
                   <li key={`${row.project_id}-${row.review.id}`} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.review.frequency_label} — due {row.review.next_due_date}
+                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — {row.review.frequency_label} — due {row.review.next_due_date}
                     {row.review.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</Badge>}
                   </li>
                 ))}

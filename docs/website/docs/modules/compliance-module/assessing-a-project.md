@@ -50,7 +50,7 @@ A project's own Compliance page shows this per assigned standard, with drill-dow
 - **By standard** shows each standard with the projects assigned to it and their states, or each project with its standards.
 - **Outstanding** lists the Non-Compliant requirements, assessments awaiting approval, outstanding required actions, expired or expiring evidence, and reviews due or overdue, across every project.
 
-Both tabs are filtered, and exported, from the side panel. They are offered to a person who holds the Compliance Manager role (or is an organisation administrator) in at least one organisation; a person in several organisations chooses the organisation with the **Organisation** filter. The tiles of the Compliance summary widget open the matching tab already filtered.
+Both tabs are filtered, and exported, from the side panel. They are offered to a person who holds the Compliance Manager role (or is an organisation administrator) in at least one organisation; a person in several organisations sees every one of them until the **Organisation** filter chooses one, and each row names its organisation. A report is produced for one organisation, so **Export** appears once the filter has chosen one. The list of standards has the same **Organisation** filter, and each standard states its organisation; **Compliance settings** is in the page's actions menu. The tiles of the Compliance summary widget open the matching tab already filtered.
 
 ## Where this fits
 

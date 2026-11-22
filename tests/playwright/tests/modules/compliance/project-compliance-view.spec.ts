@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { addDefinition, loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../e2e-workflows/helpers";
+import { chooseListAction } from "../../listActions";
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
@@ -41,12 +42,9 @@ test.describe("Compliance Module: project compliance view", () => {
     // --- An action type is needed for the required action below —
     // created first via org compliance settings, same flow
     // `compliance-standards-management.spec.ts` uses.
-    // `exact: true`: the default tiles view renders every standard
-    // as a card whose accessible name also contains the org name, so a
-    // plain substring match on `ORG_NAMES.alpha` now also resolves to
-    // every tile card, not just the "Compliance settings" link below.
+    // Compliance settings is a row of the page's actions menu, one per organisation.
     await page.goto("/standards");
-    await page.getByRole("link", { name: ORG_NAMES.alpha, exact: true }).click();
+    await chooseListAction(page, ORG_NAMES.alpha);
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
     await addDefinition(page, "Add action type", { "Action type name": actionTypeName });
     await expect(async () => {

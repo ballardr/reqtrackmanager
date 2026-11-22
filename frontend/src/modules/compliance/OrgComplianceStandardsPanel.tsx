@@ -73,6 +73,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
+import { OrganisationNote } from "./OrganisationNote";
 import {
   COMPLIANCE_OVERALL_STATE_LABEL,
   type ComplianceOverallState,
@@ -87,6 +88,9 @@ import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 
 type GroupBy = "standard" | "project";
 
+/** An assignment row, tagged with the organisation it was read from. */
+type StatusRow = complianceApi.InOrganization<ProjectComplianceStatus>;
+
 interface Group {
   key: string;
   /** Full row label, e.g. "ISO-27001 — ISO 27001" for a standard group, or
@@ -97,10 +101,10 @@ interface Group {
    * shape's aria-label text is unchanged from before this pivot existed
    * (existing Playwright coverage asserts on it verbatim). */
   ariaLabel: string;
-  rows: ProjectComplianceStatus[];
+  rows: StatusRow[];
 }
 
-function groupRows(rows: ProjectComplianceStatus[], groupBy: GroupBy): Group[] {
+function groupRows(rows: StatusRow[], groupBy: GroupBy): Group[] {
   const byKey = new Map<string, Group>();
   for (const row of rows) {
     const key = groupBy === "project" ? row.project_id : row.standard_id;
@@ -117,14 +121,14 @@ function groupRows(rows: ProjectComplianceStatus[], groupBy: GroupBy): Group[] {
   return [...byKey.values()].sort((a, b) => a.displayLabel.localeCompare(b.displayLabel));
 }
 
-function countByState(rows: ProjectComplianceStatus[], state: ComplianceOverallState): number {
+function countByState(rows: StatusRow[], state: ComplianceOverallState): number {
   return rows.filter((r) => r.overall_compliance_state === state).length;
 }
 
 interface VersionGroup {
   key: string;
   label: string;
-  rows: ProjectComplianceStatus[];
+  rows: StatusRow[];
 }
 
 /** 39d: the second nesting level inside a group-by-standard row's expanded
@@ -132,7 +136,7 @@ interface VersionGroup {
  * with projects on more than one version reads as Standard -> Version ->
  * Project rather than a flat list of projects each carrying their own
  * version suffix. */
-function groupByVersion(rows: ProjectComplianceStatus[]): VersionGroup[] {
+function groupByVersion(rows: StatusRow[]): VersionGroup[] {
   const byVersion = new Map<string, VersionGroup>();
   for (const row of rows) {
     let group = byVersion.get(row.standard_version_id);
@@ -148,13 +152,16 @@ function groupByVersion(rows: ProjectComplianceStatus[]): VersionGroup[] {
 const COMPLIANCE_OVERALL_STATES = Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[];
 
 /**
- * @param orgId The organisation whose assignments are shown.
- * @param frame The Standards page's title-row parts (tab strip, tab panel attributes, Organisation filter).
+ * @param frame The Standards page's title-row parts (tab strip, tab panel attributes, Organisation filter) and the
+ *   organisations whose assignments are shown.
  */
-export function OrgComplianceStandardsPanel({ orgId, frame }: { orgId: string; frame: ComplianceStatusFrame }) {
+export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatusFrame }) {
+  const { orgs, showOrg } = frame;
+  // Export is a per-organisation report; it is offered once the Organisation filter narrows to one.
+  const exportOrgId = orgs.length === 1 ? orgs[0].id : null;
   const strings = useStrings();
   const { showToast } = useToast();
-  const [statusRows, setStatusRows] = useState<ProjectComplianceStatus[] | null>(null);
+  const [statusRows, setStatusRows] = useState<StatusRow[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   // Every filter is in the URL, so the view comes back as it was left after a visit to a project's page, and the
   // summary widget's tiles can open it already narrowed (`?groupBy=project&state=non_compliant`).
@@ -169,13 +176,13 @@ export function OrgComplianceStandardsPanel({ orgId, frame }: { orgId: string; f
 
   useEffect(() => {
     complianceApi
-      .listOrgProjectComplianceStatus(orgId)
+      .collectAcrossOrgs(orgs, (orgId) => complianceApi.listOrgProjectComplianceStatus(orgId))
       .then(setStatusRows)
       .catch((err) => {
         setLoadFailed(true);
         showToast(toErrorMessage(err, "Could not load organisation compliance status."), "error");
       });
-  }, [orgId, showToast]);
+  }, [orgs, showToast]);
 
   const standards = useMemo(() => {
     if (!statusRows) return [];
@@ -234,13 +241,14 @@ export function OrgComplianceStandardsPanel({ orgId, frame }: { orgId: string; f
   }
 
   async function downloadReport(kind: complianceApi.ComplianceReportKind) {
+    if (!exportOrgId) return;
     try {
       // Scoped to this panel's own current filters — "Export"
       // means "export what I'm looking at," not the whole organisation.
       // `groupBy`/`stateFilter` have no report-side equivalent (the
       // backend's assignment-row filter set mirrors this panel's
       // filters only) and are deliberately not passed through.
-      const blob = await complianceApi.downloadOrgComplianceReport(orgId, kind, {
+      const blob = await complianceApi.downloadOrgComplianceReport(exportOrgId, kind, {
         standardId: standardFilter || undefined,
         standardVersionId: versionFilter || undefined,
         projectId: projectFilter || undefined,
@@ -305,7 +313,7 @@ export function OrgComplianceStandardsPanel({ orgId, frame }: { orgId: string; f
   return (
     <ListPageLayout
       title={t().standardsPage.title}
-      actions={<ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />}
+      actions={exportOrgId && <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />}
       tabs={frame.tabs}
       contentProps={frame.contentProps}
       filter={filter}
@@ -348,6 +356,7 @@ export function OrgComplianceStandardsPanel({ orgId, frame }: { orgId: string; f
                           >
                             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             {group.displayLabel}
+                            <OrganisationNote name={group.rows[0].organization_name} show={showOrg} />
                           </button>
                         </td>
                         <td>{group.rows.length}</td>

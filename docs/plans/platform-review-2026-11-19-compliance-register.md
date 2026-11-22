@@ -25,7 +25,7 @@ Part of [the platform review plan](platform-review-2026-11-19-plan.md). Every pl
 ## Sign-off
 
 - **Decided by: User**, 2026-11-21: the Standards page is its own entity beside Projects, so both cross-project views (row 5 and row 6) become **tabs of the Standards page** (Standards, By standard, Outstanding), not Org Resources sections and not Overview widgets. Resources then has no Compliance section. The user first stated "Overview only" for Outstanding, then proposed this tab home as the alternative and chose it.
-- **Decided by: User**: the organisation is chosen with an **Organisation filter** (a drop-down in the filter panel, shown only to a person in more than one organisation), not a picker above the tabs.
+- **Decided by: User**: the organisation is chosen with an **Organisation filter** (a drop-down in the filter panel, shown only to a person in more than one organisation), not a picker above the tabs. Phase 40 (**Decided by: User**, 2026-11-22): the filter defaults to every organisation, the Standards list has it too, and each row names its organisation; Export (a per-organisation report) appears once one is chosen.
 - **Decided by: Agent**: the tabs are offered, and the Organisation filter lists, only the organisations where the caller may read the status views (the endpoints need the Compliance Manager role), so a person who can only read standards is not shown a tab that fails. The summary widget's tiles link to the tabs. The earlier addresses do not redirect (**Decided by: User**: the Resources ones existed only on this branch). The Attention widget stays (a summary of row 6, not the same rows).
 
 ```mermaid

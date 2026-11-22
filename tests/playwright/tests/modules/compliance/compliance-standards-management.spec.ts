@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { addDefinition, apiHeaders, installCleanupHook, loginAs, onCleanup, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
+import { chooseListAction } from "../../listActions";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -65,14 +66,9 @@ test.describe("Compliance Module: \"Compliance Standards\" top-level nav-rail ta
     // --- Org compliance settings: create an action type, needed for the
     // required action below (`/standards/settings/:orgId`, superseding the
     // old org-admin "Compliance" -> "Action types" tab).
-    // `exact: true`: the default tiles view renders every standard
-    // as its own card link whose accessible name also contains the org
-    // name (name + reference + org), so a plain substring match on
-    // `ORG_NAMES.alpha` now resolves to every tile card too, not just the
-    // "Compliance settings" link below — that link's own accessible name
-    // is the org name alone, so `exact` disambiguates it from every card.
+    // Compliance settings is a row of the page's actions menu, one per organisation.
     await page.goto("/standards");
-    await page.getByRole("link", { name: ORG_NAMES.alpha, exact: true }).click();
+    await chooseListAction(page, ORG_NAMES.alpha);
     await expect(page).toHaveURL(/\/standards\/settings\/[^/]+$/);
     await addDefinition(page, "Add action type", { "Action type name": actionTypeName });
     await expect(async () => {

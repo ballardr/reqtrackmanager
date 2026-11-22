@@ -4793,9 +4793,12 @@ const en = {
     tabStandards: "Standards",
     tabByStandard: "By standard",
     tabOutstanding: "Outstanding",
-    organisationHelp: (orgLabel: string) =>
-      `The ${orgLabel} whose compliance is shown. Only those where you hold the Compliance Manager role are listed.`,
+    organisationHelp: (orgLabel: string, orgPlural: string) =>
+      `The ${orgLabel} whose compliance is shown; every ${orgLabel} is shown until one is chosen. Only ${orgPlural} where you hold the Compliance Manager role are listed. A report is produced for one ${orgLabel}, so Export is offered once one is chosen.`,
+    organisationHelpStandards: (orgLabel: string) =>
+      `The ${orgLabel} whose standards are listed; every ${orgLabel} you belong to is shown until one is chosen.`,
     noStatusAccess: "Compliance status is available to compliance managers.",
+    complianceSettings: "Compliance settings",
   },
   orgDashboards: {
     noun: "dashboard",

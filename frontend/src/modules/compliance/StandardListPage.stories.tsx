@@ -81,14 +81,17 @@ export const SingleOrgList: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
-    // Only one org — no "Organisation" column, but a "Compliance settings"
-    // link for it is still offered.
-    await expect(canvas.queryByText("Organisation")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("link", { name: "Acme Corp" })).toHaveAttribute("href", "/standards/settings/org-1");
+    // Only one organisation: no organisation on the card and no Organisation filter, but a "Compliance settings" row
+    // of the actions menu for it is still offered.
+    await expect(canvas.queryByText("Acme Corp")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Organisation")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "List actions" }));
+    await expect(within(document.body).getByRole("menuitem", { name: "Compliance settings" })).toBeInTheDocument();
   },
 };
 
-export const MultiOrgShowsOrgColumnAndDropsDisabledOrg: Story = {
+/** Every organisation shows until the Organisation filter narrows them; each standard states its organisation. */
+export const MultiOrgShowsEveryOrganisationAndFiltersByOne: Story = {
   beforeEach: () =>
     mockStandardListApis(
       [org(), org({ id: "org-2", name: "Beta Industries" }), org({ id: "org-3", name: "No Compliance Org" })],
@@ -103,11 +106,25 @@ export const MultiOrgShowsOrgColumnAndDropsDisabledOrg: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("ISO 27001")).toBeInTheDocument());
     await expect(canvas.getByText("SOC 2 Type II")).toBeInTheDocument();
-    // "Acme Corp"/"Beta Industries" each appear twice — once in the
-    // "Compliance settings" link row, once in the table's own Organisation
-    // column — so `getAllByText`, not `getByText`, for both.
-    await expect(canvas.getAllByText("Acme Corp").length).toBeGreaterThan(0);
-    await expect(canvas.getAllByText("Beta Industries").length).toBeGreaterThan(0);
+    const cards = Array.from(canvasElement.querySelectorAll<HTMLElement>(".tile-card"));
+    await expect(cards.find((c) => c.textContent?.includes("ISO 27001"))).toHaveTextContent("Acme Corp");
+    await expect(cards.find((c) => c.textContent?.includes("SOC 2 Type II"))).toHaveTextContent("Beta Industries");
+
+    const filter = canvas.getByLabelText("Organisation");
+    await expect(filter).toHaveValue("");
+    await expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All organisations", "Acme Corp", "Beta Industries", "No Compliance Org",
+    ]);
+    await userEvent.selectOptions(filter, "org-2");
+    await waitFor(() => expect(canvas.queryByText("ISO 27001")).not.toBeInTheDocument());
+    await expect(canvas.getByText("SOC 2 Type II")).toBeInTheDocument();
+
+    // Compliance settings: one row per organisation, grouped.
+    await userEvent.click(canvas.getByRole("button", { name: "List actions" }));
+    // The first group of a menu starts open.
+    await expect(within(document.body).getByRole("menuitem", { name: "Compliance settings" })).toHaveAttribute("aria-expanded", "true");
+    await expect(within(document.body).getByRole("menuitem", { name: "Beta Industries" })).toBeInTheDocument();
+    await expect(within(document.body).getByRole("menuitem", { name: "Acme Corp" })).toBeInTheDocument();
   },
 };
 
@@ -118,7 +135,8 @@ export const CreateStandardWithOrgPicker: Story = {
     await waitFor(() => expect(canvas.getByText("No compliance standards yet.")).toBeInTheDocument());
 
     await userEvent.click(canvas.getByRole("button", { name: "New standard" }));
-    const body = within(document.body);
+    // The dialog's own picker, not the page's Organisation filter.
+    const body = within(document.body.querySelector<HTMLElement>('[role="dialog"]') ?? document.body);
     await userEvent.selectOptions(body.getByLabelText("Organisation"), "org-2");
     await userEvent.type(body.getByLabelText("Standard reference"), "NIST-CSF");
     await userEvent.type(body.getByLabelText("Standard name"), "NIST Cybersecurity Framework");

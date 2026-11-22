@@ -19694,3 +19694,19 @@ The Compliance Standards tile was a whole-card `Link` with `color: inherit; text
 
 **Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging or bundle change. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill. Website: no page describes the card's markup, and the visible change (a standard's title is now a link) needs no new text.
 
+
+## Platform review 2026-11-19, Phase 40: Compliance Standards organisation filter (2026-11-22)
+
+**Decided by: User** (the page and the scope, asked interactively: the Standards list and both status tabs, and the organisation shown only when a person is in more than one organisation) and **Decided by: Agent** (the items marked below).
+
+The Organisation filter of the status tabs listed one organisation and opened on the first; the Standards list had no such filter. Every organisation now shows until one is chosen, on all three tabs.
+
+- **Filter in the panel, state in the address.** The Standards list gains an Organisation `FilterSelect` (`?org=`, shown only for more than one organisation, default every organisation); the two status tabs keep theirs, with "All organisations" as the default and an unreadable `?org=` reading as no choice. Switching tab keeps the choice.
+- **Status tabs read several organisations.** `collectAcrossOrgs` reads each organisation's endpoint in parallel and tags the rows; the filters work on the merged rows (identifiers are unique across organisations), and the sub-section options are read from the chosen standard's own organisation. One failed organisation fails the load rather than leaving it out silently.
+- **Organisation stated on every row** when several are read (`OrganisationNote`: By standard group rows, Outstanding items, the Standard filter options); the Standards list already showed it on cards and in the list for more than one organisation. **Decided by: Agent:** the name, as the Projects page does, not a code.
+- **Export needs one organisation. Decided by: Agent.** The report endpoint is per organisation and documents cannot be merged, so the tabs offer Export once the filter has chosen one (the filter's help says so). Reason: a combined report would need a new backend report scope; not warranted by the request.
+- **Found on the way and fixed:** the Standards list drew a row of per-organisation link-buttons ("Compliance settings: Acme") beside the page, against the one-primary-button rule. They are now rows of the page's actions menu, one per organisation under a "Compliance settings" group (a single row for one organisation). Three Playwright specs that opened settings through the link now use the menu.
+
+**Tests.** Storybook: status page (default all, narrowing to one, an unreadable organisation in the address), both panels reading two organisations (rows name their organisation, no Export), the list (filter default and narrowing, organisation on each card, settings rows in the menu). Playwright: the status tabs default to every organisation and Export appears once one is chosen; the list's filter with two organisations.
+
+**Review (identify → verify → remediate).** No endpoint, authorization, audit, retention, tenant, logging or bundle change: the tabs call the same per-organisation endpoints as before, only for organisations the nav-visibility answer already lists as readable (the server still enforces the Compliance Manager role per request). Nothing to remediate. Not applicable: backend change, migration, new stored data, time and dates, users and groups.

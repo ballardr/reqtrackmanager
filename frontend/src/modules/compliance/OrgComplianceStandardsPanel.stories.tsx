@@ -2,11 +2,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import type { Organization } from "../../api/types";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
 import type { ProjectComplianceStatus } from "./types";
 
 const ORG_ID = "org-1";
+const ORG = { id: ORG_ID, name: "Acme" } as Organization;
+const OTHER_ORG = { id: "org-2", name: "Globex" } as Organization;
 
 const STATUS_ROWS: ProjectComplianceStatus[] = [
   {
@@ -48,7 +51,7 @@ const meta: Meta<typeof OrgComplianceStandardsPanel> = {
   title: "Modules/Compliance/OrgComplianceStandardsPanel",
   component: OrgComplianceStandardsPanel,
   decorators: [withToast()],
-  args: { orgId: ORG_ID, frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined } },
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG], showOrg: false } },
 };
 export default meta;
 
@@ -75,6 +78,31 @@ export const GroupedByStandard: Story = {
     await waitFor(() => expect(table.getByRole("heading", { name: "v1.0" })).toBeInTheDocument());
     await expect(table.getByRole("link", { name: "Alpha Bridge" })).toBeInTheDocument();
     await expect(table.getByRole("link", { name: "Beta Tunnel" })).toBeInTheDocument();
+  },
+};
+
+/** Reading two organisations joins their assignments, and each standard row states its organisation. */
+export const EveryOrganisationAtOnce: Story = {
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG, OTHER_ORG], showOrg: true } },
+  decorators: [withRouter("/standards/by-standard")],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith(`/api/v1/orgs/${ORG_ID}/`) && path.includes("/project-compliance")) return [STATUS_ROWS[0]];
+      if (path.startsWith("/api/v1/orgs/org-2/") && path.includes("/project-compliance")) {
+        return [{ ...STATUS_ROWS[0], project_compliance_id: "pc-9", standard_id: "std-9", standard_reference: "SOC-2", standard_name: "SOC 2", project_id: "proj-9", project_name: "Globex Plant" }];
+      }
+      throw new Error(`unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(await canvas.findByRole("table"));
+    await expect(table.getByText(/ISO-27001 — ISO 27001/)).toBeInTheDocument();
+    await expect(table.getByText(/SOC-2 — SOC 2/)).toBeInTheDocument();
+    await expect(table.getByText("(Acme)")).toBeInTheDocument();
+    await expect(table.getByText("(Globex)")).toBeInTheDocument();
+    // A report is generated for one organisation, so no Export is offered while several are read.
+    await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
   },
 };
 

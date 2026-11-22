@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 39 done 2026-11-22; phases 40 and 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 40 done 2026-11-22; phase 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-39 / 47 phases complete.
+40 / 47 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -49,7 +49,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 37 | Text styling toolbar: compact, and a mathematics button | Small grouped toolbar buttons; Inline equation and Equation block buttons with a live preview panel; equations drawn in the Visual view; mathematics on Decisions, Product Feedback, Open Questions, Pain Points and change requests; decided 2026-11-22 | [x] |
 | 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [x] |
 | 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [x] |
-| 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [ ] |
+| 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [x] |
 | 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [ ] |
 | 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 42 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
@@ -591,6 +591,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - The selector becomes a `FilterSelect` (or the multi-choice equivalent) in the page's `ListPageLayout` filter panel, defaulting to all organisations the person can see; its state is in the URL (`useUrlChoice`/`useUrlList`) so it survives the list-position rule. Each card and list row shows the organisation (the shared card of phase 39), through the organisation code convention.
 - Review first: say which page the user meant by "settings" if it differs (the Standards page, Organisation Settings or the project's Compliance page), and apply the same filter placement to any other Compliance page with a free-standing organisation selector.
 - Tests: Storybook for the filter panel; Playwright with two organisations confirms both appear by default, the filter narrows them, and the organisation is visible on each standard.
+
+- As built: answered with the user (**Decided by: User**, 2026-11-22): the Standards list and both status tabs, organisation shown only for more than one. The list gains the filter; By standard and Outstanding default to every organisation they may read (`collectAcrossOrgs`, `OrganisationNote`), so Export (a per-organisation report) appears once one is chosen (**Decided by: Agent**). The "Compliance settings" link-buttons became rows of the page's actions menu. See `docs/decisions.md`.
 
 ### Phase 41 — Sign-in page: no redirect notice
 

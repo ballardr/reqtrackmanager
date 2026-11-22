@@ -134,6 +134,30 @@ export interface StandardAcrossOrgsRow extends ComplianceStandard {
   organization_name: string;
 }
 
+/** A row of an organisation-wide list, tagged with the organisation it was read from. */
+export type InOrganization<T> = T & { organization_id: string; organization_name: string };
+
+/**
+ * Reads one organisation-wide list from each of several organisations in parallel and joins the rows, each tagged
+ * with its organisation, so a status tab can show every organisation at once.
+ *
+ * @param orgs The organisations to read.
+ * @param load Reads one organisation's rows (`(orgId) => api call`).
+ * @returns The rows of every organisation, in the order of `orgs`.
+ * @throws The first failure of any organisation's request, so a missing organisation is never silently left out.
+ */
+export async function collectAcrossOrgs<T>(
+  orgs: readonly Organization[],
+  load: (orgId: string) => Promise<T[]>
+): Promise<InOrganization<T>[]> {
+  const perOrg = await Promise.all(
+    orgs.map(async (org) =>
+      (await load(org.id)).map((row): InOrganization<T> => ({ ...row, organization_id: org.id, organization_name: org.name }))
+    )
+  );
+  return perOrg.flat();
+}
+
 /** The active organisations the caller belongs to. */
 export async function listMyActiveOrganizations(): Promise<Organization[]> {
   return (await api.get<Organization[]>("/api/v1/orgs?mine=true")).filter((o) => o.is_active);
