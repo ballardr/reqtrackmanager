@@ -64,7 +64,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
-import { OrganisationNote } from "./OrganisationNote";
+import { OrganisationLabel } from "./OrganisationCell";
 import {
   COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL,
   COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL,
@@ -363,7 +363,7 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredNonCompliant.map((row) => (
                   <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
+                    <OrganisationLabel name={row.organization_name} show={showOrg} /><ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
                     {row.justification && <span className="text-muted"> — {markdownPlainText(row.justification)}</span>}
                   </li>
                 ))}
@@ -381,7 +381,7 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredPending.map((row) => (
                   <li key={row.project_compliance_requirement_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
+                    <OrganisationLabel name={row.organization_name} show={showOrg} /><ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name}
                     <span className="text-muted"> ({COMPLIANCE_STATUS_LABEL[row.compliance_status]})</span>
                   </li>
                 ))}
@@ -399,7 +399,7 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredActions.map((row) => (
                   <li key={row.required_action_assessment_id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name} — {row.required_action_name}
+                    <OrganisationLabel name={row.organization_name} show={showOrg} /><ProjectLink projectId={row.project_id} projectName={row.project_name} /> — <strong>{row.standard_reference}</strong> — {row.requirement_reference ? `${row.requirement_reference} — ` : ""}{row.requirement_name} — {row.required_action_name}
                     {row.due_date && <span className="text-muted"> (due {row.due_date})</span>}
                   </li>
                 ))}
@@ -417,7 +417,7 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredEvidence.map((row) => (
                   <li key={row.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — {row.title}
+                    <OrganisationLabel name={row.organization_name} show={showOrg} /><ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.title}
                     <Badge className="badge-after">{COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[row.validity_state]}</Badge>
                     {row.expiry_date && <span className="text-muted"> (expires {row.expiry_date})</span>}
                   </li>
@@ -436,7 +436,7 @@ export function OrgComplianceOutstandingPanel({ frame }: { frame: ComplianceStat
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {filteredReviewsDue.map((row) => (
                   <li key={`${row.project_id}-${row.review.id}`} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
-                    <ProjectLink projectId={row.project_id} projectName={row.project_name} /><OrganisationNote name={row.organization_name} show={showOrg} /> — {row.review.frequency_label} — due {row.review.next_due_date}
+                    <OrganisationLabel name={row.organization_name} show={showOrg} /><ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.review.frequency_label} — due {row.review.next_due_date}
                     {row.review.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</Badge>}
                   </li>
                 ))}

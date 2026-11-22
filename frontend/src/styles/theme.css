@@ -2672,6 +2672,24 @@ td:has(> .disclosure-toggle) {
   background: var(--color-surface-alt);
 }
 
+/* The organisation a Compliance status row belongs to (`modules/compliance/OrganisationCell.tsx`): one line, cut
+   with an ellipsis past its width so the column stays aligned. `--label` leads an item of a sentence-style list at a
+   fixed width, so the project after it starts at the same place in every item. */
+.org-cell {
+  display: block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-cell--label {
+  display: inline-block;
+  width: 10rem;
+  max-width: 100%;
+  margin-right: var(--space-3);
+  vertical-align: bottom;
+}
+
 /* `DirectoryTable`'s row-opening first-column control — a real <button>
    (`onRowClick`) or <Link> (`rowHref`), styled identically either way so a
    directory row that opens a side panel and one that navigates to a URL

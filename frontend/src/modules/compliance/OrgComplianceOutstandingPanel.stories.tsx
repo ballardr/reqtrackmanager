@@ -260,8 +260,8 @@ export const EveryOrganisationAtOnce: Story = {
     const canvas = within(canvasElement);
     await canvas.findByText("Non-compliant requirements (1)");
     await expect(canvas.getByText("Pending approval (1)")).toBeInTheDocument();
-    await expect(canvas.getByText("(Acme)")).toBeInTheDocument();
-    await expect(canvas.getByText("(Globex)")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Acme")[0]).toBeInTheDocument();
+    await expect(canvas.getAllByText("Globex")[0]).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
   },
 };

@@ -99,8 +99,10 @@ export const EveryOrganisationAtOnce: Story = {
     const table = within(await canvas.findByRole("table"));
     await expect(table.getByText(/ISO-27001 — ISO 27001/)).toBeInTheDocument();
     await expect(table.getByText(/SOC-2 — SOC 2/)).toBeInTheDocument();
-    await expect(table.getByText("(Acme)")).toBeInTheDocument();
-    await expect(table.getByText("(Globex)")).toBeInTheDocument();
+    // The organisation is a column of its own, not text inside the standard's button.
+    await expect(table.getByRole("columnheader", { name: "Organisation" })).toBeInTheDocument();
+    await expect(table.getByRole("cell", { name: "Acme" })).toBeInTheDocument();
+    await expect(table.getByRole("cell", { name: "Globex" })).toBeInTheDocument();
     // A report is generated for one organisation, so no Export is offered while several are read.
     await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
   },
@@ -228,3 +230,33 @@ export const NoAssignments: Story = {
 
 export const LightTheme: Story = { ...GroupedByStandard };
 export const DarkTheme: Story = { ...GroupedByStandard, globals: { theme: "dark" } };
+
+/** A standard name that wraps over several lines never moves the organisation: its cells share one left edge. */
+export const OrganisationColumnAlignsWithLongNames: Story = {
+  args: { frame: { tabs: undefined, contentProps: undefined, orgFilter: undefined, orgs: [ORG, OTHER_ORG], showOrg: true } },
+  decorators: [withRouter("/standards/by-standard")],
+  beforeEach: () => {
+    const longName = "Information security management systems requirements for the operation of a very large and widely distributed organisation ".repeat(3);
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith(`/api/v1/orgs/${ORG_ID}/`) && path.includes("/project-compliance")) {
+        return [{ ...STATUS_ROWS[0], standard_name: longName }];
+      }
+      if (path.startsWith("/api/v1/orgs/org-2/") && path.includes("/project-compliance")) {
+        return [{ ...STATUS_ROWS[0], project_compliance_id: "pc-9", standard_id: "std-9", standard_reference: "SOC-2", standard_name: "SOC 2", project_id: "proj-9" }];
+      }
+      throw new Error(`unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(await canvas.findByRole("table"));
+    const acme = table.getByRole("cell", { name: "Acme" });
+    const globex = table.getByRole("cell", { name: "Globex" });
+    await expect(Math.round(acme.getBoundingClientRect().left)).toBe(Math.round(globex.getBoundingClientRect().left));
+    // The expanded row spans every column, including Organisation.
+    await userEvent.click(table.getByRole("button", { name: /Expand projects for ISO-27001/ }));
+    const header = table.getAllByRole("columnheader");
+    const spanning = canvasElement.querySelector("td[colspan]") as HTMLElement;
+    await expect(Number(spanning.getAttribute("colspan"))).toBe(header.length);
+  },
+};

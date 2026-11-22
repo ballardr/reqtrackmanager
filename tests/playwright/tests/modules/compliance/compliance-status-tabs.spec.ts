@@ -57,6 +57,22 @@ test.describe("Compliance Module: status tabs of the Standards page", () => {
     await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
   });
 
+  test("By standard has one Organisation column for several organisations, none for one", async ({ page }) => {
+    const suffix = Date.now();
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference: `OCA-${suffix}`, name: `E2E Org Column Alpha ${suffix}` });
+
+    await page.goto("/standards/by-standard");
+    // Several organisations are read: an Organisation column of its own, and its header is left of the figures.
+    await expect(page.getByRole("columnheader", { name: "Organisation", exact: true })).toHaveCount(1);
+
+    // One organisation chosen: the column is absent.
+    await page.getByRole("combobox", { name: "Organisation", exact: true }).selectOption({ label: ORG_NAMES.alpha });
+    await expect(page.getByRole("columnheader", { name: "Standard", exact: true })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Organisation", exact: true })).toHaveCount(0);
+    await page.getByRole("combobox", { name: "Organisation", exact: true }).selectOption({ label: "All organisations" });
+  });
+
   test("the Standards list has an Organisation filter, every organisation by default, and names each standard's organisation", async ({ page }) => {
     const suffix = Date.now();
     const alphaName = `E2E Org Filter Alpha ${suffix}`;

@@ -73,7 +73,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
-import { OrganisationNote } from "./OrganisationNote";
+import { OrganisationCell, OrganisationHeader } from "./OrganisationCell";
 import {
   COMPLIANCE_OVERALL_STATE_LABEL,
   type ComplianceOverallState,
@@ -331,6 +331,7 @@ export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatus
               <thead>
                 <tr>
                   <th>{groupBy === "project" ? "Project" : "Standard"}</th>
+                  <OrganisationHeader show={showOrg} />
                   <th>{groupBy === "project" ? "Standards" : "Projects"}</th>
                   <th>Compliant</th>
                   <th>Non-Compliant</th>
@@ -356,9 +357,9 @@ export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatus
                           >
                             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             {group.displayLabel}
-                            <OrganisationNote name={group.rows[0].organization_name} show={showOrg} />
                           </button>
                         </td>
+                        <OrganisationCell name={group.rows[0].organization_name} show={showOrg} />
                         <td>{group.rows.length}</td>
                         <td>{countByState(group.rows, "compliant")}</td>
                         <td>{countByState(group.rows, "non_compliant")}</td>
@@ -367,7 +368,7 @@ export function OrgComplianceStandardsPanel({ frame }: { frame: ComplianceStatus
                       </tr>
                       {expanded && (
                         <tr>
-                          <td colSpan={6}>
+                          <td colSpan={showOrg ? 7 : 6}>
                             {groupBy === "standard" ? (
                               (() => {
                                 const versionGroups = groupByVersion(group.rows);
