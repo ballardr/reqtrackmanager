@@ -13,6 +13,8 @@
  *   Keep as typed), replacing only the pasted range.
  * - Show the toolbar only while focus is inside the field (`ActiveFieldFrame`; the Markdown editor's frame when nested).
  * - Draw a `mermaid` code block as an editable source with a live diagram beneath it.
+ * - In a field that holds mathematics (`math`), draw each equation as an equation; pressing one opens the same panel
+ *   the toolbar's equation buttons use, with a live preview, to change its TeX.
  *
  * Design decisions:
  * - Edits are reported after a short pause and on blur and close, because writing Markdown for a long document is
@@ -22,19 +24,24 @@
  * - Pasted HTML (from a web page or a word processor) is reduced by the editor's schema as before; only plain text
  *   that looks like Markdown gets the conversion notice, since that is the text that arrives as literal symbols.
  *
- * Dependencies: TipTap, `utils/visualMarkdown`, `RichTextToolbar`, `MermaidDiagram`.
+ * Dependencies: TipTap, `utils/visualMarkdown`, `utils/visualMathNode`, `RichTextToolbar`, `MermaidDiagram`,
+ * `MathEditPopover`, `MathEquation` (loaded on first use).
  */
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type Editor, type NodeViewProps } from "@tiptap/react";
-import { useEffect, useMemo, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type TextareaHTMLAttributes } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import {
   findVisualBlocker, looksLikeMarkdown, MarkdownCodeBlock, roundTripMarkdown, visualMarkdownExtensions, writtenMarkdown,
   type VisualBlocker,
 } from "../utils/visualMarkdown";
+import { equationMarkdown, MathNode } from "../utils/visualMathNode";
 import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
+import { MathEditPopover } from "./MathEditPopover";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { RichTextToolbar } from "./RichTextToolbar";
+
+const MathEquation = lazy(() => import("./MathEquation").then((module) => ({ default: module.MathEquation })));
 
 const EMIT_DELAY_MS = 150;
 const DIAGRAM_DELAY_MS = 500;
@@ -72,6 +79,44 @@ const VisualCodeBlock = MarkdownCodeBlock.extend({
   },
 });
 
+/** An equation in the document: drawn as an equation, and changed in the equation panel when pressed. */
+function MathView({ node, updateAttributes, selected, editor }: NodeViewProps) {
+  const text = useStrings().richText;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [changing, setChanging] = useState(false);
+  const tex = String(node.attrs.tex);
+  const display = Boolean(node.attrs.display);
+  const open = () => { if (editor.isEditable) setChanging(true); };
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  }
+  return (
+    <NodeViewWrapper as="span" className={`visual-math${display ? " visual-math--display" : ""}${selected ? " is-selected" : ""}`}>
+      <span
+        ref={anchor} role="button" tabIndex={0} contentEditable={false} className="visual-math__equation"
+        aria-label={`${text.mathChange}: ${tex}`} aria-haspopup="dialog" aria-expanded={changing} onClick={open} onKeyDown={onKeyDown}
+      >
+        <Suspense fallback={<>{equationMarkdown(tex, display)}</>}><MathEquation tex={tex} display={display} /></Suspense>
+      </span>
+      {changing && (
+        <MathEditPopover
+          anchorRef={anchor} display={display} initialTex={tex} changing onClose={() => setChanging(false)}
+          onApply={(next) => { setChanging(false); updateAttributes({ tex: next }); }}
+        />
+      )}
+    </NodeViewWrapper>
+  );
+}
+
+const VisualMathNode = MathNode.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(MathView);
+  },
+});
+
 interface PastedRange {
   from: number;
   to: number;
@@ -88,8 +133,9 @@ type TextAreaExtras = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" 
  * @param ariaLabel The editable area's accessible name.
  * @param disabled Whether editing is unavailable.
  * @param textareaProps Attributes shared with the Write view (id, required) applied to the editable area.
+ * @param math Whether the field holds mathematics: equations are drawn as equations and the toolbar offers them.
  */
-export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ariaLabel, disabled, textareaProps }: {
+export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ariaLabel, disabled, textareaProps, math }: {
   value: string;
   onChange: (value: string) => void;
   onBlocked: (reason: VisualBlocker) => void;
@@ -97,6 +143,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   ariaLabel: string;
   disabled?: boolean;
   textareaProps?: TextAreaExtras;
+  math?: boolean;
 }) {
   const text = useStrings().richText;
   const [initial] = useState(value);
@@ -110,7 +157,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   const report = useRef(onChange);
   useEffect(() => { report.current = onChange; }, [onChange]);
 
-  const extensions = useMemo(() => visualMarkdownExtensions(VisualCodeBlock), []);
+  const extensions = useMemo(() => visualMarkdownExtensions(VisualCodeBlock, math ? VisualMathNode : null), [math]);
   const editor = useEditor({
     extensions,
     content: initial,
@@ -137,7 +184,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
     onUpdate: ({ editor: e }) => {
       const paste = pendingPaste.current;
       pendingPaste.current = null;
-      if (paste && findVisualBlocker(paste.text, roundTripMarkdown(paste.text)) === null) {
+      if (paste && findVisualBlocker(paste.text, roundTripMarkdown(paste.text, math), math) === null) {
         const inserted = e.state.doc.content.size - (paste.sizeBefore - paste.removed);
         setPasted({ from: paste.from, to: paste.from + inserted, text: paste.text });
       } else {
@@ -169,7 +216,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
 
   // What the editor writes for the text as opened: the baseline an edit is measured against.
   const opened = useMemo(() => (editor ? writtenMarkdown(editor) : null), [editor]);
-  const blocker = useMemo(() => (opened === null ? null : findVisualBlocker(initial, opened)), [opened, initial]);
+  const blocker = useMemo(() => (opened === null ? null : findVisualBlocker(initial, opened, math)), [opened, initial, math]);
   useEffect(() => { lastWritten.current = opened; }, [opened]);
   useEffect(() => {
     if (blocker) onBlocked(blocker);
@@ -204,7 +251,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   return (
     <ActiveFieldFrame className="stack" style={{ gap: "var(--space-1)" }}>
       <ActiveFieldToolbar>
-        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true }} disabled={disabled} />
+        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true, math }} disabled={disabled} />
       </ActiveFieldToolbar>
       {pasted && (
         <div className="row" role="status" style={{ flexWrap: "wrap", gap: "var(--space-2)", alignItems: "center" }}>

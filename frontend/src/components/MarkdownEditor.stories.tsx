@@ -146,7 +146,7 @@ export const SimpleEditorHasNoVisualTab: Story = {
   },
 };
 
-/** A field that holds equations is edited as source and previewed with the equations drawn. */
+/** A field that holds equations offers all three views and previews them drawn. */
 export const MathEditorDrawsEquationsInPreview: Story = {
   render: () => {
     function Math() {
@@ -157,12 +157,120 @@ export const MathEditorDrawsEquationsInPreview: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByRole("tab", { name: "Visual" })).toBeNull();
-    // The visual writer would escape the underscore, so the source stays exactly as stored.
+    await expect(canvas.getByRole("tab", { name: "Visual" })).toBeInTheDocument();
+    // The source stays exactly as stored (the underscore is not escaped).
     await expect(canvas.getByRole("textbox", { name: "Description" })).toHaveValue("The gain is \\( g_1 \\) at **all** times.");
     await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
     await waitFor(() => expect(canvasElement.querySelector(".math-text")).not.toBeNull());
     await expect(canvasElement.querySelector("strong")).toHaveTextContent("all");
+  },
+};
+
+/** Only a field declared for mathematics offers the equation buttons. */
+export const OnlyAMathematicsFieldOffersTheEquationButtons: Story = {
+  render: () => {
+    function Both() {
+      const [a, setA] = useState("");
+      const [b, setB] = useState("");
+      return (
+        <>
+          <MarkdownEditor math value={a} onChange={setA} ariaLabel="With equations" rows={2} />
+          <MarkdownEditor value={b} onChange={setB} ariaLabel="Without equations" rows={2} />
+        </>
+      );
+    }
+    return <Both />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const frames = Array.from(canvasElement.querySelectorAll(".markdown-editor")) as HTMLElement[];
+    // A toolbar is in the accessibility tree only while its field is active.
+    await userEvent.click(within(frames[0]).getByRole("textbox", { name: "With equations" }));
+    await expect(within(frames[0]).getByRole("button", { name: "Inline equation" })).toBeInTheDocument();
+    await expect(within(frames[0]).getByRole("button", { name: "Equation block" })).toBeInTheDocument();
+    await userEvent.click(within(frames[1]).getByRole("textbox", { name: "Without equations" }));
+    await expect(within(frames[1]).queryByRole("button", { name: "Inline equation" })).toBeNull();
+    await expect(canvas.getAllByRole("toolbar")).toHaveLength(1);
+  },
+};
+
+/** The equation panel opens with the selected text, draws it as typed and inserts it as an inline equation. */
+export const InlineEquationButtonOpensAPanelWithALivePreview: Story = {
+  render: () => {
+    function Math() {
+      const [value, setValue] = useState("The area is pi r^2 here");
+      return (
+        <>
+          <MarkdownEditor math value={value} onChange={setValue} ariaLabel="Description" rows={2} />
+          <pre data-testid="stored">{value}</pre>
+        </>
+      );
+    }
+    return <Math />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    const area = canvas.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+    area.focus();
+    area.setSelectionRange(12, 18);
+    await userEvent.click(await canvas.findByRole("button", { name: "Inline equation" }));
+    const input = await page.findByRole("textbox", { name: "TeX" });
+    await expect(input).toHaveValue("pi r^2");
+    await userEvent.clear(input);
+    await userEvent.type(input, "\\pi r^2");
+    await waitFor(() => expect(page.getByTestId("math-preview").querySelector(".katex")).not.toBeNull());
+    await userEvent.click(page.getByRole("button", { name: "Insert" }));
+    await waitFor(() => expect(canvas.getByTestId("stored")).toHaveTextContent("The area is \\(\\pi r^2\\) here"));
+    await waitFor(() => expect(page.queryByTestId("math-preview")).toBeNull());
+  },
+};
+
+/** An equation block starts on its own line. */
+export const EquationBlockIsInsertedAsItsOwnParagraph: Story = {
+  render: () => {
+    function Math() {
+      const [value, setValue] = useState("Intro text");
+      return (
+        <>
+          <MarkdownEditor math value={value} onChange={setValue} ariaLabel="Description" rows={2} />
+          <pre data-testid="stored">{value}</pre>
+        </>
+      );
+    }
+    return <Math />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    const area = canvas.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+    area.focus();
+    area.setSelectionRange(5, 5);
+    await userEvent.click(await canvas.findByRole("button", { name: "Equation block" }));
+    await userEvent.type(await page.findByRole("textbox", { name: "TeX" }), "x_1 + y_2{Enter}");
+    await waitFor(() => expect(area.value).toBe("Intro\n\n$$x_1 + y_2$$\n\n text"));
+  },
+};
+
+/** The panel refuses TeX that would end the equation early, says why and keeps Insert unavailable. */
+export const TheEquationPanelRefusesTeXThatCannotBeStored: Story = {
+  render: () => {
+    function Math() {
+      const [value, setValue] = useState("");
+      return <MarkdownEditor math value={value} onChange={setValue} ariaLabel="Description" rows={2} />;
+    }
+    return <Math />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    await userEvent.click(canvas.getByRole("textbox", { name: "Description" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Inline equation" }));
+    const input = await page.findByRole("textbox", { name: "TeX" });
+    await expect(page.getByRole("button", { name: "Insert" })).toBeDisabled();
+    await userEvent.type(input, "a\\)b");
+    await expect(await page.findByRole("alert")).toHaveTextContent("cannot contain");
+    await expect(page.getByRole("button", { name: "Insert" })).toBeDisabled();
   },
 };
 

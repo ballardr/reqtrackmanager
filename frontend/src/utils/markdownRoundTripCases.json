@@ -111,5 +111,27 @@
   "dollar-money": "It costs $5 and $10.",
   "script-tag": "<script>alert(1)</script>\n\ntext",
   "javascript-image": "![x](javascript:alert(1))"
- }
+ },
+  "mathematics": {
+    "inline": "Energy is \\(E = mc^2\\) in a vacuum.",
+    "inline-spaces": "Where \\( x \\) is the input.",
+    "display-in-text": "Then $$\\frac{a_1}{b_2}$$ holds.",
+    "display-paragraph": "Before.\n\n$$x_1 + y_2 = z_3$$\n\nAfter.",
+    "display-multiline": "$$\n\\int_0^1 x^2 dx\n$$",
+    "underscores-and-stars": "Use \\(a_1 * b_2 * c_3\\) here.",
+    "several-in-one-paragraph": "From \\(a_1\\) and \\(b_2\\) we get $$c_3$$ and more.",
+    "in-a-heading": "## Result for \\(x_1\\)",
+    "in-a-list": "- first \\(x_1\\)\n- second $$y_2$$",
+    "in-a-quotation": "> Given \\(a_1\\), then b.",
+    "in-a-table": "| a | b |\n| --- | --- |\n| \\(x_1\\) | $$y_2$$ |",
+    "next-to-emphasis": "**bold** and \\(x_1\\) and _italic_.",
+    "in-code-stays-code": "Write `\\(x\\)` as code.",
+    "in-a-fence-stays-code": "```\n$$x_1$$\n```",
+    "bare-dollars-are-text": "It costs $5 and $6 in total.",
+    "opener-without-a-closer": "An opener \\( with no closer.",
+    "legacy-single-dollar-text": "Energy is $E = mc^2$ and $a_1 + b_2$."
+  },
+  "mathematicsUnsupported": {
+    "html-around-an-equation": "<div>\\(x\\)</div>"
+  }
 }

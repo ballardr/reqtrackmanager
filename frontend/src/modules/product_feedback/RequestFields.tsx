@@ -77,7 +77,7 @@ export function RequestFields({
         <TextField helpNotNeeded required label="Title" ariaLabel="Request title" value={draft.title} onChange={(v) => set("title", v)} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField markdown helpNotNeeded label="Description" rows={4} value={draft.description} onChange={(v) => set("description", v)} />
+        <TextAreaField markdown="math" helpNotNeeded label="Description" rows={4} value={draft.description} onChange={(v) => set("description", v)} />
       </FormGridFull>
       <PrincipalFormField
         help={PRODUCT_FEEDBACK_HELP.requestOwner} label="Owner" orgUsers={orgUsers} organizationId={organizationId}

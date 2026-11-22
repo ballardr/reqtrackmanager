@@ -25,6 +25,7 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "enhancement_request": from_search(
         SEARCH_PROVIDERS["enhancement_request"],
         principal_field("owner", "Owner", EnhancementRequestVersion.owner_type, EnhancementRequestVersion.owner_id),
+        math_fields=("description",),
         core_fields=("description", "owner"),
     ),
 }

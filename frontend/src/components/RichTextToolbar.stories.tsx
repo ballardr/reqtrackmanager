@@ -48,3 +48,24 @@ export const OffersTheOptionalButtonsAFieldAsksFor: Story = {
     await expect(toolbar.queryByRole("button", { name: "Table" })).toBeNull();
   },
 };
+
+export const OffersTheEquationButtonsOnlyToAMathematicsField: Story = {
+  render: () => <Harness features={{ math: true }} />,
+  play: async ({ canvasElement }) => {
+    const toolbar = within(await within(canvasElement).findByRole("toolbar", { name: "Text formatting" }));
+    for (const name of ["Inline equation", "Equation block"]) {
+      await expect(toolbar.getByRole("button", { name })).toBeInTheDocument();
+    }
+  },
+};
+
+export const ButtonsAreSmallAndGroupedBySeparators: Story = {
+  render: () => <Harness />,
+  play: async ({ canvasElement }) => {
+    const toolbar = await within(canvasElement).findByRole("toolbar", { name: "Text formatting" });
+    const bold = within(toolbar).getByRole("button", { name: "Bold" });
+    // The small button size of the style guide (28px), not the medium 36px.
+    await expect(Math.round(bold.getBoundingClientRect().height)).toBe(28);
+    await expect(toolbar.querySelectorAll('[role="separator"]').length).toBeGreaterThanOrEqual(3);
+  },
+};

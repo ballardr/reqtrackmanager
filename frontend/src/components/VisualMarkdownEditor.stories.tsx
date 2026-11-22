@@ -11,13 +11,13 @@ export default meta;
 type Story = StoryObj;
 
 /** Holds the value as a form would, and shows what is stored. */
-function Harness({ initial = "", onReport, onBlocked }: { initial?: string; onReport?: (value: string) => void; onBlocked?: () => void }) {
+function Harness({ initial = "", onReport, onBlocked, math }: { initial?: string; onReport?: (value: string) => void; onBlocked?: () => void; math?: boolean }) {
   const [value, setValue] = useState(initial);
   const change = useCallback((next: string) => { setValue(next); onReport?.(next); }, [onReport]);
   const blocked = useCallback(() => onBlocked?.(), [onBlocked]);
   return (
     <>
-      <VisualMarkdownEditor value={value} onChange={change} onBlocked={blocked} ariaLabel="Notes" rows={4} />
+      <VisualMarkdownEditor value={value} onChange={change} onBlocked={blocked} ariaLabel="Notes" rows={4} math={math} />
       <button type="button" onClick={() => setValue("Replaced from outside")}>Replace</button>
       <pre data-testid="stored">{value}</pre>
     </>
@@ -213,5 +213,49 @@ export const ToolbarShowsOnlyWhileTheFieldIsActive: Story = {
     await expect(canvas.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Outside" }));
     await waitFor(() => expect(canvas.queryByRole("toolbar")).toBeNull());
+  },
+};
+
+export const ADrawnEquationIsKeptExactlyAsStoredAndChangedInThePanel: Story = {
+  render: () => <Harness math initial={"The gain is \\( g_1 \\) at **all** times."} onBlocked={fn()} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    const box = await canvas.findByRole("textbox", { name: "Notes" });
+    await waitFor(() => expect(box.querySelector(".math-text")).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Opening writes nothing back, and the TeX is never escaped.
+    await expect(stored(canvas)).toHaveTextContent("The gain is \\( g_1 \\) at **all** times.");
+    await userEvent.click(within(box).getByRole("button", { name: /Change equation/ }));
+    const input = await page.findByRole("textbox", { name: "TeX" });
+    await expect(input).toHaveValue("g_1");
+    await userEvent.clear(input);
+    await userEvent.type(input, "g_2{Enter}");
+    await waitFor(() => expect(stored(canvas)).toHaveTextContent("The gain is \\(g_2\\) at **all** times."));
+  },
+};
+
+export const TheEquationButtonsInsertAnEquationAtTheCursor: Story = {
+  render: () => <Harness math />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    const box = await canvas.findByRole("textbox", { name: "Notes" });
+    await userEvent.click(box);
+    await userEvent.keyboard("Result: ");
+    await userEvent.click(await canvas.findByRole("button", { name: "Inline equation" }));
+    await userEvent.type(await page.findByRole("textbox", { name: "TeX" }), "a_1 + b_2");
+    await waitFor(() => expect(page.getByTestId("math-preview").querySelector(".katex")).not.toBeNull());
+    await userEvent.click(page.getByRole("button", { name: "Insert" }));
+    await waitFor(() => expect(stored(canvas)).toHaveTextContent("Result: \\(a_1 + b_2\\)"));
+    await waitFor(() => expect(box.querySelector(".math-text")).not.toBeNull());
+  },
+};
+
+export const AFieldWithoutMathematicsStillRefusesEquations: Story = {
+  render: () => <Harness initial={"Energy is \\( E \\)."} onBlocked={fn()} />,
+  play: async ({ canvasElement, }) => {
+    // Without the equation node the writer would escape the TeX, so the field falls back to Write.
+    await waitFor(() => expect(within(canvasElement).queryByRole("textbox", { name: "Notes" })).toBeNull());
   },
 };

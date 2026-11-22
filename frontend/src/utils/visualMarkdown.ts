@@ -21,7 +21,9 @@
  *   as typed. Typing `**text**` still formats through the input rules.
  * - "Equal" means the reader's tokens are equal, not the characters: `_a_` and `*a*`, `*` and `-` markers and a
  *   hard or soft line break all read the same, so a text is not blocked for a cosmetic difference.
- * - Mathematics is blocked outright because the writer escapes the underscores a formula needs.
+ * - In a field that holds mathematics, an equation is an indivisible node (`utils/visualMathNode`) the writer never
+ *   escapes, so such a text opens visually. In any other field mathematics is blocked outright, because the writer
+ *   would escape the underscores a formula needs.
  *
  * Dependencies: TipTap (MIT), `utils/markdownIt`.
  */
@@ -38,6 +40,7 @@ import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 
 import { parseMarkdown, SAFE_LINK } from "./markdownIt";
+import { MathNode } from "./visualMathNode";
 
 /** Why a text cannot be edited visually: it has mathematics, or formatting the editor would change. */
 export type VisualBlocker = "mathematics" | "unsupported";
@@ -90,9 +93,11 @@ const InlineMarks = [Bold, Italic, Strike, Code].map((mark) => mark.extend({ add
 
 /**
  * @param codeBlock The code block extension (the editor passes one with its diagram view).
+ * @param mathNode The equation node, for a field that holds mathematics (the editor passes one with its view); none
+ *   leaves equations as ordinary text.
  * @returns The extensions of the visual Markdown editor.
  */
-export function visualMarkdownExtensions(codeBlock: AnyExtension = MarkdownCodeBlock): AnyExtension[] {
+export function visualMarkdownExtensions(codeBlock: AnyExtension = MarkdownCodeBlock, mathNode: AnyExtension | null = null): AnyExtension[] {
   return [
     StarterKit.configure({
       underline: false, paragraph: false, codeBlock: false, bold: false, italic: false, strike: false, code: false,
@@ -102,6 +107,7 @@ export function visualMarkdownExtensions(codeBlock: AnyExtension = MarkdownCodeB
     MarkdownParagraph,
     codeBlock,
     TableKit.configure({ table: { resizable: false } }),
+    ...(mathNode ? [mathNode] : []),
     Markdown,
   ];
 }
@@ -110,9 +116,10 @@ export function visualMarkdownExtensions(codeBlock: AnyExtension = MarkdownCodeB
  * Reduces Markdown to what the reader makes of it, ignoring markup that only changes how it is written.
  *
  * @param source Markdown text.
+ * @param math Whether the reader also reads equations (a field that holds mathematics).
  * @returns One line per reader token (type, tag, content, link and fence details).
  */
-export function readerSignature(source: string): string {
+export function readerSignature(source: string, math = false): string {
   const lines: string[] = [];
   const walk = (tokens: ReturnType<typeof parseMarkdown>, depth: number) => {
     for (const token of tokens) {
@@ -124,12 +131,12 @@ export function readerSignature(source: string): string {
       }
       const attrs = (token.attrs ?? []).filter(([name]) => name !== "rel" && name !== "target").map(([name, value]) => `${name}=${value}`).join(",");
       const content = type === "inline" ? "" : type === "fence" ? token.content.replace(/\n$/, "") : token.content;
-      const info = type === "fence" ? token.info.trim() : "";
+      const info = type === "fence" ? token.info.trim() : type === "math" ? String((token.meta as { display?: boolean } | null)?.display) : "";
       lines.push(`${type}|${depth}|${token.tag}|${attrs}|${info}|${content}`);
       if (token.children) walk(token.children, depth + 1);
     }
   };
-  walk(parseMarkdown(source), 0);
+  walk(parseMarkdown(source, { math }), 0);
   return lines.join("\n");
 }
 
@@ -141,11 +148,12 @@ export function containsMathematics(source: string): boolean {
 /**
  * @param source The stored Markdown.
  * @param written What the editor wrote after reading `source` (its `getMarkdown()`).
+ * @param math Whether the field holds mathematics, so the editor has the equation node and an equation is not a blocker.
  * @returns Why the text cannot be edited visually, or null when the editor holds it without change.
  */
-export function findVisualBlocker(source: string, written: string): VisualBlocker | null {
-  if (containsMathematics(source)) return "mathematics";
-  return readerSignature(source) === readerSignature(written) ? null : "unsupported";
+export function findVisualBlocker(source: string, written: string, math = false): VisualBlocker | null {
+  if (!math && containsMathematics(source)) return "mathematics";
+  return readerSignature(source, math) === readerSignature(written, math) ? null : "unsupported";
 }
 
 /**
@@ -166,10 +174,11 @@ export function writtenMarkdown(editor: TipTapEditor): string {
  * Reads a text into a detached editor and writes it back, as the visual editor does on opening and after an edit.
  *
  * @param source Markdown text.
+ * @param math Whether the editor has the equation node (a field that holds mathematics).
  * @returns What the editor writes for it.
  */
-export function roundTripMarkdown(source: string): string {
-  const editor = new Editor({ extensions: visualMarkdownExtensions(), content: source, contentType: "markdown" });
+export function roundTripMarkdown(source: string, math = false): string {
+  const editor = new Editor({ extensions: visualMarkdownExtensions(MarkdownCodeBlock, math ? MathNode : null), content: source, contentType: "markdown" });
   try {
     return writtenMarkdown(editor);
   } finally {

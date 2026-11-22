@@ -3812,8 +3812,8 @@ def main() -> None:
         chosen_option="Option 2 — dual-redundant with automatic failover.",
         rationale="Matches the reliability bar for flight over populated areas without the cost/weight"
         " penalty of full triple modular redundancy, which the airframe's payload budget can't absorb.",
-        consequences="Adds airframe weight and BOM cost per unit; avionics firmware needs an active/standby"
-        " handover path that didn't exist before (tracked as its own firmware requirement).",
+        consequences="Adds airframe weight (\\(\\Delta m = 45\\) g) and BOM cost per unit; avionics firmware needs an"
+        " active/standby handover path that didn't exist before (tracked as its own firmware requirement).",
         document=FLIGHT_CONTROLLER_DECISION_DOCUMENT,
     )
     propose_and_approve_decision(

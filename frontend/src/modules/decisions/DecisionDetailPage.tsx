@@ -212,24 +212,24 @@ export function DecisionDetailPage() {
       />
       {archive.dialog}
         <DetailCard>
-          <MarkdownView text={decision.decision_statement} />
+          <MarkdownView math text={decision.decision_statement} />
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup help={DECISIONS_HELP.decisionOwner} label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
             <RecordFieldGroup help={DECISIONS_HELP.decisionMaker} label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
           </div>
 
-          {decision.context && <RecordField markdown label="Context" value={decision.context} />}
-          {decision.options_considered && <RecordField markdown label="Options considered" value={decision.options_considered} />}
-          {decision.chosen_option && <RecordField markdown label="Chosen option" value={decision.chosen_option} />}
-          {decision.rationale && <RecordField markdown label="Rationale" value={decision.rationale} />}
-          {decision.consequences && <RecordField markdown label="Consequences" value={decision.consequences} />}
-          {decision.assumptions && <RecordField markdown label="Assumptions" value={decision.assumptions} />}
-          {decision.constraints && <RecordField markdown label="Constraints" value={decision.constraints} />}
+          {decision.context && <RecordField markdown math label="Context" value={decision.context} />}
+          {decision.options_considered && <RecordField markdown math label="Options considered" value={decision.options_considered} />}
+          {decision.chosen_option && <RecordField markdown math label="Chosen option" value={decision.chosen_option} />}
+          {decision.rationale && <RecordField markdown math label="Rationale" value={decision.rationale} />}
+          {decision.consequences && <RecordField markdown math label="Consequences" value={decision.consequences} />}
+          {decision.assumptions && <RecordField markdown math label="Assumptions" value={decision.assumptions} />}
+          {decision.constraints && <RecordField markdown math label="Constraints" value={decision.constraints} />}
         </DetailCard>
 
         {decision.document && (
           <DetailCard heading="Document">
-            <MarkdownView text={decision.document} />
+            <MarkdownView math text={decision.document} />
           </DetailCard>
         )}
 

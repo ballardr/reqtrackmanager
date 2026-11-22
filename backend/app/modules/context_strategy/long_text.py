@@ -32,8 +32,8 @@ from app.services.long_text_core import _CHANGE_NOTE, _PICKER, NOTE_LIMIT
 MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
     *markdown_columns(FutureStateVersion, "current_state", "desired_state", "outcomes", "success_measures", "constraints", "assumptions"),
     *markdown_columns(GuidingPrincipleVersion, "principle_statement", "rationale"),
-    *markdown_columns(OpenQuestion, "question", "context", "evidence"),
-    *markdown_columns(PainPoint, "description", "source", "impact", "evidence"),
+    *markdown_columns(OpenQuestion, "question", "context", "evidence", math=True),
+    *markdown_columns(PainPoint, "description", "source", "impact", "evidence", math=True),
     *markdown_columns(StrategyVersion,
         "objective", "current_state", "desired_future_state", "rationale", "expected_outcomes", "constraints", "measures_of_success",
     ),

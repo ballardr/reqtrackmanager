@@ -7,8 +7,11 @@
  * Design decisions:
  * - Line formats (heading, lists, quotation) apply to every selected line and toggle off when all of them already
  *   carry the format. Inline formats wrap the selection, or insert a placeholder that is left selected.
- * - A block (code, table, diagram) always starts on its own line, so it is valid wherever the cursor was.
+ * - A block (code, table, diagram, display equation) always starts on its own line, so it is valid wherever the
+ *   cursor was.
  */
+
+import { equationMarkdown } from "./visualMathNode";
 
 export type MarkdownFormat =
   | "bold" | "italic" | "heading" | "bulleted" | "numbered" | "quote" | "code" | "link" | "table" | "diagram";
@@ -88,4 +91,21 @@ export function applyMarkdownFormat(value: string, start: number, end: number, f
       return insertBlock(value, start, end, `\`\`\`mermaid\n${body}\n\`\`\``, [11, 11 + body.length]);
     }
   }
+}
+
+/**
+ * Replaces the selection with an equation: an inline equation in place, a display equation as its own paragraph.
+ *
+ * @param value The current text.
+ * @param start Selection start (a character offset).
+ * @param end Selection end.
+ * @param tex The equation's TeX (a line break in it is a space, so no line of the text starts with TeX).
+ * @param display Whether it is a display equation.
+ * @returns The new text, with the cursor after the equation.
+ */
+export function insertMarkdownMath(value: string, start: number, end: number, tex: string, display: boolean): EditResult {
+  const source = equationMarkdown(tex.trim().replace(/\s*\n\s*/g, " "), display);
+  if (display) return insertBlock(value, start, end, source, [source.length, source.length]);
+  const next = value.slice(0, start) + source + value.slice(end);
+  return { value: next, selectionStart: start + source.length, selectionEnd: start + source.length };
 }

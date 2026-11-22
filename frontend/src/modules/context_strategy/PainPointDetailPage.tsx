@@ -288,10 +288,10 @@ export function PainPointDetailPage() {
 
 
         <DetailCard>
-          {painPoint.description && <RecordField markdown label="Description" value={painPoint.description} />}
-          {painPoint.source && <RecordField markdown label="Source" value={painPoint.source} />}
-          {painPoint.impact && <RecordField markdown label="Impact" value={painPoint.impact} />}
-          {painPoint.evidence && <RecordField markdown label="Evidence" value={painPoint.evidence} />}
+          {painPoint.description && <RecordField markdown math label="Description" value={painPoint.description} />}
+          {painPoint.source && <RecordField markdown math label="Source" value={painPoint.source} />}
+          {painPoint.impact && <RecordField markdown math label="Impact" value={painPoint.impact} />}
+          {painPoint.evidence && <RecordField markdown math label="Evidence" value={painPoint.evidence} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}

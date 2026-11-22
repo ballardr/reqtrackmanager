@@ -265,8 +265,8 @@ export function OpenQuestionDetailPage() {
 
 
         <DetailCard>
-          {openQuestion.context && <RecordField markdown label="Context" value={openQuestion.context} />}
-          {openQuestion.evidence && <RecordField markdown label="Evidence" value={openQuestion.evidence} />}
+          {openQuestion.context && <RecordField markdown math label="Context" value={openQuestion.context} />}
+          {openQuestion.evidence && <RecordField markdown math label="Evidence" value={openQuestion.evidence} />}
 
           <RecordPrincipalField
             label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}

@@ -487,7 +487,7 @@ export function ChangeRequestCreateModal({
         />
       )}
 
-      <TextAreaField markdown="simple" helpNotNeeded required label={strings.changeRequests.reason} value={reason} onChange={setReason} />
+      <TextAreaField markdown="math" helpNotNeeded required label={strings.changeRequests.reason} value={reason} onChange={setReason} />
       <FormActions
         error={error} onCancel={onClose} onSave={createCr} saveLabel={strings.common.create}
         saveDisabled={

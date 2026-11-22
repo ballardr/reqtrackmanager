@@ -40,6 +40,35 @@ export const MathematicsIsNamedAsTheReason: Story = {
   },
 };
 
+export const EveryTextWithEquationsRoundTripsInAMathematicsField: Story = {
+  play: async () => {
+    const failures: string[] = [];
+    for (const [name, source] of Object.entries(cases.mathematics)) {
+      const written = roundTripMarkdown(source, true);
+      if (findVisualBlocker(source, written, true) !== null) failures.push(`${name}: changed meaning (${JSON.stringify(written)})`);
+      else if (roundTripMarkdown(written, true) !== written) failures.push(`${name}: not stable`);
+    }
+    await expect(failures).toEqual([]);
+  },
+};
+
+export const EquationsAreWrittenBackExactlyAsTyped: Story = {
+  play: async () => {
+    for (const source of ["Use \\(a_1 * b_2 * c_3\\) here.", "Then $$\\frac{a_1}{b_2}$$ holds.", "Where \\( x \\) is the input."]) {
+      await expect(roundTripMarkdown(source, true)).toBe(source);
+    }
+  },
+};
+
+export const AMathematicsFieldStillRefusesWhatItCannotHold: Story = {
+  play: async () => {
+    const accepted = Object.entries(cases.mathematicsUnsupported)
+      .filter(([, source]) => findVisualBlocker(source, roundTripMarkdown(source, true), true) === null)
+      .map(([name]) => name);
+    await expect(accepted).toEqual([]);
+  },
+};
+
 export const BlockMarkersAtTheStartOfALineAreEscaped: Story = {
   play: async () => {
     await expect(escapeBlockMarker("1. text")).toBe("1\\. text");

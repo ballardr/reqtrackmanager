@@ -4239,5 +4239,20 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .visual-markdown-content .selectedCell { background: var(--color-surface-alt); }
 .visual-markdown-content .visual-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; white-space: pre-wrap; outline: none; }
 .visual-markdown-content pre { background: var(--color-surface-alt); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm, 3px); overflow-x: auto; margin: 0 0 var(--space-2); }
+/* Toolbars of the rich text fields: small buttons, with a tighter separator between groups. */
+.editor-toolbar .toolbar-divider { margin-inline: var(--space-1); }
+/* An equation in the Visual view: drawn as an equation, pressed to change its TeX. */
+.visual-math { display: inline; }
+.visual-math--display { display: block; text-align: center; margin: var(--space-1) 0; }
+/* One box (not a run of inline fragments), so the whole equation is the pressable area. */
+.visual-math__equation { display: inline-block; cursor: pointer; border-radius: var(--radius-sm, 3px); padding: 0 2px; }
+.visual-math--display .visual-math__equation { display: block; }
+.visual-math__equation:hover, .visual-math__equation:focus-visible, .visual-math.is-selected .visual-math__equation {
+  background: var(--color-surface-alt);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+/* The equation panel's live preview: the equation as readers see it, centred, wide formulas scrolling inside. */
+.math-edit__preview { min-height: 3rem; display: flex; align-items: center; justify-content: center; overflow-x: auto; padding: var(--space-2); }
 .visual-diagram-block { margin: 0 0 var(--space-2); }
 .visual-diagram-block pre { margin-bottom: var(--space-1); }

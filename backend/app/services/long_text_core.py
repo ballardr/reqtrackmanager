@@ -16,8 +16,10 @@ Design decisions:
   shape or printed in a fixed layout (a footer line), configuration text shown in a picker or tooltip (one line, no
   block formatting), a version's one-line change note (listed in histories, audit events and notifications), or a
   system-generated message.
-- A requirement's description, reasoning and clarification (and a change request's proposed copies) hold equations,
-  so they are `math=True`.
+- A requirement's description, reasoning and clarification, a change request's proposed copies and reason, and the
+  descriptive fields of the other record types (decisions, feedback, open questions, pain points) hold equations, so
+  they are `math=True`. Comments, one-line notes and text entered through a shared comment or checklist control (a
+  decision note, a vote's comment, a decline reason, a task) stay without.
 
 Dependencies: the core models and `modules.registry` (the declaration shapes).
 """
@@ -51,7 +53,7 @@ CORE_MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
         ChangeRequestVersion, "proposed_reasoning", "proposed_clarification", "proposed_description", math=True,
     ),
     *markdown_columns(ChangeRequestVersion, "proposed_action_description"),
-    *markdown_columns(ChangeRequestVersion, "reason", limit=NOTE_LIMIT),
+    *markdown_columns(ChangeRequestVersion, "reason", limit=NOTE_LIMIT, math=True),
     *markdown_columns(ChangeRequestProposedLink, "outcome_reason", limit=NOTE_LIMIT),
     *markdown_columns(ChangeRequestTask, "description"),
     *markdown_columns(ChangeRequestVote, "comment", limit=NOTE_LIMIT),

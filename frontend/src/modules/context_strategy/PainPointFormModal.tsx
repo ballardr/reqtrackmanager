@@ -133,7 +133,7 @@ export function PainPointFormModal({
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField markdown helpNotNeeded
+              <TextAreaField markdown="math" helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />

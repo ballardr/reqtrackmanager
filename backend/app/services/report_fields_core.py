@@ -129,6 +129,7 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         enum_field("kind", "Kind", ChangeRequest.kind, ChangeRequestKind),
         instant_field("submitted_at", "Submitted at", ChangeRequest.submitted_at),
         instant_field("decided_at", "Decided at", ChangeRequest.decided_at),
+        math_fields=("reason", "description"),
         core_fields=("description",),
     ),
 }

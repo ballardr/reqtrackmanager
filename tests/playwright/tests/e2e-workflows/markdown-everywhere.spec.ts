@@ -37,8 +37,8 @@ test.describe("Markdown for every long-text field", () => {
     await page.goto(`/projects/${project.projectId}/requirements/${project.requirementId}`);
 
     await test.step("the description is edited as source, previewed with formatting and its equation drawn, the source untouched", async () => {
-      // Reasoning, clarification and description hold equations, so they offer Write and Preview and no Visual view.
-      await expect(page.getByRole("tab", { name: "Visual" })).toHaveCount(0);
+      // Reasoning, clarification and description hold equations: they offer Visual (which draws each equation), Write and Preview.
+      await expect(page.getByRole("tab", { name: "Visual" }).first()).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Description" })).toHaveValue(DESCRIPTION);
       await page.getByRole("tab", { name: "Preview" }).nth(2).click();
       const preview = page.locator(".markdown-preview");

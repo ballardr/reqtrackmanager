@@ -410,7 +410,7 @@ export function ChangeRequestDetailPage() {
         {cr.kind !== "add_link" && cr.proposed_links.length > 0 && <ProposedLinksSection links={cr.proposed_links} />}
 
         <div>
-          <strong>{strings.changeRequests.reason}:</strong> <MarkdownView text={cr.reason} />
+          <strong>{strings.changeRequests.reason}:</strong> <MarkdownView math text={cr.reason} />
         </div>
         {cr.decision_note && (
           <div>

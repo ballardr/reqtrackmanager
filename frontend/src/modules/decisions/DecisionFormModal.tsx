@@ -134,7 +134,7 @@ export function DecisionFormModal({
             <TextField helpNotNeeded required label="Decision title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField markdown help={strings.help.markdown} required label="Decision statement" value={statement} onChange={setStatement} />
+            <TextAreaField markdown="math" help={strings.help.markdown} required label="Decision statement" value={statement} onChange={setStatement} />
           </FormGridFull>
           <LabeledSelect help={DECISIONS_HELP.decisionType} required
             label="Decision type"
@@ -168,14 +168,14 @@ export function DecisionFormModal({
           />
           {PROMPT_TO_FIELD.map((f) => (
             <FormGridFull key={f.fieldKey}>
-              <TextAreaField markdown help={strings.help.markdown}
+              <TextAreaField markdown="math" help={strings.help.markdown}
                 label={f.label} value={fields[f.fieldKey]}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.fieldKey]: value }))}
               />
             </FormGridFull>
           ))}
           <FormGridFull>
-            <TextAreaField markdown help={DECISIONS_HELP.document} rows={10} label="Document" value={documentText} onChange={setDocumentText} />
+            <TextAreaField markdown="math" help={DECISIONS_HELP.document} rows={10} label="Document" value={documentText} onChange={setDocumentText} />
           </FormGridFull>
           {!initial && (
             <FormGridFull>

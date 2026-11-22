@@ -8,6 +8,7 @@ column of these tables that is in neither.
 Design decisions:
 - Markdown is the default reading; a column stays plain only for a stated reason.
 - A comment or short note is bounded by `NOTE_LIMIT`, a described record by the default limit.
+- A request's description holds equations (`math=True`); its decline reason (entered in the shared status dialog), comments and notes do not.
 
 Dependencies: this module's models and `modules.registry` (the declaration shapes).
 """
@@ -24,7 +25,7 @@ from app.modules.registry import MarkdownField, markdown_columns
 from app.services.long_text_core import _CHANGE_NOTE, NOTE_LIMIT
 
 MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
-    *markdown_columns(EnhancementRequestVersion, "description"),
+    *markdown_columns(EnhancementRequestVersion, "description", math=True),
     *markdown_columns(EnhancementRequestVersion, "decline_reason", limit=NOTE_LIMIT),
     *markdown_columns(EnhancementRequestComment, "body", limit=NOTE_LIMIT),
     *markdown_columns(EnhancementRequestInformed, "note", limit=NOTE_LIMIT),

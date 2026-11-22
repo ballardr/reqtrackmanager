@@ -355,7 +355,7 @@ export function RequestDetailPage() {
     details: (
       <>
           <DetailCard>
-            {request.description ? <RecordField markdown label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
+            {request.description ? <RecordField markdown math label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
             {request.status === "declined" && request.decline_reason && <RecordField markdown label="Decline reason" value={request.decline_reason} />}
             <RecordPrincipalField
               label="Owner" ariaLabel="Request owner" principal={request.owner} orgUsers={orgUsers}

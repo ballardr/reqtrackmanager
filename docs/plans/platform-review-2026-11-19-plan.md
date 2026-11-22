@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 36 done 2026-11-22; phases 37 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 37 done 2026-11-22; phases 38 to 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-36 / 46 phases complete.
+37 / 47 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -46,12 +46,13 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [x] |
 | 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [x] |
 | 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [x] |
-| 37 | Text styling toolbar: compact, and a mathematics button | Smaller toolbar buttons; a decision gate on a mathematics button and how it works | [ ] |
+| 37 | Text styling toolbar: compact, and a mathematics button | Small grouped toolbar buttons; Inline equation and Equation block buttons with a live preview panel; equations drawn in the Visual view; mathematics on Decisions, Product Feedback, Open Questions, Pain Points and change requests; decided 2026-11-22 | [x] |
 | 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [ ] |
 | 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [ ] |
 | 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [ ] |
 | 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [ ] |
-| R | Review checkpoint: all changes together | The user reviews phases 1 to 41 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
+| 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [ ] |
+| R | Review checkpoint: all changes together | The user reviews phases 1 to 42 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
 | S | Security review | Dependabot, CodeQL, `pip-audit`, `npm audit`, Bandit, Semgrep, Gitleaks, image scan; identify → verify → remediate on touched areas | [ ] |
@@ -95,6 +96,7 @@ flowchart LR
     P39["39 Standards cards"] --> R
     P40["40 Standards org filter"] --> R
     P41["41 Sign-in page"] --> R
+    P42["42 Inline images"] --> R
     P3 --> R{"R Review"}
     P5 --> R
     P6 --> R
@@ -104,7 +106,7 @@ flowchart LR
     R --> D["D Register clean-up"] --> W["W Website"] --> S["S Security"] --> C["C Local CI"]
 ```
 
-Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 41 fourteen more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
+Phases 1 to 3, 4 to 6, 7 to 9, 10 to 12, 13 to 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 and 27 are fifteen independent tracks, and phases 28 to 42 fifteen more (phase 18 touches only test and pipeline tooling, so it can run first to shorten every later phase's test runs); phase 22 follows phase 19 where both touch the prefix rule (one function, below) and may be built in any order; phase 23 touches the editors of phases 13 to 16 and phase 25 the Org Resources sections of phases 7 to 9, so both sit after them (already done); phase 27's style guide rule is read by phases 25 and 26 when they review a create control; phase 3 builds on phase 1 (an email link must survive sign-in). D follows R because the registers must describe the reviewed result, not the first build. W, S and C follow R because the website, the scans and the pipeline must describe and test the reviewed result, and CLAUDE.md makes the security review and the local CI review the last two phases of every plan.
 
 ## Findings and objections
 
@@ -561,6 +563,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Decision gate (mathematics button), recommend yes:** the product already renders `$…$` and `$$…$$` as KaTeX in fields declared `markdown="math"` (the requirement description; phase 16). Options: (a) a button, shown only in a field declared for mathematics, that wraps the selection in `$…$` (or inserts `$$` blocks) and opens a small preview of the rendered formula; (b) no button, a help line naming the syntax. (a) costs one toolbar item and a preview popover and makes a feature discoverable; the toolbar must hide it in fields where mathematics is not rendered, so a person is never offered something that will print as raw marks. **Decided by:** User at the start of the phase.
 - Tests: Storybook for the compact toolbar in each editor and for the mathematics insert; Playwright types a formula through the button where it is available and asserts it renders.
 
+- As built (**Decided by: User** for the mathematics button and its scope, **Decided by: Agent** for the rest): the decision gate was answered on 2026-11-22 as Inline equation and Equation block buttons **with a live preview panel**, and mathematics for Decisions, Product Feedback, Open Questions, Pain Points and change requests. Correction to the spec: equations are written `\( x \)` (inline) and `$$ x $$` (display), not `$…$`, and a mathematics field had no Visual view because the visual writer escaped the characters an equation needs. The user asked why Visual refuses mathematics and whether equations could be drawn there, so the Visual view now holds an equation as an indivisible node (`utils/visualMathNode.ts`, stored as the raw delimited TeX), drawn as an equation and changed in the same panel; every mathematics field (the requirement's included) offers Visual, Write and Preview. `components/MathEditPopover.tsx` (`MathEditPopover`, `MathToolbarButton`) is the one panel (TeX field, live drawing, the reason a formula is refused, Insert or Apply). Toolbar buttons are the small size (`btn-sm btn-icon`) in groups with separators; no overflow menu, because the row wraps in a narrow field and hiding a button behind a menu costs a click for no saving. Scope: every descriptive field of the five record types is `math=True` (inventory, report `math_fields`, `TextAreaField markdown="math"`, `MarkdownView math`); comments, one-line notes and text entered through a shared dialog or checklist (decline reason, a vote's comment, a task, the decision note) and the Decision template prompts stay without. A focus defect found on the way: the panel opened with focus on the field's help button, because its field cannot take focus while the panel is hidden for measuring; it now focuses the TeX field once placed. Phase 42 (inline images) was added at the user's request. See `docs/decisions.md`.
+
 ### Phase 38 — Global navigation: collapsible groups
 
 **Why:** raised 2026-11-22: the global navigation (`Layout.tsx`, `NavRailLink`) lists every entry under group labels (Project, Global, Standards and the like), so reaching a lower group needs a long scroll. **Risk addressed:** a navigation that grows with every module and hides its lower groups. **Outcome:** each group label has a chevron that folds and unfolds its entries.
@@ -591,9 +595,21 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Remove the message from `LoginPage` and `OrgLoginPage`; keep the explicit message a redirect carries for its own reason (for example a lapsed session reaches the page with its own text in the router state) unless the user also wants that removed (confirm in the phase). **Decided by: User**, 2026-11-22: no replacement text anywhere. A person who has to sign in again expects unsaved content to be gone, and the message never changed what happened to it; phase 1's note that unsaved content is not preserved is dropped with it.
 - Tests: the Phase 1 Playwright specs assert the message is absent while the return still works; story updated.
 
+### Phase 42 — Inline images in Markdown fields
+
+**Why:** raised 2026-11-22 during phase 37: a Decision, requirement or finding often needs a picture beside the words (a sketch, a screenshot, a measured plot). Today an image in Markdown is shown as the text typed, and the Visual editor refuses a text that contains one. **Risk addressed:** a picture pasted from an outside address (a tracking request when the page opens, a link that dies, an image a report cannot fetch), a picture that bypasses the confidential mark, and a text that the editor would change. **Outcome:** a picture sits inside the text of a record, is drawn wherever the text is drawn, and is an attachment of that record.
+
+- **Decision gate** (**Decided by:** User, at the start of the phase). Recommend: an inline image is always an **attachment of the same record** (chosen from its attachments, or pasted or dropped into the editor, which uploads it), never an outside address. Reasons: opening a record must not make requests to another site; the confidential mark and the record's access rules must still decide who sees the picture; the report engine and bundles already carry attachments. Options for the user: (a) attachments only (recommended), (b) attachments and outside https addresses, with a per-organisation switch and no fetching by the server, (c) attachments in the Markdown field of types that have an attachment list only. The question also covers whether alternative text is required (recommend: required for an inserted picture, so a screen reader and a plain-text list have words).
+- Stored form: standard Markdown `![alt](…)` whose address names the attachment by its file identifier, resolved at display time against the viewer's access; a picture the viewer may not see, or that is confidential in a report, shows its alternative text. The reader (`utils/markdownIt`, `services/markdown_text`) gains an image token; plain-text surfaces (lists, search snippets, notifications) show the alternative text.
+- Screen: `MarkdownView` draws the picture from the authenticated file endpoint (never a raw outside address), with a size cap and lazy loading; vector pictures go through the existing sanitising path (`docs/decisions.md`, report SVG support); the Visual editor gains an image node (like `visualMathNode`) so a text with pictures opens visually, an Image toolbar button (shared `RichTextToolbar` and Write toolbar), paste and drop upload, and a panel for the alternative text and a caption.
+- Reports and exports: the report engine embeds the picture through its existing picture pipeline (PDF, Word, OpenDocument, HTML), honouring the confidential mark; the CSV keeps the Markdown source; the project and organisation bundles carry the reference by portable file key through the bundle file mechanism, and an import remaps it.
+- Limits: a count and size per field in `services/markdown_fields`, declared with the other Markdown limits; a record cannot reference another record's attachment.
+- Registry: which fields accept pictures is a declaration beside `math` on the field (`MarkdownField`), so a comment can stay text-only; every module declares through `ModuleDefinition`, no core edit per module.
+- Tests: reader and writer round trip vectors (`markdownRoundTripCases.json`), a Storybook story per surface, a Playwright spec that attaches a picture, inserts it into a Decision, sees it on the page and in a report, and checks a viewer without access sees the alternative text; backend tests for the limits, access, bundle round trip and report embedding.
+
 ### Phase R — Review checkpoint: all changes together
 
-**Why:** forty-one phases across twenty-nine tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
+**Why:** forty-two phases across thirty tracks interact (a notification opens a moved page; a Decision shows a code and a reference). **Risk addressed:** features that pass alone and fail together. **Outcome:** the user's sign-off on the combined result.
 
 - The user reviews the running stack with every phase in place; each item raised becomes a numbered phase or is fixed in place; W starts only after the sign-off is recorded (**Decided by: User**).
 

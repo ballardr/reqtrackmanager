@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { CheckboxField, ColorField, DateField, FileField, InlineTextInput, TextAreaField, TextField, ToggleField } from "./FormFields";
@@ -298,8 +298,8 @@ export const MarkdownTextAreaHasVisualWriteAndPreview: Story = {
   },
 };
 
-/** A comment or short note is edited in Write and Preview only; an equation field is too, and previews its equations. */
-export const SimpleAndMathTextAreasHaveNoVisualTab: Story = {
+/** A comment or short note is edited in Write and Preview only; an equation field has every view and draws its equations. */
+export const SimpleTextAreasHaveNoVisualTabAndMathOnesDo: Story = {
   beforeEach: () => {
     localStorage.setItem("reqtrack.markdownEditorView", "visual");
     return () => localStorage.removeItem("reqtrack.markdownEditorView");
@@ -313,9 +313,10 @@ export const SimpleAndMathTextAreasHaveNoVisualTab: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryAllByRole("tab", { name: "Visual" })).toHaveLength(0);
+    // Only the equation field offers Visual, and it opens there with the equation drawn.
+    await expect(canvas.getAllByRole("tab", { name: "Visual" })).toHaveLength(1);
     await expect(canvas.getAllByRole("tab", { name: "Write" })).toHaveLength(2);
-    await expect(canvas.getByRole("textbox", { name: "Description" })).toHaveValue("Gain \\( g_1 \\)");
+    await waitFor(() => expect(canvasElement.querySelector(".visual-math .math-text")).not.toBeNull());
     // A plain-text field is a plain text area with no editor tabs.
     await expect(canvas.getByRole("textbox", { name: "Address" })).toBeInTheDocument();
   },

@@ -12,8 +12,9 @@
  * - Switch between the views with the shared `Tabs`; Preview shows `MarkdownView`.
  * - Open in the person's remembered view (Visual unless they chose Write), and fall back to Write with a stated
  *   reason when the text cannot be edited visually without changing it.
- * - `simple` offers Write and Preview only (a comment box, which does not need a document editor); `math` does the
- *   same because the visual writer escapes the characters an equation needs, and draws equations in Preview.
+ * - `simple` offers Write and Preview only (a comment box, which does not need a document editor).
+ * - `math` is a field that holds equations: Visual draws each as an equation (an indivisible node), Preview draws them
+ *   and the toolbars offer Inline equation and Equation block, each with a live preview of the TeX.
  *
  * Design decisions:
  * - The stored value is always the Markdown source, so what the author sees in Write is what is saved.
@@ -27,11 +28,12 @@ import { lazy, memo, Suspense, useCallback, useEffect, useId, useRef, useState, 
 
 import { useStrings } from "../context/TerminologyContext";
 import { useMarkdownEditorView } from "../hooks/useMarkdownEditorView";
-import { applyMarkdownFormat, type MarkdownFormat } from "../utils/markdownEdit";
+import { applyMarkdownFormat, insertMarkdownMath, type MarkdownFormat } from "../utils/markdownEdit";
 import type { VisualBlocker } from "../utils/visualMarkdown";
 import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { MarkdownView } from "./MarkdownView";
+import { MathToolbarButton } from "./MathEditPopover";
 import { Tabs, tabPanelProps } from "./Tabs";
 import { ToolbarButton } from "./ToolbarButton";
 
@@ -44,23 +46,38 @@ type View = "visual" | "write" | "preview";
  * The Write view's formatting buttons. Memoised: a form with many Markdown fields re-renders every one of them on each
  * keystroke in any field, and ten buttons with tooltips per field made typing visibly slower.
  */
-const WriteToolbar = memo(function WriteToolbar({ onFormat, disabled }: { onFormat: (format: MarkdownFormat) => void; disabled?: boolean }) {
+const WriteToolbar = memo(function WriteToolbar({ onFormat, onMath, readSelection, disabled }: {
+  onFormat: (format: MarkdownFormat) => void;
+  /** Present for a field that holds equations: puts an equation of the given TeX in the text. */
+  onMath?: (tex: string, display: boolean) => void;
+  readSelection: () => string;
+  disabled?: boolean;
+}) {
   const text = useStrings().markdown;
   const button = (format: MarkdownFormat, icon: typeof Bold, label: string) => (
     <ToolbarButton icon={icon} label={label} disabled={disabled} onClick={() => onFormat(format)} />
   );
+  const separator = <span className="toolbar-divider" role="separator" aria-orientation="vertical" />;
   return (
-    <div className="row" role="toolbar" aria-label={text.toolbar} style={{ flexWrap: "wrap", gap: "var(--space-1)" }}>
+    <div className="row editor-toolbar" role="toolbar" aria-label={text.toolbar} style={{ flexWrap: "wrap", gap: "var(--space-1)", alignItems: "center" }}>
       {button("bold", Bold, text.bold)}
       {button("italic", Italic, text.italic)}
       {button("heading", Heading2, text.heading)}
+      {separator}
       {button("bulleted", List, text.bulleted)}
       {button("numbered", ListOrdered, text.numbered)}
       {button("quote", Quote, text.quote)}
       {button("code", Code, text.code)}
+      {separator}
       {button("link", Link2, text.link)}
       {button("table", Table, text.table)}
       {button("diagram", Workflow, text.diagram)}
+      {onMath && (
+        <>
+          <MathToolbarButton display={false} readSelection={readSelection} onApply={onMath} disabled={disabled} />
+          <MathToolbarButton display readSelection={readSelection} onApply={onMath} disabled={disabled} />
+        </>
+      )}
     </div>
   );
 });
@@ -75,7 +92,7 @@ type TextAreaExtras = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" 
  * @param disabled Whether editing is unavailable.
  * @param textareaProps Further attributes for the text area (id, maxLength, required).
  * @param simple Offer Write and Preview only, with no visual view.
- * @param math The text holds equations (`\( x \)`, `$$ x $$`): Write and Preview only, and Preview draws them.
+ * @param math The text holds equations (`\( x \)`, `$$ x $$`): the views draw them and the toolbars offer the equation buttons.
  * @param toolbar Whether the Write view shows the formatting buttons (default true); a narrow pop-over leaves them out.
  */
 export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled, textareaProps, simple, math, toolbar = true }: {
@@ -89,7 +106,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
   math?: boolean;
   toolbar?: boolean;
 }) {
-  const sourceOnly = Boolean(simple || math);
+  const sourceOnly = Boolean(simple);
   const strings = useStrings();
   const text = strings.markdown;
   const idPrefix = useId();
@@ -127,6 +144,20 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
       el.setSelectionRange(result.selectionStart, result.selectionEnd);
     });
   }, []);
+  const applyMath = useCallback((tex: string, display: boolean) => {
+    const el = area.current;
+    if (!el) return;
+    const result = insertMarkdownMath(latest.current.value, el.selectionStart, el.selectionEnd, tex, display);
+    latest.current.onChange(result.value);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  }, []);
+  const readSelection = useCallback(() => {
+    const el = area.current;
+    return el ? latest.current.value.slice(el.selectionStart, el.selectionEnd) : "";
+  }, []);
 
   return (
     <ActiveFieldFrame className="markdown-editor stack" style={{ gap: "var(--space-1)" }}>
@@ -138,7 +169,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
             { key: "write" as const, label: text.write }, { key: "preview" as const, label: text.preview },
           ]}
         />
-        {view === "write" && toolbar && <ActiveFieldToolbar><WriteToolbar onFormat={apply} disabled={disabled} /></ActiveFieldToolbar>}
+        {view === "write" && toolbar && <ActiveFieldToolbar><WriteToolbar onFormat={apply} onMath={math ? applyMath : undefined} readSelection={readSelection} disabled={disabled} /></ActiveFieldToolbar>}
       </div>
       {blocker && view === "write" && (
         <p className="text-muted" role="status">
@@ -150,7 +181,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
           <Suspense fallback={<p className="text-muted" role="status">{text.visualLoading}</p>}>
             <VisualMarkdownEditor
               value={value} onChange={onChange} onBlocked={onBlocked} rows={rows} ariaLabel={ariaLabel} disabled={disabled}
-              textareaProps={textareaProps}
+              textareaProps={textareaProps} math={math}
             />
           </Suspense>
         </div>

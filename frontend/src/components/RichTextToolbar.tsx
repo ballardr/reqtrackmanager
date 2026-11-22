@@ -7,10 +7,13 @@
  * - Offer the marks and blocks every rich text field has (bold, italic, headings 1 to 3, lists, quotation, rule,
  *   link, undo, redo), each shown pressed while it applies at the cursor.
  * - Offer the extras a field opts into through `features`: inline code, code block, table (with row and column
- *   actions while the cursor is in one) and diagram.
+ *   actions while the cursor is in one), diagram and equations (Inline equation and Equation block).
  * - Edit a link in a field under the toolbar rather than a browser prompt, accepting https, http and mailto only.
  *
  * Design decisions:
+ * - The buttons are the small size and grouped (text, headings, blocks, insert, history) with a separator between
+ *   groups, so the toolbar takes one short row; it wraps rather than hiding any button behind a menu, because a
+ *   narrow field is the only case that needs more than one row.
  * - The toolbar only issues commands the editor's extensions define, so a field offers a button only when its
  *   editor was built with the matching extension (`features` must agree with the extension set).
  * - Whitespace in a link address is encoded (`%20`) so the stored Markdown link stays valid.
@@ -28,6 +31,7 @@ import { useState } from "react";
 import { useStrings } from "../context/TerminologyContext";
 import { SAFE_LINK } from "../utils/markdownIt";
 import { DIAGRAM_TEMPLATE } from "../utils/markdownEdit";
+import { MathToolbarButton } from "./MathEditPopover";
 import { ToolbarButton } from "./ToolbarButton";
 
 /** The optional parts of the toolbar; each needs the matching extension in the editor. */
@@ -36,6 +40,8 @@ export interface RichTextFeatures {
   codeBlock?: boolean;
   table?: boolean;
   diagram?: boolean;
+  /** Equations; the editor must have the equation node (`utils/visualMathNode`). */
+  math?: boolean;
 }
 
 /**
@@ -85,20 +91,27 @@ export function RichTextToolbar({ editor, features = {}, disabled }: { editor: E
     <ToolbarButton icon={icon} label={label} active={active} disabled={disabled || off} onClick={run} />
   );
 
+  const separator = <span className="toolbar-divider" role="separator" aria-orientation="vertical" />;
+  const selectedText = () => editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to, " ");
+  const insertMath = (tex: string, display: boolean) => chain().insertContent({ type: "math", attrs: { tex, display } }).run();
+
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <div className="row policy-editor-toolbar" role="toolbar" aria-label={text.toolbar} style={{ flexWrap: "wrap", gap: "var(--space-1)" }}>
+      <div className="row policy-editor-toolbar editor-toolbar" role="toolbar" aria-label={text.toolbar} style={{ flexWrap: "wrap", gap: "var(--space-1)", alignItems: "center" }}>
         {button(Bold, text.bold, () => chain().toggleBold().run(), state.bold)}
         {button(Italic, text.italic, () => chain().toggleItalic().run(), state.italic)}
         {features.code && button(Code, text.code, () => chain().toggleCode().run(), state.code)}
+        {separator}
         {button(Heading1, text.heading1, () => chain().toggleHeading({ level: 1 }).run(), state.h1)}
         {button(Heading2, text.heading2, () => chain().toggleHeading({ level: 2 }).run(), state.h2)}
         {button(Heading3, text.heading3, () => chain().toggleHeading({ level: 3 }).run(), state.h3)}
+        {separator}
         {button(List, text.bulletList, () => chain().toggleBulletList().run(), state.bullet)}
         {button(ListOrdered, text.orderedList, () => chain().toggleOrderedList().run(), state.ordered)}
         {button(Quote, text.quote, () => chain().toggleBlockquote().run(), state.quote)}
         {features.codeBlock && button(SquareCode, text.codeBlock, () => chain().toggleCodeBlock().run(), state.codeBlock)}
         {button(Minus, text.rule, () => chain().setHorizontalRule().run())}
+        {separator}
         {button(Link2, text.link, openLink, state.link)}
         {state.link && button(Unlink, text.linkRemove, () => chain().extendMarkRange("link").unsetLink().run())}
         {features.table && button(Table, text.table, () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), state.inTable, state.inTable)}
@@ -112,6 +125,13 @@ export function RichTextToolbar({ editor, features = {}, disabled }: { editor: E
           </>
         )}
         {features.diagram && button(Workflow, text.diagram, () => chain().insertContent({ type: "codeBlock", attrs: { language: "mermaid" }, content: [{ type: "text", text: DIAGRAM_TEMPLATE }] }).run())}
+        {features.math && (
+          <>
+            <MathToolbarButton display={false} readSelection={selectedText} onApply={insertMath} disabled={disabled} />
+            <MathToolbarButton display readSelection={selectedText} onApply={insertMath} disabled={disabled} />
+          </>
+        )}
+        {separator}
         {button(Undo2, text.undo, () => chain().undo().run(), undefined, !state.canUndo)}
         {button(Redo2, text.redo, () => chain().redo().run(), undefined, !state.canRedo)}
       </div>

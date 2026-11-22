@@ -20,7 +20,7 @@ from app import main as application
 from app.database import SessionLocal
 from app.models.record_comment import RecordComment
 from app.models.requirement import RequirementVersion
-from app.modules.registry import get_markdown_fields, get_plain_text_fields, get_search_providers
+from app.modules.registry import get_markdown_fields, get_plain_text_fields, get_report_field_providers, get_search_providers
 from app.services import markdown_fields
 
 
@@ -62,10 +62,47 @@ def test_declared_limits_are_positive_and_math_only_where_equations_are_written(
         "change_request_versions.proposed_clarification",
         "change_request_versions.proposed_description",
         "change_request_versions.proposed_reasoning",
+        "change_request_versions.reason",
+        "decisions.assumptions",
+        "decisions.chosen_option",
+        "decisions.consequences",
+        "decisions.constraints",
+        "decisions.context",
+        "decisions.decision_statement",
+        "decisions.document",
+        "decisions.options_considered",
+        "decisions.rationale",
+        "enhancement_request_versions.description",
+        "open_questions.context",
+        "open_questions.evidence",
+        "open_questions.question",
+        "pain_points.description",
+        "pain_points.evidence",
+        "pain_points.impact",
+        "pain_points.source",
         "requirement_versions.clarification",
         "requirement_versions.description",
         "requirement_versions.reasoning",
     ]
+
+
+def test_report_fields_flag_math_exactly_when_the_column_is_declared_math() -> None:
+    """A layout draws equations only from a field flagged `math`, so the flag must follow the column's declaration."""
+    declared = markdown_fields.declared_columns()
+    problems = []
+    for artefact_type, provider in get_report_field_providers().items():
+        for report_field in provider.fields:
+            column = report_field.column
+            if report_field.kind != "text" or not isinstance(column, InstrumentedAttribute):
+                continue
+            physical = column.property.columns[0]
+            key = f"{physical.table.name}.{physical.name}"
+            if key in declared and declared[key].math != report_field.math:
+                problems.append(f"{artefact_type}.{report_field.key}: report math={report_field.math}, declared math={declared[key].math}")
+    assert problems == []
+    # A change request's text comes from a latest-version subquery, so it is checked by key.
+    change_request = {f.key: f.math for f in get_report_field_providers()["change_request"].fields}
+    assert change_request["reason"] and change_request["description"]
 
 
 def test_search_fields_flag_markdown_exactly_when_the_column_is_declared_markdown() -> None:

@@ -53,6 +53,7 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         principal_field("owner", "Owner", PainPoint.owner_type, PainPoint.owner_id),
         date_field("date_identified", "Date identified", PainPoint.date_identified),
         bool_field("is_intentional", "Intentional", PainPoint.is_intentional),
+        math_fields=("description", "source", "impact", "evidence"),
         core_fields=("description", "owner"),
     ),
     "open_question": from_search(
@@ -60,6 +61,7 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         enum_field("priority", "Priority", OpenQuestion.priority, OpenQuestionPriority),
         principal_field("owner", "Owner", OpenQuestion.owner_type, OpenQuestion.owner_id),
         date_field("due_date", "Due date", OpenQuestion.due_date),
+        math_fields=("question", "context", "evidence"),
         core_fields=("question", "owner"),
     ),
 }
