@@ -50,7 +50,7 @@ const MOBILE_BREAKPOINT_PX = 860;
  * below the header, and stays on-screen while the content column scrolls
  * (rather than living inside the same centred/padded container as the
  * page content). `railCollapsed` shrinks it to icons-only, toggled from a
- * small circular button (`.nav-rail-toggle`, theme.css) fixed to the
+ * small circular button (`btn btn-icon btn-sm btn-round`) fixed to the
  * viewport and centred on the rail/content divider, not part of the
  * rail's own scrolling content, so it stays put regardless of rail scroll
  * position or content length. Its `left` is set inline here from
@@ -330,7 +330,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
           style={{ left: `var(${railCollapsed ? "--nav-rail-width-collapsed" : "--nav-rail-width"})` }}
         >
           <button
-            className="btn nav-rail-toggle"
+            className="btn btn-icon btn-sm btn-round"
             onClick={() => setRailCollapsed(!railCollapsed)}
             aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
           >

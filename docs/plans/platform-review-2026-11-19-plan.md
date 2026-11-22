@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 43 done 2026-11-22; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 44 to 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 44 done 2026-11-22; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 45 to 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-43 / 54 phases complete.
+44 / 54 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -53,7 +53,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [x] |
 | 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [x] |
 | 43 | Compliance status tables: organisation column | The organisation of a standard or row is its own column, aligned down the table, not text inside the expand button | [x] |
-| 44 | Round collapse toggles | The navigation and filter-panel collapse buttons are circles again | [ ] |
+| 44 | Round collapse toggles | The navigation and filter-panel collapse buttons are circles again | [x] |
 | 45 | Markdown field chrome: tabs, empty height, controls | The Visual, Write and Preview tabs are caption-sized, an empty field is the most compact box and the same height in every view, and the view switch and toolbar take no room while the field is not in use; a decision gate first | [ ] |
 | 46 | Grids and tables: long text never breaks the layout | Fix the Connection Types grid, audit every grid and table-like view for the same defect, and add a shared cell component, a stress test and agent rules that stop it recurring | [ ] |
 | 47 | Architecture symbols: Org Resources, filter panel, folders | The organisation's symbol library moves to Org Resources as a filtered list; a decision gate first on folders and on how a project sees them | [ ] |
@@ -650,6 +650,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Fix: build the round toggle on the shared icon-button classes instead of a second sizing rule (`btn btn-icon btn-sm` is the 28px square; a `btn-round` modifier gives it `border-radius: 50%`), used by `Layout` and `FilterPanel` and any other round toggle found by searching for `nav-rail-toggle` and `filter-panel-toggle`; delete the duplicate sizing from the two selectors. Do not raise the specificity or add `!important`.
 - Review the other uses of the shape (the "Filters" button that brings a hidden panel back in `ListPageLayout`, side panels with a close button) so one class draws every round icon button, and say in the phase which were changed.
 - Tests: Storybook for both toggles asserting equal width and height in the rendered box and a `border-radius` of 50%, in both themes; a Playwright check on the Standards page reads both boxes (width equals height) so a base-button change cannot make them oval again. Style guide "Pattern: button sizes" gains the round variant.
+
+- As built (**Decided by: Agent**): `btn btn-icon btn-sm btn-round` on both toggles, the two bespoke selectors deleted, `testing/roundButtons.ts` as the shared measurement; the other round shapes (the "Filters" text button, the close button, avatars and swatches) were reviewed and left. See `docs/decisions.md`.
 
 ### Phase 45 — Markdown field chrome: tabs, empty height, controls
 

@@ -19766,3 +19766,19 @@ The By standard tab put the organisation inside the disclosure button, a flex ro
 **Tests.** Storybook: two organisations show one Organisation column; a standard name that wraps over several lines leaves both organisation cells on one left edge and the expanded row spans every column. Playwright: several organisations show one Organisation column, choosing one organisation removes it.
 
 **Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging or bundle change. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill. Website: the Compliance assessing-a-project page was updated.
+
+
+## Platform review 2026-11-19, Phase 44: Round collapse toggles (2026-11-22)
+
+**Decided by: Agent** (the whole phase; the user's request was the screenshot of oval toggles).
+
+The navigation and filter-panel collapse buttons were 28px wide and 36px tall: `.nav-rail-toggle, .filter-panel-toggle` set `height: 28px`, but the base `.btn` `min-height: 2.25rem` won, so `border-radius: 50%` drew an ellipse.
+
+- **One class draws a round icon button.** `btn btn-icon btn-sm btn-round` (`theme.css`): `btn-round` sets only `border-radius: 50%`, and the 28px square is `btn-icon btn-sm`'s, so the box cannot disagree with the radius. The two bespoke selectors are deleted, with no specificity increase and no `!important`. `Layout` (navigation) and `FilterPanel` (filters) use it; a Playwright spec reading the old `.nav-rail-toggle` class now reads `.nav-rail-toggle-wrapper button`.
+- **Other round shapes reviewed, not changed.** The "Filters" button that brings a hidden panel back is a text button (a rounded rectangle by design). The dialog and side-panel close button is a square icon button. The remaining `border-radius: 50%` rules draw avatars, colour swatches and the removable chip's "x", none of which is a collapse toggle or a standalone icon button.
+- **Guard.** `testing/roundButtons.ts` measures every `.btn-round` (square box, radius at least half the side); style guide "Pattern: button sizes" gains the round variant.
+
+**Tests.** Storybook: both toggles, light and dark, equal width and height and a 50% radius (`Layout`, `ListPageLayout` stories); Playwright: the Standards page measures both toggles (`compliance-status-tabs.spec.ts`).
+
+**Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging or bundle change. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill, website (no user-visible behaviour change beyond the shape).
+

@@ -1083,6 +1083,7 @@ Rules:
 - **One control, one target.** A button never has a `(?)` beside it: that doubles its targets and widens the row. Its help is its tooltip ([Pattern: help on interactive elements](#pattern-help-on-interactive-elements)).
 - **Edit on a detail page is `btn btn-icon`.** Every record's detail page puts the same pencil in the same place at the same size.
 - **Not only buttons:** the same rule applies to every control and label that sit together; see [Pattern: chips](#pattern-chips).
+- **Round variant: `btn btn-icon btn-sm btn-round`.** A collapse toggle that sits on an edge (the navigation rail, the filter panel) is a 28px circle. `btn-round` only sets `border-radius: 50%`; the size is `btn-icon`'s, so the box is always square, and a toggle never carries its own width, height or radius (a second sizing rule lost to the base `min-height` and drew an oval). `roundButtonViolations` (`frontend/src/testing/roundButtons.ts`) reads the rendered box and radius of every `.btn-round`; the Layout and ListPageLayout stories and the Standards page Playwright spec run it, in both themes.
 - **Not buttons:** removable chips' "x" and a group's collapse toggle are part of the thing they control, not buttons, and are sized by it.
 - **Consistency checklist for a new screen:** list the buttons on it, group them by who they act on (page, panel, item), and check each group is one size. Measure it: two neighbours that differ by a few pixels are the defect this pattern exists to stop.
 

@@ -114,7 +114,7 @@ export function FilterPanel({
           {collapse && (
             <Tooltip label={strings.common.hideFilters} style={{ marginLeft: "auto" }}>
               <button
-                type="button" className="btn filter-panel-toggle" aria-expanded
+                type="button" className="btn btn-icon btn-sm btn-round" aria-expanded
                 aria-label={strings.common.hideFilters} onClick={collapse.toggle}
               >
                 <PanelTopClose />

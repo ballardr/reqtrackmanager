@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { expectTextRows } from "../testing/menuRows";
+import { roundButtonViolations } from "../testing/roundButtons";
 
 import { fakeRecordTables } from "../testing/recordTablesFixtures";
 
@@ -144,3 +145,18 @@ export const FilterPanelCanBeCollapsed: Story = {
     await expect(canvas.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
   },
 };
+
+/** The filter panel's collapse toggle is a circle (square box, 50% radius), whatever the base button's own height rule says. */
+export const FilterToggleIsACircleLight: Story = {
+  globals: { theme: "light" },
+  args: { title: "Pain Point", filter, children: <table aria-label="Rows"><tbody><tr><td>A pain point</td></tr></tbody></table> },
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", { name: "Collapse filters" });
+    const box = toggle.getBoundingClientRect();
+    await expect(box.width).toBe(box.height);
+    await expect(getComputedStyle(toggle).borderTopLeftRadius).toBe("50%");
+    await expect(roundButtonViolations(canvasElement)).toEqual([]);
+  },
+};
+
+export const FilterToggleIsACircleDark: Story = { ...FilterToggleIsACircleLight, globals: { theme: "dark" } };

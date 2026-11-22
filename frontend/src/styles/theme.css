@@ -233,6 +233,12 @@ textarea {
   height: 1.75rem;
 }
 
+/* `.btn-round` draws an icon button as a circle (the navigation and filter-panel collapse toggles). It
+   only sets the corner radius; the size is `.btn-icon`'s, so a square box is guaranteed and 50% is a circle. */
+.btn-round {
+  border-radius: 50%;
+}
+
 /* One icon size per button size (style guide "Pattern: button sizes"): the button decides, not a
    `size` prop on each icon, so the rule cannot drift per call site. `flex: none` stops a long label
    squeezing the icon. The pill rule (`.badge svg`, 12px) sits with the pill styles. */
@@ -1292,14 +1298,14 @@ a.figure-projects-link:hover {
    moves with rail scroll or content length. `left` is set inline from
    Layout.tsx (`var(--nav-rail-width)` / `var(--nav-rail-width-collapsed)`,
    the same two tokens .app-content's own margin above uses) rather than
-   via a `.nav-rail ~ .nav-rail-toggle` sibling selector, since the button
+   via a `.nav-rail ~ .nav-rail-toggle-wrapper` sibling selector, since the button
    renders wrapped in `Tooltip`'s own `.tooltip-trigger` span and so is not
    actually a DOM sibling of `.nav-rail`, only a visual neighbour of one —
    a sibling-combinator rule here would silently never match.
 
    The fixed positioning itself lives on `.nav-rail-toggle-wrapper` (the
    `Tooltip`-rendered `.tooltip-trigger` span, via its `className`/`style`
-   props — see Tooltip.tsx), not on the `.nav-rail-toggle` button inside
+   props — see Tooltip.tsx), not on the round button inside
    it. The button is `position: fixed` independent of its parent's layout
    position, so if the *wrapper* were left as an ordinary in-flow span
    (sized to fit an out-of-flow child, i.e. collapsing to a zero-size box
@@ -1317,15 +1323,6 @@ a.figure-projects-link:hover {
   transform: translateX(-50%);
   z-index: 11;
   transition: left 0.15s ease;
-}
-
-.nav-rail-toggle,
-.filter-panel-toggle {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 50%;
 }
 
 /* Content-width preference (U-U-01-adjacent display preference, stored

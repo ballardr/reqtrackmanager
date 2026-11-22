@@ -5,6 +5,7 @@ import { page } from "vitest/browser";
 import { api } from "../api/client";
 import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, PublicPolicy, ServerAccess, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
+import { roundButtonViolations } from "../testing/roundButtons";
 import { buildProject, buildPublicPolicy, buildUser, withAuth, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
 
@@ -625,3 +626,25 @@ export const IconOnlyRailShowsNoGroupToggles: Story = {
     await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeVisible();
   },
 };
+
+/** The navigation collapse toggle is a circle in both states of the rail (square box, 50% radius). */
+export const NavigationToggleIsACircle: Story = {
+  decorators: [withStatefulAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
+    const canvas = within(canvasElement);
+    for (const name of ["Collapse navigation", "Expand navigation"]) {
+      const toggle = await canvas.findByRole("button", { name });
+      const box = toggle.getBoundingClientRect();
+      await expect(box.width).toBe(box.height);
+      await expect(getComputedStyle(toggle).borderTopLeftRadius).toBe("50%");
+      await expect(roundButtonViolations(canvasElement)).toEqual([]);
+      await userEvent.click(toggle);
+    }
+  },
+};
+
+export const NavigationToggleIsACircleDark: Story = { ...NavigationToggleIsACircle, globals: { theme: "dark" } };

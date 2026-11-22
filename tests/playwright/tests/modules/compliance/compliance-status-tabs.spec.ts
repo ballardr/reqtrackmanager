@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { roundButtonGeometry } from "../../../../../frontend/src/testing/roundButtons";
 import { loginAs, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion, openComplianceStatusTab } from "./helpers";
 
@@ -125,5 +126,17 @@ test.describe("Compliance Module: status tabs of the Standards page", () => {
     }
     expect(positions[1].top).toBe(positions[0].top);
     expect(Math.abs(positions[1].left - positions[0].left)).toBeLessThan(2);
+  });
+
+  test("the navigation and filter-panel collapse toggles are circles", async ({ page }) => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    await page.goto("/standards");
+    await expect(page.getByRole("button", { name: "Collapse navigation" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Collapse filters" })).toBeVisible();
+    const { measurements, violations } = await page.evaluate(roundButtonGeometry, undefined);
+    // Both toggles are measured, each a square box, so a change to the base button cannot make them oval.
+    expect(measurements.map((one) => one.name).sort()).toEqual(["Collapse filters", "Collapse navigation"]);
+    for (const one of measurements) expect(one.widthPx).toBe(one.heightPx);
+    expect(violations).toEqual([]);
   });
 });
