@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { TreeSelect, type TreeSelectNode } from "./TreeSelect";
 
@@ -321,5 +321,75 @@ export const FittingSummaryHasNoTooltip: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.hover(within(canvasElement).getByRole("button", { name: "Groups" }));
     await expect(bubbles()).toHaveLength(0);
+  },
+};
+
+/** The open panel's rectangle: the one `role=dialog` the picker opened. */
+const panelRect = () => within(document.body).getByRole("dialog", { name: "Groups" }).getBoundingClientRect();
+
+/** A picker in a field the width of a dialog: the panel opens under the field's left edge, capped at 28rem, never at the far end. */
+export const PanelOpensAtTheLeftEdgeOfAWideField: Story = {
+  args: { width: "60rem" },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Groups" });
+    await userEvent.click(trigger);
+    const field = trigger.getBoundingClientRect();
+    const panel = panelRect();
+    await expect(Math.abs(panel.left - field.left)).toBeLessThan(2);
+    await expect(Math.abs(panel.top - field.bottom)).toBeLessThan(12);
+    await expect(panel.width).toBeLessThanOrEqual(448 + 1);
+    await expect(panel.right).toBeLessThan(field.right);
+  },
+};
+
+/** A narrow field gets a panel at least 280px wide, still on the field's left edge. */
+export const PanelOpensAtTheLeftEdgeOfANarrowField: Story = {
+  args: { width: "10rem" },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Groups" });
+    await userEvent.click(trigger);
+    const panel = panelRect();
+    await expect(Math.abs(panel.left - trigger.getBoundingClientRect().left)).toBeLessThan(2);
+    await expect(panel.width).toBeGreaterThanOrEqual(279);
+  },
+};
+
+/** The same in a form field that fills the width and sits in a scrolled container: the panel follows the field. */
+export const PanelFollowsTheFieldWhenItsContainerScrolls: Story = {
+  args: { width: "100%" },
+  decorators: [
+    (Story) => (
+      <div data-testid="scroller" style={{ height: "14rem", overflowY: "auto", border: "1px solid var(--color-border)" }}>
+        <div style={{ height: "8rem" }} />
+        <Story />
+        <div style={{ height: "40rem" }} />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Groups" });
+    await userEvent.click(trigger);
+    const scroller = within(canvasElement).getByTestId("scroller");
+    scroller.scrollTop = 40;
+    scroller.dispatchEvent(new Event("scroll"));
+    await waitFor(() => expect(Math.abs(panelRect().top - trigger.getBoundingClientRect().bottom)).toBeLessThan(12));
+    await expect(Math.abs(panelRect().left - trigger.getBoundingClientRect().left)).toBeLessThan(2);
+  },
+};
+
+/** With no usable room below the field, the panel opens above it, at the field's left edge. */
+export const PanelOpensAboveWhenThereIsNoRoomBelow: Story = {
+  args: { width: "40rem" },
+  decorators: [
+    (Story) => (
+      <div style={{ position: "fixed", left: 16, bottom: 8 }}><Story /></div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Groups" });
+    await userEvent.click(trigger);
+    const panel = panelRect();
+    await expect(panel.bottom).toBeLessThanOrEqual(trigger.getBoundingClientRect().top + 1);
+    await expect(Math.abs(panel.left - trigger.getBoundingClientRect().left)).toBeLessThan(2);
   },
 };

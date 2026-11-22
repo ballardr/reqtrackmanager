@@ -66,6 +66,9 @@ const CARET_INSET_PX = 14;
  * so a wider fixed content runs out of the bubble, the card and the window. It also keeps below the field, scrolling
  * inside, while at least 240px of room is there, so it does not flip over the fields above the anchor.
  *
+ * `maxWidth` (pixels, `matchAnchor` only) caps that width for a very wide field, such as one that spans a dialog: the
+ * panel keeps its left edge on the field's and is no wider than its content needs, instead of the whole row.
+ *
  * `flush` removes the panel's padding and hides its overflow: the content is a column of its own, a fixed header
  * above one `ScrollRegion` that meets the panel's border and rounded corners. When the room is short the panel
  * keeps its cap and that region shrinks and scrolls, so the header never scrolls away. Without `flush` a capped panel
@@ -77,6 +80,7 @@ export function Popover({
   title,
   fit = false,
   matchAnchor = false,
+  maxWidth,
   placement = "below",
   menu = false,
   flush = false,
@@ -87,6 +91,7 @@ export function Popover({
   title: string;
   fit?: boolean;
   matchAnchor?: boolean;
+  maxWidth?: number;
   placement?: "below" | "side";
   menu?: boolean;
   flush?: boolean;
@@ -106,7 +111,7 @@ export function Popover({
       bubble.style.maxHeight = "";
       bubble.classList.remove("scroll-region");
       const anchorRect = anchor.getBoundingClientRect();
-      if (matchAnchor) bubble.style.width = `${Math.max(MATCH_ANCHOR_MIN_WIDTH_PX, anchorRect.width)}px`;
+      if (matchAnchor) bubble.style.width = `${Math.max(MATCH_ANCHOR_MIN_WIDTH_PX, Math.min(anchorRect.width, maxWidth ?? Infinity))}px`;
       const bubbleRect = bubble.getBoundingClientRect();
 
       let left = matchAnchor ? anchorRect.left : anchorRect.right - bubbleRect.width;
@@ -168,7 +173,7 @@ export function Popover({
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [anchorRef, matchAnchor, placement, menu, flush]);
+  }, [anchorRef, matchAnchor, maxWidth, placement, menu, flush]);
 
   useEffect(() => {
     // Listens in the capture phase on `pointerdown`: React Flow's pane and nodes (d3-zoom, d3-drag) stop a

@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 50 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 57 came from the review of 2026-11-23; 50 is done and 51 to 57 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 51 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; phases 50 to 57 came from the review of 2026-11-23; 50 and 51 are done and 52 to 57 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-50 / 62 phases complete.
+51 / 62 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -60,7 +60,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 48 | Tree selector: indent and scroll edges | Smaller indent between levels, a fixed search header, and a shared scroll region with themed edges for every capped list | [x] |
 | 49 | Section list fits the viewport from the first view | The section list is sized to the space left below its starting position, so a page that fits the window never needs a page scroll to reach the end of the list (follow-up to phase 33) | [x] |
 | 50 | Tree selector: no stray tooltip | The picker shows no tooltip over its trigger or rows unless it says something the person cannot already see | [x] |
-| 51 | Tree selector: the panel opens at its field | The panel of a picker (Additional components, Component and category) opens under the field's left edge, never at the far end of a full-width field | [ ] |
+| 51 | Tree selector: the panel opens at its field | The panel of a picker (Additional components, Component and category) opens under the field's left edge, never at the far end of a full-width field | [x] |
 | 52 | Sort on every record list | A Sort by and Order control in each record list's filter panel (code, title, created, modified, ascending or descending), one shared mechanism for every registered type; a decision gate first | [ ] |
 | 53 | Record header: one add control for tags, components and references | The three separate (+) buttons become one (+) with a menu naming what it adds, in one row with the chips | [ ] |
 | 54 | Clear control: a compact X | The control that empties an owner or similar field is one compact icon button after the value, not a text button; one shared component and a style guide pattern | [ ] |
@@ -754,6 +754,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Cause** (from the code; reproduce first): `TreeSelect` opens `Popover` without `matchAnchor`, so the panel is placed by its default rule, its right edge level with the trigger's right edge (`left = anchor.right − panel width`). That suits a small icon button, not a field. The Additional components field is full width in a dialog, so the panel opens at the far right end of a very wide control, away from where the person pressed; the Component and category picker did the same, hidden only because its field is narrower. The `matchAnchor` option (left edge on the anchor, the anchor's width, opens below whenever there is usable room) is the field behaviour the selects already use.
 - **Fix:** pass `matchAnchor` from `TreeSelect` (one place, so every picker built on it is fixed); cap the width for a very wide field (the panel needs about 28rem, not the whole row) while keeping its left edge on the field's; confirm that it still opens above when there is no room below, scrolls inside the room it has, and follows the field when the dialog body scrolls. Review the other `Popover` users that open from a form field (not a small button) for the same default.
 - Tests: Storybook placing the picker in a wide and a narrow field and in a dialog that is scrolled (the panel's left edge equals the field's, its top is within a few pixels of the field's bottom), a short window where it opens above; Playwright on the requirement create form opens Additional components and asserts the panel is within the field's horizontal span.
+
+- As built (**Decided by: User** for the outcome, **Decided by: Agent** for the rest): `TreeSelect` passes `matchAnchor` and a new `Popover` `maxWidth` (28rem) so the panel's left edge is on the field's, as wide as the field within 280px to 28rem, below it while there is usable room and above otherwise; `ReportFolderField`, the only other popover opening from a full-width form field, got the same. Storybook (wide, narrow, scrolled container, no room below; the four fail on the old placement) and a Playwright spec on the requirement create form. See `docs/decisions.md` and the style guide's popover rule.
 
 ### Phase 52 — Sort on every record list
 

@@ -19888,3 +19888,15 @@ The organisation's symbol library (uploaded drawings, shared with every project)
 
 **Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging, bundle or stored-value change and no new external call; tooltip text is the control's own label. Nothing found.
 
+
+## Platform review 2026-11-19, Phase 51: tree selector, the panel opens at its field (2026-11-23)
+
+**Decided by: Agent** (the mechanism and the width cap); **Decided by: User** (the outcome, raised 2026-11-23: pressing Additional components in the new requirement form opened the list nowhere near the field).
+
+- **Cause.** `TreeSelect` opened its `Popover` without `matchAnchor`, so the panel took the default placement for a small button (its right edge level with the trigger's right edge). In a field as wide as a dialog the panel therefore sat at the far end of the row.
+- **Fix.** `TreeSelect` passes `matchAnchor` (one place, so every picker built on it, `PlacementPicker` and the requirement form's Component and category and Additional components fields included) and a new `Popover` `maxWidth` (pixels, `matchAnchor` only) of 28rem: the left edge stays on the field's and the panel is as wide as the field, at least 280px and at most 28rem. It still opens below while 240px of room is there, above when there is none, scrolls inside the room it has and follows the field when a container scrolls (unchanged `Popover` behaviour).
+- **Other popovers reviewed.** The only other one opening from a full-width form field was `ReportFolderField` (a `fit` popover, right-aligned): it now uses `matchAnchor` with the same cap. The remaining `Popover` users open from small buttons, a colour swatch button or a toolbar button, where the default placement is right.
+- **Tests.** Storybook: a wide field (left edge equal, top level with the field's bottom, within 28rem, inside the field), a narrow field (at least 280px), a scrolled container (the panel follows) and a field with no room below (opens above), the four failing against the old placement; the report folder field in a wide field. Playwright: the requirement create form's Additional components panel is within the field's horizontal span and directly below (or above) it.
+
+**Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging, bundle or stored-value change and no new external call. Nothing found.
+

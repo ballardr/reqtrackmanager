@@ -25,6 +25,9 @@
  * and keeps the whole path (`pathLabel`) as its accessible name and in the trigger. A node may appear under several
  * parents (the same id twice): each place shows the same state.
  *
+ * The panel opens under the field with its left edge on the field's (`Popover matchAnchor`), as wide as the field up to
+ * 28rem, and below it whenever there is usable room; a full-width field therefore never opens it at the far end.
+ *
  * Tooltips: the closed trigger shows its full summary in the shared `Tooltip`, only while the summary is clipped and
  * never while the list is open; a chevron has none (the list is transient and its row names are beside them); a row
  * has one only to say why a `disabled` node cannot be chosen. No native `title` anywhere (`scripts/check_native_title.py`).
@@ -50,6 +53,9 @@ export interface TreeSelectNode {
    * for example `Hardware / Power` for a category; defaults to `label`. */
   pathLabel?: string;
 }
+
+/** The widest the panel gets (28rem): a picker in a dialog-wide field opens at the field's left edge, not across the row. */
+const PANEL_MAX_WIDTH_PX = 448;
 
 function flatten(nodes: TreeSelectNode[]): TreeSelectNode[] {
   return nodes.flatMap((n) => [n, ...flatten(n.children)]);
@@ -157,7 +163,7 @@ export function TreeSelect({
         </button>
       </Tooltip>
       {open && (
-        <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)} flush>
+        <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)} matchAnchor maxWidth={PANEL_MAX_WIDTH_PX} flush>
           {(searchable || (single && clearLabel)) && (
             <div className="popover-flush-header stack" style={{ gap: "var(--space-2)", minWidth: "14rem" }}>
               {searchable && (
