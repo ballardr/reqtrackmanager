@@ -6,7 +6,7 @@ sidebar_position: 5
 
 ## Proposing a change
 
-Once a requirement is locked, go to the project's **Change Requests** page (its own **Make a change request** link also appears directly on the requirement's own detail page):
+Once a requirement is locked, go to the project's **Change Requests** page (the requirement's own **Requirement actions** menu also has a **Make change request** item):
 
 1. Choose **new requirement** or **modify requirement**. For "modify requirement," pick the requirement first, then tick a checkbox for each field you actually want to change — only ticked fields become editable, pre-filled from the current value, and only ticked fields are proposed. Anything left unticked stays untouched when the change request is approved.
 2. Optionally add **proposed links** — the "Add a link" dialog in the form — to trace the requirement to other records. They are created only if the approver merges them.

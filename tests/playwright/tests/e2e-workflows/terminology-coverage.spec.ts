@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
+import { loginAs, recordActionNames, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: C-C-03's per-project terminology overrides actually reach
@@ -31,7 +31,7 @@ test.describe("terminology overrides reach their own surfaces", () => {
       await expect(page.getByRole("link", { name: "ECRs", exact: true })).toBeVisible();
     });
 
-    await test.step("requirement detail page: 'Make a change request' link uses the override, not the audit's named leak", async () => {
+    await test.step("requirement detail page: 'Make a change request' menu item uses the override, not the audit's named leak", async () => {
       await page.getByRole("link", { name: "Specs", exact: true }).click();
       await expect(page.url()).toContain("/requirements");
       // A bare `getByText` here is ambiguous: the seeded requirement's own
@@ -48,17 +48,24 @@ test.describe("terminology overrides reach their own surfaces", () => {
       // filter-option ambiguity fixed elsewhere in this branch.
       await page.getByRole("link", { name: "Must respond to input within 50ms" }).first().click();
       await expect(page.url()).toContain("/requirements/");
-      await expect(page.getByRole("link", { name: "Make ECR" })).toBeVisible();
+      // The menu is drawn once the record has loaded; `recordActionNames` does not wait for it.
+      await expect(page.getByRole("button", { name: "Spec actions" })).toBeVisible();
+      expect(await recordActionNames(page, "Spec")).toContain("Make ECR");
     });
 
     await test.step("Project Admin's custom-fields entity-kind dropdown — the audit's single most visible example", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Fields & actions");
-      const entityKindSelect = page.getByRole("main").getByRole("combobox").first();
+      // The section draws no empty fields: the "Applies to" select is in the "New field" dialog.
+      await page.getByRole("button", { name: "New field", exact: true }).click();
+      const fieldDialog = page.getByRole("dialog", { name: "New field" });
+      const entityKindSelect = fieldDialog.getByLabel("Applies to", { exact: true });
       // Default selection is "requirement" -> now renders as the override.
       await expect(entityKindSelect).toContainText("Spec");
       await entityKindSelect.selectOption("change_request");
       await expect(entityKindSelect).toContainText("ECR");
+      await page.keyboard.press("Escape");
+      await expect(fieldDialog).toHaveCount(0);
     });
 
     await test.step("the project's review-due list heading — the audit's named 'review-due lists' leak", async () => {

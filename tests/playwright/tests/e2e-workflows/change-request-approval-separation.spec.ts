@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
+import { approveRequirementFromDetail, chooseRecordAction, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
  * Job to be done: a stakeholder who spots a problem with an approved
@@ -154,7 +154,7 @@ test("a project manager sees and can use 'Approve and clear completion' on a CR 
   });
 
   await test.step("PM submits a modify-requirement change request against it", async () => {
-    await page.getByRole("link", { name: "Make change request" }).click();
+    await chooseRecordAction(page, "Requirement", "Make change request");
     const dialog = page.getByRole("dialog", { name: "New change request" });
     await expect(dialog.getByRole("combobox").first()).toContainText(reqName);
     const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });

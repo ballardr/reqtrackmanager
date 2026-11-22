@@ -19634,3 +19634,15 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 **Tests.** Storybook `TreeToggle` (state, keyboard, plain and touch-sized), `TreeView` (plain chevron, leaf alignment) and `TreeSelect` (one right-edge column across depths, the row as target, keyboard chevron); the whole Storybook project passes. Playwright `tree-selector-layout.spec.ts` (plain chevron, shared checkbox column, keyboard, label press) on the Components and categories selector.
 
 **Review (identify → verify → remediate).** Presentation only: no endpoint, authorization, audit, retention, tenant, logging or bundle change; no new data stored. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill, module boundary (no module named in a core file), website page (no change to what a person can do).
+
+## Platform review 2026-11-19, Phase 36: Make change request in the requirement's actions menu
+
+**Decided by: Agent** (the placement follows the page actions rule the user set in the review of 2026-11-22; no question needed).
+
+"Make change request" was a `btn` link in the requirement header's transitions row, beside Approve and Mark completed. It is now an item of the requirement's `RecordHeader` actions menu, after Subscribe and before Archive, with the unchanged gate: it is present only while the requirement is locked (a change request against an unlocked requirement is rejected server-side, and an unlocked requirement is edited directly) and absent, never disabled, otherwise. It navigates to the Change Requests page with `?requirement=` as before, so the deep link and its create dialog are untouched. The item's label still takes the `{changeRequest}` terminology token.
+
+**Other types checked.** No other record page carries a loose make-change-request control: the Links panel's "Create new" Change Request is a record creator inside its own dialog list, and Compliance has none. Nothing else moved.
+
+**Tests.** Storybook `RequirementDetailPage` stories read the menu (`recordActionNames`) for presence with a locked requirement, absence on a draft and for a stakeholder, and for the terminology override ("Make ECR"). Playwright `requirement-approval`, `change-request-approval-separation` and `terminology-coverage` open the menu first. Found and fixed on the way: `terminology-coverage` still looked for the custom-field "Applies to" select on the Project Admin page, where it has been inside the "New field" dialog since creation controls moved on demand; the spec now opens the dialog.
+
+**Review (identify → verify → remediate).** Presentation only: same navigation, no endpoint, authorization, audit, retention, tenant, logging or bundle change. The server still enforces the locked-only rule. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill, module boundary. Website: `workflows/change-requests.md` names the menu item.

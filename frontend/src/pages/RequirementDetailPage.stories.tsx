@@ -227,7 +227,7 @@ export const ManagerCanApproveDraftRequirement: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const approveButton = await canvas.findByRole("button", { name: "Approve" });
-    await expect(canvas.queryByRole("link", { name: "Make change request" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Make change request");
 
     await userEvent.click(approveButton);
     const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
@@ -283,7 +283,7 @@ export const StakeholderDoesNotSeeApproveOnDraftRequirement: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Name")).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("link", { name: "Make change request" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Make change request");
   },
 };
 
@@ -301,7 +301,7 @@ export const ManagerCanArchiveAndComplete: Story = {
     await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
     await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
     await expect(canvas.getByRole("button", { name: "Mark completed" })).toBeInTheDocument();
-    await expect(canvas.getByRole("link", { name: "Make change request" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).toContain("Make change request");
     await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   },
 };
@@ -859,8 +859,8 @@ export const TerminologyOverrideAppliesThroughoutPage: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Spec actions" })).toBeInTheDocument());
-    // The "Make a change request" link picks up the {changeRequest} token.
-    await expect(canvas.getByRole("link", { name: "Make ECR" })).toBeInTheDocument();
+    // The "Make a change request" menu item picks up the {changeRequest} token.
+    await expect(await recordActionNames(canvas, "Spec")).toContain("Make ECR");
 
     // The archive confirm dialog's title picks up the {requirement} token.
     await chooseRecordAction(canvas, "Spec", "Archive");

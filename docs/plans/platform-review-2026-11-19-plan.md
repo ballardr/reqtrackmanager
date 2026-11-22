@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 35 done 2026-11-22; phases 36 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 36 done 2026-11-22; phases 37 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-35 / 46 phases complete.
+36 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -45,7 +45,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [x] |
 | 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [x] |
 | 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [x] |
-| 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [ ] |
+| 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [x] |
 | 37 | Text styling toolbar: compact, and a mathematics button | Smaller toolbar buttons; a decision gate on a mathematics button and how it works | [ ] |
 | 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [ ] |
 | 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [ ] |
@@ -550,6 +550,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 
 - Move it into the `RecordHeader` object actions of the requirement page, with the same permission gate and disabled reasons as today; check the other record types that carry a make-change-request button (Compliance findings, the Links panel's creator) and move any that sit outside their menu in the same way.
 - Tests: Storybook for the menu with and without permission; the Playwright specs that press the button open the menu first.
+
+- As built (**Decided by: Agent**): the item sits in `RequirementDetailPage`'s `RecordHeader` actions after Subscribe, shown only while the requirement is locked (the gate the page always had; there is no further permission check, and the server enforces the rest). No other record page carried a loose make-change-request control. Stories and the three Playwright specs read the menu. See `docs/decisions.md`.
 
 ### Phase 37 — Text styling toolbar: compact, and a mathematics button
 

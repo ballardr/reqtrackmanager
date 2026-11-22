@@ -629,6 +629,13 @@ export function RequirementDetailPage() {
             icon: requirement.is_subscribed ? <BellOff /> : <Bell />,
             onSelect: toggleSubscription,
           },
+          // Only offered once the {requirement} is actually locked — a change request against a
+          // still-draft/reviewed one is rejected server-side; an unlocked {requirement} is edited directly.
+          requirement.is_locked && {
+            label: strings.requirements.makeChangeRequest,
+            icon: <GitPullRequest />,
+            onSelect: () => navigate(`/projects/${projectId}/change-requests?requirement=${requirementId}`),
+          },
           archiveAction.item,
         ]}
         transitions={
@@ -637,15 +644,6 @@ export function RequirementDetailPage() {
               <button className="btn btn-primary" onClick={() => setApproving(true)}>
                 <CheckCircle /> {strings.requirements.approve}
               </button>
-            )}
-            {/* Only offered once the {requirement} is actually locked — a
-                change request against a still-draft/reviewed one is rejected
-                server-side; an
-                unlocked {requirement} is edited directly instead. */}
-            {requirement.is_locked && (
-              <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
-                <GitPullRequest /> {strings.requirements.makeChangeRequest}
-              </Link>
             )}
             {canArchive && requirement.status === "approved" && !requirement.is_completed && (
               <button className="btn" onClick={markCompleted}>
