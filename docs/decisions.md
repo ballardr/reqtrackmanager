@@ -19562,3 +19562,18 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 **Review (identify → verify → remediate).** Presentation only: the same endpoints, permissions and audit events; no authorization, retention or tenant rule changed, nothing logged that was not before. The organisation Export and Import go through the existing organisation record table, which applies the type's own gate and the column policy. **Review table.** Modular boundary: the shared menu names no module; the architecture module passes its own rows. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP, perf: not applicable (no stored data or endpoint changed). Website: the interchange and sharing pages updated in the change.
 
+## Platform review 2026-11-19, Phase 31: Record codes panel by module (2026-11-22)
+
+**Problem.** `RecordCodePrefixPanel` (Organisation Admin, Projects group; Project Admin, overview) was one full-width table: the prefix input and its buttons were stretched to opposite edges of the page, and the list grew by a row for every record type of every enabled module.
+
+**Decided by: Agent (revisable on its own judgement).**
+- *Sections from the registry.* `CodePrefixOut` gains `module_key` and `module_name` (`None` for a core type), taken from `artefact_type_module`; the list is ordered core first, then by module name, then by type name. The panel groups the rows into one `CollapsibleSection` (plain variant) per group, so no module list exists in a core file and a new module's types appear under its own heading with no edit (module boundary rule).
+- *Compact aligned grid.* One `.definition-grid` with fixed column tracks and a single heading row above all sections, so the columns line up across sections and stay close together. The "Inherited from" column exists only on the project tier (an organisation has nothing to inherit); the wording is shortened to "Parent project" / "Organisation" under that heading.
+- *Folded state.* Core is open, each module is folded. A section's pill reads "N custom" with an accent border when this tier set prefixes in it, otherwise "N types", so an override is visible when folded (the fold is remembered per person, keyed by tier and module key).
+- *Row Save is a normal button.* It was a primary button on every row, against the one-primary rule; the panel has no primary button (each row still saves on its own request, as before).
+- Unused string `codePrefixes.custom` removed.
+
+**Tests.** Backend `test_code_prefixes.py`: order (core, then module, then name), module fields on organisation list, project list and a write response. Storybook `RecordCodePrefixPanel` (8): sections, the folded count and expanding, setting and clearing inside a module section, inherited sources. Playwright `record-code-prefixes.spec.ts`: a module section is folded, a prefix set inside it is counted on the folded section; the existing specs follow the new wording.
+
+**Review (identify → verify → remediate).** Presentation plus two read-only response fields (module key and display name, both public registry values): no authorization, audit, retention or tenant rule changed, the module availability filter still decides which rows are listed, nothing logged. **Review table.** Modular boundary: the grouping reads the response, no module named in core; no core enum or `Record` needs a per-module value. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP, perf: not applicable (no stored data, endpoint or record type changed). Website: no page describes this panel yet; phase W covers the record code prefix pages.
+

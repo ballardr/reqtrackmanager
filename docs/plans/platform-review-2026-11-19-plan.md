@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 30 done 2026-11-22; phases 31 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 31 done 2026-11-22; phases 32 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-30 / 46 phases complete.
+31 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -40,7 +40,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 28 | Tags: usage in a dialog | The "Where tags are used" section becomes a dialog opened from the record count in the Used on column | [x] |
 | 29 | Folder icons: review and fix | Every folder-tree list shows an icon of what its rows are (a stakeholder group, not a folder); icon chosen by the consuming list, not a core map | [x] |
 | 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [x] |
-| 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [ ] |
+| 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [x] |
 | 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [ ] |
 | 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [ ] |
 | 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [ ] |
@@ -462,7 +462,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 ### Phases 28 to 41 — Items from the review of 2026-11-22
 
-Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 31 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
+Raised by the user while reviewing the running stack after phase 27. Each item was checked against the code for the component it names, and each is an independent phase; **phases 32 onward are not started**, the user works through them individually. They share the standing checklist below and these defaults: shared components only (extract and update the existing call sites), field help and required markers where a form changes, formal wording, Storybook for every changed component, a Playwright test for changed behaviour, a `docs/decisions.md` entry with a **Decided by** tag, and the website question answered in phase W. Phases 29 and 30 both touch `FolderPanel`, 39 and 40 both touch the Compliance Standards page, and 30, 34 and 36 each add or use a rule in `CLAUDE.md` and the style guide, so within a pair they are built in order.
 
 ### Phase 28 — Tags: usage in a dialog
 
@@ -501,6 +501,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - UI review first for the organisation and the project panel, which share the component: list the wasted space (widths, padding, rows that could share a line), then group the rows into foldable sections through the style guide's "aligned rows and foldable blocks in a settings panel" pattern. The groups come from the registry (each module's own label and its registered artefact types), never a hard-coded module list in a core file (the module boundary rule); Core types form the first section.
 - The project panel keeps showing which values it overrides and which it inherits from the organisation or an ancestor project (phase 10), per section; a section with an override shows it when folded.
 - Tests: Storybook for both pages with several modules and an override; Playwright sets, clears and inherits a prefix inside a section.
+
+- As built (**Decided by: Agent**): the API rows carry `module_key` and `module_name` from the module registry and arrive ordered core, module, type; the panel draws one plain `CollapsibleSection` per group (Core open, modules folded, pill "N custom" with an accent border when this tier set prefixes there, else "N types") under one heading row, in a fixed-track grid; the "Inherited from" column is project-only; the row Save is no longer a primary button. See `docs/decisions.md`.
 
 ### Phase 32 — Stage workflow editor: one line per stage
 

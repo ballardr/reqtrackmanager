@@ -11,8 +11,9 @@ installCleanupHook();
  * reused.
  *
  * Covers: an organisation administrator choosing a prefix for actions in Organisation Admin, a project inheriting it
- * (and saying so), the project manager overriding it in Project Admin and returning to the inherited value, and a
- * refused prefix (one another record type already uses) showing the server's message.
+ * (and saying so), the project manager overriding it in Project Admin and returning to the inherited value, a
+ * refused prefix (one another record type already uses) showing the server's message, and the record types of a module
+ * sitting in a folded section of their own that counts the prefixes set inside it.
  *
  * Each test builds its own organisation, so none depends on state left by another test.
  */
@@ -88,7 +89,7 @@ test.describe("record code prefixes", () => {
       const field = page.getByRole("textbox", { name: "Prefix for Action", exact: true });
       await expect(field).toHaveValue("");
       await expect(field).toHaveAttribute("placeholder", "TSK");
-      await expect(page.getByText("Inherited from the organisation").first()).toBeVisible();
+      await expect(page.getByText("Organisation", { exact: true }).first()).toBeVisible();
     });
 
     await test.step("the project manager overrides it for the project", async () => {
@@ -115,5 +116,32 @@ test.describe("record code prefixes", () => {
     await page.getByRole("button", { name: "Save the prefix for Action" }).click();
     await expect(page.getByText(/already the prefix of change request records/i)).toBeVisible();
     expect(await newActionCode(page.request, world, "Still default")).toBe("ACT-001");
+  });
+
+  test("a module's record types are in a section of their own that shows how many prefixes it holds", async ({ page }) => {
+    test.setTimeout(60_000);
+    const world = await createWorld(page.request, "module");
+    await loginAs(page, world.adminEmail);
+    const rows = await (await page.request.get(`${apiBaseUrl}/api/v1/projects/${world.projectId}/code-prefixes`, { headers: world.headers })).json();
+    const moduleRow = rows.find((r: { module_name: string | null }) => r.module_name !== null);
+    test.skip(!moduleRow, "No module record type is enabled for a new organisation.");
+    await page.goto(`/projects/${world.projectId}/admin/overview`);
+
+    await test.step("the Core section is open and the module's section is folded", async () => {
+      await expect(page.getByRole("textbox", { name: "Prefix for Action", exact: true })).toBeVisible();
+      const section = page.getByRole("button", { name: `${moduleRow.module_name} section` });
+      await expect(section).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("textbox", { name: `Prefix for ${moduleRow.label}`, exact: true })).toHaveCount(0);
+    });
+
+    await test.step("a prefix set inside the section is counted on the folded section", async () => {
+      await page.getByRole("button", { name: `${moduleRow.module_name} section` }).click();
+      const field = page.getByRole("textbox", { name: `Prefix for ${moduleRow.label}`, exact: true });
+      await field.fill("zqx");
+      await page.getByRole("button", { name: `Save the prefix for ${moduleRow.label}` }).click();
+      await expect(page.getByText("Record code prefix saved.")).toBeVisible();
+      await page.getByRole("button", { name: `${moduleRow.module_name} section` }).click();
+      await expect(page.getByRole("button", { name: `${moduleRow.module_name} section` })).toContainText("1 custom");
+    });
   });
 });

@@ -70,15 +70,26 @@ def _type_available_to_organization(db: Session, organization_id: UUID, artefact
     return sub is None or is_org_module_subcomponent_enabled(db, organization_id, definition.key, sub.key)
 
 
+def _module_name(artefact_type: str) -> str | None:
+    """The display name of the module that owns the type; `None` for a core type."""
+    definition = artefact_type_module(artefact_type)
+    return None if definition is None else definition.name
+
+
 def _ordered(types: list[str]) -> list[str]:
-    """Core types first, then the rest by display name."""
-    core = set(code_prefixes.core_default_prefixes())
-    return sorted(types, key=lambda t: (t not in core, get_artefact_type_label(t).lower()))
+    """Core types first, then each module's types (modules by name), each group by display name, so the response
+    is already in the order the panel's sections are drawn."""
+    return sorted(types, key=lambda t: (
+        (_module_name(t) or "").lower(), get_artefact_type_label(t).lower(),
+    ))
 
 
 def _out(row: PrefixRow) -> CodePrefixOut:
+    definition = artefact_type_module(row.artefact_type)
     return CodePrefixOut(
-        artefact_type=row.artefact_type, label=row.label, default_prefix=row.default_prefix, own_prefix=row.own_prefix,
+        artefact_type=row.artefact_type, label=row.label, module_key=None if definition is None else definition.key,
+        module_name=None if definition is None else definition.name, default_prefix=row.default_prefix,
+        own_prefix=row.own_prefix,
         prefix=row.effective.prefix, source=row.effective.tier, inherited_prefix=row.inherited.prefix,
         inherited_source=row.inherited.tier,
     )

@@ -1704,6 +1704,9 @@ export type CodePrefixSource = "project" | "parent_project" | "organization" | "
 export interface CodePrefixRow {
   artefact_type: string;
   label: string;
+  /** The module that owns the type and its display name (the section heading); null for a core type. */
+  module_key: string | null;
+  module_name: string | null;
   default_prefix: string;
   /** The prefix this scope itself set; null when it follows the next tier. */
   own_prefix: string | null;

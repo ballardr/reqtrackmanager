@@ -24,6 +24,7 @@ from app.models.audit import AuditEvent
 from app.models.organization import Organization
 from app.models.project import Project
 from app.modules.registry import (
+    artefact_type_module,
     get_all_registered_artefact_types,
     get_default_code_prefixes,
     get_scaling_probes,
@@ -381,10 +382,27 @@ def test_each_change_is_audited_with_the_type_and_prefixes_only(world):
         db.close()
 
 
-def test_the_list_is_core_first_then_by_name(world):
-    names = [r["label"] for r in world.client.get(_org(world), headers=auth_headers(world.token)).json()]
-    assert names[:2] == ["Action", "Change request"]
-    assert names[2:] == sorted(names[2:], key=str.lower)
+def test_the_list_is_core_first_then_by_module_then_name(world):
+    rows = world.client.get(_org(world), headers=auth_headers(world.token)).json()
+    assert [r["label"] for r in rows[:2]] == ["Action", "Change request"]
+    assert all(r["module_key"] is None and r["module_name"] is None for r in rows[:2])
+    module_rows = rows[2:]
+    assert module_rows and all(r["module_key"] and r["module_name"] for r in module_rows)
+    assert [(r["module_name"].lower(), r["label"].lower()) for r in module_rows] == sorted(
+        (r["module_name"].lower(), r["label"].lower()) for r in module_rows
+    )
+
+
+def test_a_row_names_its_module_in_the_organisation_and_the_project_list(world):
+    project = world.project()
+    for url in (_org(world), _proj(project)):
+        by_type = {r["artefact_type"]: r for r in world.client.get(url, headers=auth_headers(world.token)).json()}
+        assert by_type["change_request"]["module_key"] is None
+        pain = by_type[PAIN]
+        assert pain["module_key"] == artefact_type_module(PAIN).key
+        assert pain["module_name"] == artefact_type_module(PAIN).name
+    put = _put(world, f"{_org(world)}/{PAIN}", "ABC").json()
+    assert put["module_key"] == artefact_type_module(PAIN).key
 
 
 # --- bundles and templates -------------------------------------------------------------------------------------------

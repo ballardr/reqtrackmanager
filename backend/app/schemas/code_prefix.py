@@ -19,6 +19,8 @@ class CodePrefixOut(BaseModel):
     Attributes:
         artefact_type: The registered type string.
         label: The type's singular display name.
+        module_key: The module that owns the type; `None` for a core type (the panel's first section).
+        module_name: That module's display name, the heading of its section; `None` for a core type.
         default_prefix: The built-in prefix.
         own_prefix: The prefix this scope itself set; `None` when it follows the next tier.
         prefix: The prefix new records of the type are numbered with here.
@@ -30,6 +32,8 @@ class CodePrefixOut(BaseModel):
 
     artefact_type: str
     label: str
+    module_key: str | None
+    module_name: str | None
     default_prefix: str
     own_prefix: str | None
     prefix: str
