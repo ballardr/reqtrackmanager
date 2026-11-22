@@ -278,7 +278,7 @@ function ImageLibraryDialog({
         )}
         {images !== null && images.length > 0 && (
           <div className="report-image-browser">
-            <ul className="report-image-grid" aria-label={text.dialogTitle}>
+            <ul className="report-image-grid scroll-region" aria-label={text.dialogTitle}>
               {shown.map((image) => (
                 <li key={image.id} className="report-image-card" data-selected={image.id === selected || undefined}>
                   <button

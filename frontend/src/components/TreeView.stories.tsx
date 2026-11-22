@@ -73,5 +73,25 @@ export const Empty: Story = {
   },
 };
 
+/** Every level steps in by the one `--tree-indent` token, whatever the depth. */
+export const IndentIsOneTokenStepPerLevel: Story = {
+  args: { nodes: NODES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const step = (() => {
+      const probe = document.createElement("div");
+      probe.style.width = "var(--tree-indent)";
+      canvasElement.appendChild(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    })();
+    await expect(step).toBeGreaterThan(0);
+    const lefts = ["Client", "Acme", "Acme — Finance"].map((name) => canvas.getByText(name, { exact: true }).getBoundingClientRect().left);
+    await expect(Math.abs(lefts[1] - lefts[0] - step)).toBeLessThan(1);
+    await expect(Math.abs(lefts[2] - lefts[1] - step)).toBeLessThan(1);
+  },
+};
+
 export const LightTheme: Story = { ...Default, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Default, globals: { theme: "dark" } };

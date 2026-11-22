@@ -85,7 +85,7 @@ export function PermissionPicker({
   const groups = groupByArtefactType(permissions);
 
   return (
-    <div className="stack" style={{ gap: "var(--space-3)", maxHeight: "22rem", overflowY: "auto" }}>
+    <div className="stack scroll-region" style={{ gap: "var(--space-3)", maxHeight: "22rem" }}>
       {groups.map((group) => (
         <CollapsibleSection
           key={group.key}

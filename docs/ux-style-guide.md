@@ -506,6 +506,22 @@ For a primary action that has exactly one common case and one (or a small number
 
 **Nesting group on a create dialog.** A rarely used block of related settings inside a create dialog (on New project: parent, inheritance of access, mirrored role) is one collapsed `CollapsibleSection` titled for the group ("Nesting"), with a pill naming what is set (the chosen parent) so a closed group is not read as empty. The fields are a shared component (`ProjectNestingFields`) that the project settings page also uses, so the two screens cannot drift. The group is absent when nothing can be chosen (no project may be a parent).
 
+## Pattern: tree
+
+Every expandable tree (`TreeView`, `TreeSelect`, `FolderTreeList`, the link trace) indents one level by the single `--tree-indent` token (`1rem`, `styles/theme.css`); no caller sets its own constant.
+
+- **Chevron column.** A node with children shows the shared `TreeToggle`; a leaf keeps the same width (`TreeToggleGap`), so labels of one level line up.
+- **One-choice picker row.** Under its parent heading a row shows the node's own name ("Performance" under "Propulsion"), not the whole path. The path (`pathLabel`) stays the row's accessible name and the text of the trigger once chosen, so a path never wraps at the popover's width.
+
+## Pattern: scroll region
+
+Every capped or scrolling list takes the same scroll behaviour, from one rule in `styles/theme.css`: `ScrollRegion` (or the `scroll-region` class where the element is not a component), and the shared thin scrollbar for a scroller that keeps its own layout class.
+
+- **A header outside the scroll.** A search box or clear row above a list is a fixed header (`.popover-flush-header`) and only the list scrolls, so the search never moves away. A `Popover` with `flush` has no padding of its own: the list carries it, so the scrollbar and the clipped edge meet the panel's border and rounded corners.
+- **Edges.** An edge shadow shows on a side only while content continues beyond it (top once scrolled, bottom until the end), drawn with scroll-shadow backgrounds and no scroll listener. A list shorter than its cap shows neither a scrollbar nor an edge.
+- **Containment.** `overscroll-behavior: contain` keeps a scroll that reaches an end from moving the page, and a focus ring is drawn inside the region (`outline-offset: -2px`) so the edge never clips it.
+- **No bespoke rule.** A scrolling list with its own scrollbar styling or a hand-written `overflow-y: auto` is a defect; add its class to the shared selector list instead.
+
 ## Pattern: auto-growing textarea
 
 *(New 2026-08-24 — see [docs/plans/completed/ux-audit-2026-08.md](plans/completed/ux-audit-2026-08.md#new-requirement-form-three-unlabelled-fields-no-auto-grow), roadmap item 525.)*

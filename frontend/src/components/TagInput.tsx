@@ -199,8 +199,8 @@ export function TagInput({
                 id={listboxId}
                 role="listbox"
                 aria-label={strings.tags.listLabel}
-                className="stack"
-                style={{ gap: "0.15rem", maxHeight: 220, overflowY: "auto" }}
+                className="stack scroll-region"
+                style={{ gap: "0.15rem", maxHeight: 220 }}
               >
                 {options.length === 0 && (
                   <span className="text-muted" style={{ padding: "var(--space-2) var(--space-3)" }}>{strings.tags.noMatches}</span>

@@ -288,10 +288,10 @@ export function UserAutocomplete({
         <div
           id={listboxId}
           role="listbox"
-          className="card stack"
+          className="card stack scroll-region"
           style={{
             position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "var(--space-1)",
-            padding: "var(--space-1)", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
+            padding: "var(--space-1)", gap: "0.15rem", maxHeight: 260,
           }}
         >
           {matches.map((u, i) => (

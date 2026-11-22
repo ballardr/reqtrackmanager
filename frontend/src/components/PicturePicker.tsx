@@ -99,7 +99,7 @@ export function PicturePickerPopover({ anchorRef, source, initial, onApply, onCl
           {pictures.length === 0 ? (
             <p className="text-muted" role="status" style={{ margin: 0 }}>{text.pictureNone}</p>
           ) : (
-            <div className="picture-picker__grid" role="group" aria-label={text.pictureChoose}>
+            <div className="picture-picker__grid scroll-region" role="group" aria-label={text.pictureChoose}>
               {pictures.map((file: FileAsset) => (
                 <button
                   key={file.id} type="button" className="picture-picker__choice" aria-label={text.pictureFile(file.filename)}

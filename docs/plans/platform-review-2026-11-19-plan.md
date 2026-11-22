@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 47 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 48 and 49 are not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 48 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 49 is not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-47 / 54 phases complete.
+48 / 54 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -57,7 +57,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 45 | Markdown field chrome: tabs, empty height, controls | The Visual, Write and Preview tabs are caption-sized, an empty field is the most compact box and the same height in every view, and the view switch and toolbar take no room while the field is not in use; a decision gate first | [x] |
 | 46 | Grids and tables: long text never breaks the layout | Fix the Connection Types grid, audit every grid and table-like view for the same defect, and add a shared cell component, a stress test and agent rules that stop it recurring | [x] |
 | 47 | Architecture symbols: Org Resources, filter panel, folders | The organisation's symbol library moves to Org Resources as a filtered list; a decision gate first on folders and on how a project sees them | [x] |
-| 48 | Tree selector: indent and scroll edges | Smaller indent between levels, a fixed search header, and a shared scroll region with themed edges for every capped list | [ ] |
+| 48 | Tree selector: indent and scroll edges | Smaller indent between levels, a fixed search header, and a shared scroll region with themed edges for every capped list | [x] |
 | 49 | Section list fits the viewport from the first view | The section list is sized to the space left below its starting position, so a page that fits the window never needs a page scroll to reach the end of the list (follow-up to phase 33) | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 49 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -708,6 +708,7 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **One shared scroll region:** a `ScrollRegion` component (or the shared class, if no behaviour is needed) in `components/`, with `maxHeight`, the themed scrollbar, the edge indicators, `overscroll-behavior: contain` and a focus-visible ring that is not clipped. Audit every capped or scrolling list and move it onto it: `TreeSelect`, `Popover` menus (`.popover-menu`, `.menu-list`, `ActionMenu`), `ResourceMenu`'s navigation, `.nav-rail-scroll`, `.dialog-body`, the picture and report image grids (`.picture-picker__grid`, `.report-image-grid`), and any other `overflow-y: auto` found by search; list the result in the phase's As built. A scrolling list with its own bespoke scrollbar rule is a finding to fix in this phase (fix-don't-defer).
 - Style guide: "Pattern: tree" gains the indent token and the one-choice row; a "Pattern: scroll region" states the header outside the scroll, the flush edges and the indicators.
 - Tests: Storybook for the picker with a long list in light and dark themes (the search stays fixed on scroll, the top indicator appears after scrolling and the bottom one disappears at the end, no row is cut at the panel edge when scrolled to the end), the indent measured as one token step at every depth in `TreeView`, and the path wrapping case ("Propulsion / Performance") fitting on one line at the default popover width; Playwright on a requirement's Component and category: open, scroll to the end, search, choose.
+- As built (**Decided by: Agent**; the outcome was the User's): `--tree-indent` (`1rem`) is the one indent (`TreeView`, `FolderTreeList`, the link trace); `TreeSelect single` rows show their own name with the path as the accessible name; `Popover flush` holds a fixed header and one `ScrollRegion`; `.scroll-region` draws edge shadows with no listener; every hand-written `overflow-y: auto` found was moved onto it or onto the shared themed bar (the list is in `docs/decisions.md`); an unrelated mis-scoped `.grid-editor__toolbar` selector was fixed. Style guide: "Pattern: tree" and "Pattern: scroll region". See `docs/decisions.md`.
 
 ### Phase 49 — Section list fits the viewport from the first view
 

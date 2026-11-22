@@ -176,8 +176,8 @@ export function MultiSelectDropdown({
             <div
               role="group"
               aria-label={triggerLabel}
-              className="stack"
-              style={{ gap: "var(--space-2)", ...(filterable ? { maxHeight: "18rem", overflowY: "auto" } : {}) }}
+              className={filterable ? "stack scroll-region" : "stack"}
+              style={{ gap: "var(--space-2)", ...(filterable ? { maxHeight: "18rem" } : {}) }}
             >
               {visible.map((opt) => (
                 <Fragment key={opt.value}>

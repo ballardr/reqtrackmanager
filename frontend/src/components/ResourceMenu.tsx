@@ -251,7 +251,7 @@ export function ResourceMenu<K extends string>({
               )}
             />
           ) : (
-            <nav aria-label={ariaLabel} className="resource-menu-nav" ref={navRef}>
+            <nav aria-label={ariaLabel} className="resource-menu-nav scroll-region" ref={navRef}>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                 {groups.map((g) => {
                   const rowIndex = rows.findIndex((r) => r.id === `g:${g.key}`);

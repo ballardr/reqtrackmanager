@@ -65,6 +65,11 @@ const CARET_INSET_PX = 14;
  * content takes the width it is given and must not set a minimum of its own: the bubble is only as wide as the field,
  * so a wider fixed content runs out of the bubble, the card and the window. It also keeps below the field, scrolling
  * inside, while at least 240px of room is there, so it does not flip over the fields above the anchor.
+ *
+ * `flush` removes the panel's padding and hides its overflow: the content is a column of its own, a fixed header
+ * above one `ScrollRegion` that meets the panel's border and rounded corners. When the room is short the panel
+ * keeps its cap and that region shrinks and scrolls, so the header never scrolls away. Without `flush` a capped panel
+ * scrolls as a whole, as a `ScrollRegion` (thin themed bar and edge indicators).
  */
 export function Popover({
   anchorRef,
@@ -74,6 +79,7 @@ export function Popover({
   matchAnchor = false,
   placement = "below",
   menu = false,
+  flush = false,
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
@@ -83,6 +89,7 @@ export function Popover({
   matchAnchor?: boolean;
   placement?: "below" | "side";
   menu?: boolean;
+  flush?: boolean;
   children: ReactNode;
 }) {
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -97,6 +104,7 @@ export function Popover({
       // clamps the scroll offset to 0, so it is put back below once the cap is applied again.
       const scrolled = bubble.scrollTop;
       bubble.style.maxHeight = "";
+      bubble.classList.remove("scroll-region");
       const anchorRect = anchor.getBoundingClientRect();
       if (matchAnchor) bubble.style.width = `${Math.max(MATCH_ANCHOR_MIN_WIDTH_PX, anchorRect.width)}px`;
       const bubbleRect = bubble.getBoundingClientRect();
@@ -119,8 +127,10 @@ export function Popover({
       const height = Math.min(bubbleRect.height, room);
       if (bubbleRect.height > room) {
         bubble.style.maxHeight = `${room}px`;
-        bubble.style.overflowY = "auto";
-        bubble.scrollTop = scrolled;
+        if (!flush) {
+          bubble.classList.add("scroll-region");
+          bubble.scrollTop = scrolled;
+        }
       }
       let top: number;
       if (beside) {
@@ -158,7 +168,7 @@ export function Popover({
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [anchorRef, matchAnchor, placement, menu]);
+  }, [anchorRef, matchAnchor, placement, menu, flush]);
 
   useEffect(() => {
     // Listens in the capture phase on `pointerdown`: React Flow's pane and nodes (d3-zoom, d3-drag) stop a
@@ -187,7 +197,7 @@ export function Popover({
   return createPortal(
     <div
       ref={bubbleRef}
-      className={menu ? "card stack popover-bubble popover-menu" : "card stack popover-bubble"}
+      className={`card stack popover-bubble${menu ? " popover-menu" : ""}${flush ? " popover-flush" : ""}`}
       role="dialog"
       aria-label={title}
       tabIndex={-1}

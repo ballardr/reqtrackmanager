@@ -19,13 +19,17 @@
  *
  * `single` turns it into a one-choice picker (each node is a selectable row, the chosen one marked with a tick and read
  * as a radio by assistive technology; choosing closes the list, and `clearLabel` adds a row that clears the choice), and `searchable` adds a search box that keeps the nodes whose label matches and the
- * ancestors leading to them, with every branch open while a search is active. A node may appear under several
+ * ancestors leading to them, with every branch open while a search is active. The search box and the clear row are a fixed
+ * header; only the list below them scrolls (`ScrollRegion`), flush with the panel's edges, so a scrolled list never moves
+ * the search away and the last row is not cut at the border. A one-choice row shows the node's own name under its parent
+ * and keeps the whole path (`pathLabel`) as its accessible name and in the trigger. A node may appear under several
  * parents (the same id twice): each place shows the same state.
  */
 import { Check, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Popover } from "./Popover";
+import { ScrollRegion } from "./ScrollRegion";
 import { Tooltip } from "./Tooltip";
 import { filterTreeNodes } from "./treeSelectFilter";
 import { TreeView } from "./TreeView";
@@ -48,8 +52,8 @@ function flatten(nodes: TreeSelectNode[]): TreeSelectNode[] {
 
 /** The row of a one-choice picker: a full-width selectable row with a tick on the chosen one, announced as a radio. */
 function SingleChoiceRow({
-  label, checked, disabled, onChoose,
-}: { label: string; checked: boolean; disabled?: boolean; onChoose: () => void }) {
+  label, text, checked, disabled, onChoose,
+}: { label: string; text?: string; checked: boolean; disabled?: boolean; onChoose: () => void }) {
   return (
     <button
       type="button" role="radio" aria-checked={checked} aria-label={label} disabled={disabled} onClick={onChoose}
@@ -60,7 +64,7 @@ function SingleChoiceRow({
         background: checked ? "var(--color-surface-alt)" : "transparent", color: "inherit", fontWeight: checked ? 600 : undefined,
       }}
     >
-      <span>{label}</span>
+      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{text ?? label}</span>
       {checked && <Check size={14} aria-hidden="true" style={{ flexShrink: 0 }} />}
     </button>
   );
@@ -71,7 +75,7 @@ function TreeSelectOption({
   n, checked, onToggle, single,
 }: { n: TreeSelectNode; checked: boolean; onToggle: () => void; single: boolean }) {
   const row = single ? (
-    <SingleChoiceRow label={n.pathLabel ?? n.label} checked={checked} disabled={n.disabled} onChoose={onToggle} />
+    <SingleChoiceRow label={n.pathLabel ?? n.label} text={n.label} checked={checked} disabled={n.disabled} onChoose={onToggle} />
   ) : (
     <label className="tree-select-option">
       <span className="tree-select-option-label">{n.label}</span>
@@ -146,19 +150,23 @@ export function TreeSelect({
         <ChevronDown size={14} style={{ flexShrink: 0 }} />
       </button>
       {open && (
-        <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>
-          <div role={single ? "radiogroup" : "group"} aria-label={triggerLabel} style={{ minWidth: "14rem", maxHeight: "20rem", overflowY: "auto" }}>
-            {searchable && (
-              <input
-                className="input" type="search" value={query} aria-label={`Search ${triggerLabel}`} placeholder="Search"
-                onChange={(e) => setQuery(e.target.value)} style={{ marginBottom: "var(--space-2)" }}
-              />
-            )}
-            {single && clearLabel && (
-              <div className="row" style={{ minHeight: "2rem" }}>
-                <SingleChoiceRow label={clearLabel} checked={selectedIds.length === 0} onChoose={() => { onChange([]); setOpen(false); }} />
-              </div>
-            )}
+        <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)} flush>
+          {(searchable || (single && clearLabel)) && (
+            <div className="popover-flush-header stack" style={{ gap: "var(--space-2)", minWidth: "14rem" }}>
+              {searchable && (
+                <input
+                  className="input" type="search" value={query} aria-label={`Search ${triggerLabel}`} placeholder="Search"
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              )}
+              {single && clearLabel && (
+                <div className="row" style={{ minHeight: "2rem" }}>
+                  <SingleChoiceRow label={clearLabel} checked={selectedIds.length === 0} onChoose={() => { onChange([]); setOpen(false); }} />
+                </div>
+              )}
+            </div>
+          )}
+          <ScrollRegion role={single ? "radiogroup" : "group"} aria-label={triggerLabel} maxHeight="20rem" style={{ minWidth: "14rem" }}>
             <TreeView
               nodes={shown}
               emptyText={searching ? "Nothing matches." : "No options."}
@@ -169,7 +177,7 @@ export function TreeSelect({
                 <TreeSelectOption n={n} checked={selected.has(n.id)} onToggle={() => toggle(n.id)} single={single} />
               )}
             />
-          </div>
+          </ScrollRegion>
         </Popover>
       )}
     </>

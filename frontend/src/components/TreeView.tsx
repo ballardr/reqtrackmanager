@@ -5,7 +5,8 @@
  * children gets a chevron toggle and the caller renders each node's own
  * content (a link, a checkbox, a row of actions); the chevron is the shared plain `TreeToggle`. Extracted from
  * `ProjectTree` so the project hierarchy, the Stakeholder group manager and
- * `TreeSelect` share one implementation of the chevron, indentation, ARIA
+ * `TreeSelect` share one implementation of the chevron, indentation (one step of `--tree-indent` per level, the same
+ * token `FolderTreeList` and the link trace use), ARIA
  * (`aria-expanded`, named toggle) and expand state instead of three copies.
  *
  * Presentational: it owns only which nodes are expanded (or, in controlled mode, none of it: the caller passes
@@ -86,7 +87,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
 
   return (
     <li>
-      <div className="row" style={{ gap: "var(--space-1)", alignItems: "center", paddingLeft: `${depth * 1.5}rem`, minHeight: "2rem" }}>
+      <div className="row" style={{ gap: "var(--space-1)", alignItems: "center", paddingLeft: `calc(${depth} * var(--tree-indent))`, minHeight: "2rem" }}>
         {hasChildren ? (
           <TreeToggle expanded={expanded} name={label} onToggle={() => setExpanded((e) => !e)} />
         ) : (

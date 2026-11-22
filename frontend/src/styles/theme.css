@@ -13,6 +13,8 @@
   independent."
 */
 :root {
+  /* One step of indentation per level in every tree (`TreeView`, `FolderTreeList`, the link trace). */
+  --tree-indent: 1rem;
   --color-header-bg: #14161c;
   --color-header-text: #ffffff;
   --color-header-text-muted: #a7adb8;
@@ -43,6 +45,7 @@
 :root[data-theme="light"] {
   --color-bg: #eef1f5;
   --color-surface: #ffffff;
+  --scroll-edge-color: rgba(0, 0, 0, 0.22);
   --color-surface-alt: #eef0f3;
   --color-border: #c3c9d1;
   --color-text: #1a202c;
@@ -77,6 +80,7 @@
 :root[data-theme="dark"] {
   --color-bg: #14181f;
   --color-surface: #1c222c;
+  --scroll-edge-color: rgba(0, 0, 0, 0.6);
   --color-surface-alt: #242b37;
   --color-border: #333c4a;
   --color-text: #e6e9ef;
@@ -540,7 +544,7 @@ select.input[size] {
   color: var(--color-text);
 }
 
-.app-header .notification-dropdown /* Custom table editor (components/ReportGridEditor.tsx). The cells are drawn as the printed page shows them, so an unset
+/* Custom table editor (components/ReportGridEditor.tsx). The cells are drawn as the printed page shows them, so an unset
    fill and text colour are paper white and black in both themes (the colours the author sets are drawn as they are). */
 .grid-editor__toolbar {
   align-items: flex-end;
@@ -1204,26 +1208,11 @@ a.figure-projects-link:hover {
   margin-right: var(--nav-toggle-overhang);
   padding: var(--space-5) var(--space-3) var(--space-4) var(--space-4);
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
 }
 
 .nav-rail-icons .nav-rail-scroll {
   padding-left: var(--space-2);
   padding-right: var(--space-2);
-}
-
-.nav-rail-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-.nav-rail-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.nav-rail-scroll::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: var(--radius-sm);
 }
 
 .nav-rail-icons {
@@ -1635,8 +1624,8 @@ a.figure-projects-link:hover {
 }
 
 .link-trace__children {
-  margin: var(--space-2) 0 0 0.6rem;
-  padding-left: 0.9rem;
+  margin: var(--space-2) 0 0 calc(var(--tree-indent) * 0.4);
+  padding-left: calc(var(--tree-indent) * 0.6);
   border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -3064,6 +3053,118 @@ td:has(> .disclosure-toggle) {
 
 .popover-bubble {
   max-width: calc(100vw - 1rem);
+}
+
+/* The one scroll region (style guide "Pattern: scroll region"): every capped or scrolling list takes the thin themed
+   scrollbar from this rule, and `ScrollRegion` / `.scroll-region` adds the edge indicators on top of it. */
+.scroll-region,
+.nav-rail-scroll,
+.dialog-body,
+.detail-card__scroll,
+.detail-layout__aside,
+.search-dropdown,
+.resource-menu-nav,
+.picture-picker__grid,
+.report-image-grid,
+.link-trace__map,
+.licence-text,
+.layout-diff {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.scroll-region::-webkit-scrollbar,
+.nav-rail-scroll::-webkit-scrollbar,
+.dialog-body::-webkit-scrollbar,
+.detail-card__scroll::-webkit-scrollbar,
+.detail-layout__aside::-webkit-scrollbar,
+.search-dropdown::-webkit-scrollbar,
+.resource-menu-nav::-webkit-scrollbar,
+.picture-picker__grid::-webkit-scrollbar,
+.report-image-grid::-webkit-scrollbar,
+.link-trace__map::-webkit-scrollbar,
+.licence-text::-webkit-scrollbar,
+.layout-diff::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-region::-webkit-scrollbar-track,
+.nav-rail-scroll::-webkit-scrollbar-track,
+.dialog-body::-webkit-scrollbar-track,
+.detail-card__scroll::-webkit-scrollbar-track,
+.detail-layout__aside::-webkit-scrollbar-track,
+.search-dropdown::-webkit-scrollbar-track,
+.resource-menu-nav::-webkit-scrollbar-track,
+.picture-picker__grid::-webkit-scrollbar-track,
+.report-image-grid::-webkit-scrollbar-track,
+.link-trace__map::-webkit-scrollbar-track,
+.licence-text::-webkit-scrollbar-track,
+.layout-diff::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-region::-webkit-scrollbar-thumb,
+.nav-rail-scroll::-webkit-scrollbar-thumb,
+.dialog-body::-webkit-scrollbar-thumb,
+.detail-card__scroll::-webkit-scrollbar-thumb,
+.detail-layout__aside::-webkit-scrollbar-thumb,
+.search-dropdown::-webkit-scrollbar-thumb,
+.resource-menu-nav::-webkit-scrollbar-thumb,
+.picture-picker__grid::-webkit-scrollbar-thumb,
+.report-image-grid::-webkit-scrollbar-thumb,
+.link-trace__map::-webkit-scrollbar-thumb,
+.licence-text::-webkit-scrollbar-thumb,
+.layout-diff::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+/* The scrolling element itself: it ends flush with its container, never scrolls the page behind it, and shows an edge
+   only on a side where content continues beyond it. The indicators are the classic scroll shadow (a shadow fixed to the
+   box under a cover that moves with the content), so there is no scroll listener: the cover hides a shadow at an end. */
+.scroll-region {
+  --scroll-region-bg: var(--color-surface);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background-color: var(--scroll-region-bg);
+  background-image:
+    linear-gradient(var(--scroll-region-bg) 30%, transparent),
+    linear-gradient(transparent, var(--scroll-region-bg) 70%),
+    radial-gradient(farthest-side at 50% 0, var(--scroll-edge-color), transparent),
+    radial-gradient(farthest-side at 50% 100%, var(--scroll-edge-color), transparent);
+  background-position: top, bottom, top, bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 1.5rem, 100% 1.5rem, 100% 0.5rem, 100% 0.5rem;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* The ring of a focused row is drawn inside the region, never clipped at its edge. */
+.scroll-region:focus-visible,
+.scroll-region :focus-visible {
+  outline-offset: -2px;
+}
+
+/* A `Popover` whose content brings its own padding and scroll region (`flush`): the panel is a column with a fixed
+   header (search, clear row) above the one scrolling list, and the list meets the panel's border and rounded corners. */
+.popover-flush {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.popover-flush > .scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.popover-flush-header {
+  flex: none;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* An action menu's panel (`Popover menu`): tighter than a form popover, with a caret toward the trigger. The caret

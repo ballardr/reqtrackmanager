@@ -264,7 +264,7 @@ export function FolderTreeList<T>({
       {rows.map((row, visibleIndex) => {
         const { node, depth } = row;
         const band = visibleIndex % 2 === 1 ? " folder-tree-band" : "";
-        const indent = { paddingInlineStart: `calc(var(--space-3) + ${depth} * 1.25rem)` };
+        const indent = { paddingInlineStart: `calc(var(--space-3) + ${depth} * var(--tree-indent))` };
         if (row.emptyOpen) {
           return (
             <div key={node.id} role="row" aria-level={depth + 1} className={`folder-tree-row${band}`}>

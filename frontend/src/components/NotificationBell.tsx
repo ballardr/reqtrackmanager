@@ -70,9 +70,9 @@ export function NotificationBell() {
       </Tooltip>
       {open && (
         <div
-          className="card stack notification-dropdown"
+          className="card stack notification-dropdown scroll-region"
           style={{
-            position: "absolute", right: 0, top: "2.5rem", width: 320, maxHeight: 400, overflowY: "auto", zIndex: 10,
+            position: "absolute", right: 0, top: "2.5rem", width: 320, maxHeight: 400, zIndex: 10,
             // The empty state is just a header + one line of text — the
             // card's normal 1rem padding plus the stack gap around it
             // read as a lot of bare space for that little content, so

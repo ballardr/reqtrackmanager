@@ -10100,7 +10100,7 @@
   },
   {
    "key": "2e5c44",
-   "title": "Platform review 2026-11-19: Incidental fix",
+   "title": "Platform review 2026-11-19: Incidental fix (Phase 3)",
    "statement": "`org-policies.spec.ts` waited for the \"Published policies\" menu, which a page with one policy does not draw (a menu of one has nothing to switch between), so it failed whenever its policy was the only one; it now uses the menu only when present.",
    "rationale": "",
    "type": "Design",

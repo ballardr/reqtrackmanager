@@ -140,7 +140,7 @@ export function EntitySwitcher({
                 onChange={(e) => setQuery(e.target.value)}
               />
             )}
-            <div className="menu-list" style={{ maxHeight: 320, overflowY: "auto" }}>
+            <div className="menu-list scroll-region" style={{ maxHeight: 320 }}>
               {visible.map((s) => (
                 <Link
                   key={s.id}

@@ -155,8 +155,8 @@ export function ReportFolderChooser({
     <>
       <FieldShell label={label ?? text.folderLabel} controlId={controlId} help={strings.help[helpKey]}>
         <div
-          id={controlId} role="radiogroup" aria-label={label ?? text.folderLabel}
-          style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-2)", maxHeight: "14rem", overflowY: "auto" }}
+          id={controlId} role="radiogroup" aria-label={label ?? text.folderLabel} className="scroll-region"
+          style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-2)", maxHeight: "14rem" }}
         >
           <ChoiceRow label={noneLabel ?? text.none} selected={chosen === ""} onSelect={() => pick("")} />
           <TreeView

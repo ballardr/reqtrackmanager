@@ -105,10 +105,10 @@ export function SymbolGallery({
   return (
     <div className="stack" style={{ gap: "var(--space-2)", minWidth: 0 }}>
       <div
-        role="radiogroup" aria-label="Symbols"
+        role="radiogroup" aria-label="Symbols" className="scroll-region"
         style={{
           display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(5.5rem, 1fr))", gap: "var(--space-2)",
-          maxHeight: "min(20rem, 50vh)", overflowY: "auto", padding: "2px",
+          maxHeight: "min(20rem, 50vh)", padding: "2px",
         }}
       >
         <Tile

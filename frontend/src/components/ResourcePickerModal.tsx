@@ -130,7 +130,7 @@ export function ResourcePickerModal({
             <p className="text-muted" style={{ margin: 0 }}>{strings.resourcePicker.noFiles}</p>
           )}
           {files && files.length > 0 && (
-            <div className="stack" style={{ maxHeight: "50vh", overflowY: "auto" }}>
+            <div className="stack scroll-region" style={{ maxHeight: "50vh" }}>
               {files.map((f) => (
                 <CheckboxField helpNotNeeded key={f.id} label={f.filename} checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
               ))}
