@@ -73,8 +73,6 @@ const en = {
     submit: "Sign in",
     error: "Invalid email or password.",
     reauthRequired: "For your security, you have been signed out. Please sign in again.",
-    returnToPage:
-      "Sign in to continue to the page you requested. Changes that were not saved before the session ended are not kept.",
     twoFactorTitle: "Two-factor verification",
     twoFactorPrompt: "Enter the code from your authenticator app.",
     twoFactorCode: "Authentication code",

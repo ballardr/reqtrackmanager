@@ -10,7 +10,6 @@ import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { TextField } from "../components/FormFields";
 import { resolvePostSignInPath } from "../utils/signInDestination";
-import { peekReturnTo } from "../utils/returnTo";
 
 const strings = t();
 
@@ -19,8 +18,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const routerState = location.state as { message?: string; challengeToken?: string } | null;
-  // A page is waiting to be returned to: say so, unless the redirect already carries its own message.
-  const reauthMessage = routerState?.message ?? (peekReturnTo() ? strings.login.returnToPage : null);
+  // Only a redirect's own message (a password change ending the session) is shown; a page to return to adds no text.
+  const reauthMessage = routerState?.message ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");

@@ -50,7 +50,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [x] |
 | 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [x] |
 | 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [x] |
-| 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [ ] |
+| 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [x] |
 | 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [ ] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 42 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
@@ -140,7 +140,7 @@ Every phase: stories for new UI, a Playwright test for new UI behaviour, backend
 
 - `ProtectedRoutes` navigates to `/login` with the current path as state and writes it to `sessionStorage`; one helper (`utils/returnTo.ts`) validates (relative, one leading slash, not `//`, not `/login`, `/signup`, `/reset-password`, `/confirm-email`, `/oidc-complete`), reads and clears it. As built: `sessionStorage` only (with an in-memory copy), no router state; see `docs/decisions.md`.
 - Honoured by `LoginPage` (password and 2FA step), the 2FA hand-off from `OrgLoginPage`, `OrgLoginPage` itself, `OidcCompletePage` (today fixed to `/projects`), and after `ForcedPasswordChangePage`.
-- Unsaved form content is not preserved; this is stated in the help for the lapsed-session message rather than promised.
+- Unsaved form content is not preserved; the sign-in page does not say so (phase 41).
 - Tests: unit tests of the validator (open-redirect cases, encoded slashes, other schemes); Playwright for password sign-in after expiry, a followed deep link, and a 2FA user; story for each changed page.
 
 ### Phase 2 — Notification targets: review
@@ -600,6 +600,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 
 - Remove the message from `LoginPage` and `OrgLoginPage`; keep the explicit message a redirect carries for its own reason (for example a lapsed session reaches the page with its own text in the router state) unless the user also wants that removed (confirm in the phase). **Decided by: User**, 2026-11-22: no replacement text anywhere. A person who has to sign in again expects unsaved content to be gone, and the message never changed what happened to it; phase 1's note that unsaved content is not preserved is dropped with it.
 - Tests: the Phase 1 Playwright specs assert the message is absent while the return still works; story updated.
+
+- As built (**Decided by: Agent**; the removal and the absence of replacement text are **Decided by: User**): `LoginPage` shows only the message a redirect carries in its router state (`strings.login.reauthRequired`, from a password change ending the session); `strings.login.returnToPage` is deleted. `OrgLoginPage` never showed the notice. The first Phase 1 spec and the `LoginPage` story assert the text is absent while the return still works. See `docs/decisions.md`.
 
 ### Phase 42 — Inline images in Markdown fields
 

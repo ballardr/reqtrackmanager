@@ -29,7 +29,7 @@ test.describe("return to the page after signing in", () => {
   test("a followed link while signed out opens that page after sign-in, with its query and hash", async ({ page }) => {
     await page.goto(DEEP_LINK);
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByText(/continue to the page you requested/)).toBeVisible();
+    await expect(page.getByText(/continue to the page you requested/)).toHaveCount(0);
 
     await submitSignIn(page, PERSONAS.memberAlphaBeta.email);
     await expectOnDeepLink(page);

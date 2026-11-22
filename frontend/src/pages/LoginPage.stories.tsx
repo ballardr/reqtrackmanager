@@ -207,7 +207,7 @@ async function signIn(canvas: ReturnType<typeof within>) {
   await userEvent.click(canvas.getByRole("button", { name: "Sign in" }));
 }
 
-/** A page was remembered when sign-in was required: the form says so, and signing in returns to that page. */
+/** A page was remembered when sign-in was required: the form adds no text, and signing in returns to that page. */
 export const ReturnsToTheRememberedPage: Story = {
   decorators: [withReturnRoutes],
   beforeEach: () => {
@@ -219,14 +219,14 @@ export const ReturnsToTheRememberedPage: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/continue to the page you requested/)).toBeInTheDocument();
+    await expect(canvas.queryByText(/continue to the page you requested/)).not.toBeInTheDocument();
     await signIn(canvas);
     await waitFor(() => expect(canvas.getByText("Requirements page")).toBeInTheDocument());
     await expect(peekReturnTo()).toBeNull();
   },
 };
 
-/** Without a remembered page the landing preference applies and no notice is shown. */
+/** Without a remembered page the landing preference applies. */
 export const WithoutARememberedPageUsesTheLandingPreference: Story = {
   decorators: [withReturnRoutes],
   beforeEach: () => {

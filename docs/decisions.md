@@ -19710,3 +19710,15 @@ The Organisation filter of the status tabs listed one organisation and opened on
 **Tests.** Storybook: status page (default all, narrowing to one, an unreadable organisation in the address), both panels reading two organisations (rows name their organisation, no Export), the list (filter default and narrowing, organisation on each card, settings rows in the menu). Playwright: the status tabs default to every organisation and Export appears once one is chosen; the list's filter with two organisations.
 
 **Review (identify → verify → remediate).** No endpoint, authorization, audit, retention, tenant, logging or bundle change: the tabs call the same per-organisation endpoints as before, only for organisations the nav-visibility answer already lists as readable (the server still enforces the Compliance Manager role per request). Nothing to remediate. Not applicable: backend change, migration, new stored data, time and dates, users and groups.
+
+## Platform review 2026-11-19, Phase 41: sign-in page without a redirect notice (2026-11-22)
+
+**Decided by: User** (remove the notice, and add no replacement text anywhere; a person who signs in again expects unsaved content to be gone, and the text never changed what happened to it). Frontend only; no endpoint, migration, table or seed change.
+
+- The sign-in page (`LoginPage`) no longer states that it will return the person to the page they requested; `strings.login.returnToPage` is deleted. The return itself is unchanged (`utils/returnTo.ts`, `utils/signInDestination.ts`). `OrgLoginPage` never showed the notice.
+- A message a redirect carries for its own reason stays (`strings.login.reauthRequired`, passed in router state after a password change ends the session): it tells the person something that happened, not what the page will do next. **Decided by: Agent** (the plan left this to be confirmed; the user's instruction named only the return notice).
+- The statement that unsaved content is not preserved is dropped with the notice; the return rules recorded in the Phase 1 entry are unchanged.
+
+**Tests.** `LoginPage` stories assert the text is absent with and without a remembered page and that the return still works; the first case of `return-after-sign-in.spec.ts` asserts the text is absent after a followed link (7/7 pass).
+
+**Review (identify → verify → remediate).** Presentation only: no authentication, authorization, session, redirect-target or logging change; the open-redirect validation of the stored path is untouched. Nothing to remediate. Not applicable: backend, bundles, search, codes, probes, MCP, seeds. Website: no page described the notice.
