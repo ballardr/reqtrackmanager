@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
+import { MemoryRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { page } from "vitest/browser";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
@@ -256,5 +256,61 @@ export const CollapsesToDropdownOnNarrowViewport: Story = {
     await userEvent.selectOptions(select, "People");
     await expect(canvas.getByText("People panel")).toBeInTheDocument();
     await expect(canvas.queryByText("Overview panel")).not.toBeInTheDocument();
+  },
+};
+
+/** A list longer than the window: the section list is a sticky column with its own scroll area, a deep link to an
+ * entry near its end shows that entry inside the list, and choosing a section while the page is scrolled past the
+ * start of the content brings the content back to its top. */
+const LONG_SECTIONS = Array.from({ length: 40 }, (_, i) => ({
+  key: `section-${i + 1}`,
+  label: `Section ${i + 1}`,
+  href: `/demo/section-${i + 1}`,
+}));
+
+function LongListDemo() {
+  const { group } = useParams<{ group?: string }>();
+  // The shared decorator opens `/demo/overview`; a deep link to a section near the end of the list replaces it.
+  if (!LONG_SECTIONS.some((s) => s.key === group)) return <Navigate to="/demo/section-38" replace />;
+  const active = group as string;
+  const label = LONG_SECTIONS.find((s) => s.key === active)?.label ?? "";
+  return (
+    <ResourceMenu title="Acme Corp" ariaLabel="Long list sections" groups={LONG_SECTIONS} active={active}>
+      <h2>{label} heading</h2>
+      <div className="card" style={{ minHeight: "150vh" }}>
+        Tall content for {label}
+      </div>
+    </ResourceMenu>
+  );
+}
+
+export const LongListScrollsSeparately: Story = {
+  render: () => <LongListDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const nav = canvas.getByRole("navigation", { name: "Long list sections" });
+    const style = getComputedStyle(nav);
+    await expect(style.position).toBe("sticky");
+    await expect(style.overflowY).toBe("auto");
+    await expect(nav.scrollHeight).toBeGreaterThan(nav.clientHeight);
+
+    // Deep link to section 38: the entry sits inside the list's own visible area.
+    const current = canvas.getByRole("link", { name: "Section 38" });
+    await waitFor(() => {
+      const navBox = nav.getBoundingClientRect();
+      const linkBox = current.getBoundingClientRect();
+      expect(linkBox.top).toBeGreaterThanOrEqual(navBox.top);
+      expect(linkBox.bottom).toBeLessThanOrEqual(navBox.bottom);
+    });
+
+    // Choosing a section while the page is scrolled past the start shows the new content's heading.
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await userEvent.click(canvas.getByRole("link", { name: "Section 39" }));
+    const heading = await canvas.findByRole("heading", { name: "Section 39 heading" });
+    await waitFor(() => {
+      const box = heading.getBoundingClientRect();
+      expect(box.top).toBeGreaterThanOrEqual(0);
+      expect(box.bottom).toBeLessThanOrEqual(window.innerHeight);
+    });
   },
 };

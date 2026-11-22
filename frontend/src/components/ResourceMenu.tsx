@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -77,6 +77,11 @@ type VisibleRow =
  * that's worth a visible menu. A single group that has sub-pages is the exception: its sub-pages are the choices, so
  * the menu stays.
  *
+ * On a wide viewport the section list is a sticky column that fills the viewport height and scrolls on its own, so a
+ * long list never scrolls away with the page; choosing a section brings the content pane back to its top when the
+ * page was scrolled past it, and the active entry is scrolled into view within the list (a deep link to a section
+ * near the end of a long list). Every administration page shares this behaviour because they share this component.
+ *
  * Below `MOBILE_BREAKPOINT_PX` the vertical `<nav>`/`<ul>` link list is
  * replaced with a single native `<select>` (platform-review-2026-09,
  * "resource menus wasting space on narrow windows"). Org Admin alone has up
@@ -125,6 +130,9 @@ export function ResourceMenu<K extends string>({
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const navigate = useNavigate();
   const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
+  const firstRender = useRef(true);
 
   // The group holding the active page, whether `active` names the group or one of its sub-pages.
   const activeGroupKey = groups.find((g) => g.key === active || g.children?.some((c) => c.key === active))?.key;
@@ -143,6 +151,25 @@ export function ResourceMenu<K extends string>({
     }
   }
   const isOpen = (g: ResourceMenuGroupDef<string>) => overrides[g.key] ?? g.key === activeGroupKey;
+
+  // Keep the active entry visible inside the list's own scroll area, and (after the first render, so a fresh visit
+  // is not moved) bring the content pane back to its top when the page is scrolled past the start of it.
+  useEffect(() => {
+    const nav = navRef.current;
+    const current = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (nav && current && (current.offsetTop < nav.scrollTop || current.offsetTop + current.offsetHeight > nav.scrollTop + nav.clientHeight)) {
+      nav.scrollTop = current.offsetTop - (nav.clientHeight - current.offsetHeight) / 2;
+    }
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    const container = containerRef.current;
+    const headerBottom = document.querySelector(".app-header")?.getBoundingClientRect().bottom ?? 0;
+    if (container && container.getBoundingClientRect().top < headerBottom && typeof container.scrollIntoView === "function") {
+      container.scrollIntoView({ block: "start" });
+    }
+  }, [active]);
 
   const rows: VisibleRow[] = groups.flatMap((g): VisibleRow[] => {
     if (!g.children?.length) return [{ id: `g:${g.key}`, kind: "link", key: g.key, href: g.href }];
@@ -206,7 +233,7 @@ export function ResourceMenu<K extends string>({
             every page that adopts ResourceMenu (found via a real Playwright
             failure on an Org Admin delete button during this
             component's first rollout). */
-        <div className="resource-menu">
+        <div className="resource-menu" ref={containerRef}>
           {isNarrow ? (
             <InlineSelect
               ariaLabel={ariaLabel}
@@ -224,7 +251,7 @@ export function ResourceMenu<K extends string>({
               )}
             />
           ) : (
-            <nav aria-label={ariaLabel} className="resource-menu-nav">
+            <nav aria-label={ariaLabel} className="resource-menu-nav" ref={navRef}>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                 {groups.map((g) => {
                   const rowIndex = rows.findIndex((r) => r.id === `g:${g.key}`);

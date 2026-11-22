@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 32 done 2026-11-22; phases 33 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 33 done 2026-11-22; phases 34 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-32 / 46 phases complete.
+33 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -42,7 +42,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [x] |
 | 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [x] |
 | 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [x] |
-| 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [ ] |
+| 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [x] |
 | 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [ ] |
 | 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [ ] |
 | 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [ ] |
@@ -520,6 +520,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - The section list is a sticky column that fills the viewport height and scrolls on its own; the content column scrolls with the page. The same shell is used by Project Administration and server administration, so all share the fix through the one shared shell, not per page (`OrgAdminPage`, `ProjectAdminPage`; the admin menu in `modules/adminMenu.ts`).
 - Changing section scrolls the content to its top (a defect on its own even with the separate scroll); the selected entry is scrolled into view in the list on a deep link.
 - Tests: Storybook with a list longer than the viewport; Playwright selects the last section from a long list and asserts that the content heading is visible.
+
+- As built (**Decided by: Agent**): the fix is in `ResourceMenu` itself, which every administration page and Org Resources, Policies, Preferences and Compliance settings share: a sticky, height-bounded, separately scrolling `.resource-menu-nav`; a section change scrolls the content pane to its top when the page is scrolled past it; the active entry is kept in view inside the list. The style guide's resource-menu addenda gained the behaviour. See `docs/decisions.md`.
 
 ### Phase 34 — Record detail card order: a rule and the fixes
 

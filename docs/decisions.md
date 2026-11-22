@@ -19591,3 +19591,18 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 **Tests.** Storybook `StageWorkflowEditor` (7): creating, editing through the row menu (ids and order kept), last phase not removable and no Move up on the first row, a bounding-box check that name and kind share a line with the same column edges in every row and the kind is narrower than the name, fourteen phases, and a phone width with no sideways overflow. Playwright `stage-workflows.spec.ts` gains a step that checks the one-line layout in the real dialog, adds a phase, moves it and removes it through the menu, and saves.
 
 **Review (identify → verify → remediate).** Presentation only: the same endpoints, payload and server rules (a phase in use cannot be removed; the server message still shows in the dialog header); no authorization, audit, retention or tenant behaviour changed and nothing new is logged. No backend change, so no seed, migration, bundle, MCP or perf hook is affected.
+
+## Platform review 2026-11-19, Phase 33: administration section list scrolls separately (2026-11-22)
+
+**Problem.** On the administration pages the list of sections scrolled with the page. Choosing a section near the end of a long list left the content pane scrolled past its start, so a short section looked empty until the person scrolled up.
+
+**Decided by: Agent (revisable on its own judgement).**
+- *One fix in the shared component.* Organisation, Project and Server Administration, Org Resources, Policies, Preferences and Compliance settings all draw their section list through `ResourceMenu`, so the change is there, not in `OrgAdminPage`/`ProjectAdminPage`. No per-page code and no module-specific code.
+- *Sticky, bounded, scrolling list.* `.resource-menu-nav` is `position: sticky` below the app header (and any announcement bar), `max-height` is the window height less the header and two gaps, `overflow-y: auto`. It applies only on a wide viewport; below the mobile breakpoint the list is already a `<select>`.
+- *Content returns to its top on a section change.* After the first render, a change of the active section scrolls the `.resource-menu` container to the top edge below the header, only when its top is above the header's bottom edge (a pane already in view is not moved, and a fresh visit is not scrolled). `scroll-margin-top` on the container carries the header offset.
+- *Active entry kept in view in the list.* On mount and on each change the list's own `scrollTop` is set so the `aria-current` entry is visible (a deep link to a section near the end). It is set directly rather than with `scrollIntoView`, which would also move the page.
+
+**Tests.** Storybook `ResourceMenu` story `LongListScrollsSeparately` (40 sections: sticky and `overflow-y: auto`, list taller than its box, the deep-linked entry inside the list's box, the new section's heading visible after choosing one with the page scrolled down). Playwright `admin-section-list-scroll.spec.ts` (Organisation Administration at 1280x420: bounded scrolling column, stays in view while the page scrolls, choosing the last section puts the content pane at its top). The Keycloak-dependent `sso.spec.ts` specs fail when Keycloak is not running; they are unrelated and are not part of this phase.
+
+**Review (identify → verify → remediate).** Presentation and scroll behaviour only: no endpoint, authorization, audit, retention, tenant, logging or bundle change; no new data stored. Nothing to remediate. Not applicable: backend test, migration, seeds, MCP skill, module boundary (the component names no module), nested-project fallback, code and search registration (no record type), time handling (no time stored).
+
