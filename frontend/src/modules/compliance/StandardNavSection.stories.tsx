@@ -57,7 +57,7 @@ export const Default: Story = {
   beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Standard")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Standard" })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/standards/std-1");
     await expect(canvas.getByRole("link", { name: "Versions" })).toHaveAttribute("href", "/standards/std-1/versions");
     await expect(canvas.getByRole("link", { name: "History" })).toHaveAttribute("href", "/standards/std-1/history");
@@ -163,5 +163,20 @@ export const ToggleSharesRowSurfaceWithLink: Story = {
     await expect(toggle).not.toHaveClass("btn");
     await expect(link).not.toHaveClass("nav-link");
     await expect(link.closest(".nav-link-row")).toBe(toggle.closest(".nav-link-row"));
+  },
+};
+
+/** The group holds the current page by definition, so folding it leaves only the entry for that page. */
+export const FoldingTheGroupKeepsTheCurrentEntry: Story = {
+  decorators: [withRouter(`/standards/${STANDARD.id}/history`)],
+  beforeEach: () => mockNavApis([version({ id: "ver-1", version_number: 1, version_label: "v1.0", status: "published" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const group = await canvas.findByRole("button", { name: "Standard" });
+    await userEvent.click(group);
+    await expect(group).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.getByRole("link", { name: "History" })).toBeVisible();
+    await expect(canvas.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Members" })).not.toBeInTheDocument();
   },
 };

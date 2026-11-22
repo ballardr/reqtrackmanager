@@ -11,6 +11,7 @@
  *   icon-only rail, where there is no room to expand inline.
  * - Offer "Customise navigation" from the section label (expanded) or its own rail row
  *   (icon-only, where the label is collapsed to a divider).
+ * - Draw the section as a foldable `NavGroup`.
  *
  * Design decisions:
  * - Knows nothing about which items exist: `Layout` passes core and module items alike as
@@ -30,6 +31,7 @@ import {
   resolveNavPref,
   type ProjectNavItem,
 } from "../navigation/projectNav";
+import { NavGroup } from "./NavGroup";
 import { NavRailLink } from "./NavRailLink";
 import { Popover } from "./Popover";
 import { ProjectNavEditor } from "./ProjectNavEditor";
@@ -69,62 +71,62 @@ export function ProjectNavSection({
     );
   }
 
+  const customiseAction = !railCollapsed && (
+    <button
+      type="button" className="nav-section-action" aria-label={customiseLabel} title={customiseLabel}
+      onClick={() => setEditorOpen(true)}
+    >
+      <SlidersHorizontal size={14} />
+    </button>
+  );
+
   return (
     <>
-      <div className="nav-section-label nav-section-label-with-action">
-        <span>{strings.nav.projectSectionLabel}</span>
-        {!railCollapsed && (
-          <button
-            type="button" className="nav-section-action" aria-label={customiseLabel} title={customiseLabel}
-            onClick={() => setEditorOpen(true)}
-          >
-            <SlidersHorizontal size={14} />
-          </button>
-        )}
-      </div>
-      {main.map((item) => renderLink(item, railCollapsed))}
-      {more.length > 0 && !railCollapsed && (
-        <>
-          <button
-            type="button" className="nav-link nav-link-button" aria-expanded={moreOpen} aria-controls={moreListId}
-            onClick={() => setMoreOpen(!moreOpen)}
-          >
-            <MoreHorizontal size={16} /> <span className="nav-label">{strings.nav.more}</span>
-            <span className="nav-link-button-chevron">{moreOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
-          </button>
-          {moreOpen && (
-            <div id={moreListId} className="nav-more-list">
-              {more.map((item) => renderLink(item, false))}
-            </div>
-          )}
-        </>
-      )}
-      {more.length > 0 && railCollapsed && (
-        <>
-          <Tooltip label={strings.nav.more}>
+      <NavGroup groupKey="project" label={strings.nav.projectSectionLabel} railCollapsed={railCollapsed} action={customiseAction || undefined}>
+        {main.map((item) => renderLink(item, railCollapsed))}
+        {more.length > 0 && !railCollapsed && (
+          <>
             <button
-              ref={moreTriggerRef} type="button" className="nav-link nav-link-button" aria-label={strings.nav.more}
-              aria-haspopup="dialog" aria-expanded={popoverOpen} onClick={() => setPopoverOpen(!popoverOpen)}
+              type="button" className="nav-link nav-link-button" aria-expanded={moreOpen} aria-controls={moreListId}
+              onClick={() => setMoreOpen(!moreOpen)}
             >
-              <MoreHorizontal size={16} />
+              <MoreHorizontal size={16} /> <span className="nav-label">{strings.nav.more}</span>
+              <span className="nav-link-button-chevron">{moreOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
+            </button>
+            {moreOpen && (
+              <div id={moreListId} className="nav-more-list">
+                {more.map((item) => renderLink(item, false))}
+              </div>
+            )}
+          </>
+        )}
+        {more.length > 0 && railCollapsed && (
+          <>
+            <Tooltip label={strings.nav.more}>
+              <button
+                ref={moreTriggerRef} type="button" className="nav-link nav-link-button" aria-label={strings.nav.more}
+                aria-haspopup="dialog" aria-expanded={popoverOpen} onClick={() => setPopoverOpen(!popoverOpen)}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+            </Tooltip>
+            {popoverOpen && (
+              <Popover anchorRef={moreTriggerRef} title={strings.nav.more} onClose={() => setPopoverOpen(false)}>
+                <div className="stack" style={{ gap: "0.15rem" }}>
+                  {more.map((item) => renderLink(item, false, () => setPopoverOpen(false)))}
+                </div>
+              </Popover>
+            )}
+          </>
+        )}
+        {railCollapsed && (
+          <Tooltip label={customiseLabel}>
+            <button type="button" className="nav-link nav-link-button" aria-label={customiseLabel} onClick={() => setEditorOpen(true)}>
+              <SlidersHorizontal size={16} />
             </button>
           </Tooltip>
-          {popoverOpen && (
-            <Popover anchorRef={moreTriggerRef} title={strings.nav.more} onClose={() => setPopoverOpen(false)}>
-              <div className="stack" style={{ gap: "0.15rem" }}>
-                {more.map((item) => renderLink(item, false, () => setPopoverOpen(false)))}
-              </div>
-            </Popover>
-          )}
-        </>
-      )}
-      {railCollapsed && (
-        <Tooltip label={customiseLabel}>
-          <button type="button" className="nav-link nav-link-button" aria-label={customiseLabel} onClick={() => setEditorOpen(true)}>
-            <SlidersHorizontal size={16} />
-          </button>
-        </Tooltip>
-      )}
+        )}
+      </NavGroup>
       {editorOpen && <ProjectNavEditor projectId={projectId} items={items} onClose={() => setEditorOpen(false)} />}
     </>
   );

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { useNavGroupActive } from "../hooks/useNavGroupActive";
 import { isNavPathActive } from "../navigation/projectNav";
 import { Tooltip } from "./Tooltip";
 
@@ -37,6 +38,7 @@ export function NavRailLink({
 }) {
   const location = useLocation();
   const active = isNavPathActive(location.pathname, to, exact) || (alsoActiveOn?.test(location.pathname) ?? false);
+  useNavGroupActive(active);
   const link = (
     <Link to={to} className={`nav-link${active ? " active" : ""}`} aria-label={label} onClick={onNavigate}>
       {icon} <span className="nav-label">{label}</span>

@@ -54,6 +54,8 @@ async function setupOrgWithTwoProjects(page: Page) {
 
 /** Names of the nav rail's Project-section links, top to bottom (the Global section starts at "Projects"). */
 async function navLinkNames(page: Page): Promise<string[]> {
+  // `evaluateAll` does not wait: read before the rail has rendered, it finds no links and the slice below is empty.
+  await page.getByRole("navigation").getByRole("link", { name: "Projects", exact: true }).waitFor();
   const all = await page
     .getByRole("navigation")
     .getByRole("link")

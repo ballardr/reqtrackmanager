@@ -1,6 +1,6 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 37 done 2026-11-22; phases 38 to 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 38 done 2026-11-22; phases 39 to 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
@@ -47,7 +47,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [x] |
 | 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [x] |
 | 37 | Text styling toolbar: compact, and a mathematics button | Small grouped toolbar buttons; Inline equation and Equation block buttons with a live preview panel; equations drawn in the Visual view; mathematics on Decisions, Product Feedback, Open Questions, Pain Points and change requests; decided 2026-11-22 | [x] |
-| 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [ ] |
+| 38 | Global navigation: collapsible groups | A chevron beside each group label (Project, Global, Standards and the like) folds its entries, so less scrolling reaches the others | [x] |
 | 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [ ] |
 | 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [ ] |
 | 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [ ] |
@@ -572,6 +572,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Groups are generic (built from the registry's nav entries, never a per-module case in `Layout.tsx`); the chevron is a plain disclosure control (`aria-expanded`, keyboard operable) beside the label; the group holding the current page is open on arrival and cannot hide the active entry; the open or folded state is remembered per person (`localStorage`, wrapped in try/catch and rendering correctly without it, as browser storage is only a convenience); a collapsed rail (icons only) shows no chevrons.
 - Open question for the review: whether a group folded by the person stays folded when a notification or a link opens a page inside it (recommend: it opens, since the active entry must be visible).
 - Tests: Storybook for open, folded and active-in-folded states; Playwright folds a group, reloads, and checks that the state is kept and that the active entry's group is open.
+
+- As built (**Decided by: Agent**): `components/NavGroup.tsx` is the one foldable group (label as a disclosure button, `TreeChevron`), used for Project (`ProjectNavSection`), Global and Administration (`Layout.tsx`) and the Standard group (`StandardNavSection`, in its own module). The open question is answered as recommended: arriving at a page inside a folded group unfolds it, once per page; folding a group that holds the current page leaves only the active entry (`.nav-group-body-peek`), so the chevron always works. `NavRailLink` reports active through `hooks/useNavGroupActive`; a non-`NavRailLink` entry passes `containsActive`. The state is a `ui_preferences` key (`nav_group_folded:<groupKey>`), not `localStorage`: it is the per-person store the rail's collapse already uses and follows the person across devices. See `docs/decisions.md` and the style guide's "Pattern: foldable nav-rail groups".
 
 ### Phase 39 — Compliance standards: cards styled as project cards
 

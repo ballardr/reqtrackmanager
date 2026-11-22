@@ -70,6 +70,15 @@ flowchart LR
     B -->|"none"| C["Product default order"]
 ```
 
+## Folding navigation groups
+
+Each group of the left navigation (**Project**, **Global**, a standard's own group and **Administration**) has a chevron beside its label. Select the label to fold the group, so the groups below it are reached with less scrolling, and select it again to unfold.
+
+- The choice is stored with your account for each group, so it follows you across devices.
+- Opening a page inside a folded group (from a link, a notification or a bookmark) unfolds it.
+- Folding the group that holds the page you are on leaves just that page's entry visible.
+- The icon-only rail has no chevrons and shows every entry.
+
 ## Where this fits
 
 These controls appear throughout [Requirements management](./requirements-management.md), [Change requests](./change-requests.md), and the Workflows section's task walkthroughs (see [Authoring and reviewing requirements](../workflows/authoring-and-reviewing-requirements.md) for the requirements list in context) — this page exists as a single reference for behaviour that's otherwise repeated on nearly every list in the app.

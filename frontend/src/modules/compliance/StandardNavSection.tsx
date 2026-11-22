@@ -53,6 +53,9 @@
  *   separately focusable/clickable controls (a `<div>` wrapping a real
  *   `<Link>` plus a real `<button>`, not nested `<button>`s).
  *
+ * The section is a foldable `NavGroup` (`containsActive`: it only renders on a standard's own routes), so folding it
+ * leaves just the entry for the current page.
+ *
  * Only `entityId` (the standard id) and `railCollapsed` are passed down by
  * `standaloneWorkspaces`' render contract — this component resolves its
  * own `organization_id` via the global, no-org-in-path `getStandardById`
@@ -63,6 +66,7 @@ import { ChevronDown, ChevronRight, History, LayoutDashboard, ListChecks, Users 
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { NavGroup } from "../../components/NavGroup";
 import { NavRailLink } from "../../components/NavRailLink";
 import { useUiPreference } from "../../hooks/useUiPreference";
 import * as complianceApi from "./api";
@@ -108,51 +112,52 @@ export function StandardNavSection({ entityId, railCollapsed }: { entityId: stri
 
   return (
     <>
-      <div className="nav-section-label">Standard</div>
-      <NavRailLink to={`/standards/${entityId}`} exact label="Overview" icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
-      {canExpand ? (
-        <div className={`nav-link-row${onVersionsListExact ? " active" : ""}`}>
-          <Link to={versionsBase} className="nav-link-row-link" aria-label="Versions">
-            <ListChecks size={16} /> <span className="nav-label">Versions</span>
-          </Link>
-          <button
-            type="button"
-            className="nav-link-row-toggle"
-            aria-label={effectiveExpanded ? "Collapse versions" : "Expand versions"}
-            aria-expanded={effectiveExpanded}
-            onClick={toggleExpanded}
-          >
-            {effectiveExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        </div>
-      ) : (
-        <NavRailLink to={versionsBase} exact label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
-      )}
-      {canExpand && effectiveExpanded && versions && (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {versions.map((version) => {
-            const to = `${versionsBase}/${version.id}`;
-            const active = location.pathname === to;
-            return (
-              <li key={version.id}>
-                <Link
-                  to={to}
-                  className={`nav-link${active ? " active" : ""}`}
-                  style={{ paddingLeft: "2rem", fontSize: "0.85rem" }}
-                >
-                  <span className="nav-label">
-                    {version.version_label} ({COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]})
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {/* This standard's own standards_manager/standards_contributor
-          working group. */}
-      <NavRailLink to={`/standards/${entityId}/members`} label="Members" icon={<Users size={16} />} railCollapsed={railCollapsed} />
-      <NavRailLink to={`/standards/${entityId}/history`} label="History" icon={<History size={16} />} railCollapsed={railCollapsed} />
+      <NavGroup groupKey="standard" label="Standard" railCollapsed={railCollapsed} containsActive>
+        <NavRailLink to={`/standards/${entityId}`} exact label="Overview" icon={<LayoutDashboard size={16} />} railCollapsed={railCollapsed} />
+        {canExpand ? (
+          <div className={`nav-link-row${onVersionsListExact ? " active" : ""}`}>
+            <Link to={versionsBase} className="nav-link-row-link" aria-label="Versions">
+              <ListChecks size={16} /> <span className="nav-label">Versions</span>
+            </Link>
+            <button
+              type="button"
+              className="nav-link-row-toggle"
+              aria-label={effectiveExpanded ? "Collapse versions" : "Expand versions"}
+              aria-expanded={effectiveExpanded}
+              onClick={toggleExpanded}
+            >
+              {effectiveExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+          </div>
+        ) : (
+          <NavRailLink to={versionsBase} exact label="Versions" icon={<ListChecks size={16} />} railCollapsed={railCollapsed} />
+        )}
+        {canExpand && effectiveExpanded && versions && (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {versions.map((version) => {
+              const to = `${versionsBase}/${version.id}`;
+              const active = location.pathname === to;
+              return (
+                <li key={version.id}>
+                  <Link
+                    to={to}
+                    className={`nav-link${active ? " active" : ""}`}
+                    style={{ paddingLeft: "2rem", fontSize: "0.85rem" }}
+                  >
+                    <span className="nav-label">
+                      {version.version_label} ({COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]})
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {/* This standard's own standards_manager/standards_contributor
+            working group. */}
+        <NavRailLink to={`/standards/${entityId}/members`} label="Members" icon={<Users size={16} />} railCollapsed={railCollapsed} />
+        <NavRailLink to={`/standards/${entityId}/history`} label="History" icon={<History size={16} />} railCollapsed={railCollapsed} />
+      </NavGroup>
     </>
   );
 }

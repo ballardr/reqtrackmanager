@@ -5,7 +5,7 @@ import { page } from "vitest/browser";
 import { api } from "../api/client";
 import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, PublicPolicy, ServerAccess, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
-import { buildProject, buildPublicPolicy, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
+import { buildProject, buildPublicPolicy, buildUser, withAuth, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
 
 const DEFAULT_CLIENT_CONFIG: ClientConfig = { help_enabled: true, help_url: "https://docs.example.com/" };
@@ -537,5 +537,91 @@ export const HidesDeliveryStatusUntilStagesAreUsed: Story = {
     const canvas = within(canvasElement);
     await canvas.findByRole("link", { name: "Project history" });
     await expect(canvas.queryByRole("link", { name: "Delivery status" })).not.toBeInTheDocument();
+  },
+};
+
+const FOLDED_GLOBAL = { "nav_group_folded:global": true };
+
+/** A group label folds and unfolds its entries; the other groups are not affected. */
+export const GroupFoldsAndUnfolds: Story = {
+  decorators: [withStatefulAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const global = await canvas.findByRole("button", { name: "Global" });
+    await expect(global).toHaveAttribute("aria-expanded", "true");
+    await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeVisible();
+    await userEvent.click(global);
+    await expect(global).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.queryByRole("link", { name: "Organisation settings" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Requirements" })).toBeVisible();
+    await userEvent.click(global);
+    await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeVisible();
+  },
+};
+
+/** A folded group stays folded on load while the page is elsewhere. */
+export const GroupStartsFoldedWhenStoredFolded: Story = {
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: FOLDED_GLOBAL })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Requirements" });
+    await expect(canvas.getByRole("button", { name: "Global" })).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.queryByRole("link", { name: "Organisation settings" })).not.toBeInTheDocument();
+  },
+};
+
+/** Opening a page inside a folded group unfolds it, so the current entry is visible on arrival. */
+export const ArrivingInAFoldedGroupUnfoldsIt: Story = {
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: FOLDED_GLOBAL })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Global" })).toHaveAttribute("aria-expanded", "true"));
+    await expect(canvas.getByRole("link", { name: "Projects" })).toHaveClass("active");
+    await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeVisible();
+  },
+};
+
+/** Folding the group that holds the current page leaves only that entry. */
+export const FoldingTheActiveGroupKeepsTheActiveEntry: Story = {
+  decorators: [withStatefulAuth(buildUser()), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const global = await canvas.findByRole("button", { name: "Global" });
+    await userEvent.click(global);
+    await expect(global).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.getByRole("link", { name: "Projects" })).toBeVisible();
+    await expect(canvas.queryByRole("link", { name: "Organisation settings" })).not.toBeInTheDocument();
+    // Still folded after the arrival rule has run: the person's own fold is not undone on the same page.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(global).toHaveAttribute("aria-expanded", "false");
+  },
+};
+
+/** The icon-only rail has no group buttons and shows every entry, whatever was folded. */
+export const IconOnlyRailShowsNoGroupToggles: Story = {
+  decorators: [
+    withStatefulAuth(buildUser({ ui_preferences: { ...FOLDED_GLOBAL, nav_rail_collapsed: true } })),
+    withRouter(`/projects/${PROJECT.id}/requirements`),
+  ],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Requirements" });
+    await expect(canvas.queryByRole("button", { name: "Global" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeVisible();
   },
 };

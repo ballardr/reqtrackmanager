@@ -26,6 +26,7 @@ import { AppFooter } from "./AppFooter";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
+import { NavGroup } from "./NavGroup";
 import { NavRailLink } from "./NavRailLink";
 import { PolicyAcceptNotice } from "./PolicyAcceptNotice";
 import { ProjectNavSection } from "./ProjectNavSection";
@@ -264,60 +265,60 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 file's own `activeStandaloneWorkspace` computation above. */}
             {activeStandaloneWorkspace &&
               activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
-            <div className="nav-section-label">Global</div>
-            <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
-            {/* "Files" — the files of every project the person can open in their organisation. Shown to every
-                member, as the page is (it lists only files the caller may see); `/org-files` resolves the
-                organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
-            <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
-            {/* Module-contributed top-level nav links ("Compliance
-                Standards" is the first one) — each item owns its own
-                visibility and may render nothing at all; see this file's own
-                `globalNavItems` computation above. */}
-            {globalNavItems.map((item) => (
-              <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
-            ))}
-            {hasFavourites && (
-              <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
-            )}
-            {/* Shown only when a review is due (`useHasReviewsDue`); the page stays reachable by address and from
-                notifications. The full Notifications page has no entry here: the header bell links to it. */}
-            {hasReviewsDue && (
-              <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
-            )}
-            {/* "Organisation Overview" — a core, always-visible
-                nav-rail link (unlike the module-contributed
-                nav links above, this one carries general-purpose org stats every org
-                has regardless of compliance, so it's shown unconditionally,
-                the same precedent as the always-shown Projects link above —
-                see docs/decisions.md's "Compliance module, human review
-                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
-                single-org/multi-org auto-redirect convention as its entry
-                point, the same way `/orgs` already does for org admin. */}
-            <NavRailLink to="/org-overview" exact alsoActiveOn={/^\/orgs\/[^/]+\/overview(\/|$)/} label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
-            {/* "Org Resources" — the records and content the organisation shares with its projects; its sections
-                are contributed through the module registry (`orgResourceSections`), so this entry names no module. */}
-            <NavRailLink to="/org-resources" exact alsoActiveOn={/^\/orgs\/[^/]+\/resources(\/|$)/} label={strings.nav.orgResources(orgLabelCap)} icon={<Library size={16} />} railCollapsed={railIconOnly} />
-            {/* The only path to org administration: /orgs already auto-redirects
-                straight to a single org's admin page, or lists every org a
-                user belongs to otherwise — it just had no rail entry before
-                this, for anyone but a server admin drilling in through
-                /server/organisations. See docs/ux-style-guide.md, "Pattern:
-                wayfinding". */}
-            <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            <NavGroup groupKey="global" label="Global" railCollapsed={railIconOnly}>
+              <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
+              {/* "Files" — the files of every project the person can open in their organisation. Shown to every
+                  member, as the page is (it lists only files the caller may see); `/org-files` resolves the
+                  organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
+              <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
+              {/* Module-contributed top-level nav links ("Compliance
+                  Standards" is the first one) — each item owns its own
+                  visibility and may render nothing at all; see this file's own
+                  `globalNavItems` computation above. */}
+              {globalNavItems.map((item) => (
+                <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
+              ))}
+              {hasFavourites && (
+                <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
+              )}
+              {/* Shown only when a review is due (`useHasReviewsDue`); the page stays reachable by address and from
+                  notifications. The full Notifications page has no entry here: the header bell links to it. */}
+              {hasReviewsDue && (
+                <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
+              )}
+              {/* "Organisation Overview" — a core, always-visible
+                  nav-rail link (unlike the module-contributed
+                  nav links above, this one carries general-purpose org stats every org
+                  has regardless of compliance, so it's shown unconditionally,
+                  the same precedent as the always-shown Projects link above —
+                  see docs/decisions.md's "Compliance module, human review
+                  follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
+                  single-org/multi-org auto-redirect convention as its entry
+                  point, the same way `/orgs` already does for org admin. */}
+              <NavRailLink to="/org-overview" exact alsoActiveOn={/^\/orgs\/[^/]+\/overview(\/|$)/} label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
+              {/* "Org Resources" — the records and content the organisation shares with its projects; its sections
+                  are contributed through the module registry (`orgResourceSections`), so this entry names no module. */}
+              <NavRailLink to="/org-resources" exact alsoActiveOn={/^\/orgs\/[^/]+\/resources(\/|$)/} label={strings.nav.orgResources(orgLabelCap)} icon={<Library size={16} />} railCollapsed={railIconOnly} />
+              {/* The only path to org administration: /orgs already auto-redirects
+                  straight to a single org's admin page, or lists every org a
+                  user belongs to otherwise — it just had no rail entry before
+                  this, for anyone but a server admin drilling in through
+                  /server/organisations. See docs/ux-style-guide.md, "Pattern:
+                  wayfinding". */}
+              <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            </NavGroup>
             {/* Each entry shows only to someone the server says may use it (`useServerAccess`): a Platform
                 subscription manager or Subscription removal authority sees Organisations, a Module administrator
                 sees Server management (Modules only), a server administrator sees both. */}
             {serverAccess && (serverAccess.can_view_organizations || showServerManagement) && (
-              <>
-                <div className="nav-section-label">Administration</div>
+              <NavGroup groupKey="administration" label="Administration" railCollapsed={railIconOnly}>
                 {serverAccess.can_view_organizations && (
                   <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
                 )}
                 {showServerManagement && (
                   <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
                 )}
-              </>
+              </NavGroup>
             )}
           </div>
         </nav>

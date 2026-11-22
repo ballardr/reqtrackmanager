@@ -1951,6 +1951,43 @@ a.figure-projects-link:hover {
   padding: 0.6rem 0.6rem 0.2rem;
 }
 
+/* Foldable group heading (components/NavGroup.tsx): the whole label is the disclosure button, borderless
+   like the other rail disclosure controls, with the chevron before the text. */
+.nav-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  margin: 0;
+  padding: 0.1rem 0.2rem 0.1rem 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.nav-group-toggle:hover,
+.nav-group-toggle:focus-visible {
+  color: var(--color-text);
+}
+.nav-group-toggle[aria-disabled="true"] {
+  cursor: default;
+}
+.nav-group-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.nav-group-chevron > svg {
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.nav-group-body[hidden] {
+  display: none;
+}
+
 .nav-link {
   display: flex;
   align-items: center;
@@ -4256,3 +4293,11 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .math-edit__preview { min-height: 3rem; display: flex; align-items: center; justify-content: center; overflow-x: auto; padding: var(--space-2); }
 .visual-diagram-block { margin: 0 0 var(--space-2); }
 .visual-diagram-block pre { margin-bottom: var(--space-1); }
+
+/* A foldable nav group the person has folded while it holds the current page keeps only that entry
+   (components/NavGroup.tsx): the page they are on is never hidden. */
+.nav-group-body-peek .nav-link:not(.active),
+.nav-group-body-peek .nav-link-row:not(.active),
+.nav-group-body-peek .nav-more-list {
+  display: none;
+}

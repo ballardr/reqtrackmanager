@@ -181,6 +181,24 @@ flowchart LR
 - **Once a specific child has its own drill-down page, offer the Phase 28 entity quick-switch chevron next to its heading too (Phase 29b)** — the sibling list is simply the same collection this pattern already loads for the expandable group, passed down as a prop; no second fetch. See `VersionWorkspace.tsx`'s "Switch version" chevron for the concrete precedent.
 - **A tree-shaped nested list (a disclosure row's expanded children, and a further level of children under those) indents with `marginLeft: "1.75rem"`, `borderLeft: "2px solid var(--color-border)"`, `paddingLeft: "0.75rem"` per level, not an invented spacing value** — the convention `RequirementTree.tsx` already established for a requirement's nested "Required actions" list, reused as-is (stacking the same three values again for a second nesting level) by `OrgComplianceStandardsPanel.tsx`'s Standard → Version → Project grouping (Phase 39c/39d).
 
+## Pattern: foldable nav-rail groups
+
+Every labelled group of the navigation rail (Project, Global, Administration, a module's standalone workspace such as Standard) is a `NavGroup` (`components/NavGroup.tsx`), so a long rail can be shortened. Reason: the rail grows with every module and its lower groups sit below a long scroll.
+
+```mermaid
+flowchart TD
+  A["Person selects a group label"] --> B{"Group holds the current page?"}
+  B -->|"no"| C["Folded: entries hidden"]
+  B -->|"yes"| D["Folded: only the active entry stays"]
+  E["A page inside a folded group is opened"] --> F["Group unfolds, stored state cleared"]
+```
+
+- The label is a borderless disclosure button (`aria-expanded`, a `TreeChevron` before the text); an optional `action` (the Project group's customise button) sits at the right of the label.
+- The folded state is a per-person `ui_preferences` key, `nav_group_folded:<groupKey>`, the store the rail's own collapse uses, so it follows the person across devices.
+- A group never hides the current page: opening a page inside a folded group unfolds it, and folding a group that holds the current page leaves only the active entry (`.nav-group-body-peek`). A `NavRailLink` reports its own active state through `useNavGroupActive`; an entry that is not a `NavRailLink` sets `containsActive`.
+- The icon-only rail shows no chevrons and every entry; its label stays the thin divider.
+- A new group, core or module, is a `NavGroup` with its own `groupKey`; never a bare `.nav-section-label`.
+
 ## Pattern: platform default vs. override
 
 An organisation's own pages (company settings, personal data policy, scoring) do not show the platform default as a state: there is no "Platform default" or "Custom" pill and no "Reset to platform default" link. The way back depends on the value:
