@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 31 done 2026-11-22; phases 32 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 32 done 2026-11-22; phases 33 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-31 / 46 phases complete.
+32 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -41,7 +41,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 29 | Folder icons: review and fix | Every folder-tree list shows an icon of what its rows are (a stakeholder group, not a folder); icon chosen by the consuming list, not a core map | [x] |
 | 30 | Architecture elements and collections: UI review and an actions-menu rule | One actions menu instead of three buttons; what the Folders box is and whether it stays; the rule added to `CLAUDE.md` and the style guide | [x] |
 | 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [x] |
-| 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [ ] |
+| 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [x] |
 | 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [ ] |
 | 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [ ] |
 | 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [ ] |
@@ -510,6 +510,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 
 - UI review first with a screenshot: list each control per stage (name, type, transitions, order, actions), then rebuild as a grid with one row per stage (`DefinitionList layout="grid"` or the shared row pattern, `LabeledSelect`/`InlineSelect` sized to their options, a row actions menu per the style guide), inside the dialog with the form header (Save in the header).
 - Tests: Storybook for few, many and empty stages and a narrow width; Playwright adds, reorders and removes a stage and saves, with a bounding-box check that the controls of a row share one line.
+
+- As built (**Decided by: Agent**): the phases are one `.definition-grid` (Order, Phase, Kind with its `(?)`, row menu) with the kind select sized to its options; Move up, Move down and Remove are one row `ActionMenu` (Move up absent on the first row, Move down on the last, Remove unavailable on the only phase with a reason); Add phase sits in the caption row; Save was already in the dialog header. The style guide's aligned-rows pattern gained the ordered-list case. See `docs/decisions.md`.
 
 ### Phase 33 — Administration section list scrolls separately
 

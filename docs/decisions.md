@@ -19577,3 +19577,17 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 **Review (identify → verify → remediate).** Presentation plus two read-only response fields (module key and display name, both public registry values): no authorization, audit, retention or tenant rule changed, the module availability filter still decides which rows are listed, nothing logged. **Review table.** Modular boundary: the grouping reads the response, no module named in core; no core enum or `Record` needs a per-module value. Nested projects, bundles, templates, codes, search, placements, save and activate, seeds, MCP, perf: not applicable (no stored data, endpoint or record type changed). Website: no page describes this panel yet; phase W covers the record code prefix pages.
 
+
+## Platform review 2026-11-19, Phase 32: Stage workflow editor, one line per phase (2026-11-22)
+
+**Problem.** The edit dialog of a stage workflow (`StageWorkflowEditor`) drew each phase as a loose row of an input, a full-width select and three icon buttons that wrapped, with a second caption for the kind under the list and an Add phase button on a line of its own.
+
+**Decided by: Agent (revisable on its own judgement).**
+- *One grid, one line per phase.* The phases are a `.definition-grid` with a heading per column (Order, Phase, Kind with its `(?)` help, row menu), so the kind help moved from a caption under the list to the column heading. Tracks: `2.5rem minmax(7rem, 1fr) fit-content(10rem) 2.25rem`, so the kind select is as wide as its longest option and the name takes the spare width.
+- *Row actions are one `ActionMenu`* (Move up, Move down, Remove), per the style guide's row-menu rule, replacing three icon buttons. Move up is absent on the first phase and Move down on the last (an item that cannot apply is not offered); Remove stays present but unavailable on the only phase, with a tooltip saying why.
+- *Add phase* sits in the caption row of the phases, beside the label, not on its own line; it stays a secondary button (Save in the dialog header is the one primary action).
+- Strings `movePhaseUp`, `movePhaseDown` and `removePhase` (which took a phase name) were replaced by menu item labels; the trigger is named `Actions for phase {name}`.
+
+**Tests.** Storybook `StageWorkflowEditor` (7): creating, editing through the row menu (ids and order kept), last phase not removable and no Move up on the first row, a bounding-box check that name and kind share a line with the same column edges in every row and the kind is narrower than the name, fourteen phases, and a phone width with no sideways overflow. Playwright `stage-workflows.spec.ts` gains a step that checks the one-line layout in the real dialog, adds a phase, moves it and removes it through the menu, and saves.
+
+**Review (identify → verify → remediate).** Presentation only: the same endpoints, payload and server rules (a phase in use cannot be removed; the server message still shows in the dialog header); no authorization, audit, retention or tenant behaviour changed and nothing new is logged. No backend change, so no seed, migration, bundle, MCP or perf hook is affected.
