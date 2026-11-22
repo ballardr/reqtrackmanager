@@ -19858,3 +19858,16 @@ The organisation's symbol library (uploaded drawings, shared with every project)
 
 **Review (identify → verify → remediate).** Presentation and layout only: no endpoint, authorization, audit, retention, tenant, logging, bundle or stored-value change and no new external call; the new class names carry no user data. Nothing found.
 
+
+## Platform review 2026-11-19, Phase 49: section list fits the viewport from the first view (2026-11-23)
+
+**Decided by: Agent** (the mechanism; the outcome was raised by the User on 2026-11-22 while reviewing the administration section list).
+
+- **Cause.** `.resource-menu-nav` capped its height at the window less the header, banner and two gaps: the height it may have once stuck. Unscrolled it starts lower (below the title and the content padding), so its bottom ran past the window and the page grew a scrollbar for it. The earlier check only scrolled the page first.
+- **Fix.** The cap is `100vh` less the list's current distance from the top of the window and one gap. `useStickyViewportTop` writes that distance as `--sticky-viewport-top` on the container (never less than the list's own sticky offset, read from its computed `top`, so no offset is hard-coded in script). It runs from a passive scroll listener and a resize observer on the body, coalesced in `requestAnimationFrame`, and writes to the element's style, never to React state, so a scroll causes no render. Until the first measurement the stylesheet fallback (the stuck offset) applies. As the page scrolls the list grows to the earlier full height.
+- **Why script and not CSS only.** A cap that depends on a sibling's position under a scrolling page has no CSS-only form without fixing the offset or turning the page shell into a bounded two-pane layout, which would change every page. That layout was not taken: it would move the page's own scroll for all pages to fix one component.
+- **Zoom.** Browser zoom at 150% is a smaller CSS viewport (for example 1280 by 720 from 1920 by 1080), so the 800px window case covers it; below the breakpoint the list is a select with no cap.
+- **Tests.** Storybook: unscrolled at 800 and 1100px the list ends inside the window, scrolls by itself and reaches its last entry with the page unscrolled; after the page scrolls it is still inside and has grown; a short list does not scroll (the three fail against the old rule). Playwright (`admin-section-list-scroll.spec.ts`, extended): the same at 800 and 1100px on the real organisation administration page.
+- **Found and fixed on the way.** `project-hierarchy.spec.ts` located a project tile by `a[title=...]`, an attribute the tile title lost when phase 46 moved it onto `CellText`; it now uses the `tile-card-title` class. The SSO specs need the Keycloak container, which was not running, and were not changed.
+
+**Review (identify → verify → remediate).** Presentation and layout only: no endpoint, authorization, audit, retention, tenant, logging, bundle or stored-value change and no new external call. Nothing found.

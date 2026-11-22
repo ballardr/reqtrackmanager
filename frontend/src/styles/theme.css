@@ -2200,9 +2200,11 @@ given to the entity quick-switch chevron itself since it
   scroll-margin-top: calc(var(--header-height) + var(--announcement-height) + var(--space-3));
 }
 
-/* Sticky below the app header and no taller than the space left, so a list longer than the window scrolls on its
-   own while the content pane scrolls with the page. `position: relative` is implied by sticky, so the active
-   link's `offsetTop` is measured from the list itself. */
+/* Sticky below the app header and no taller than the window below where it starts, so a list longer than that
+   scrolls on its own, from the first view, while the content pane scrolls with the page. `--sticky-viewport-top` is
+   the list's current distance from the top of the window (`useStickyViewportTop`, never less than the sticky offset);
+   the fallback is the stuck offset, which applies until the first measurement. `position: relative` is implied by
+   sticky, so the active link's `offsetTop` is measured from the list itself. */
 .resource-menu-nav {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -2212,7 +2214,9 @@ given to the entity quick-switch chevron itself since it
   flex-shrink: 0;
   position: sticky;
   top: calc(var(--header-height) + var(--announcement-height) + var(--space-3));
-  max-height: calc(100vh - var(--header-height) - var(--announcement-height) - 2 * var(--space-3));
+  max-height: calc(
+    100vh - var(--sticky-viewport-top, calc(var(--header-height) + var(--announcement-height) + var(--space-3))) - var(--space-3)
+  );
   overflow-y: auto;
   box-sizing: border-box;
 }

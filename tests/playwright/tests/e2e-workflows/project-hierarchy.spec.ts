@@ -14,14 +14,19 @@ import {
   selectProjectAdminGroup,
 } from "./helpers";
 
+/** The title link of the tile card for a project (the card's own title, not a "Child of" / "Parent of" link to it). */
+function tileTitleLink(page: Page, name: string) {
+  return page.locator("a.tile-card-title").filter({ has: page.getByText(name, { exact: true }) });
+}
+
 /**
  * Opens a project by name from the project list, forced to tile view. A
  * plain `getByText(name).click()` is ambiguous for any project that
  * participates in a parent/child relationship — a "Parent of:"/"Child of:"
  * cross-reference elsewhere on the page can carry the exact same text (see
  * helpers.ts's `openRequirementByCode` docstring for the general shape of
- * this class of bug). Tile rows carry a `title` attribute on their own name
- * link that a cross-reference link does not, which is what makes "this
+ * this class of bug). A tile's own name link has the `tile-card-title`
+ * class that a cross-reference link does not, which is what makes "this
  * project's own row" unambiguous.
  */
 async function openProjectByName(page: Page, name: string): Promise<void> {
@@ -29,7 +34,7 @@ async function openProjectByName(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "Tile view" }).click();
   // Search first: the list pages at 30 and Gamma's projects outgrow it.
   await page.getByPlaceholder("Search projects").fill(name);
-  await page.locator(`a[title="${name}"]`).click();
+  await tileTitleLink(page, name).click();
 }
 
 /**
@@ -151,7 +156,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       // land past the first page.
       await page.getByRole("textbox", { name: "Search projects" }).fill(String(suffix));
       const cardFor = (name: string) =>
-        page.locator(`a[title="${name}"]`).locator(
+        tileTitleLink(page, name).locator(
           "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]"
         );
 

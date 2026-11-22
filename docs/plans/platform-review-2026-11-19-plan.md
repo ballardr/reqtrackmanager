@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 48 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed; 49 is not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 49 done 2026-11-22 and 2026-11-23; phase 41 was added from a review of the running stack, phase 42 from a request during phase 37, and phases 43 to 49 from the review of 2026-11-22 that followed). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-48 / 54 phases complete.
+49 / 54 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -58,7 +58,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 46 | Grids and tables: long text never breaks the layout | Fix the Connection Types grid, audit every grid and table-like view for the same defect, and add a shared cell component, a stress test and agent rules that stop it recurring | [x] |
 | 47 | Architecture symbols: Org Resources, filter panel, folders | The organisation's symbol library moves to Org Resources as a filtered list; a decision gate first on folders and on how a project sees them | [x] |
 | 48 | Tree selector: indent and scroll edges | Smaller indent between levels, a fixed search header, and a shared scroll region with themed edges for every capped list | [x] |
-| 49 | Section list fits the viewport from the first view | The section list is sized to the space left below its starting position, so a page that fits the window never needs a page scroll to reach the end of the list (follow-up to phase 33) | [ ] |
+| 49 | Section list fits the viewport from the first view | The section list is sized to the space left below its starting position, so a page that fits the window never needs a page scroll to reach the end of the list (follow-up to phase 33) | [x] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 49 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
@@ -720,6 +720,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - **Same shell, one fix:** `ResourceMenu` is shared by every administration page, Org Resources, Policies, Preferences and the Compliance settings, so each is checked: a page with a banner or announcement above, a page with tabs under the title, a narrow viewport (the list collapses to one column below the breakpoint and has no cap), a very short window, and the browser's zoom at 150%.
 - **Short lists:** a list that fits does not scroll and shows no scrollbar or edge indicator (the shared scroll region of phase 48 draws the indicators only when content continues beyond an edge).
 - Tests: Storybook and Playwright measure the list unscrolled: its bottom edge is at or above the window's bottom edge (`getBoundingClientRect().bottom <= innerHeight`), the document is not taller than the window when the content is short, the list scrolls to its last entry by its own scrollbar, and after scrolling the page the list is still within the window; run at 800px and 1100px window heights and at 150% zoom. The phase 33 spec is extended, not replaced.
+
+- As built (**Decided by: Agent**; the outcome was the User's): `useStickyViewportTop` (`hooks/`) writes `--sticky-viewport-top` on the `ResourceMenu` container from a passive scroll listener and a body resize observer, coalesced in `requestAnimationFrame`, with no React state; `.resource-menu-nav` caps its height at `100vh` less that value and one gap, the stuck offset being the fallback. CSS-only was not possible without a new page shell (recorded). Stories and the extended phase 33 spec measure it unscrolled at 800 and 1100px. Fixed on the way: `project-hierarchy.spec.ts` selected tiles by a `title` attribute that phase 46 removed. See `docs/decisions.md`.
 
 ### Phase R — Review checkpoint: all changes together
 

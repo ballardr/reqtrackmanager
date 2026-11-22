@@ -314,3 +314,79 @@ export const LongListScrollsSeparately: Story = {
     });
   },
 };
+
+/** The list is measured before the page has been scrolled: it ends inside the window and scrolls by itself, because
+ * its height follows where it starts (below the title), not where it would start once stuck. */
+async function expectListWithinWindowUnscrolled(canvasElement: HTMLElement, label: string, windowHeight: number) {
+  await page.viewport(1280, windowHeight);
+  const nav = within(canvasElement).getByRole("navigation", { name: label });
+  window.scrollTo(0, 0);
+  await waitFor(() => {
+    expect(nav.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
+  });
+  // Longer than the space it was given, so it scrolls on its own and the page does not grow to hold it.
+  // (The page's own height is asserted in the end-to-end spec: Storybook's canvas adds its own padding.)
+  await expect(nav.scrollHeight).toBeGreaterThan(nav.clientHeight);
+
+  // The last entry is reached with the list's own scrollbar, with the page still unscrolled.
+  nav.scrollTop = nav.scrollHeight;
+  const last = within(nav).getByRole("link", { name: "Section 40" });
+  await waitFor(() => {
+    expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
+  });
+  await expect(window.scrollY).toBe(0);
+}
+
+/** A page whose own content is short, so the page itself never needs to scroll. */
+function ShortPageDemo({ sections }: { sections: typeof LONG_SECTIONS }) {
+  const { group } = useParams<{ group?: string }>();
+  if (!sections.some((s) => s.key === group)) return <Navigate to={`/demo/${sections[0].key}`} replace />;
+  return (
+    <ResourceMenu title="Acme Corp" subtitle="Organisation admin" ariaLabel="Fit sections" groups={sections} active={group as string}>
+      <div className="card">Short content</div>
+    </ResourceMenu>
+  );
+}
+
+export const ListFitsWindowFromFirstView800: Story = {
+  render: () => <ShortPageDemo sections={LONG_SECTIONS} />,
+  play: async ({ canvasElement }) => {
+    await expectListWithinWindowUnscrolled(canvasElement, "Fit sections", 800);
+  },
+};
+
+export const ListFitsWindowFromFirstView1100: Story = {
+  render: () => <ShortPageDemo sections={LONG_SECTIONS} />,
+  play: async ({ canvasElement }) => {
+    await expectListWithinWindowUnscrolled(canvasElement, "Fit sections", 1100);
+  },
+};
+
+/** After the page scrolls until the list sticks, the list is still inside the window and has grown to the full height. */
+export const ListStaysWithinWindowAfterScroll: Story = {
+  render: () => <LongListDemo />,
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
+    const nav = within(canvasElement).getByRole("navigation", { name: "Long list sections" });
+    window.scrollTo(0, 0);
+    await waitFor(() => expect(nav.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight));
+    const heightAtTop = nav.getBoundingClientRect().height;
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await waitFor(() => {
+      const box = nav.getBoundingClientRect();
+      expect(box.bottom).toBeLessThanOrEqual(window.innerHeight);
+      // It grows while the page scrolls up under the header, to the height it has once stuck.
+      expect(box.height).toBeGreaterThan(heightAtTop);
+    });
+  },
+};
+
+/** A list that fits has nothing to scroll: its content is no taller than its box. */
+export const ShortListDoesNotScroll: Story = {
+  render: () => <ShortPageDemo sections={GROUPS.map((g) => ({ ...g }))} />,
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 800);
+    const nav = within(canvasElement).getByRole("navigation", { name: "Fit sections" });
+    await expect(nav.scrollHeight).toBeLessThanOrEqual(nav.clientHeight);
+  },
+};

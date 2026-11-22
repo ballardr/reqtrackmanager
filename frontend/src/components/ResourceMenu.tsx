@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useStickyViewportTop } from "../hooks/useStickyViewportTop";
 import { InlineSelect, type InlineSelectOption } from "./LabeledSelect";
 
 // Matches FilterPanel.tsx's and Layout.tsx's own mobile breakpoint
@@ -77,8 +78,10 @@ type VisibleRow =
  * that's worth a visible menu. A single group that has sub-pages is the exception: its sub-pages are the choices, so
  * the menu stays.
  *
- * On a wide viewport the section list is a sticky column that fills the viewport height and scrolls on its own, so a
- * long list never scrolls away with the page; choosing a section brings the content pane back to its top when the
+ * On a wide viewport the section list is a sticky column no taller than the window below where it starts (the
+ * container publishes that start as `--sticky-viewport-top`, `useStickyViewportTop`), so a long list scrolls on its own
+ * from the first view and never needs the page to scroll to reach its end, and grows to the full height as the page
+ * scrolls up under the header; choosing a section brings the content pane back to its top when the
  * page was scrolled past it, and the active entry is scrolled into view within the list (a deep link to a section
  * near the end of a long list). Every administration page shares this behaviour because they share this component.
  *
@@ -133,6 +136,18 @@ export function ResourceMenu<K extends string>({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
   const firstRender = useRef(true);
+  // The same two elements as state, so the height hook measures once they exist (the list is absent on a narrow window).
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+  const [navEl, setNavEl] = useState<HTMLElement | null>(null);
+  useStickyViewportTop(containerEl, navEl);
+  const setContainer = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    setContainerEl(el);
+  }, []);
+  const setNav = useCallback((el: HTMLElement | null) => {
+    navRef.current = el;
+    setNavEl(el);
+  }, []);
 
   // The group holding the active page, whether `active` names the group or one of its sub-pages.
   const activeGroupKey = groups.find((g) => g.key === active || g.children?.some((c) => c.key === active))?.key;
@@ -233,7 +248,7 @@ export function ResourceMenu<K extends string>({
             every page that adopts ResourceMenu (found via a real Playwright
             failure on an Org Admin delete button during this
             component's first rollout). */
-        <div className="resource-menu" ref={containerRef}>
+        <div className="resource-menu" ref={setContainer}>
           {isNarrow ? (
             <InlineSelect
               ariaLabel={ariaLabel}
@@ -251,7 +266,7 @@ export function ResourceMenu<K extends string>({
               )}
             />
           ) : (
-            <nav aria-label={ariaLabel} className="resource-menu-nav scroll-region" ref={navRef}>
+            <nav aria-label={ariaLabel} className="resource-menu-nav scroll-region" ref={setNav}>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                 {groups.map((g) => {
                   const rowIndex = rows.findIndex((r) => r.id === `g:${g.key}`);
