@@ -144,7 +144,7 @@ export function MultiSelectDropdown({
             chevron pinned to the same spot on every row regardless of
             content length; the untruncated text is still available via
             the `title` above and the opened list itself. */}
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>
           {summary}
         </span>
         <ChevronDown size={14} style={{ flexShrink: 0 }} />

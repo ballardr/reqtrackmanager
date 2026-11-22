@@ -136,7 +136,7 @@ export function ServiceUserDetailModal({
             <button className="btn btn-danger" onClick={() => setConfirm({ kind: "archive" })}>{text.archive}</button>
           )}
         </div>
-        <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "var(--space-2) var(--space-4)", margin: 0 }}>
+        <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "var(--space-2) var(--space-4)", margin: 0 /* grid-text-ok: the first column holds the product's own labels */ }}>
           <dt className="text-muted">{text.description}</dt>
           <dd style={{ margin: 0, whiteSpace: "pre-wrap" }}>{serviceUser.description || "—"}</dd>
           <dt className="text-muted">{text.responsible}</dt>

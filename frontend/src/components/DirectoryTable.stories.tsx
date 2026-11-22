@@ -9,7 +9,10 @@ import type { SortState } from "./sortState";
 import { orphanedControlViolations } from "../testing/orphanedControls";
 import { buildPlace, buildPlacementsApi, PLACEMENTS_PROJECT_ID } from "../testing/placementsFixtures";
 import { buildReference, buildReferencesApi } from "../testing/referencesFixtures";
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { Badge } from "./Badge";
+import { CellText } from "./CellText";
 
 interface DemoRow {
   id: string;
@@ -349,3 +352,37 @@ export const SelectionColumnSelectsRowsAndTheHeaderSelectsAllThatCanBe: Story = 
 };
 
 const selectionChanged = fn();
+
+/**
+ * Long text in several cells of several rows: a 200-character name, a 60-character word and a long email in a
+ * table that also holds a badge and a button. The columns stay in line, nothing overflows the table and the
+ * button stays on its row.
+ */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={520}
+      render={(long) => (
+        <DirectoryTable<DemoRow>
+          ariaLabel="Long text directory"
+          rowKey={(row) => row.id}
+          emptyState={null}
+          rows={[
+            { id: "a", name: stressText(long, "Alex Morgan"), email: stressText(long, "alex@example.com", "word"), status: "active", joined: "2026-01-14" },
+            { id: "b", name: "Priya Shah", email: "priya@example.com", status: "invited", joined: "2026-03-02" },
+            { id: "c", name: stressText(long, "Jordan Lee", "word"), email: stressText(long, "jordan@example.com", "summary"), status: "active", joined: "2026-08-20" },
+          ]}
+          columns={[
+            { key: "name", label: "Name", sortable: true, render: (row) => <CellText lines={2}>{row.name}</CellText> },
+            { key: "email", label: "Email", sortable: true, render: (row) => <CellText lines={2}>{row.email}</CellText> },
+            { key: "status", label: "Status", render: (row) => <Badge>{row.status === "active" ? "Active" : "Invited"}</Badge> },
+            { key: "actions", label: "", render: (row) => <button className="btn" aria-label={`Edit ${row.id}`}>Edit</button> },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
+  },
+};

@@ -11,6 +11,7 @@ import {
 } from "./DeleteInUseDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { CellText } from "./CellText";
 import { DefinitionAddModal } from "./DefinitionAddModal";
 import { InlineTextInput } from "./FormFields";
 
@@ -106,6 +107,15 @@ export interface DefinitionListProps<T extends { id: string }> {
    * Omit for the common all-text case (every pre-existing call site).
    */
   renderExtra?: (item: T) => ReactNode;
+  /**
+   * What `renderExtra` shows, which decides its column (`layout="grid"` only). `"text"` (default): a line of text a
+   * person typed (a summary), possibly with controls after it; the column is a bounded share of the grid, the text is
+   * a `CellText` that is cut and gives way, and the controls keep their size and their line. `"controls"`: only
+   * controls of a fixed size (a toggle, a select of a fixed width, a fixed picture); the column is as wide as they are
+   * (and shrinks them when the container is short), and they wrap onto a second line in a narrow container. Text from a record never goes in a `"controls"` column,
+   * because the width of the column would then follow its longest row.
+   */
+  extraContent?: "text" | "controls";
   /** Optional per-row slot rendered on its own line under the row — for a
    * group of controls too wide for the row itself (link types'
    * "can link from/to" restrictions). */
@@ -120,7 +130,7 @@ export interface DefinitionListProps<T extends { id: string }> {
    * `"stack"` (default): each row is a line of unlabelled inputs. `"grid"`: one CSS grid with a heading per field
    * (`DefinitionListField.label`/`track`), every row and the add row aligned under it and the row actions in a
    * last column, for a list of several fields (a scoring level's name, weight and guidance) or one with a per-row
-   * control beside the fields (`renderExtra` gets its own right-aligned column, as wide as its controls but shrinking them when the container is short; keep its width the same on every
+   * control beside the fields (`renderExtra` gets its own column, see `extraContent`; keep its width the same on every
    * row so the controls line up). In a container narrower than 34rem a list with `renderExtra` drops the columns: each
    * row is its fields and actions on one line with the extra controls wrapping onto the line below, so a narrow card
    * (the diagram editors' Selection card) holds the row instead of cutting it off. `renderDetails` is ignored in a grid.
@@ -152,6 +162,7 @@ export function DefinitionList<T extends { id: string }>({
   confirmDelete,
   addLabel,
   renderExtra,
+  extraContent = "text",
   renderDetails,
   isReadOnly,
   minItems = 1,
@@ -215,8 +226,8 @@ export function DefinitionList<T extends { id: string }>({
 
   /** The list's single Add control: the empty fields live in a dialog, not in the list (creation controls on demand). */
   const addControl = (
-    <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} title={addLabel} aria-label={addLabel} onClick={() => { setError(null); setAdding(true); }}>
-      <Plus /> {addLabel}
+    <button className="btn btn-primary btn--fit" style={{ alignSelf: "flex-start" }} aria-label={addLabel} onClick={() => { setError(null); setAdding(true); }}>
+      <Plus /> <CellText>{addLabel}</CellText>
     </button>
   );
 
@@ -285,7 +296,7 @@ export function DefinitionList<T extends { id: string }>({
   }
 
   if (layout === "grid") {
-    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? " minmax(0, max-content)" : ""} max-content`;
+    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? (extraContent === "text" ? " minmax(14rem, 1.5fr)" : " minmax(0, max-content)") : ""} max-content`; // grid-text-ok: the extra column is bounded for text, and the last column holds only the row's fixed-size buttons
     const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
     return (
       <div className={renderExtra ? "stack definition-list--extra" : "stack"}>
@@ -307,7 +318,9 @@ export function DefinitionList<T extends { id: string }>({
                     {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })), readOnly)}
                   </div>
                 ))}
-                {renderExtra && <div className="definition-grid__actions definition-grid__extra">{renderExtra(item)}</div>}
+                {renderExtra && (
+                  <div className={`definition-grid__actions definition-grid__extra definition-grid__extra--${extraContent}`}>{renderExtra(item)}</div>
+                )}
                 <div className="definition-grid__actions">
                   {/* Always laid out so the columns do not shift when a row becomes dirty; hidden (and out of
                       the accessibility tree) until there is something to save. */}

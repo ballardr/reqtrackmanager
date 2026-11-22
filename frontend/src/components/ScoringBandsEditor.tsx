@@ -106,7 +106,7 @@ export function ScoringBandsEditor({
         <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel} platformFallback={platformFallback}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
-      <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" }}>
+      <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" /* grid-text-ok: the last column holds only the row's fixed-size buttons */ }}>
         <span className="definition-grid__head">Label</span>
         <span className="definition-grid__head">From (% of maximum)</span>
         <span className="definition-grid__head">Colour</span>

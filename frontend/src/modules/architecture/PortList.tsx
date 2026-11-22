@@ -56,6 +56,7 @@ export function PortList({
       onDelete={onRemove}
       deleteLabel="Remove port"
       addLabel="Add port"
+      extraContent="controls"
       renderExtra={(port) => (
         <span key="port-extra" className="row" style={{ gap: "var(--space-2)" }}>
           <Tooltip label={ARCHITECTURE_HELP.portDirection} wrap>

@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, within } from "storybook/test";
 
 import { orphanedControlViolations } from "../testing/orphanedControls";
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { AlignedRows } from "./AlignedRows";
 
 const buttons = (name: string) => (
@@ -56,5 +58,28 @@ export const LongTextKeepsButtonsBesideIt: Story = {
   },
   play: async ({ canvasElement }) => {
     await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** A long main text, an unbroken word and a long detail in several rows: the buttons stay at the end of their own row, aligned. */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={520}
+      render={(long) => (
+        <AlignedRows
+          ordered
+          ariaLabel="Long text prompts"
+          rows={[
+            { id: "a", lead: "1.", main: stressText(long, "Short"), actions: buttons("one") },
+            { id: "b", lead: "2.", main: stressText(long, "Medium", "word"), actions: buttons("two"), detail: stressText(long, "A note.", "summary") },
+            { id: "c", lead: "10.", main: "Medium length prompt", actions: buttons("three") },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };

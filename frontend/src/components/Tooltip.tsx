@@ -66,12 +66,15 @@ const POINTER_OFFSET_PX = 20;
  * the id of the bubble, for the trigger's `aria-describedby`. The bubble is
  * measured again when anything scrolls, since it is `fixed` and a pinned one
  * would otherwise be left behind by a scrolling dialog body.
+ *
+ * `disabled` keeps the wrapper (so the layout does not change) but never shows the bubble: for a label that
+ * is worth showing only some of the time, such as the full text of a clipped cell (`CellText`).
  */
 export function Tooltip({
-  label, children, className, style, followPointer = false, pinnable = false, wrap = false, bubbleId,
+  label, children, className, style, followPointer = false, pinnable = false, wrap = false, bubbleId, disabled = false,
 }: {
   label: string; children: ReactNode; className?: string; style?: CSSProperties; followPointer?: boolean;
-  pinnable?: boolean; wrap?: boolean; bubbleId?: string;
+  pinnable?: boolean; wrap?: boolean; bubbleId?: string; disabled?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -157,7 +160,7 @@ export function Tooltip({
       } : undefined}
     >
       {children}
-      {visible && createPortal(
+      {visible && !disabled && createPortal(
         <span
           ref={bubbleRef}
           id={bubbleId}

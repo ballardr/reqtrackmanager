@@ -83,7 +83,7 @@ export function PowerInterestGridReportView({ result, scope, values, onValueChan
       <StakeholderReportGroupControls projectId={scope.kind === "project" ? scope.id : null} values={values} onValueChange={onValueChange} />
       <ReportSummary result={result} figureAction={figureAction} />
       <div className="stack" style={{ gap: "var(--space-3)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: "var(--space-4)", alignItems: "stretch" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: "var(--space-4)", alignItems: "stretch" /* grid-text-ok: the first column holds the product's own axis labels */ }}>
           {GRID_LAYOUT.map((row, index) => (
             <div key={row[0]} style={{ display: "contents" }}>
               <span className="text-muted" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", textAlign: "center", fontWeight: 600 }}>

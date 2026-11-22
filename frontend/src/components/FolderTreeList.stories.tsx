@@ -3,6 +3,8 @@ import { FileText, Package, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { buildFolderTree, type FolderNode } from "../utils/reportFolders";
 import { FolderTreeList, type FolderTreeColumn } from "./FolderTreeList";
 import { realFolderIcon } from "./folderTreeIcons";
@@ -373,5 +375,29 @@ export const AFolderThatCarriesAnItemCanBeTheSelectedRow: Story = {
     await userEvent.click(within(grid).getByRole("button", { name: "Child" }));
     await expect(rowOf("Parent")).toHaveAttribute("aria-selected", "false");
     await expect(rowOf("Child")).toHaveAttribute("aria-selected", "true");
+  },
+};
+
+/** Long titles, a long unbroken word and a long note in several rows, open folders included: the columns keep their widths and the actions stay on their rows. */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={720}
+      render={(long) => (
+        <Host
+          columns={COLUMNS}
+          folderActions
+          initiallyOpen={["f:platform", "f:handover"]}
+          docs={[
+            { id: "a", title: stressText(long, "Requirements report"), folder: "Platform", kind: "report", version: 3, note: stressText(long, "Every requirement.", "summary") },
+            { id: "b", title: stressText(long, "Decision register", "word"), folder: "Platform", kind: "pack", version: 1, note: stressText(long, "", "word") },
+            { id: "c", title: "Handover", folder: stressText(long, "Handover", "word"), kind: "report", version: 7, note: stressText(long, "For the team.") },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };

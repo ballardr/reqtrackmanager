@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Star } from "lucide-react";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import { withRouter } from "../testing/storybook-helpers";
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { Badge } from "./Badge";
 import { TileCard, TileGrid } from "./TileCard";
 
@@ -94,7 +96,39 @@ export const LongTitle: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("link")).toHaveAttribute("title", expect.stringContaining("A very long standard title"));
+    await userEvent.hover(canvasElement.querySelector(".cell-text") as HTMLElement);
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("A very long standard title");
     await expect(canvas.getByRole("button", { name: "Remove from favourites" })).toBeVisible();
+  },
+};
+
+/** Long titles, a long unbroken word and long body text in several tiles: the title row keeps its badges and star on its line. */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={640}
+      render={(long) => (
+        <TileGrid>
+          <TileCard
+            title={stressText(long, "Payments Platform")}
+            to="/projects/project-1"
+            titleBadges={<Badge>Template</Badge>}
+            actions={<button className="btn" aria-label="Remove from favourites"><Star /></button>}
+          >
+            <div className="text-muted">{stressText(long, "Acme Corp", "summary")}</div>
+          </TileCard>
+          <TileCard
+            title={stressText(long, "ISO 27001", "word")}
+            to="/standards/std-1"
+            actions={<button className="btn" aria-label="Add to favourites"><Star /></button>}
+          >
+            <div className="text-muted">{stressText(long, "Active", "word")}</div>
+          </TileCard>
+        </TileGrid>
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };

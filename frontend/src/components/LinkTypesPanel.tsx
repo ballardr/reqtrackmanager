@@ -337,6 +337,7 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
       deleteLabel={strings.orgAdmin.deleteLinkType}
       addLabel={strings.orgAdmin.newLinkType}
       minItems={isProject ? 0 : 1}
+      extraContent="controls"
       renderExtra={(item) => (
         <InlineSelect<LinkFlow>
           key="flow"

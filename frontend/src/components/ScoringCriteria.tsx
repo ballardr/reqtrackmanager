@@ -109,7 +109,7 @@ export function ScoringCriteria({
       )}
     </div>
   );
-  const columns = "minmax(10rem, 3fr) minmax(7rem, 1fr) minmax(8rem, 1.5fr) max-content";
+  const columns = "minmax(10rem, 3fr) minmax(7rem, 1fr) minmax(8rem, 1.5fr) max-content"; // grid-text-ok: the last column holds only the row's fixed-size buttons
 
   return (
     <ScoringSection sectionKey={`${scheme.key}:${projectId ? "p" : "o"}:criteria`} title="Criteria">
@@ -174,7 +174,7 @@ export function ScoringCriteria({
       {(scheme.hidden_criteria ?? []).length > 0 && (
         <>
           <h4 style={{ margin: 0 }}>Hidden</h4>
-          <div className="definition-grid" style={{ gridTemplateColumns: "minmax(10rem, 3fr) minmax(7rem, 1fr) max-content" }}>
+          <div className="definition-grid" style={{ gridTemplateColumns: "minmax(10rem, 3fr) minmax(7rem, 1fr) max-content" /* grid-text-ok: the last column holds only the row's fixed-size buttons */ }}>
             {(scheme.hidden_criteria ?? []).map((h) => (
               <div key={`${h.kind}:${h.key}`} style={{ display: "contents" }}>
                 <span className="definition-grid__cell">{h.label}</span>

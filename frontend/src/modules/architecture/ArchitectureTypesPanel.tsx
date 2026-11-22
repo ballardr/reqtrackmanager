@@ -11,6 +11,7 @@
 import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { CellText } from "../../components/CellText";
 import { DefinitionList } from "../../components/DefinitionList";
 import { RestoreOrgDefaultsButton, type HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import { Spinner } from "../../components/Spinner";
@@ -198,7 +199,7 @@ export function ArchitectureTypesPanel({ scope, kind }: { scope: TypesScope; kin
         addLabel={`Add ${noun}`}
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows, domains)}</span>
+            <CellText className="text-muted" style={{ fontSize: "0.8rem" }}>{summaryOf(item, rows, domains)}</CellText>
             <ColourDots row={item} />
             {scope.kind === "project" && item.project_id === null && <span className="text-muted" style={{ fontSize: "0.75rem" }}>Org default</span>}
             {kind !== "domain" && !isOrgDefault(item) && (

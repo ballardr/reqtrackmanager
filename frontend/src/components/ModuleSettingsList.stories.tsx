@@ -5,6 +5,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "./ModuleSettingsList";
 import { ToggleSwitch } from "./ToggleSwitch";
 
@@ -96,3 +98,24 @@ export const AvailabilitySelect: StoryObj<typeof ModuleAvailabilitySelect> = {
 
 export const LightTheme: Story = { ...OrgStyle, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...OrgStyle, globals: { theme: "dark" } };
+
+/** A long module name, an unbroken word and a long hint beside the availability select: the select stays at the end of every row. */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      width={640}
+      render={(long) => (
+        <ModuleSettingsList
+          items={[
+            { key: "a", name: stressText(long, "Compliance"), version: "0.1.0", description: stressText(long, "Manage standards.", "summary"), control: <ModuleAvailabilitySelect value="default_on" label="A availability" onChange={fn()} /> },
+            { key: "b", name: stressText(long, "Decisions", "word"), version: "0.1.0", hint: stressText(long, "Not on this plan.", "name"), control: <ModuleAvailabilitySelect value="opt_in" label="B availability" onChange={fn()} /> },
+            { key: "c", name: "Risks", version: "0.1.0", control: <ModuleAvailabilitySelect value="off" label="C availability" onChange={fn()} /> },
+          ]}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
+  },
+};

@@ -229,6 +229,7 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
         }}
         deleteLabel={`Delete ${noun} type`}
         addLabel={`Add ${noun} type`}
+        extraContent="controls"
         renderExtra={(item) => (
           <span key="is-active" className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Active</span>
@@ -362,6 +363,7 @@ export function ProjectTypeVocabularyPanel({
         }
         minItems={0}
         addLabel={`Add project-only ${noun} type`}
+        extraContent="controls"
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
             {/* A fixed width, so the toggles line up whichever label a row has. */}

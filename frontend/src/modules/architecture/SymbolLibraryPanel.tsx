@@ -102,6 +102,7 @@ export function SymbolLibraryPanel({ scope }: { scope: TypesScope }) {
             }
           : null}
         addLabel="Upload a symbol"
+        extraContent="controls"
         renderExtra={(item) => (
           <span key="symbol-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
             <SymbolImage src={urlFor(item.id)} alt={`Drawing of ${item.name}`} />

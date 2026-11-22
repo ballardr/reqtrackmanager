@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { buildCustomCriteriaScheme, buildUser, expandScoringLevels, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
 import { ScoringAxisLevels } from "./ScoringAxisLevels";
 
 const PROJECT_ID = "project-1";
@@ -59,4 +61,41 @@ export const ADerivedAxisTakesTheProjectsOwnThresholds: Story = {
     // An ordinary organisation axis stays read-only.
     await expect(canvas.queryByRole("spinbutton", { name: /Impact .* threshold/ })).not.toBeInTheDocument();
   },
+};
+
+/** Long axis labels, level names and guidance, editable and read-only: every row keeps its columns and its buttons. */
+export const LongText: Story = {
+  render: (args) => (
+    <TextStress
+      width={720}
+      render={(long) => {
+        const base = buildCustomCriteriaScheme();
+        const scheme = buildCustomCriteriaScheme({
+          axes: base.axes.map((axis, index) => ({
+            ...axis,
+            label: index === 0 ? stressText(long, axis.label) : axis.label,
+            levels: axis.levels.map((level, at) => ({
+              ...level,
+              name: at === 0 ? stressText(long, level.name, "word") : level.name,
+              description: at === 1 ? stressText(long, "", "summary") : level.description,
+            })),
+          })),
+        });
+        return <ScoringAxisLevels {...args} scheme={scheme} />;
+      }}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    // Open every axis in both renders, then measure.
+    for (const root of Array.from(canvasElement.querySelectorAll<HTMLElement>("[data-stress]"))) {
+      await expandScoringLevels(within(root));
+    }
+    await expectStressStable(canvasElement);
+  },
+};
+
+/** The same, as a project reads the organisation's axes (read-only plain cells). */
+export const LongTextReadOnlyInAProject: Story = {
+  ...LongText,
+  args: { projectId: PROJECT_ID },
 };

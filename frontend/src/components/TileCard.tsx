@@ -22,6 +22,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { CellText } from "./CellText";
+
 /**
  * The responsive grid that holds a page's tile cards.
  *
@@ -69,9 +71,9 @@ export function TileCard({ title, to, titleBadges, actions, eyebrow, accentColor
       <div className="tile-card-head">
         <div className="tile-card-heading">
           {to ? (
-            <Link to={to} className="tile-card-title" title={title}>{title}</Link>
+            <Link to={to} className="tile-card-title"><CellText>{title}</CellText></Link>
           ) : (
-            <span className="tile-card-title" title={title}>{title}</span>
+            <span className="tile-card-title"><CellText>{title}</CellText></span>
           )}
           {titleBadges}
         </div>

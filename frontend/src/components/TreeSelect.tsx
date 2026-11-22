@@ -142,7 +142,7 @@ export function TreeSelect({
         aria-expanded={open}
         onClick={() => { setQuery(""); setOpen((o) => !o); }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{summary}</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>{summary}</span>
         <ChevronDown size={14} style={{ flexShrink: 0 }} />
       </button>
       {open && (

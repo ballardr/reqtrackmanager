@@ -5,6 +5,9 @@ import { expect, fireEvent, fn, screen, userEvent, waitFor, within } from "story
 import { ApiError } from "../api/client";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { openAddDialog } from "../testing/storybook-helpers";
+import { expectStressStable, stressText } from "../testing/stressFixtures";
+import { TextStress } from "../testing/TextStress";
+import { CellText } from "./CellText";
 import { DefinitionList } from "./DefinitionList";
 
 interface Named {
@@ -511,5 +514,50 @@ export const GridReadOnlyRowCannotBeRenamed: Story = {
     await userEvent.type(editable, "!");
     await expect(canvas.getAllByRole("button", { name: "Rename" })).toHaveLength(1);
     await expect(canvas.getAllByRole("button", { name: "Delete type" })).toHaveLength(2);
+  },
+};
+
+interface Summarised {
+  id: string;
+  name: string;
+  summary: string;
+}
+
+/**
+ * The Connection Types shape: a name, then per-row text (a summary) with colour dots and an Edit button.
+ * Long summaries in several rows must not squeeze the Name column, move the dots and Edit button onto a second
+ * line, or change a column's width.
+ */
+export const LongText: Story = {
+  render: () => (
+    <TextStress
+      render={(long) => (
+        <DefinitionList<Summarised>
+          layout="grid"
+          items={[
+            { id: "a", name: stressText(long, "Software"), summary: stressText(long, "Software · Solid, one-way", "summary") },
+            { id: "b", name: "Power", summary: stressText(long, "Electrical · Dashed", "summary") },
+            { id: "c", name: stressText(long, "Data", "word"), summary: stressText(long, "Data", "word") },
+          ]}
+          fields={[{ key: "name", getValue: (i) => i.name, label: "Name", ariaLabel: "Type name" }]}
+          getReassignLabel={(i) => i.name}
+          onRename={async () => {}}
+          onAdd={async () => {}}
+          onDelete={async () => {}}
+          deleteLabel="Delete type"
+          addLabel="Add type"
+          renderExtra={(item) => (
+            <span className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
+              <CellText className="text-muted">{item.summary}</CellText>
+              <span aria-hidden="true">●●</span>
+              <button className="btn" aria-label={`Edit ${item.name.slice(0, 12)}`}>Edit</button>
+            </span>
+          )}
+        />
+      )}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    await expectStressStable(canvasElement);
   },
 };

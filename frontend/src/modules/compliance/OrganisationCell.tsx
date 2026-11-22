@@ -11,10 +11,10 @@
  *   position never depends on the length or wrapping of the text after it.
  *
  * Design decisions: each renders nothing when the tab reads a single organisation, so callers place it
- * unconditionally; the name never wraps and is cut with an ellipsis past `.org-cell`'s width, with the full name
- * in a tooltip.
+ * unconditionally; the name is a `CellText` (two lines at most and 14rem wide in a table, one line in a fixed 10rem as a
+ * label), so a long name never moves the columns and the full name is in a tooltip.
  */
-import { Tooltip } from "../../components/Tooltip";
+import { CellText } from "../../components/CellText";
 
 /**
  * @param show Whether the tab reads more than one organisation (`ComplianceStatusFrame.showOrg`).
@@ -32,9 +32,7 @@ export function OrganisationCell({ name, show }: { name: string; show: boolean }
   if (!show) return null;
   return (
     <td>
-      <Tooltip label={name}>
-        <span className="org-cell">{name}</span>
-      </Tooltip>
+      <CellText lines={2} maxWidth="14rem">{name}</CellText>
     </td>
   );
 }
@@ -46,8 +44,8 @@ export function OrganisationCell({ name, show }: { name: string; show: boolean }
 export function OrganisationLabel({ name, show }: { name: string; show: boolean }) {
   if (!show) return null;
   return (
-    <Tooltip label={name}>
-      <span className="org-cell org-cell--label text-muted">{name}</span>
-    </Tooltip>
+    <span className="org-cell--label text-muted">
+      <CellText>{name}</CellText>
+    </span>
   );
 }

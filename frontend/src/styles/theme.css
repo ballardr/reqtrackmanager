@@ -179,6 +179,14 @@ textarea {
   background: var(--color-surface-alt);
 }
 
+/* A button whose label holds text a person typed (an "Add <name> level" button): it may be narrower than its label,
+   which is a `CellText` inside it, so a long name cuts the label and never widens the row or the page. */
+.btn.btn--fit {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .btn-primary {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
@@ -757,6 +765,7 @@ select.input[size] {
   margin-left: auto;
   max-width: 10rem;
   overflow: hidden;
+/* grid-text-ok: a one-line search result in a popover, not a cell of a grid */
   text-overflow: ellipsis;
 }
 
@@ -770,6 +779,7 @@ select.input[size] {
   display: block;
   min-width: 0;
   overflow: hidden;
+/* grid-text-ok: a one-line search result in a popover, not a cell of a grid */
   text-overflow: ellipsis;
 }
 
@@ -1370,6 +1380,7 @@ a.figure-projects-link:hover {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
   .detail-layout--collapsed {
+    /* grid-text-ok: the folded aside's column holds only its toggle */
     grid-template-columns: minmax(0, 1fr) auto;
   }
   .detail-layout__aside {
@@ -2251,6 +2262,8 @@ given to the entity quick-switch chevron itself since it
   display: flex;
   align-items: center;
   min-height: 2.25rem;
+  /* A plain text cell (a read-only row) breaks an unbroken word inside its column instead of widening the grid. */
+  overflow-wrap: anywhere;
 }
 
 .definition-grid__cell > .input,
@@ -2268,6 +2281,36 @@ given to the entity quick-switch chevron itself since it
   min-height: 2.25rem;
 }
 
+/* `CellText` (components/CellText.tsx): user text stays inside its cell. One line cut with an ellipsis, or a clamp of
+   `--cell-text-lines` lines; an unbroken word is broken so it cannot widen a column. The trigger is a block that may
+   shrink (`min-width: 0`), so beside a control in a flex row the text gives way and the control keeps its size. */
+.tooltip-trigger.cell-text-trigger {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cell-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+/* grid-text-ok: this is CellText's own clipping rule */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.cell-text--clamp {
+  /* A clamped text may break anywhere, so in an auto-layout table its column can give way (a one-line text cannot:
+     a table column is never narrower than its unbreakable text), while the other columns keep their words whole. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--cell-text-lines, 2);
+  line-clamp: var(--cell-text-lines, 2);
+  white-space: normal;
+}
+
 /* A list with a per-row control (`renderExtra`) measures its own width, not the window's, because the same list sits in
    a wide page and in a narrow card: below 34rem the columns give way to one flowing row per item, the fields and the
    actions on the first line and the extra controls on the line below. */
@@ -2278,6 +2321,28 @@ given to the entity quick-switch chevron itself since it
 .definition-grid__extra {
   min-width: 0;
   flex-wrap: wrap;
+}
+
+/* A text column (`extraContent="text"`): its width is a share of the grid, never the text's. The row of text and
+   controls never wraps, the text (a `CellText`) gives way, and the controls keep their size and their line. */
+.definition-grid__extra--text {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+
+.definition-grid__extra--text > * {
+  min-width: 0;
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+/* The text takes what the controls leave, so the controls end every row at the same place. */
+.definition-grid__extra--text .cell-text-trigger {
+  flex: 1 1 0;
+}
+
+.definition-grid__extra--text > * > :not(.cell-text-trigger) {
+  flex: none;
 }
 
 .definition-grid__extra span,
@@ -2479,6 +2544,8 @@ th:has(> .th-with-action > .th-sort) {
   border-bottom: 0;
   min-width: 0;
   padding: 0;
+  /* A long unbroken word in a column breaks inside it rather than widening the list. */
+  overflow-wrap: anywhere;
 }
 /* The Name cell stays put while the other columns scroll under it, so it needs the row's own opaque background. */
 .folder-tree-name-cell {
@@ -2522,6 +2589,11 @@ th:has(> .th-with-action > .th-sort) {
 }
 .folder-tree-toggle {
   display: inline-flex;
+}
+.folder-tree-toggle > strong {
+  /* A folder name wraps like an item name (an unbroken word breaks) instead of widening the Name column. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .folder-tree-toggle > svg {
   flex-shrink: 0;
@@ -2669,16 +2741,9 @@ td:has(> .disclosure-toggle) {
   background: var(--color-surface-alt);
 }
 
-/* The organisation a Compliance status row belongs to (`modules/compliance/OrganisationCell.tsx`): one line, cut
-   with an ellipsis past its width so the column stays aligned. `--label` leads an item of a sentence-style list at a
-   fixed width, so the project after it starts at the same place in every item. */
-.org-cell {
-  display: block;
-  max-width: 14rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* The organisation a Compliance status row belongs to (`modules/compliance/OrganisationCell.tsx`): a `CellText` of
+   one line. `--label` leads an item of a sentence-style list at a fixed width, so the project after it starts at the
+   same place in every item. */
 .org-cell--label {
   display: inline-block;
   width: 10rem;
@@ -3202,6 +3267,7 @@ td:has(> .disclosure-toggle) {
    as wide as the widest row and each action sits in the same place (`AlignedRows`). */
 .aligned-rows {
   display: grid;
+/* grid-text-ok: the first and last columns hold the product's own numbers and the row's buttons */
   grid-template-columns: auto minmax(0, 1fr) auto;
   column-gap: var(--space-4);
   row-gap: var(--space-3);
@@ -3513,6 +3579,10 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 .tile-card {
   gap: var(--space-3);
+  /* A grid item may not be narrower than its content by default; a card must give way to its track, not widen it. */
+  min-width: 0;
+  /* An unbroken word in the body breaks rather than widening the card. */
+  overflow-wrap: anywhere;
 }
 .tile-card-head {
   display: flex;
@@ -3529,9 +3599,6 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 .tile-card-title {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-weight: 600;
   font-size: 1.05rem;
 }
@@ -3661,6 +3728,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   }
 
   .layout-designer--panel-folded {
+    /* grid-text-ok: the folded panel's column holds only its toggle */
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
