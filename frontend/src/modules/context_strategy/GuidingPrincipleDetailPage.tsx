@@ -236,8 +236,16 @@ export function GuidingPrincipleDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciple === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, guidingPrinciple.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: guidingPrinciple.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} refreshToken={recordActivityKey(guidingPrinciple)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -334,10 +342,7 @@ export function GuidingPrincipleDetailPage() {
             files={files}
             disabled={guidingPrinciple.is_locked}
             emptyHint={guidingPrinciple.is_locked ? "This Guiding Principle is past review; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, guidingPrinciple.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await scopedApi.unlinkFile(scopeId, guidingPrinciple.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

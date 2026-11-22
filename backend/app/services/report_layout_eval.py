@@ -109,7 +109,7 @@ from app.services.report_layout_tree import (
     assert_valid,
     group_member,
 )
-from app.services.report_markdown import record_markdown_blocks
+from app.services.report_markdown import PictureResolver, record_markdown_blocks
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
     MAX_CONTENTS_LEVELS,
@@ -154,6 +154,8 @@ from app.services.report_model import (
     link_problem,
     linked,
     markdown_to_blocks,
+    restore_set_aside,
+    set_aside,
     text_on,
     text_runs,
     typed_cell,
@@ -706,6 +708,28 @@ class _Run:
         self.stats.record_images += 1
         return image
 
+    def record_pictures(self, record: ReportRecord) -> PictureResolver:
+        """Supplies the pictures a record's Markdown text holds (`![alt](attachment:<file id>)`).
+
+        A picture is the record's own non-confidential attachment, found through its attachment table
+        (`record_files_of`), so a file of another record, or one marked confidential, is never resolved and the text
+        prints its alternative text instead.
+
+        Args:
+            record: A record the traversal showed the caller.
+
+        Returns:
+            A function from a file id to the picture (`None` when it cannot be printed).
+        """
+        def resolve(file_id: uuid.UUID) -> Image | None:
+            # Read only when a text really holds a picture, so a report over many records costs nothing extra for the
+            # ones that hold none.
+            asset = next((candidate for candidate in self.record_files_of(record) if candidate.id == file_id), None)
+            image = self.record_picture(asset) if asset is not None else None
+            return None if image is None else Image(data=image.data, svg=image.svg)
+
+        return resolve
+
     def block_look(self, node: dict[str, Any]) -> tuple[FontFamily | None, float | None]:
         """The font family and size a text or heading block sets for itself (`None` for each it leaves to the document).
 
@@ -1009,7 +1033,13 @@ class _Run:
         if key in RESERVED_FIELD_KEYS or not value:
             return value
         info = self.catalogue(record.artefact_type)[key]
-        return plain_text(value) if info.markdown and not info.math else value
+        if not info.markdown:
+            return value
+        if not info.math:
+            return plain_text(value)
+        # Equations are set aside while the words are read (the reader would take `\\(` for an escaped bracket) and put back.
+        source, written = set_aside(value, escapes=False)
+        return restore_set_aside(plain_text(source), written)
 
     def cell_of(self, record: ReportRecord, key: str) -> str:
         """A field as a document table cell: its text, with equations drawn when the field is math-capable."""
@@ -1109,7 +1139,9 @@ class _Run:
         if not info.markdown:
             return None
         value = self.text_of(bound.record, member)
-        blocks = record_markdown_blocks(value, math=info.math, diagrams=self.diagrams, warn=self.warn)
+        blocks = record_markdown_blocks(
+            value, math=info.math, diagrams=self.diagrams, warn=self.warn, pictures=self.record_pictures(bound.record),
+        )
         if not info.math:
             return blocks
         out: list[Block] = []

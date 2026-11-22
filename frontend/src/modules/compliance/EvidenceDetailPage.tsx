@@ -96,8 +96,16 @@ export function EvidenceDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (evidence === null || project === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await complianceApi.uploadEvidenceAttachment(projectId, evidence.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: uploadAttachment }}
       activity={<RecordActivity projectId={projectId} artefactType="compliance_evidence" artefactId={evidence.id} refreshToken={recordActivityKey(evidence)} />}
       aside={<ArtefactLinksPanel projectId={projectId} artefactType="compliance_evidence" artefactId={evidence.id} />}
     >
@@ -152,10 +160,7 @@ export function EvidenceDetailPage() {
         >
           <FileAttachmentList
             files={files}
-            onUpload={async (file) => {
-              const asset = await complianceApi.uploadEvidenceAttachment(projectId, evidence.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await complianceApi.unlinkEvidenceFile(projectId, evidence.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

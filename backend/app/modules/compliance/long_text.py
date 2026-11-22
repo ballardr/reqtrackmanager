@@ -27,11 +27,13 @@ from app.modules.compliance.models import (
     ComplianceStandardVersion,
     ProjectComplianceRequirement,
 )
-from app.modules.registry import MarkdownField, markdown_columns
+from app.modules.registry import MarkdownField, MarkdownImages, markdown_columns
 from app.services.long_text_core import _CHANGE_NOTE, NOTE_LIMIT
 
 MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
-    *markdown_columns(ComplianceEvidence, "description", "notes"),
+    *markdown_columns(
+        ComplianceEvidence, "description", "notes", images=MarkdownImages("compliance_evidence", ComplianceEvidence.id),
+    ),
     *markdown_columns(ComplianceEvidenceRevalidation, "justification", limit=NOTE_LIMIT),
     *markdown_columns(ComplianceRequiredActionAssessment, "notes", limit=NOTE_LIMIT),
     *markdown_columns(ComplianceRequiredAction, "description"),

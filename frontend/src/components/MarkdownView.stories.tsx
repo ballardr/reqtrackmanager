@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, waitFor, within } from "storybook/test";
+import { expect, fireEvent, waitFor, within } from "storybook/test";
 
 import { MarkdownView } from "./MarkdownView";
 
@@ -266,5 +266,56 @@ export const LegacyPlainTextRegression: Story = {
     await expect(canvasElement.querySelector("b")).toBeNull();
     await expect(canvasElement).toHaveTextContent("$5 or $10");
     await expect(canvasElement.querySelectorAll("p br").length).toBeGreaterThan(0);
+  },
+};
+
+const PICTURE_ID = "3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f";
+
+export const AnAttachmentPictureIsDrawnFromTheFileEndpoint: Story = {
+  args: { text: `Before.\n\n![Throughput by hour](attachment:${PICTURE_ID} "Figure 1: throughput")\n\nAfter.` },
+  play: async ({ canvasElement }) => {
+    const picture = within(canvasElement).getByRole("img", { name: "Throughput by hour" });
+    // The address is built from the file id alone: the page never requests another site.
+    await expect(picture.getAttribute("src")).toContain(`/api/v1/files/${PICTURE_ID}`);
+    await expect(picture).toHaveAttribute("loading", "lazy");
+    // A picture on a line of its own is a figure with its caption, and not inside a paragraph.
+    await expect(canvasElement.querySelector("figure")).toHaveTextContent("Figure 1: throughput");
+    await expect(picture.closest("p")).toBeNull();
+  },
+};
+
+export const APictureThatCannotBeLoadedShowsItsAlternativeText: Story = {
+  args: { text: `![Throughput by hour](attachment:${PICTURE_ID})` },
+  play: async ({ canvasElement }) => {
+    fireEvent.error(within(canvasElement).getByRole("img", { name: "Throughput by hour" }));
+    await waitFor(() => expect(canvasElement.querySelector("img")).toBeNull());
+    await expect(within(canvasElement).getByRole("img", { name: "Throughput by hour" })).toHaveTextContent("Throughput by hour");
+  },
+};
+
+export const APictureWithNoWordsSaysItIsUnavailable: Story = {
+  args: { text: `![](attachment:${PICTURE_ID})` },
+  play: async ({ canvasElement }) => {
+    fireEvent.error(canvasElement.querySelector("img") as HTMLImageElement);
+    await waitFor(() => expect(canvasElement).toHaveTextContent("Picture unavailable"));
+  },
+};
+
+export const APictureInASentenceStaysInTheLine: Story = {
+  args: { text: `See ![the plot](attachment:${PICTURE_ID}) for detail.` },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector("p img")).not.toBeNull();
+    await expect(canvasElement.querySelector("figure")).toBeNull();
+  },
+};
+
+export const AnOutsideImageIsNeverRequestedAndStaysAsTyped: Story = {
+  args: { text: "![tracker](https://example.com/pixel.png)\n\n[a link](attachment:3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f)" },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector("img")).toBeNull();
+    await expect(canvasElement).toHaveTextContent("![tracker](https://example.com/pixel.png)");
+    // An attachment address is a picture's, not a link's: as a link it is only its text.
+    await expect(canvasElement.querySelector("a")).toBeNull();
+    await expect(canvasElement).toHaveTextContent("a link");
   },
 };

@@ -226,8 +226,16 @@ export function PainPointDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (painPoint === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await projectPainPointApi.uploadFile(projectId, painPoint.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} refreshToken={recordActivityKey(painPoint)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -307,10 +315,7 @@ export function PainPointDetailPage() {
             files={files}
             disabled={painPoint.is_locked}
             emptyHint={painPoint.is_locked ? "This Pain Point has reached a terminal outcome; new evidence can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await projectPainPointApi.uploadFile(projectId, painPoint.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await projectPainPointApi.unlinkFile(projectId, painPoint.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

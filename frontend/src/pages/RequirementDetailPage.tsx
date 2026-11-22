@@ -272,6 +272,13 @@ export function RequirementDetailPage() {
     reload();
   }
 
+  /** Attaches a picture file to this record for a Markdown field's Picture button; resolves to the new attachment. */
+  async function attachPicture(file: File): Promise<FileAsset> {
+    const asset = await api.postFile<FileAsset>(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  }
+
   async function removeFile(fileId: string) {
     if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/${fileId}`), "remove", "file"))) return;
     reload();
@@ -590,6 +597,7 @@ export function RequirementDetailPage() {
 
   return (
     <DetailLayout
+      pictures={{ files, upload: requirement.is_locked ? undefined : attachPicture }}
       activity={projectId && requirementId ? <RecordActivity projectId={projectId} artefactType="requirement" artefactId={requirementId} refreshToken={linksRefreshToken} /> : undefined}
       extraTabs={watchingTab ? [watchingTab] : []}
       contained={false}

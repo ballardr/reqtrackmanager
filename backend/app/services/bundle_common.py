@@ -319,6 +319,7 @@ def import_bundled_file(
     the target organisation — storage keys aren't portable across
     deployments/backends, so every attachment gets a fresh key via the
     normal upload path rather than trying to preserve the original one.
+    The new file is noted for the import's pictures (`services.markdown_images`), which are rewritten to it.
 
     Flushed before returning so the asset's id is assigned: callers link it
     straight away (e.g. `RequirementFile(file_id=asset.id)`), and an
@@ -331,6 +332,10 @@ def import_bundled_file(
     )
     asset.confidential = confidential
     db.flush()
+    # Imported here: `markdown_images` reads the module registry, which imports modules that import this one.
+    from app.services.markdown_images import note_imported_file
+
+    note_imported_file(filename, data, asset.id)
     return asset
 
 

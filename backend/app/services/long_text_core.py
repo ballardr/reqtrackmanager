@@ -26,6 +26,10 @@ Dependencies: the core models and `modules.registry` (the declaration shapes).
 
 from __future__ import annotations
 
+from typing import Any
+
+from sqlalchemy.orm import object_session
+
 from app.models.announcement import Announcement
 from app.models.change_request import (
     ChangeRequest,
@@ -39,18 +43,42 @@ from app.models.project import StageReviewResponse
 from app.models.record_comment import RecordComment
 from app.models.requirement import RequirementReview, RequirementVersion
 from app.models.requirement_action import RequirementAction
-from app.modules.registry import MarkdownField, markdown_columns
+from app.modules.registry import MarkdownField, MarkdownImages, markdown_columns
+
+
+def _proposed_requirement_id(version: ChangeRequestVersion) -> Any:
+    """The requirement a change request version proposes to change (its pictures are that requirement's attachments), or
+    `None` for a request for a new requirement.
+
+    Args:
+        version: A change request version row, possibly not yet flushed (its `change_request_id` may be set with the
+            relationship still empty).
+
+    Returns:
+        The requirement's id, or `None`.
+    """
+    request = version.change_request
+    if request is None and version.change_request_id is not None:
+        session = object_session(version)
+        request = session.get(ChangeRequest, version.change_request_id) if session is not None else None
+    return None if request is None else request.requirement_id
+
 
 #: Comments and short notes are bounded lower than a described record.
 NOTE_LIMIT = 20_000
 
 CORE_MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
     *markdown_columns(Announcement, "body"),
-    *markdown_columns(RequirementVersion, "reasoning", "clarification", "description", math=True),
-    *markdown_columns(RequirementAction, "description"),
+    *markdown_columns(
+        RequirementVersion, "reasoning", "clarification", "description", math=True,
+        images=MarkdownImages("requirement", RequirementVersion.requirement_id),
+    ),
+    *markdown_columns(RequirementAction, "description", images=MarkdownImages("requirement_action", RequirementAction.id)),
     *markdown_columns(RequirementReview, "comment", limit=NOTE_LIMIT),
     *markdown_columns(
         ChangeRequestVersion, "proposed_reasoning", "proposed_clarification", "proposed_description", math=True,
+        # The proposed text starts as the requirement's own, so its pictures are the requirement's attachments.
+        images=MarkdownImages("requirement", resolve=lambda version: _proposed_requirement_id(version)),
     ),
     *markdown_columns(ChangeRequestVersion, "proposed_action_description"),
     *markdown_columns(ChangeRequestVersion, "reason", limit=NOTE_LIMIT, math=True),

@@ -13,6 +13,9 @@
  * - Open in the person's remembered view (Visual unless they chose Write), and fall back to Write with a stated
  *   reason when the text cannot be edited visually without changing it.
  * - `simple` offers Write and Preview only (a comment box, which does not need a document editor).
+ * - A Picture button (`PictureToolbarButton`) appears in both toolbars wherever the field sits inside a record page that
+ *   supplies pictures (`MarkdownImageSourceProvider`) and is not `simple`: the picture is an attachment of the record,
+ *   chosen or uploaded in the picture panel and written as `![alt](attachment:<file id>)`.
  * - `math` is a field that holds equations: Visual draws each as an equation (an indivisible node), Preview draws them
  *   and the toolbars offer Inline equation and Equation block, each with a live preview of the TeX.
  *
@@ -28,12 +31,13 @@ import { lazy, memo, Suspense, useCallback, useEffect, useId, useRef, useState, 
 
 import { useStrings } from "../context/TerminologyContext";
 import { useMarkdownEditorView } from "../hooks/useMarkdownEditorView";
-import { applyMarkdownFormat, insertMarkdownMath, type MarkdownFormat } from "../utils/markdownEdit";
+import { applyMarkdownFormat, insertMarkdownMath, insertMarkdownPicture, type MarkdownFormat } from "../utils/markdownEdit";
 import type { VisualBlocker } from "../utils/visualMarkdown";
 import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { MarkdownView } from "./MarkdownView";
 import { MathToolbarButton } from "./MathEditPopover";
+import { PictureToolbarButton, type PictureChoice } from "./PicturePicker";
 import { Tabs, tabPanelProps } from "./Tabs";
 import { ToolbarButton } from "./ToolbarButton";
 
@@ -46,8 +50,10 @@ type View = "visual" | "write" | "preview";
  * The Write view's formatting buttons. Memoised: a form with many Markdown fields re-renders every one of them on each
  * keystroke in any field, and ten buttons with tooltips per field made typing visibly slower.
  */
-const WriteToolbar = memo(function WriteToolbar({ onFormat, onMath, readSelection, disabled }: {
+const WriteToolbar = memo(function WriteToolbar({ onFormat, onMath, onPicture, readSelection, disabled }: {
   onFormat: (format: MarkdownFormat) => void;
+  /** Present for a field that may hold pictures: puts the chosen picture in the text. */
+  onPicture?: (choice: PictureChoice) => void;
   /** Present for a field that holds equations: puts an equation of the given TeX in the text. */
   onMath?: (tex: string, display: boolean) => void;
   readSelection: () => string;
@@ -72,6 +78,7 @@ const WriteToolbar = memo(function WriteToolbar({ onFormat, onMath, readSelectio
       {button("link", Link2, text.link)}
       {button("table", Table, text.table)}
       {button("diagram", Workflow, text.diagram)}
+      {onPicture && <PictureToolbarButton onInsert={onPicture} disabled={disabled} />}
       {onMath && (
         <>
           <MathToolbarButton display={false} readSelection={readSelection} onApply={onMath} disabled={disabled} />
@@ -154,6 +161,16 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
       el.setSelectionRange(result.selectionStart, result.selectionEnd);
     });
   }, []);
+  const applyPicture = useCallback((choice: PictureChoice) => {
+    const el = area.current;
+    if (!el) return;
+    const result = insertMarkdownPicture(latest.current.value, el.selectionStart, el.selectionEnd, choice);
+    latest.current.onChange(result.value);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  }, []);
   const readSelection = useCallback(() => {
     const el = area.current;
     return el ? latest.current.value.slice(el.selectionStart, el.selectionEnd) : "";
@@ -169,7 +186,7 @@ export function MarkdownEditor({ value, onChange, rows = 4, ariaLabel, disabled,
             { key: "write" as const, label: text.write }, { key: "preview" as const, label: text.preview },
           ]}
         />
-        {view === "write" && toolbar && <ActiveFieldToolbar><WriteToolbar onFormat={apply} onMath={math ? applyMath : undefined} readSelection={readSelection} disabled={disabled} /></ActiveFieldToolbar>}
+        {view === "write" && toolbar && <ActiveFieldToolbar><WriteToolbar onFormat={apply} onMath={math ? applyMath : undefined} onPicture={sourceOnly ? undefined : applyPicture} readSelection={readSelection} disabled={disabled} /></ActiveFieldToolbar>}
       </div>
       {blocker && view === "write" && (
         <p className="text-muted" role="status">

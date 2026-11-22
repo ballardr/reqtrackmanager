@@ -2,10 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, within } from "storybook/test";
 
 import { buildGraph, buildLinksApi, LINKS_ARTEFACT_ID, LINKS_PROJECT_ID } from "../testing/artefactLinksFixtures";
-import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { buildFileAsset, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
 import { DetailCard } from "./DetailCard";
 import { DetailLayout } from "./DetailLayout";
+import { MarkdownEditor } from "./MarkdownEditor";
 
 /**
  * Artefact detail page frame: content plus a collapsible aside (the Links panel). Collapse
@@ -179,5 +180,30 @@ export const KeepsTheGivenOrderWhenTheCardsAreNotOrdered: Story = {
   play: async ({ canvasElement }) => {
     const headings = within(canvasElement).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     await expect(headings).toEqual(["Discussion", "Details"]);
+  },
+};
+
+/** A page that passes its attachments gives every Markdown field in its content (the edit form included) a Picture button. */
+export const PicturesGiveItsMarkdownFieldsAPictureButton: Story = {
+  args: {
+    pictures: { files: [buildFileAsset({ id: "3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f", filename: "plot.png", content_type: "image/png" })] },
+    children: <MarkdownEditor value="" onChange={() => {}} ariaLabel="Description" rows={3} />,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("textbox", { name: "Description" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Picture" }));
+    await expect(await within(document.body).findByRole("button", { name: "Picture plot.png" })).toBeInTheDocument();
+  },
+};
+
+/** A page with no attachments passes nothing, so its Markdown fields have no Picture button. */
+export const WithoutPicturesThereIsNoPictureButton: Story = {
+  args: { children: <MarkdownEditor value="" onChange={() => {}} ariaLabel="Description" rows={3} /> },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("textbox", { name: "Description" }));
+    await expect(await canvas.findByRole("button", { name: "Bold" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Picture" })).toBeNull();
   },
 };

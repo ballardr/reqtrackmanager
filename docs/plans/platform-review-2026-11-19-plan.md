@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 40 done 2026-11-22; phase 41 added 2026-11-22 from a review of the running stack, and phase 42 from a request during phase 37, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 42 done 2026-11-22; phase 41 was added from a review of the running stack and phase 42 from a request during phase 37). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-40 / 47 phases complete.
+42 / 47 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -51,7 +51,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 39 | Compliance standards: cards styled as project cards | Standard titles read as links and the cards share the project card's look, through one shared card | [x] |
 | 40 | Compliance standards: organisation filter | The organisation selector moves into the filter panel, defaults to every organisation, and each standard shows its organisation | [x] |
 | 41 | Sign-in page: no redirect notice | The page says nothing extra when it will return the person to a page | [x] |
-| 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [ ] |
+| 42 | Inline images in Markdown fields | Pictures inside the text of a record, drawn on screen, in the editors and in reports; a decision gate first | [x] |
 | R | Review checkpoint: all changes together | The user reviews phases 1 to 42 as one result; every item raised becomes a numbered phase or is fixed in place; gates W | [ ] |
 | D | Register clean-up | Reconcile each phase register (`platform-review-2026-11-19-*-register.md`) with the reviewed result, move what is durable into the permanent docs, mark each closed, and fix every reference; gates W | [ ] |
 | W | Website content | Update `docs/website/` for every user-visible change above, after the review | [ ] |
@@ -614,6 +614,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Limits: a count and size per field in `services/markdown_fields`, declared with the other Markdown limits; a record cannot reference another record's attachment.
 - Registry: which fields accept pictures is a declaration beside `math` on the field (`MarkdownField`), so a comment can stay text-only; every module declares through `ModuleDefinition`, no core edit per module.
 - Tests: reader and writer round trip vectors (`markdownRoundTripCases.json`), a Storybook story per surface, a Playwright spec that attaches a picture, inserts it into a Decision, sees it on the page and in a report, and checks a viewer without access sees the alternative text; backend tests for the limits, access, bundle round trip and report embedding.
+
+- As built (**Decided by: User** for the source (attachments only, with an upload during the insert, as the symbol picker does) and for optional alternative text; the rest **Decided by: Agent**): the stored form is `![alt](attachment:<file id> "caption")`. `MarkdownField.images = MarkdownImages(artefact_type, record_id | resolve)` is the declaration, set on the descriptive fields of the requirement, requirement action, Decision, pain point, strategy, future state, guiding principle, open question, product feedback request and compliance evidence, and on a change request's proposed text (it resolves to the requirement it changes). `services/markdown_images.py` and the Markdown write hook refuse a picture in a field without the declaration, over 20 per field, with a bad id or a caption over 200 characters, and one that is not an attachment of the record (a new reference only). Screen: `MarkdownPicture`, `DetailLayout`'s `pictures` prop (the page's attachments and upload), `PicturePicker` (choose, or upload and choose, then alternative text and caption), `PictureToolbarButton` in both toolbars, `utils/visualImageNode` for Visual with paste and drop. Reports: `record_markdown_blocks(pictures=)` through the run's own record-attachment rules. Bundles: `importing_images` rewrites references by name and bytes after the attachments exist. A create form has no Picture button (no attachments yet); risk, the stakeholder types and architecture elements are not wired (no declaration, so no picture). One earlier failure found and fixed: math-capable fields printed raw Markdown marks in a sentence or cell of a report. See `docs/decisions.md`.
 
 ### Phase R — Review checkpoint: all changes together
 

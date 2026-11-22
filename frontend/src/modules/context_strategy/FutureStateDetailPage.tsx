@@ -175,8 +175,16 @@ export function FutureStateDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureState === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, futureState.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: futureState.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="future_state" artefactId={futureState.id} refreshToken={recordActivityKey(futureState)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -292,10 +300,7 @@ export function FutureStateDetailPage() {
             files={files}
             disabled={futureState.is_locked}
             emptyHint={futureState.is_locked ? "This Future State is past review; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, futureState.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await scopedApi.unlinkFile(scopeId, futureState.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

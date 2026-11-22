@@ -147,8 +147,16 @@ export function DecisionDetailPage() {
 
   const decisionType = decisionTypes.find((t) => t.id === decision.decision_type_id);
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await decisionsApi.uploadDecisionFile(projectId, decision.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: decision.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="decision" artefactId={decision.id} refreshToken={recordActivityKey(decision)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -238,10 +246,7 @@ export function DecisionDetailPage() {
             files={files}
             disabled={decision.is_locked}
             emptyHint={decision.is_locked ? "This Decision is approved or superseded; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await decisionsApi.uploadDecisionFile(projectId, decision.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await decisionsApi.unlinkDecisionFile(projectId, decision.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

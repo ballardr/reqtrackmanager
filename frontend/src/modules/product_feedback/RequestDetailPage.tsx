@@ -429,10 +429,7 @@ export function RequestDetailPage() {
               files={files}
               disabled={!canTriage || request.is_archived}
               emptyHint={canTriage ? undefined : "Only a triager can attach evidence to a request."}
-              onUpload={async (file) => {
-                const asset = await scopedApi.uploadFile(scopeId, request.id, file);
-                setFiles((prev) => [...prev, asset]);
-              }}
+              onUpload={async (file) => { await uploadAttachment(file); }}
               onRemove={async (fileId) => {
                 await scopedApi.unlinkFile(scopeId, request.id, fileId);
                 setFiles((prev) => prev.filter((f) => f.id !== fileId));
@@ -470,8 +467,16 @@ export function RequestDetailPage() {
   const availableSections = REQUEST_SECTION_KEYS.filter((key) => (key !== "references" || referencesShown) && (key !== "demand" || Boolean(projectId)) && (key !== "loop" || showLoop));
   const sectionOrder = resolveSectionOrder(availableSections, personalOrder, projectOrder);
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, request.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: !canTriage || request.is_archived ? undefined : uploadAttachment }}
       // The sections are arranged by the person or the project (`requestSections`), so the page keeps that order instead of the default card order.
       orderCards={false}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="enhancement_request" artefactId={request.id} refreshToken={recordActivityKey(request)} /> : undefined}

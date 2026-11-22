@@ -7,7 +7,8 @@
  *
  * Responsibilities:
  * - Read the text with the product's reader (`parseMarkdown`) and join the words of every block with single spaces;
- *   a diagram is named `[Diagram]`, a fenced block keeps its text, an equation keeps its TeX.
+ *   a diagram is named `[Diagram]`, a fenced block keeps its text, an equation keeps its TeX, a picture is its
+ *   alternative text.
  *
  * Design decisions:
  * - Nothing here produces markup, so the result can be shown as text wherever a plain string is shown.
@@ -16,12 +17,17 @@ import { isMermaidFence, parseMarkdown, type Token } from "./markdownIt";
 
 const DIAGRAM = "[Diagram]";
 
+/** @returns The alternative text of an `image` token as words (the reader keeps its raw source in `content`). */
+export function imageAlt(token: Token): string {
+  return inlineText(token.children ?? []);
+}
+
 function inlineText(tokens: Token[]): string {
   let out = "";
   for (const token of tokens) {
     if (token.type === "text" || token.type === "code_inline") out += token.content;
     else if (token.type === "softbreak" || token.type === "hardbreak") out += " ";
-    else if (token.type === "image") out += token.content;
+    else if (token.type === "image") out += imageAlt(token);
     else if (token.type === "math") out += token.content;
     if (token.children && token.type !== "image") out += inlineText(token.children);
   }

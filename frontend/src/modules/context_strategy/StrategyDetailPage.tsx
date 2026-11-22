@@ -180,8 +180,16 @@ export function StrategyDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategy === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await scopedApi.uploadFile(scopeId, strategy.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: strategy.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="strategy" artefactId={strategy.id} refreshToken={recordActivityKey(strategy)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -298,10 +306,7 @@ export function StrategyDetailPage() {
             files={files}
             disabled={strategy.is_locked}
             emptyHint={strategy.is_locked ? "This Strategy is past review; new attachments can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, strategy.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await scopedApi.unlinkFile(scopeId, strategy.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

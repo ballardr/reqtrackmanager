@@ -2,7 +2,9 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { buildFileAsset } from "../testing/storybook-helpers";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { MarkdownImageSourceProvider } from "./MarkdownImageSource";
 
 const VIEW_KEY = "reqtrack.markdownEditorView";
 
@@ -356,5 +358,43 @@ export const ShowingTheToolbarDoesNotMoveTheField: Story = {
     await userEvent.click(area);
     await expect(await canvas.findByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
     await expect(area.getBoundingClientRect().top).toBe(before);
+  },
+};
+
+const PLOT = buildFileAsset({ id: "3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f", filename: "plot.png", content_type: "image/png" });
+
+/** The Write view's Picture button puts the chosen attachment in the text at the cursor, on a paragraph of its own. */
+export const ThePictureButtonInsertsAnAttachmentInTheWriteView: Story = {
+  render: () => (
+    <MarkdownImageSourceProvider files={[PLOT]}>
+      <Harness initial="Intro" />
+    </MarkdownImageSourceProvider>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = within(document.body);
+    const area = canvas.getByRole("textbox", { name: "Notes" }) as HTMLTextAreaElement;
+    area.focus();
+    area.setSelectionRange(5, 5);
+    await userEvent.click(await canvas.findByRole("button", { name: "Picture" }));
+    await userEvent.click(await page.findByRole("button", { name: "Picture plot.png" }));
+    await userEvent.type(await page.findByRole("textbox", { name: "Alternative text" }), "A plot");
+    await userEvent.click(page.getByRole("button", { name: "Insert" }));
+    await expect(canvas.getByTestId("stored").textContent).toBe(`Intro\n\n![A plot](attachment:${PLOT.id})`);
+  },
+};
+
+/** A comment box (`simple`) holds text only, so it has no Picture button even inside a record page. */
+export const ACommentBoxOffersNoPicture: Story = {
+  render: () => (
+    <MarkdownImageSourceProvider files={[PLOT]}>
+      <MarkdownEditor value="" onChange={() => {}} ariaLabel="Comment" rows={3} simple />
+    </MarkdownImageSourceProvider>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("textbox", { name: "Comment" }));
+    await expect(await canvas.findByRole("button", { name: "Bold" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Picture" })).toBeNull();
   },
 };

@@ -15,6 +15,9 @@
  * - Draw a `mermaid` code block as an editable source with a live diagram beneath it.
  * - In a field that holds mathematics (`math`), draw each equation as an equation; pressing one opens the same panel
  *   the toolbar's equation buttons use, with a live preview, to change its TeX.
+ * - Draw a picture of the record's own attachment as the picture; pressing one opens the picture panel to change its
+ *   alternative text and caption. Inside a record page that supplies pictures (`MarkdownImageSourceProvider`) a picture
+ *   file pasted or dropped on the field is attached to the record and inserted.
  *
  * Design decisions:
  * - Edits are reported after a short pause and on blur and close, because writing Markdown for a long document is
@@ -24,21 +27,26 @@
  * - Pasted HTML (from a web page or a word processor) is reduced by the editor's schema as before; only plain text
  *   that looks like Markdown gets the conversion notice, since that is the text that arrives as literal symbols.
  *
- * Dependencies: TipTap, `utils/visualMarkdown`, `utils/visualMathNode`, `RichTextToolbar`, `MermaidDiagram`,
- * `MathEditPopover`, `MathEquation` (loaded on first use).
+ * Dependencies: TipTap, `utils/visualMarkdown`, `utils/visualMathNode`, `utils/visualImageNode`, `RichTextToolbar`,
+ * `MermaidDiagram`, `MathEditPopover`, `PicturePicker`, `MarkdownPicture`, `MathEquation` (loaded on first use).
  */
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type Editor, type NodeViewProps } from "@tiptap/react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type TextareaHTMLAttributes } from "react";
 
+import { toErrorMessage } from "../context/ToastContext";
 import { useStrings } from "../context/TerminologyContext";
+import { insertPicture, PictureNode } from "../utils/visualImageNode";
 import {
   findVisualBlocker, looksLikeMarkdown, MarkdownCodeBlock, roundTripMarkdown, visualMarkdownExtensions, writtenMarkdown,
   type VisualBlocker,
 } from "../utils/visualMarkdown";
 import { equationMarkdown, MathNode } from "../utils/visualMathNode";
 import { ActiveFieldFrame, ActiveFieldToolbar } from "./ActiveFieldFrame";
+import { MarkdownPicture } from "./MarkdownPicture";
+import { useMarkdownImageSource } from "./markdownImageSourceContext";
 import { MathEditPopover } from "./MathEditPopover";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { PicturePickerPopover } from "./PicturePicker";
 import { RichTextToolbar } from "./RichTextToolbar";
 
 const MathEquation = lazy(() => import("./MathEquation").then((module) => ({ default: module.MathEquation })));
@@ -117,6 +125,45 @@ const VisualMathNode = MathNode.extend({
   },
 });
 
+/** A picture in the document: drawn from its attachment, pressed to change its alternative text and caption. */
+function PictureView({ node, updateAttributes, selected, editor }: NodeViewProps) {
+  const text = useStrings().richText;
+  const source = useMarkdownImageSource();
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [changing, setChanging] = useState(false);
+  const choice = { fileId: String(node.attrs.fileId), alt: String(node.attrs.alt), caption: String(node.attrs.caption) };
+  const open = () => { if (editor.isEditable) setChanging(true); };
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  }
+  return (
+    <NodeViewWrapper as="span" className={`visual-picture${selected ? " is-selected" : ""}`}>
+      <span
+        ref={anchor} role="button" tabIndex={0} contentEditable={false} className="visual-picture__button"
+        aria-label={`${text.pictureChange}: ${choice.alt || choice.caption || text.pictureUnavailable}`} aria-haspopup="dialog" aria-expanded={changing}
+        onClick={open} onKeyDown={onKeyDown}
+      >
+        <MarkdownPicture fileId={choice.fileId} alt={choice.alt} caption={choice.caption} />
+      </span>
+      {changing && (
+        <PicturePickerPopover
+          anchorRef={anchor} source={source ?? { files: [] }} initial={choice} onClose={() => setChanging(false)}
+          onApply={(next) => { setChanging(false); updateAttributes({ alt: next.alt, caption: next.caption }); }}
+        />
+      )}
+    </NodeViewWrapper>
+  );
+}
+
+const VisualPictureNode = PictureNode.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(PictureView);
+  },
+});
+
 interface PastedRange {
   from: number;
   to: number;
@@ -146,6 +193,11 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   math?: boolean;
 }) {
   const text = useStrings().richText;
+  const [pictureError, setPictureError] = useState<string | null>(null);
+  const source = useMarkdownImageSource();
+  /** The picture source as the editor's paste and drop handlers see it (they are created once). */
+  const sourceRef = useRef(source);
+  useEffect(() => { sourceRef.current = source; }, [source]);
   const [initial] = useState(value);
   const lastReported = useRef(value);
   /** What the editor last wrote (or, before an edit, wrote on opening); only a change from it is reported. */
@@ -157,7 +209,7 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   const report = useRef(onChange);
   useEffect(() => { report.current = onChange; }, [onChange]);
 
-  const extensions = useMemo(() => visualMarkdownExtensions(VisualCodeBlock, math ? VisualMathNode : null), [math]);
+  const extensions = useMemo(() => visualMarkdownExtensions(VisualCodeBlock, math ? VisualMathNode : null, VisualPictureNode), [math]);
   const editor = useEditor({
     extensions,
     content: initial,
@@ -170,8 +222,10 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
         class: "visual-markdown-content markdown-view",
         style: `min-height: ${Math.max(rows, 3) * 1.6}em`,
       },
+      handleDrop: (_view, event) => attachPictureFiles(event.dataTransfer?.files, event),
       handlePaste: (view, event) => {
         const data = event.clipboardData;
+        if (attachPictureFiles(data?.files, event)) return true;
         const plain = data?.getData("text/plain") ?? "";
         if (data && !data.getData("text/html") && looksLikeMarkdown(plain)) {
           const { from, to } = view.state.selection;
@@ -200,6 +254,30 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
     },
   });
   useEffect(() => { live.current = editor; }, [editor]);
+
+  /**
+   * Attaches the picture files of a paste or drop to the record and inserts each picture, when the page supplies pictures.
+   *
+   * @returns Whether the event carried picture files this editor took (the browser then does nothing with them).
+   */
+  function attachPictureFiles(files: FileList | undefined | null, event: Event): boolean {
+    const upload = sourceRef.current?.upload;
+    const pictures = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (!upload || pictures.length === 0) return false;
+    event.preventDefault();
+    setPictureError(null);
+    void (async () => {
+      for (const file of pictures) {
+        try {
+          const attached = await upload(file);
+          if (live.current) insertPicture(live.current, { fileId: attached.id, alt: "", caption: "" });
+        } catch (err) {
+          setPictureError(toErrorMessage(err, text.pictureUploadFailed));
+        }
+      }
+    })();
+    return true;
+  }
 
   /** Reports the editor's Markdown when it differs from what the parent last received. */
   function flush(e: NonNullable<typeof editor>) {
@@ -251,8 +329,9 @@ export function VisualMarkdownEditor({ value, onChange, onBlocked, rows = 4, ari
   return (
     <ActiveFieldFrame className="stack" style={{ gap: "var(--space-1)" }}>
       <ActiveFieldToolbar>
-        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true, math }} disabled={disabled} />
+        <RichTextToolbar editor={editor} features={{ code: true, codeBlock: true, table: true, diagram: true, math, picture: true }} disabled={disabled} />
       </ActiveFieldToolbar>
+      {pictureError && <div role="alert" style={{ color: "var(--color-danger)" }}>{pictureError}</div>}
       {pasted && (
         <div className="row" role="status" style={{ flexWrap: "wrap", gap: "var(--space-2)", alignItems: "center" }}>
           <span>{text.pastedMarkdown}</span>

@@ -1581,6 +1581,33 @@ DEFAULT_MARKDOWN_LIMIT = 50_000
 
 
 @dataclass(frozen=True)
+class MarkdownImages:
+    """Where the pictures a Markdown field may hold come from: the attachments of the record the field belongs to.
+
+    A field that carries this declaration accepts `![alt](attachment:<file id>)`, and the write refuses a reference to a
+    file that is not attached to the record (`services.markdown_fields`). A field without it holds no pictures.
+
+    Attributes:
+        artefact_type: The record's registered type; its `RecordAttachmentProvider` names the attachment table.
+        record_id: The attribute of the declared model that holds the record's id (`Decision.id`, or the version row's
+            `RequirementVersion.requirement_id`).
+        resolve: Instead of `record_id`, a function from the stored row to the record's id, for a row that reaches the
+            record through another (a change request's proposed text is the requirement's own, so its pictures are the
+            requirement's attachments); `None` result means no record, so no picture.
+    """
+
+    artefact_type: str
+    record_id: Any = None
+    resolve: Callable[[Any], Any] | None = None
+
+    def record_of(self, row: Any) -> Any:
+        """The id of the record whose attachments `row`'s text may show, or `None`."""
+        if self.resolve is not None:
+            return self.resolve(row)
+        return getattr(row, self.record_id.key, None) if self.record_id is not None else None
+
+
+@dataclass(frozen=True)
 class MarkdownField:
     """One long free-text column whose stored value is Markdown source.
 
@@ -1594,14 +1621,19 @@ class MarkdownField:
         limit: The most characters the value may hold.
         math: Whether people write equations in it (`\\( x \\)` and `$$ x $$`); the screen draws them and the
             visual editor leaves such a text in Write.
+        images: Whether people put the record's attached pictures in it (`MarkdownImages`); `None` for a field that is
+            text only (a comment, a configuration prompt).
     """
 
     column: Any
     limit: int = DEFAULT_MARKDOWN_LIMIT
     math: bool = False
+    images: MarkdownImages | None = None
 
 
-def markdown_columns(model: Any, *names: str, limit: int = DEFAULT_MARKDOWN_LIMIT, math: bool = False) -> tuple[MarkdownField, ...]:
+def markdown_columns(
+    model: Any, *names: str, limit: int = DEFAULT_MARKDOWN_LIMIT, math: bool = False, images: MarkdownImages | None = None,
+) -> tuple[MarkdownField, ...]:
     """`MarkdownField`s for several columns of one model that share a limit.
 
     Args:
@@ -1609,11 +1641,12 @@ def markdown_columns(model: Any, *names: str, limit: int = DEFAULT_MARKDOWN_LIMI
         names: Attribute names on `model`.
         limit: The character limit of each.
         math: Whether each holds equations.
+        images: Whether each holds the record's attached pictures (the record they belong to).
 
     Returns:
         One declaration per name, in order.
     """
-    return tuple(MarkdownField(getattr(model, name), limit, math) for name in names)
+    return tuple(MarkdownField(getattr(model, name), limit, math, images) for name in names)
 
 
 @dataclass(frozen=True)

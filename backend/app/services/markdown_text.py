@@ -11,6 +11,8 @@ Responsibilities:
 - `plain_text`: the readable text of a document (no marks, no diagram source unless asked) for list cells, search
   snippets and notifications, which never show raw Markdown.
 - `mermaid_sources`: the diagram sources of a document, in order, for the report renderer.
+- `image_references` / `check_images`: the pictures of a document (`![alt](attachment:<file id>)`, an attachment of the
+  record) and the limits on them. A picture's alternative text is what `plain_text` shows in its place.
 
 Design decisions:
 - Limits, not sanitising: the stored value is the author's Markdown source and is never rewritten. Output safety is
@@ -19,6 +21,9 @@ Design decisions:
   rest of the document), so no accepted text can lose content to the reader.
 - The diagram limits are the values in `frontend/src/utils/mermaidRenderConfig.json`; `tests/test_markdown_text.py`
   fails when the two differ, so the screen and the server refuse the same diagrams.
+- A picture is only ever an attachment: the address is `attachment:` and a file id, never an outside address, so
+  reading a record makes no request to another site. Whether the file belongs to the record is the write hook's check
+  (`services.markdown_fields`); this module only reads and counts.
 - The report engine's own inline reader (`report_model`) is a separate, narrower configuration for report cell text
   and is unchanged here.
 
@@ -28,6 +33,8 @@ Dependencies: `markdown-it-py`, `pydantic` (the `markdown_limit` validator).
 from __future__ import annotations
 
 import re
+import uuid
+from dataclasses import dataclass
 from functools import partial
 from typing import Literal
 
@@ -44,6 +51,13 @@ MAX_MERMAID_SOURCE_CHARS = 20_000
 #: Diagrams allowed in one field.
 MAX_MERMAID_BLOCKS = 20
 
+#: The address scheme of a picture that is an attachment of the record.
+ATTACHMENT_SCHEME = "attachment:"
+#: Pictures allowed in one field.
+MAX_IMAGES = 20
+#: Longest caption (the picture's title text), characters.
+MAX_CAPTION_CHARS = 200
+
 DiagramMode = Literal["omit", "label", "source"]
 
 _reader = MarkdownIt("commonmark", {"html": False, "breaks": True, "maxNesting": READER_NESTING}).enable("table")
@@ -56,6 +70,21 @@ _SPACE = re.compile(r"\s+")
 
 class MarkdownLimitError(ValueError):
     """A Markdown value breaks a limit; the message names the limit and is safe to show a person."""
+
+
+@dataclass(frozen=True)
+class ImageReference:
+    """One picture of a Markdown document.
+
+    Attributes:
+        file_id: The attachment's file id.
+        alt: The alternative text (may be empty).
+        caption: The caption (the picture's title), may be empty.
+    """
+
+    file_id: uuid.UUID
+    alt: str
+    caption: str
 
 
 def parse(text: str) -> list[Token]:
@@ -87,6 +116,78 @@ def mermaid_sources(text: str) -> list[str]:
         The body of each `mermaid` fenced block, in document order.
     """
     return [token.content for token in parse(text) if is_mermaid_fence(token)]
+
+
+def _image_tokens(text: str) -> list[Token]:
+    """The `image` tokens whose address is an attachment, in document order (empty with no `attachment:` in the text)."""
+    if ATTACHMENT_SCHEME not in text:
+        return []
+    found: list[Token] = []
+
+    def walk(tokens: list[Token]) -> None:
+        for token in tokens:
+            if token.type == "image" and str(token.attrGet("src") or "").startswith(ATTACHMENT_SCHEME):
+                found.append(token)
+            if token.children:
+                walk(token.children)
+
+    walk(parse(text))
+    return found
+
+
+def image_references(text: str) -> list[ImageReference]:
+    """
+    The attachment pictures in a document.
+
+    Args:
+        text: Markdown source.
+
+    Returns:
+        One reference per `![alt](attachment:<file id>)` picture, in order; an address that is not a file id is left out
+        (`check_images` refuses it on write).
+    """
+    refs: list[ImageReference] = []
+    for token in _image_tokens(text):
+        raw = str(token.attrGet("src"))[len(ATTACHMENT_SCHEME):]
+        try:
+            file_id = uuid.UUID(raw)
+        except ValueError:
+            continue
+        if str(file_id) != raw:
+            continue  # only the canonical lower-case form, so a reference can be found and rewritten as text
+        refs.append(ImageReference(file_id, token.content, str(token.attrGet("title") or "")))
+    return refs
+
+
+def check_images(text: str, *, allowed: bool, field: str = "text") -> list[ImageReference]:
+    """
+    Checks the pictures of a Markdown value against the limits.
+
+    Args:
+        text: The value as submitted.
+        allowed: Whether the field may hold pictures (it carries a `MarkdownImages` declaration).
+        field: A name for the messages.
+
+    Returns:
+        The pictures (empty when there are none).
+
+    Raises:
+        MarkdownLimitError: When the field holds pictures and may not, has more than `MAX_IMAGES`, has a picture whose
+            address is not a file id, or a caption over `MAX_CAPTION_CHARS`.
+    """
+    tokens = _image_tokens(text)
+    if not tokens:
+        return []
+    if not allowed:
+        raise MarkdownLimitError(f"{field} cannot hold pictures.")
+    if len(tokens) > MAX_IMAGES:
+        raise MarkdownLimitError(f"{field} has more than {MAX_IMAGES} pictures.")
+    refs = image_references(text)
+    if len(refs) != len(tokens):
+        raise MarkdownLimitError(f"A picture in {field} does not name an attachment.")
+    if any(len(ref.caption) > MAX_CAPTION_CHARS for ref in refs):
+        raise MarkdownLimitError(f"A picture caption in {field} is over the limit of {MAX_CAPTION_CHARS} characters.")
+    return refs
 
 
 def validate_markdown(text: str, *, max_chars: int, field: str = "text") -> str:
@@ -145,7 +246,7 @@ def _inline_text(token: Token) -> str:
         elif child.type in ("softbreak", "hardbreak"):
             parts.append(" ")
         elif child.type == "image":
-            parts.append(child.content)
+            parts.append(_inline_text(child))  # the alternative text as words (`content` keeps its raw source)
     return "".join(parts)
 
 

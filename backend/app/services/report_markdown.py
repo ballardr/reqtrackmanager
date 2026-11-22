@@ -11,6 +11,9 @@ Responsibilities:
 - `record_markdown_blocks` is the record reader's entry point: the stored value of a Markdown field of a record.
 - Draw a `mermaid` fenced block through `report_diagram` when a budget is given, else (or when it cannot be drawn) print
   its source as a labelled `CodeBlock`, so a report always carries the diagram's content.
+- Print a record's pictures (`![alt](attachment:<file id>)` on a paragraph of its own) as `Image` blocks with the caption
+  the text gave, through the run's resolver; a picture the resolver cannot supply (confidential, not a printable
+  picture, not an attachment of the record) prints as its alternative text.
 
 Design decisions:
 - **Two readers, one walk.** The author reader keeps the long-standing narrow inline reading of a layout's own text (no
@@ -19,7 +22,8 @@ Design decisions:
   (`markdown_text`: CommonMark with tables, raw HTML read as text, a single line break kept), so a record prints as it
   reads on screen. Only block structure is new for the author reader: fences, quotations, tables and nested lists.
 - **Nothing here produces markup.** The reader's tokens become model objects with plain text; each renderer escapes at its
-  own choke point. A link is kept only when `report_model.link_problem` allows it, and an image stays as the text typed.
+  own choke point. A link is kept only when `report_model.link_problem` allows it, and an image other than a record's own
+  attachment picture stays as the text typed.
 - **A value's own structure is bounded**: a document nested past the reader's limit is cut by the reader, a table is cut at
   `MAX_TABLE_ROWS` and `MAX_TABLE_COLUMNS`, and a diagram is drawn within the run's budget.
 - A heading inside a record's value is placed below the heading the report printed for the record: its level is shifted
@@ -30,12 +34,14 @@ Dependencies: `markdown-it-py`, `report_model` (blocks and the inline runs), `re
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
+from app.services.markdown_text import ATTACHMENT_SCHEME
 from app.services.report_diagram import DiagramBudget, DiagramError
 from app.services.report_model import (
     IMAGE_ONLY,
@@ -66,9 +72,11 @@ MAX_TABLE_COLUMNS = 12
 #: A table's header cells are shaded this grey.
 _HEADER_FILL = "#eeeeee"
 
-_record_reader = (
-    MarkdownIt("commonmark", {"html": False, "breaks": True, "maxNesting": _NESTING}).enable("table").disable("image")
-)
+_record_reader = MarkdownIt("commonmark", {"html": False, "breaks": True, "maxNesting": _NESTING}).enable("table")
+
+#: Supplies the picture of an attachment: `(file id)` to an `Image` (without alt or caption), or `None` when it cannot
+#: be printed (the run's own rules: confidential, not a printable picture, not the record's file).
+PictureResolver = Callable[[uuid.UUID], Image | None]
 
 
 @dataclass
@@ -83,6 +91,36 @@ class _Walk:
     heading_offset: int
     diagrams: DiagramBudget | None
     warn: Callable[[str], None]
+    pictures: PictureResolver | None = None
+
+
+def _picture(walk: _Walk, inline: Token) -> list[Block] | None:
+    """The blocks of a paragraph that holds only an attachment picture, or `None` when the paragraph is something else.
+
+    Args:
+        walk: The shared state (its resolver).
+        inline: The paragraph's `inline` token.
+
+    Returns:
+        The `Image` (with the text's alternative text and caption) and a gap, or the alternative text as a paragraph when
+        the picture cannot be printed (nothing when it has no alternative text either).
+    """
+    children = inline.children or []
+    if len(children) != 1 or children[0].type != "image":
+        return None
+    token = children[0]
+    source = str(token.attrGet("src") or "")
+    if not source.startswith(ATTACHMENT_SCHEME):
+        return None
+    alt = token.content
+    try:
+        file_id = uuid.UUID(source[len(ATTACHMENT_SCHEME):])
+    except ValueError:
+        return [Paragraph(alt), Gap(0.2)] if alt else []
+    image = walk.pictures(file_id) if walk.pictures is not None else None
+    if image is None:
+        return [Paragraph(alt), Gap(0.2)] if alt else []
+    return [replace(image, alt=alt, decorative=not alt, caption=str(token.attrGet("title") or "")), Gap(0.2)]
 
 
 def _close_of(tokens: list[Token], start: int) -> int:
@@ -236,7 +274,10 @@ def _walk_blocks(walk: _Walk, start: int, stop: int) -> list[Block]:
         elif kind == "paragraph_open":
             inline = tokens[index + 1]
             picture = IMAGE_ONLY.match(inline.content.strip()) if walk.resolve_images else None
-            if picture:
+            record_picture = None if walk.resolve_images else _picture(walk, inline)
+            if record_picture is not None:
+                blocks += record_picture
+            elif picture:
                 data = walk.images.get(picture.group(1))
                 if data:
                     blocks += [markdown_image(data), Gap(0.2)]
@@ -271,6 +312,7 @@ def _walk_blocks(walk: _Walk, start: int, stop: int) -> list[Block]:
 def _blocks(
     text: str, *, reader: MarkdownIt, author: bool, images: Mapping[str, bytes], placeholders: Mapping[str, str] | None,
     heading_offset: int, diagrams: DiagramBudget | None, warn: Callable[[str], None], math: bool,
+    pictures: PictureResolver | None = None,
 ) -> list[Block]:
     """Reads `text` and walks it; the shared body of the two entry points."""
     if not text.strip():
@@ -282,7 +324,7 @@ def _blocks(
     else:
         source, written = text, []
     tokens = reader.parse(source.replace("\r\n", "\n").replace("\r", "\n"))
-    walk = _Walk(tokens, written, placeholders, images, author, heading_offset, diagrams, warn)
+    walk = _Walk(tokens, written, placeholders, images, author, heading_offset, diagrams, warn, pictures)
     return _walk_blocks(walk, 0, len(tokens))
 
 
@@ -310,7 +352,7 @@ def author_blocks(
 
 def record_markdown_blocks(
     text: str, *, math: bool = False, heading_offset: int = 2, diagrams: DiagramBudget | None = None,
-    warn: Callable[[str], None] = lambda _message: None,
+    warn: Callable[[str], None] = lambda _message: None, pictures: PictureResolver | None = None,
 ) -> list[Block]:
     """The blocks of a record's Markdown field, read as the screen reads it.
 
@@ -320,14 +362,16 @@ def record_markdown_blocks(
         heading_offset: Added to each heading's level, so a `#` sits below the heading the report printed for the record.
         diagrams: The run's diagram budget; `None` prints a diagram as its source.
         warn: Receives a sentence for each diagram that could not be drawn and each table that was cut.
+        pictures: Supplies the pictures of the record's attachments; `None` prints each as its alternative text.
 
     Returns:
-        The blocks (empty for blank text); links are only the ones `link_problem` allows and an image stays as typed.
+        The blocks (empty for blank text); links are only the ones `link_problem` allows and an image that is not an
+        attachment picture stays as typed.
     """
     return _blocks(
         text, reader=_record_reader, author=False, images={}, placeholders=None, heading_offset=heading_offset,
-        diagrams=diagrams, warn=warn, math=math,
+        diagrams=diagrams, warn=warn, math=math, pictures=pictures,
     )
 
 
-__all__ = ["MAX_TABLE_COLUMNS", "MAX_TABLE_ROWS", "author_blocks", "record_markdown_blocks"]
+__all__ = ["MAX_TABLE_COLUMNS", "MAX_TABLE_ROWS", "PictureResolver", "author_blocks", "record_markdown_blocks"]

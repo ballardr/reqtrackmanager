@@ -21,11 +21,14 @@ from app.modules.product_feedback.models import (
     EnhancementRequestMerge,
     EnhancementRequestVersion,
 )
-from app.modules.registry import MarkdownField, markdown_columns
+from app.modules.registry import MarkdownField, MarkdownImages, markdown_columns
 from app.services.long_text_core import _CHANGE_NOTE, NOTE_LIMIT
 
 MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
-    *markdown_columns(EnhancementRequestVersion, "description", math=True),
+    *markdown_columns(
+        EnhancementRequestVersion, "description", math=True,
+        images=MarkdownImages("enhancement_request", EnhancementRequestVersion.request_id),
+    ),
     *markdown_columns(EnhancementRequestVersion, "decline_reason", limit=NOTE_LIMIT),
     *markdown_columns(EnhancementRequestComment, "body", limit=NOTE_LIMIT),
     *markdown_columns(EnhancementRequestInformed, "note", limit=NOTE_LIMIT),

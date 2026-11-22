@@ -26,16 +26,28 @@ from app.modules.context_strategy.models import (
     StrategyComment,
     StrategyVersion,
 )
-from app.modules.registry import MarkdownField, markdown_columns
+from app.modules.registry import MarkdownField, MarkdownImages, markdown_columns
 from app.services.long_text_core import _CHANGE_NOTE, _PICKER, NOTE_LIMIT
 
 MARKDOWN_FIELDS: tuple[MarkdownField, ...] = (
-    *markdown_columns(FutureStateVersion, "current_state", "desired_state", "outcomes", "success_measures", "constraints", "assumptions"),
-    *markdown_columns(GuidingPrincipleVersion, "principle_statement", "rationale"),
-    *markdown_columns(OpenQuestion, "question", "context", "evidence", math=True),
-    *markdown_columns(PainPoint, "description", "source", "impact", "evidence", math=True),
-    *markdown_columns(StrategyVersion,
+    *markdown_columns(
+        FutureStateVersion, "current_state", "desired_state", "outcomes", "success_measures", "constraints", "assumptions",
+        images=MarkdownImages("future_state", FutureStateVersion.future_state_id),
+    ),
+    *markdown_columns(
+        GuidingPrincipleVersion, "principle_statement", "rationale",
+        images=MarkdownImages("guiding_principle", GuidingPrincipleVersion.guiding_principle_id),
+    ),
+    *markdown_columns(
+        OpenQuestion, "question", "context", "evidence", math=True, images=MarkdownImages("open_question", OpenQuestion.id),
+    ),
+    *markdown_columns(
+        PainPoint, "description", "source", "impact", "evidence", math=True, images=MarkdownImages("pain_point", PainPoint.id),
+    ),
+    *markdown_columns(
+        StrategyVersion,
         "objective", "current_state", "desired_future_state", "rationale", "expected_outcomes", "constraints", "measures_of_success",
+        images=MarkdownImages("strategy", StrategyVersion.strategy_id),
     ),
     *markdown_columns(FutureStateComment, "body", limit=NOTE_LIMIT),
     *markdown_columns(GuidingPrincipleComment, "body", limit=NOTE_LIMIT),

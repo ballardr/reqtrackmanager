@@ -46,3 +46,10 @@ export const HostileMarkupIsOnlyText: Story = {
     await expect(markdownPlainText("")).toBe("");
   },
 };
+
+export const APictureIsItsAlternativeText: Story = {
+  play: async () => {
+    await expect(markdownPlainText("See ![the plot](attachment:3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f) here")).toBe("See the plot here");
+    await expect(markdownPlainText("![a \\[b\\] c](attachment:3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f)")).toBe("a [b] c");
+  },
+};

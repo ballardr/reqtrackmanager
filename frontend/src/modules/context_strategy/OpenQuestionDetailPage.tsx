@@ -204,8 +204,16 @@ export function OpenQuestionDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestion === null) return <Spinner />;
 
+  /** Attaches a file to this record: the Attachments card and the Markdown fields' Picture button share it. */
+  const uploadAttachment = async (file: File): Promise<FileAsset> => {
+    const asset = await projectOpenQuestionApi.uploadFile(projectId, openQuestion.id, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  };
+
   return (
     <DetailLayout
+      pictures={{ files, upload: openQuestion.is_locked ? undefined : uploadAttachment }}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} refreshToken={recordActivityKey(openQuestion)} /> : undefined}
       aside={
         <ArtefactLinksPanel
@@ -280,10 +288,7 @@ export function OpenQuestionDetailPage() {
             files={files}
             disabled={openQuestion.is_locked}
             emptyHint={openQuestion.is_locked ? "This Open Question has reached a terminal outcome; new evidence can no longer be added." : undefined}
-            onUpload={async (file) => {
-              const asset = await projectOpenQuestionApi.uploadFile(projectId, openQuestion.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
+            onUpload={async (file) => { await uploadAttachment(file); }}
             onRemove={async (fileId) => {
               await projectOpenQuestionApi.unlinkFile(projectId, openQuestion.id, fileId);
               setFiles((prev) => prev.filter((f) => f.id !== fileId));

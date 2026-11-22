@@ -188,6 +188,13 @@ export function ActionDetailPage() {
     reload();
   }
 
+  /** Attaches a picture file to this record for a Markdown field's Picture button; resolves to the new attachment. */
+  async function attachPicture(file: File): Promise<FileAsset> {
+    const asset = await api.postFile<FileAsset>(`/api/v1/projects/${projectId}/actions/${actionId}/files`, file);
+    setFiles((prev) => [...prev, asset]);
+    return asset;
+  }
+
   async function removeFile(fileId: string) {
     if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/actions/${actionId}/files/${fileId}`), "remove", "file"))) return;
     reload();
@@ -237,6 +244,7 @@ export function ActionDetailPage() {
 
   return (
     <DetailLayout
+      pictures={{ files, upload: attachPicture }}
       activity={projectId && actionId ? <RecordActivity projectId={projectId} artefactType="requirement_action" artefactId={actionId} refreshToken={recordActivityKey(action)} /> : undefined}
       contained={false}
       aside={

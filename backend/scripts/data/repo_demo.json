@@ -10064,7 +10064,7 @@
   },
   {
    "key": "aef733",
-   "title": "Platform review 2026-11-19: Module boundary",
+   "title": "Platform review 2026-11-19: Module boundary (Phase 3)",
    "statement": "Compliance's 14 types are members of core's enum, so Compliance declares their kinds (`ModuleDefinition.notification_targets`, placed before core's for a type both declare, which is how a standard grant opens the standard) and the two kinds only it can open (`notification_target_kinds`, resolved by `TierAModuleDefinition.notificationTargets`).",
    "rationale": "Risk's types carry `target_kinds`. No core file names a module's page, and no per-module value was added to a core enum or map.",
    "type": "Design",

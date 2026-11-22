@@ -11,7 +11,9 @@
  * Design decisions:
  * - Raw HTML is off (it is read as text), and nothing here produces HTML: the reader's tokens are the only output,
  *   so a stored value can never run as markup.
- * - A link must be https, http or mailto; any other address (a script, a relative path) is left as the text typed.
+ * - A link must be https, http or mailto; any other address (a script, a relative path) is left as the text typed. The one
+ *   other address the reader accepts is a picture of the record's own attachment (`attachment:<file id>`,
+ *   `utils/markdownPicture`), which only `MarkdownView` draws, and only as an image: as a link it is shown as its text.
  * - A single line break is kept (`breaks`), because existing plain text relied on it, and nesting is capped at the
  *   reader's own limit of 100 levels (deeper content is not read, which the server's validation refuses), so a
  *   hostile document cannot exhaust the stack.
@@ -21,13 +23,14 @@
 import MarkdownItReader, { type MarkdownIt, type Token } from "markdown-it";
 
 import { mathPlugin } from "./markdownMath";
+import { attachmentFileId } from "./markdownPicture";
 
 /** Addresses that may be a link. */
 export const SAFE_LINK = /^(https?:|mailto:)/i;
 
 function createReader(): MarkdownIt {
   const instance = new MarkdownItReader({ html: false, linkify: false, breaks: true, typographer: false, maxNesting: 100 });
-  instance.validateLink = (url) => SAFE_LINK.test(url.trim());
+  instance.validateLink = (url) => SAFE_LINK.test(url.trim()) || attachmentFileId(url) !== null;
   return instance;
 }
 

@@ -1190,6 +1190,11 @@ def set_aside(text: str, *, escapes: bool = True) -> tuple[str, list[str]]:
     return "".join(kept), written
 
 
+def restore_set_aside(text: str, written: list[str]) -> str:
+    """`text` with each marker `set_aside` left put back as what it stood for (an equation as written, an escaped character bare)."""
+    return _MATH_MARK.sub(lambda match: written[int(match.group(1))], text)
+
+
 def inline_parts(
     token, written: list[str], placeholders: Mapping[str, str] | None,
 ) -> list[str | Styled]:
@@ -1242,6 +1247,10 @@ def inline_parts(
                 add("\n", href)
             elif kind == "code_inline":
                 add(child.content, href, code=True)
+            elif kind == "image":
+                # A record's attachment picture in a sentence prints as its alternative text; any other image stays as typed.
+                source = str(child.attrGet("src") or "")
+                add(child.content if source.startswith("attachment:") else f"![{child.content}]({source})", href)
             elif kind == "strong_open":
                 bold += 1
             elif kind == "strong_close":

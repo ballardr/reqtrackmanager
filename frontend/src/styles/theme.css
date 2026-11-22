@@ -4325,6 +4325,26 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 /* The equation panel's live preview: the equation as readers see it, centred, wide formulas scrolling inside. */
 .math-edit__preview { min-height: 3rem; display: flex; align-items: center; justify-content: center; overflow-x: auto; padding: var(--space-2); }
+/* A picture in a record's Markdown text (an attachment): never wider than its text, capped in height, framed so a
+   missing file is a visible, labelled gap and not an empty line. */
+.markdown-picture { max-width: 100%; max-height: 28rem; height: auto; vertical-align: middle; border-radius: var(--radius-sm, 3px); }
+.markdown-picture--missing { display: inline-block; padding: var(--space-1) var(--space-2); border: 1px dashed var(--color-border); color: var(--color-text-muted); }
+.markdown-view .markdown-figure { margin: 0 0 var(--space-2); }
+.markdown-view figcaption { color: var(--color-text-muted); font-size: 0.85rem; margin-top: var(--space-1); }
+/* A picture in the Visual view: the whole picture is the pressable area, as an equation is. */
+.visual-picture { display: inline-block; max-width: 100%; }
+.visual-picture__button { display: inline-block; max-width: 100%; padding: 2px; border: 0; background: none; cursor: pointer; border-radius: var(--radius-sm, 3px); }
+.visual-picture__button:hover, .visual-picture__button:focus-visible, .visual-picture.is-selected .visual-picture__button {
+  background: var(--color-surface-alt);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+/* The picture panel: the record's pictures as a grid of thumbnails, one choice per button. */
+.picture-picker__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: var(--space-2); max-height: 16rem; overflow-y: auto; }
+.picture-picker__choice { display: flex; flex-direction: column; gap: var(--space-1); align-items: center; padding: var(--space-1); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 3px); background: var(--color-surface); cursor: pointer; font-size: 0.8rem; text-align: center; overflow-wrap: anywhere; }
+.picture-picker__choice:hover, .picture-picker__choice:focus-visible, .picture-picker__choice[aria-pressed="true"] { border-color: var(--color-accent); outline: 2px solid var(--color-accent); outline-offset: -1px; }
+.picture-picker__thumb { width: 100%; height: 4.5rem; object-fit: contain; }
+.picture-picker__preview { max-width: 100%; max-height: 8rem; object-fit: contain; align-self: center; }
 .visual-diagram-block { margin: 0 0 var(--space-2); }
 .visual-diagram-block pre { margin-bottom: var(--space-1); }
 

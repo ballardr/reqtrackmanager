@@ -5,19 +5,23 @@
  *
  * Responsibilities:
  * - Turn the reader's tokens (`utils/markdownIt`) into React elements: headings, paragraphs, lists, quotations,
- *   tables, code, rules, emphasis, links, a fenced `mermaid` block as a diagram (`MermaidDiagram`) and, when asked
- *   (`math`), an equation (`MathEquation`).
+ *   tables, code, rules, emphasis, links, a fenced `mermaid` block as a diagram (`MermaidDiagram`), a picture of the
+ *   record's own attachment (`MarkdownPicture`) and, when asked (`math`), an equation (`MathEquation`).
  *
  * Design decisions:
  * - Nothing is inserted as HTML (as `PolicyBodyView`), so stored text can never run as markup; raw HTML in the text
- *   is shown as text, an image is shown as the text typed, and only https, http and mailto addresses are links.
+ *   is shown as text, only https, http and mailto addresses are links, and the only image drawn is an attachment of the
+ *   record (`attachment:<file id>`); any other image (an outside address) is shown as the text typed.
  * - Headings start at the third level (`#` is an `h3`), because the page that shows the text already owns the first
  *   two; deeper levels stop at the sixth.
  * - A link opens in a new tab with `rel="noopener noreferrer"`.
  */
 import { Fragment, lazy, Suspense, useMemo, type ReactNode } from "react";
 
-import { isMermaidFence, parseMarkdown, type Token } from "../utils/markdownIt";
+import { isMermaidFence, parseMarkdown, SAFE_LINK, type Token } from "../utils/markdownIt";
+import { attachmentFileId } from "../utils/markdownPicture";
+import { imageAlt } from "../utils/markdownPlain";
+import { MarkdownPicture } from "./MarkdownPicture";
 import { MermaidDiagram } from "./MermaidDiagram";
 
 // KaTeX is downloaded when a document with an equation is first shown, not with every page that shows Markdown.
@@ -79,7 +83,16 @@ function renderNode(node: Node, key: string): ReactNode {
         </Suspense>
       );
     }
-    case "paragraph_open": return token.hidden ? <Fragment key={key}>{children()}</Fragment> : <p key={key}>{children()}</p>;
+    case "paragraph_open": {
+      if (token.hidden) return <Fragment key={key}>{children()}</Fragment>;
+      // A paragraph that is only a picture is a figure (a figure cannot sit inside a paragraph).
+      const only = node.children[0]?.token.children;
+      const picture = only?.length === 1 && only[0].type === "image" ? attachmentFileId(String(only[0].attrGet("src") ?? "")) : null;
+      if (picture && only) {
+        return <MarkdownPicture key={key} fileId={picture} alt={imageAlt(only[0])} caption={String(only[0].attrGet("title") ?? "")} block />;
+      }
+      return <p key={key}>{children()}</p>;
+    }
     case "heading_open": {
       const level = Math.min(Number(token.tag.slice(1)) + 2, 6);
       const Tag = `h${level}` as "h3";
@@ -100,10 +113,17 @@ function renderNode(node: Node, key: string): ReactNode {
     case "s_open": return <s key={key}>{children()}</s>;
     case "link_open": {
       const href = String(token.attrGet("href") ?? "");
+      // The reader also accepts an attachment address (for a picture); as a link it is only its text.
+      if (!SAFE_LINK.test(href)) return <Fragment key={key}>{children()}</Fragment>;
       return <a key={key} href={href} target="_blank" rel="noopener noreferrer">{children()}</a>;
     }
     case "hr": return <hr key={key} />;
-    case "image": return <Fragment key={key}>{`![${token.content}](${String(token.attrGet("src") ?? "")})`}</Fragment>;
+    case "image": {
+      const src = String(token.attrGet("src") ?? "");
+      const fileId = attachmentFileId(src);
+      if (fileId === null) return <Fragment key={key}>{`![${token.content}](${src})`}</Fragment>;
+      return <MarkdownPicture key={key} fileId={fileId} alt={imageAlt(token)} caption={String(token.attrGet("title") ?? "")} />;
+    }
     case "fence":
     case "code_block": {
       if (isMermaidFence(token)) return <MermaidDiagram key={key} source={token.content} />;

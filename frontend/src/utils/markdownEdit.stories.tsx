@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { applyMarkdownFormat } from "./markdownEdit";
+import { applyMarkdownFormat, insertMarkdownPicture } from "./markdownEdit";
 
 /** The pure text edits behind the Markdown editor's toolbar. */
 const meta: Meta = { title: "Utils/markdownEdit", render: () => <p>Pure helpers; see the interactions.</p> };
@@ -49,5 +49,17 @@ export const BlocksStartOnTheirOwnLine: Story = {
     const code = applyMarkdownFormat("x = 1", 0, 5, "code");
     await expect(code.value).toBe("```\nx = 1\n```");
     await expect(code.value.slice(code.selectionStart, code.selectionEnd)).toBe("x = 1");
+  },
+};
+
+export const APictureIsInsertedAsAParagraphOfItsOwn: Story = {
+  play: async () => {
+    const picture = { fileId: "3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f", alt: "A plot", caption: "Figure 1" };
+    const source = '![A plot](attachment:3f2c9a52-6c1e-4f6e-9b7a-0a1b2c3d4e5f "Figure 1")';
+    const inserted = insertMarkdownPicture("Intro", 5, 5, picture);
+    await expect(inserted.value).toBe(`Intro\n\n${source}`);
+    await expect(inserted.selectionStart).toBe(inserted.value.length);
+    // It replaces the selection and leaves the text around it as paragraphs.
+    await expect(insertMarkdownPicture("a selected b", 2, 10, picture).value).toBe(`a \n\n${source}\n\n b`);
   },
 };

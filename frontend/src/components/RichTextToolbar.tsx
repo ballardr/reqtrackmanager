@@ -7,7 +7,8 @@
  * - Offer the marks and blocks every rich text field has (bold, italic, headings 1 to 3, lists, quotation, rule,
  *   link, undo, redo), each shown pressed while it applies at the cursor.
  * - Offer the extras a field opts into through `features`: inline code, code block, table (with row and column
- *   actions while the cursor is in one), diagram and equations (Inline equation and Equation block).
+ *   actions while the cursor is in one), diagram, equations (Inline equation and Equation block) and a picture of the
+ *   record's own attachment (`PictureToolbarButton`, shown only inside a record page that supplies pictures).
  * - Edit a link in a field under the toolbar rather than a browser prompt, accepting https, http and mailto only.
  *
  * Design decisions:
@@ -31,7 +32,9 @@ import { useState } from "react";
 import { useStrings } from "../context/TerminologyContext";
 import { SAFE_LINK } from "../utils/markdownIt";
 import { DIAGRAM_TEMPLATE } from "../utils/markdownEdit";
+import { insertPicture } from "../utils/visualImageNode";
 import { MathToolbarButton } from "./MathEditPopover";
+import { PictureToolbarButton } from "./PicturePicker";
 import { ToolbarButton } from "./ToolbarButton";
 
 /** The optional parts of the toolbar; each needs the matching extension in the editor. */
@@ -42,6 +45,8 @@ export interface RichTextFeatures {
   diagram?: boolean;
   /** Equations; the editor must have the equation node (`utils/visualMathNode`). */
   math?: boolean;
+  /** Pictures; the editor must have the picture node (`utils/visualImageNode`). */
+  picture?: boolean;
 }
 
 /**
@@ -131,6 +136,7 @@ export function RichTextToolbar({ editor, features = {}, disabled }: { editor: E
             <MathToolbarButton display readSelection={selectedText} onApply={insertMath} disabled={disabled} />
           </>
         )}
+        {features.picture && <PictureToolbarButton disabled={disabled} onInsert={(choice) => insertPicture(editor, choice)} />}
         {separator}
         {button(Undo2, text.undo, () => chain().undo().run(), undefined, !state.canUndo)}
         {button(Redo2, text.redo, () => chain().redo().run(), undefined, !state.canRedo)}

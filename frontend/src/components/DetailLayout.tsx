@@ -24,6 +24,9 @@
  * - The content is drawn in the default card order (`detailCardOrder`: header, details and purpose cards, organising,
  *   supporting, discussion last), so a card added later lands in its place; pass cards directly, not inside a wrapper.
  *
+ * - A page whose record has attachments passes `pictures` (its attachment list and upload): the Markdown fields in its
+ *   content (the edit form included) then offer a Picture button that inserts one of the record's attachments.
+ *
  * Renders its own `.container` (unless `contained` is false, for a page that already
  * sits in a content wrapper), so a page replaces its root `<div className="container
  * stack">` with this component.
@@ -36,6 +39,8 @@ import { useUiPreference } from "../hooks/useUiPreference";
 import { useStrings } from "../context/TerminologyContext";
 import { DetailAsideProvider } from "./detailAsideContext";
 import { orderDetailChildren } from "./detailCardOrder";
+import { MarkdownImageSourceProvider } from "./MarkdownImageSource";
+import type { MarkdownImageSource } from "./markdownImageSourceContext";
 import { Tabs, tabPanelProps } from "./Tabs";
 
 type AsideTab = string;
@@ -64,6 +69,8 @@ export const DETAIL_ASIDE_BREAKPOINT_PX = 1279;
  * @param asideLabel Accessible name for the aside and its toggle (default "Links").
  * @param orderCards Draw the cards in the default order (default). False for a page whose person arranges the sections (the request page), which keeps the order it is given; the page states why.
  * @param contained Wrap in `.container` (default); false for a page already inside a wrapper.
+ * @param pictures The record's attachments and upload, for the Picture button of the page's Markdown fields; omitted for a
+ *   record with no attachments.
  */
 export function DetailLayout({
   children,
@@ -73,6 +80,7 @@ export function DetailLayout({
   asideLabel,
   orderCards = true,
   contained = true,
+  pictures,
 }: {
   children: ReactNode;
   aside?: ReactNode;
@@ -81,6 +89,7 @@ export function DetailLayout({
   asideLabel?: string;
   orderCards?: boolean;
   contained?: boolean;
+  pictures?: MarkdownImageSource;
 }) {
   const strings = useStrings();
   const narrow = useNarrowViewport(DETAIL_ASIDE_BREAKPOINT_PX);
@@ -90,7 +99,8 @@ export function DetailLayout({
   const offered = [...(activity ? ["activity"] : []), ...extraTabs.map((extra) => extra.key)];
   const tab: AsideTab = offered.includes(storedTab) ? storedTab : "links";
   const tabbed = activity || extraTabs.length > 0;
-  const content = orderCards ? orderDetailChildren(children) : children;
+  const ordered = orderCards ? orderDetailChildren(children) : children;
+  const content = pictures ? <MarkdownImageSourceProvider files={pictures.files} upload={pictures.upload}>{ordered}</MarkdownImageSourceProvider> : ordered;
 
   if (aside === undefined || aside === null) {
     return <div className={contained ? "container stack" : "stack"}>{content}</div>;

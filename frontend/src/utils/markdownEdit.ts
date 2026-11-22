@@ -11,6 +11,7 @@
  *   cursor was.
  */
 
+import { pictureMarkdown } from "./markdownPicture";
 import { equationMarkdown } from "./visualMathNode";
 
 export type MarkdownFormat =
@@ -108,4 +109,20 @@ export function insertMarkdownMath(value: string, start: number, end: number, te
   if (display) return insertBlock(value, start, end, source, [source.length, source.length]);
   const next = value.slice(0, start) + source + value.slice(end);
   return { value: next, selectionStart: start + source.length, selectionEnd: start + source.length };
+}
+
+/**
+ * Replaces the selection with a picture of the record's own attachment, as a paragraph of its own.
+ *
+ * @param value The current text.
+ * @param start Selection start (a character offset).
+ * @param end Selection end.
+ * @param picture The attachment's file id and the picture's alternative text and caption.
+ * @returns The new text, with the cursor after the picture.
+ */
+export function insertMarkdownPicture(
+  value: string, start: number, end: number, picture: { fileId: string; alt: string; caption: string },
+): EditResult {
+  const source = pictureMarkdown(picture.fileId, picture.alt, picture.caption);
+  return insertBlock(value, start, end, source, [source.length, source.length]);
 }

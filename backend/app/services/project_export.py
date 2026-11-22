@@ -136,6 +136,7 @@ from app.services.files import read_file, resolve_bundle_files
 from app.services.imported_people import PeopleChoices, PersonPreview, classify_people, people_section
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
+from app.services.markdown_images import importing_images
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.project_actions_bundle import export_project_actions, import_project_action_types, import_project_actions
@@ -719,6 +720,17 @@ def new_project_from_bundle_data(
 
 
 def apply_project_data(
+    db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes],
+    current_user: User, users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """Reconstructs a project from a bundle and carries the pictures in its Markdown text over (`_apply_project_data`
+    does the reconstruction; the pictures' file ids are rewritten once the records and their attachments exist)."""
+    with importing_images(file_bytes_by_ref) as pictures:
+        _apply_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+        pictures.finish(db)
+
+
+def _apply_project_data(
     db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes],
     current_user: User, users: UserResolver, warnings: BundleImportWarnings,
 ) -> None:

@@ -7,7 +7,10 @@ Responsibilities:
 - Resolve the registry's `MarkdownField` declarations into `{model class: {attribute: field}}` and the inventory rows
   (`declared_columns`, `column_key`).
 - Check, in a session `before_flush` hook, each new or changed declared attribute against `validate_markdown` (size,
-  nesting, diagram count and size, control characters) and refuse the write with a 422 naming the field.
+  nesting, diagram count and size, control characters, pictures) and refuse the write with a 422 naming the field.
+  A picture (`![alt](attachment:<file id>)`) is allowed only in a field that declares `MarkdownImages`, and only for a
+  file attached to the record that holds the text (`services.markdown_images`); a bundle import defers that check until
+  its attachments exist.
 
 Design decisions:
 - One hook instead of a validator per request schema: an endpoint, a file import, a project bundle import, an MCP tool
@@ -30,10 +33,11 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import event, inspect
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.modules.registry import MarkdownField, get_markdown_fields
-from app.services.markdown_text import MarkdownLimitError, validate_markdown
+from app.services import markdown_images
+from app.services.markdown_text import MarkdownLimitError, check_images, validate_markdown
 
 _lock = threading.Lock()
 _by_class: dict[type, dict[str, MarkdownField]] | None = None
@@ -104,10 +108,22 @@ def check_instance(instance: Any, declared: dict[str, MarkdownField], *, only_ch
         value = getattr(instance, name, None)
         if not value:
             continue
+        label = name.replace("_", " ").capitalize()
         try:
-            validate_markdown(value, max_chars=field.limit, field=name.replace("_", " ").capitalize())
+            validate_markdown(value, max_chars=field.limit, field=label)
+            pictures = check_images(value, allowed=field.images is not None, field=label)
         except MarkdownLimitError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        if pictures:
+            importing = markdown_images.active_import()
+            session = object_session(instance)
+            if importing is not None:
+                importing.defer(instance, name, field)
+            elif session is not None:
+                before = state.attrs[name].history.deleted if only_changed else ()
+                markdown_images.require_attached(
+                    session, field, instance, value, name=label, unchanged=str(before[0]) if before and before[0] else "",
+                )
 
 
 def _before_flush(session: Session, _context: Any, _instances: Any) -> None:

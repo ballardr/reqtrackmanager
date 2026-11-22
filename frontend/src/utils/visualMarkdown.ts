@@ -5,8 +5,8 @@
  * from changing a text it cannot hold.
  *
  * Responsibilities:
- * - Build the editor's extension set: paragraphs, headings, lists, quotations, emphasis, links, code, tables and a
- *   horizontal rule, with Markdown as the stored format (`@tiptap/markdown`).
+ * - Build the editor's extension set: paragraphs, headings, lists, quotations, emphasis, links, code, tables, a
+ *   horizontal rule and a picture of the record's own attachment, with Markdown as the stored format (`@tiptap/markdown`).
  * - Correct the three places where the editor's Markdown writer changes meaning: a paragraph that starts like a
  *   block (`1.`, `#`, `-`, `>`), a code block whose text contains a fence, and an empty paragraph.
  * - Compare two Markdown texts by what the reader (`utils/markdownIt`) makes of them, so a round trip through the
@@ -14,8 +14,9 @@
  *
  * Design decisions:
  * - The stored value is Markdown source, written by the editor only after a person edits. Opening a text never
- *   writes it back, and a text the editor cannot reproduce (HTML, an image, a footnote, a task list, mathematics, two
- *   adjacent lists with different markers) is reported as a blocker so the field stays in Write view.
+ *   writes it back, and a text the editor cannot reproduce (HTML, an image with an outside address, a footnote, a task
+ *   list, mathematics, two adjacent lists with different markers) is reported as a blocker so the field stays in Write
+ *   view. A picture of an attachment (`utils/visualImageNode`) is an indivisible node, so it is not a blocker.
  * - TipTap's paste rules for bold, italic, strike-through and code are off: they would format `**text**` the moment it
  *   is pasted, leaving the conversion offer (`VisualMarkdownEditor`) nothing to convert and no way to keep the text
  *   as typed. Typing `**text**` still formats through the input rules.
@@ -40,6 +41,7 @@ import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 
 import { parseMarkdown, SAFE_LINK } from "./markdownIt";
+import { PictureNode } from "./visualImageNode";
 import { MathNode } from "./visualMathNode";
 
 /** Why a text cannot be edited visually: it has mathematics, or formatting the editor would change. */
@@ -95,9 +97,12 @@ const InlineMarks = [Bold, Italic, Strike, Code].map((mark) => mark.extend({ add
  * @param codeBlock The code block extension (the editor passes one with its diagram view).
  * @param mathNode The equation node, for a field that holds mathematics (the editor passes one with its view); none
  *   leaves equations as ordinary text.
+ * @param pictureNode The picture node (the editor passes one with its view).
  * @returns The extensions of the visual Markdown editor.
  */
-export function visualMarkdownExtensions(codeBlock: AnyExtension = MarkdownCodeBlock, mathNode: AnyExtension | null = null): AnyExtension[] {
+export function visualMarkdownExtensions(
+  codeBlock: AnyExtension = MarkdownCodeBlock, mathNode: AnyExtension | null = null, pictureNode: AnyExtension = PictureNode,
+): AnyExtension[] {
   return [
     StarterKit.configure({
       underline: false, paragraph: false, codeBlock: false, bold: false, italic: false, strike: false, code: false,
@@ -108,6 +113,7 @@ export function visualMarkdownExtensions(codeBlock: AnyExtension = MarkdownCodeB
     codeBlock,
     TableKit.configure({ table: { resizable: false } }),
     ...(mathNode ? [mathNode] : []),
+    pictureNode,
     Markdown,
   ];
 }

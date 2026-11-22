@@ -3823,7 +3823,7 @@ def main() -> None:
     )
     create_decision_supersession(h_pm, drone["id"], dual_fc_decision["id"], single_fc_decision["id"])
     print("  Leaving a third Decision in Draft (undecided) — demonstrates the list's mixed-status filtering...")
-    create_decision(
+    ota_decision = create_decision(
         h_pm, drone["id"], title="Migrate firmware OTA update channel to signed images",
         decision_statement="Not yet decided — evaluating whether to require cryptographically signed"
         " firmware images for over-the-air updates before the next fleet-wide rollout.",
@@ -3831,6 +3831,17 @@ def main() -> None:
         context="Current OTA channel accepts unsigned images verified only by a checksum, adequate for an"
         " internal test fleet but not for a customer-operated one.",
     )
+    # A picture inside a Decision's text is one of the Decision's own attachments, drawn on its page and in reports.
+    diagram = attach_picture(h_pm, drone["id"], f"modules/decisions/{ota_decision['id']}", ARCHITECTURE_DIAGRAM)
+    httpx.put(
+        f"{BASE}/projects/{drone['id']}/modules/decisions/{ota_decision['id']}",
+        json={
+            **ota_decision,
+            "options_considered": "(1) Keep checksum-only images. (2) Sign every image and verify on the flight controller.\n\n"
+            f"![Flight controller architecture](attachment:{diagram['id']} \"Figure 1: where an image is verified\")",
+        },
+        headers=h_pm, timeout=30,
+    ).raise_for_status()
     print("  Two Decisions waiting for a verdict (one with no decision maker) — feeds the Approval ageing report...")
     modem_decision = create_decision(
         h_pm, drone["id"], title="Select the cellular modem vendor for Falcon-3 telemetry",
