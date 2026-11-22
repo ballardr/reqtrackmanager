@@ -28,6 +28,7 @@ import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { useNavLabelOverride } from "../context/NavLabelValue";
 import { listBackTarget } from "../hooks/useListPosition";
 import { ItemRow } from "./ItemRow";
+import { withDetailRank } from "./detailCardOrder";
 
 /** Leading arrow of the back link; drawn here so every page reads the same. */
 const BACK_ARROW = "← ";
@@ -144,3 +145,5 @@ export function RecordHeader({
     </header>
   );
 }
+
+withDetailRank(RecordHeader, "header");

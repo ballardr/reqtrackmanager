@@ -472,6 +472,8 @@ export function RequestDetailPage() {
 
   return (
     <DetailLayout
+      // The sections are arranged by the person or the project (`requestSections`), so the page keeps that order instead of the default card order.
+      orderCards={false}
       activity={projectId ? <RecordActivity projectId={projectId} artefactType="enhancement_request" artefactId={request.id} refreshToken={recordActivityKey(request)} /> : undefined}
       aside={
         <ArtefactLinksPanel

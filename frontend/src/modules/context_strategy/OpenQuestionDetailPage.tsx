@@ -263,7 +263,6 @@ export function OpenQuestionDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
           {openQuestion.context && <RecordField markdown label="Context" value={openQuestion.context} />}
@@ -276,7 +275,7 @@ export function OpenQuestionDetailPage() {
         </DetailCard>
 
 
-        <DetailCard heading="Evidence">
+        <DetailCard heading="Evidence" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={openQuestion.is_locked}
@@ -313,7 +312,6 @@ export function OpenQuestionDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <OpenQuestionFormModal

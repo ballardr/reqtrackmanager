@@ -121,7 +121,6 @@ export function EvidenceDetailPage() {
         transitions={<button className="btn" onClick={() => setRevalidating(true)}>Revalidate</button>}
       />
       {archive.dialog}
-      <div className="stack">
         <DetailCard>
           {evidence.description ? <MarkdownView text={evidence.description} /> : <p style={{ margin: 0 }}><span className="text-muted">No description.</span></p>}
           {evidence.issuing_organisation && <RecordField label="Issuing organisation" value={evidence.issuing_organisation} />}
@@ -130,7 +129,7 @@ export function EvidenceDetailPage() {
         </DetailCard>
 
         {revalidations.length > 0 && (
-          <DetailCard heading="Revalidation history">
+          <DetailCard heading="Revalidation history" rank="supporting">
             <ul style={{ listStyle: "none", margin: 0, padding: 0, fontSize: "0.85rem" }}>
               {revalidations.map((r) => (
                 <li key={r.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
@@ -144,6 +143,7 @@ export function EvidenceDetailPage() {
 
         <DetailCard
           heading="Files"
+          rank="supporting"
           action={
             <button className="btn" onClick={() => setShowResourcePicker(true)}>
               <FolderOpen /> Link from shared resources
@@ -162,7 +162,6 @@ export function EvidenceDetailPage() {
             }}
           />
         </DetailCard>
-      </div>
 
       {showResourcePicker && (
         <ResourcePickerModal

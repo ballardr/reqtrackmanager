@@ -17,6 +17,7 @@ import { MarkdownView } from "./MarkdownView";
 import type { FieldHelpProps } from "./FieldHelp";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { PrincipalPicker } from "./PrincipalPicker";
+import { withDetailRank } from "./detailCardOrder";
 
 /**
  * A labelled, multi-line read-only value; `markdown` shows `value` formatted (`MarkdownView`) instead of as typed, and
@@ -129,3 +130,5 @@ export function VersionHistoryTable<V extends { id: string; version_number: numb
     </DetailCard>
   );
 }
+
+withDetailRank(VersionHistoryTable, "supporting");

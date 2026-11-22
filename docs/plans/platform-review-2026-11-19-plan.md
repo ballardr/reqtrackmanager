@@ -1,12 +1,12 @@
 # Platform Review 19 November 2026 — Plan
 
-**Status:** in progress (phases 1 to 33 done 2026-11-22; phases 34 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
+**Status:** in progress (phases 1 to 34 done 2026-11-22; phases 35 to 41 added 2026-11-22 from a review of the running stack, not started). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`; an Agent decision can be revisited on its own judgement, a User decision needs the user's sign-off to change.
 
 Source: seven review notes, then fifteen items from the user's review of the running stack on 2026-11-22 (phases 28 to 41; item 3 and 4 of that list share phase 30). Each was checked against the code before planning. Four have an objection or a correction recorded under "Findings and objections"; read that section first.
 
 ## Status / Resume Here
 
-33 / 46 phases complete.
+34 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -43,7 +43,7 @@ Source: seven review notes, then fifteen items from the user's review of the run
 | 31 | Record codes settings: sections by module | Organisation and project pages: remove the wasted space and group the long list under Core and each module | [x] |
 | 32 | Stage workflow editor: one line per stage | The edit dialog rebuilt as a compact aligned list, one line per stage, with inline controls | [x] |
 | 33 | Administration section list scrolls separately | The section selector of the administration pages scrolls on its own, and a chosen section opens at its top | [x] |
-| 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [ ] |
+| 34 | Record detail card order: a rule and the fixes | Components and codes sits above discussion; a sane default card order stated as a rule in `CLAUDE.md` and the style guide, and applied to every detail page | [x] |
 | 35 | Tree selector: chevron styling and placement | The expand chevron loses its button styling; placement of chevron and checkbox reviewed | [ ] |
 | 36 | Requirements: Make change request in the actions menu | The action moves from the page into the record's action menu | [ ] |
 | 37 | Text styling toolbar: compact, and a mathematics button | Smaller toolbar buttons; a decision gate on a mathematics button and how it works | [ ] |
@@ -530,6 +530,8 @@ Raised by the user while reviewing the running stack after phase 27. Each item w
 - Rule (**Decided by: User** for the rule; **Decided by: Agent** for the wording): on a record's detail page, cards run from what the record is to what is least often needed: the record's own details first, then the information most relevant to the card's purpose, then supporting and organising information (components and codes, tags, external references), then links, watching and activity, and **comments or discussion last**, because a thread can grow long and must not need scrolling past to reach other information. A new card is placed by this order, never at the top by default; a deviation is stated on the page. Added to `docs/ux-style-guide.md` and as one line in `CLAUDE.md`.
 - Apply: review every record detail page (core and module `DetailLayout` users) and list its card order against the rule; fix each one that deviates, starting with Components and codes above discussion. The order is expressed once, through `DetailLayout` slots or an order field on the shared cards, not by editing each page's markup, so a later card lands in a sane place.
 - Tests: Storybook for a detail page with every card; a test that comments are the last card of every detail page that has them.
+
+- As built (**Decided by: User** for the rule, **Decided by: Agent** for the rest): `components/detailCardOrder.ts` gives five ranks (`header`, `body`, `organising`, `supporting`, `discussion`); `DetailLayout` sorts its children by each card's `rank` prop or its component's static rank, so the order is written once. The wrapper `div` on 18 pages was removed, Versions and Attachments cards are `supporting`, comment cards `discussion`, `RequirementPlaces` `organising`. The request page, whose sections the person arranges, passes `orderCards={false}`. `scripts/check_detail_card_order.py` guards it (empty baseline). Five stale type-vocabulary stories were fixed on the way. See `docs/decisions.md` and the style guide's "Pattern: detail page card order".
 
 ### Phase 35 — Tree selector: chevron styling and placement
 

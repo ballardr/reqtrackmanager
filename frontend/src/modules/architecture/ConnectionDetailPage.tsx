@@ -172,7 +172,6 @@ export function ConnectionDetailPage() {
       />
       {archive.dialog}
       {remove.dialog}
-      <div className="stack">
         <DetailCard>
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup helpNotNeeded label="Source">
@@ -204,7 +203,6 @@ export function ConnectionDetailPage() {
         )}
 
         <RecordCommentsCards projectId={projectId} artefactType="architecture_connection" recordId={connection.id} currentUserId={user?.id} />
-      </div>
 
       {editing && (
         <ConnectionFormModal

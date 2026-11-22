@@ -293,7 +293,6 @@ export function StakeholderDetailPage() {
       {archive.dialog}
       {eraseAction.dialog}
 
-      <div className="stack">
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Stakeholder shared by every project. Edit it from the{" "}
@@ -411,7 +410,6 @@ export function StakeholderDetailPage() {
           attachmentsReadOnly={readOnlyInProject}
           attachmentsHint="Attachments to an organisation Stakeholder are managed from the organisation view."
         />
-      </div>
 
       {editing && (
         <StakeholderFormModal

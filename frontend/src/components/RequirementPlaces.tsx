@@ -34,6 +34,7 @@ import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { PlacementPicker } from "./PlacementPicker";
 import { RecordCode } from "./RecordCode";
+import { withDetailRank } from "./detailCardOrder";
 
 type Dialog =
   | { kind: "remove"; alias: RequirementAlias }
@@ -261,3 +262,5 @@ export function RequirementPlaces({
     </DetailCard>
   );
 }
+
+withDetailRank(RequirementPlaces, "organising");

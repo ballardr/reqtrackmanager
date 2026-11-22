@@ -176,6 +176,19 @@ export const ListsTheCodesOfTheComponentsARequirementSitsIn: Story = {
   },
 };
 
+/** Components and codes sits below the requirement's own details and above the discussion, which is last. */
+export const ComponentsAndCodesSitsBelowTheDetailsAndAboveTheDiscussion: Story = {
+  beforeEach: ListsTheCodesOfTheComponentsARequirementSitsIn.beforeEach,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: "Components and codes" });
+    const headings = canvas.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    await expect(headings.indexOf("Details")).toBeLessThan(headings.indexOf("Components and codes"));
+    await expect(headings.indexOf("Components and codes")).toBeLessThan(headings.indexOf("Versions"));
+    await expect(headings[headings.length - 1]).toBe("Discussion");
+  },
+};
+
 /** A record that cannot be loaded says so, instead of leaving the spinner up. */
 export const UnavailableRequirementShowsNotFound: Story = {
   beforeEach: () => {

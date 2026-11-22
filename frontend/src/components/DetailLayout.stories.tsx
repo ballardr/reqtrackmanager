@@ -4,6 +4,7 @@ import { expect, userEvent, within } from "storybook/test";
 import { buildGraph, buildLinksApi, LINKS_ARTEFACT_ID, LINKS_PROJECT_ID } from "../testing/artefactLinksFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
+import { DetailCard } from "./DetailCard";
 import { DetailLayout } from "./DetailLayout";
 
 /**
@@ -134,5 +135,49 @@ export const CollapsedAsideHasNoCard: Story = {
     if (!hide) return; // narrow viewport: the aside cannot collapse
     await userEvent.click(hide);
     await expect(canvasElement.querySelector(".detail-layout__aside .card")).toBeNull();
+  },
+};
+
+/**
+ * The default card order: cards written in any order are drawn header, details and purpose cards, organising,
+ * supporting, then comments last (docs/ux-style-guide.md, "Pattern: detail page card order").
+ */
+export const DrawsTheCardsInTheDefaultOrder: Story = {
+  args: {
+    aside: null,
+    children: (
+      <>
+        <DetailCard heading="Discussion" rank="discussion"><p>Comments</p></DetailCard>
+        <DetailCard heading="Versions" rank="supporting"><p>Versions</p></DetailCard>
+        <DetailCard heading="Components and codes" rank="organising"><p>Places</p></DetailCard>
+        <DetailCard heading="Details"><p>Fields</p></DetailCard>
+        <>
+          <DetailCard heading="Review"><p>Review</p></DetailCard>
+          {false}
+        </>
+      </>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const headings = within(canvasElement).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    await expect(headings).toEqual(["Details", "Review", "Components and codes", "Versions", "Discussion"]);
+  },
+};
+
+/** A page whose sections are arranged by the person keeps the order it is given. */
+export const KeepsTheGivenOrderWhenTheCardsAreNotOrdered: Story = {
+  args: {
+    aside: null,
+    orderCards: false,
+    children: (
+      <>
+        <DetailCard heading="Discussion" rank="discussion"><p>Comments</p></DetailCard>
+        <DetailCard heading="Details"><p>Fields</p></DetailCard>
+      </>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const headings = within(canvasElement).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    await expect(headings).toEqual(["Discussion", "Details"]);
   },
 };

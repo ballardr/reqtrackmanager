@@ -927,7 +927,27 @@ flowchart TD
 - **Version is header metadata, not a subtitle string.** `RecordHeader`'s `version` prop shows "Version N" beside the status pills; a page never formats `v{n}` itself.
 - **Panels are cards too, flat inside.** `VersionHistoryTable`, `RecordDiscussion` ("Attachments", "Comments") and `ArtefactCommentsSection` draw their own `DetailCard`, so a page places them directly. Field-shaped panels (`RepresentationPanel`, held needs, engagements, outcomes) are part of the record's fields and go in the Details card. A comment inside the "Comments" card is a flat row (`.comment-row`), never a card in a card.
 - **A card that leads to another view of the record comes directly after the details card.** The System Architecture **Diagrams** card (`RecordDiagramsCard`, the diagrams that draw or describe an element or connection, each a link to its editor) is the second card on those pages, ahead of the card of its own fields, so a person moves between views without scrolling.
+- **Card order:** the cards below the Details card follow "Pattern: detail page card order".
 - **Status:** every `RecordHeader` page uses this pattern (Requirement, Change Request, Action, the Stakeholders, Context & Strategy, Decisions and Risk records, and the Compliance standard and assignment overviews). A new detail page follows it from the start.
+
+## Pattern: detail page card order
+
+A record detail page lists its cards from what the record is to what is least often needed, and the comments come last, because a thread grows long and must not have to be scrolled past to reach other information. `DetailLayout` applies the order itself (`components/detailCardOrder.ts`), so a card added later lands in its place whichever line a page writes it on:
+
+```mermaid
+flowchart TD
+    H["header: RecordHeader"] --> B["body: Details first, then the cards most relevant to the record's purpose<br/>(Rating, Review, Actions, Diagrams, Ports, Connections, Document)"]
+    B --> O["organising: Components and codes, and any card that classifies the record"]
+    O --> S["supporting: Versions, Attachments, Evidence, Files, history"]
+    S --> D["discussion: Comments or Discussion, always last"]
+```
+
+- **Rank, not position.** Each card has a rank: `header`, `body` (the default), `organising`, `supporting`, `discussion`. A `DetailCard` takes `rank`; a shared card carries its own (`RecordHeader` header, `RequirementPlaces` organising, `VersionHistoryTable` supporting, `RecordDiscussion`, `ArtefactCommentsSection` and `RecordCommentsCards` discussion). Inside a rank the page's own order is kept, so the record's Details stay first in the body.
+- **Place a new card by this order, never at the top by default.** Give it the rank that names what it is (`rank="supporting"` for a list of files, `rank="discussion"` for a `CommentThread`); a card with no rank is `body`.
+- **Cards go straight into `DetailLayout`.** A `<div className="stack">` beside the `RecordHeader` hides its cards from the order (fragments are fine). The links, watching and activity tabs are the aside, drawn beside the content or, below 1280px, after it.
+- **A deviation is stated on the page.** A page whose sections are arranged by the person or the project passes `orderCards={false}` and says why beside it (the Product Feedback request page). Its built-in order still follows the rule.
+- **Checked by** `scripts/check_detail_card_order.py` (also a pytest): no wrapper beside the header, a card holding a `CommentThread` is `rank="discussion"`, and every rank written exists. The empty baseline stays empty. Storybook `DetailLayout` pins the sort; Playwright `detail-page-card-order.spec.ts` pins the Requirement, Decision and Stakeholder pages.
+- **Reason.** Components and codes appeared above the requirement's own fields because it was added last at the top, and every new card repeated the choice; one rank each ends the per-page decision.
 
 ## Pattern: tabbed picker modal
 

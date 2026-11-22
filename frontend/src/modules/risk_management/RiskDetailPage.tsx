@@ -204,7 +204,6 @@ export function RiskDetailPage() {
         }
       />
       {archive.dialog}
-      <div className="stack">
         <DetailCard>
           {risk.statement && <MarkdownView text={risk.statement} />}
           {risk.cause && <RecordField markdown label="Cause" value={risk.cause} />}
@@ -258,7 +257,6 @@ export function RiskDetailPage() {
           attachmentsReadOnly={risk.is_archived}
           attachmentsHint="This Risk is archived; new attachments can no longer be added."
         />
-      </div>
 
       {editing && (
         <RiskFormModal

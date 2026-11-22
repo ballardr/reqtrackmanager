@@ -248,7 +248,6 @@ export function PersonaDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Persona shared by every project. Edit it from the{" "}
@@ -373,7 +372,6 @@ export function PersonaDetailPage() {
           attachmentsReadOnly={readOnlyInProject}
           attachmentsHint="Attachments to an organisation Persona are managed from the organisation view."
         />
-      </div>
 
       {editing && (
         <PersonaFormModal

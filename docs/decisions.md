@@ -19606,3 +19606,19 @@ Found on the way, fixed in this phase: five tests from earlier phases read repos
 
 **Review (identify → verify → remediate).** Presentation and scroll behaviour only: no endpoint, authorization, audit, retention, tenant, logging or bundle change; no new data stored. Nothing to remediate. Not applicable: backend test, migration, seeds, MCP skill, module boundary (the component names no module), nested-project fallback, code and search registration (no record type), time handling (no time stored).
 
+
+## Platform review 2026-11-19, Phase 34: record detail card order (2026-11-22)
+
+**Problem.** Components and codes (`RequirementPlaces`) was drawn above a requirement's own fields, and each page placed its cards by whichever line a developer wrote them on, so a new card landed where it was added and a long comment thread could sit above other information.
+
+**Decided by: User** for the rule (details first, then purpose, then supporting and organising information, comments last). **Decided by: Agent** for the mechanism and the wording.
+- *One rank per card, applied by `DetailLayout`.* `components/detailCardOrder.ts` defines five ranks (`header`, `body`, `organising`, `supporting`, `discussion`); `DetailLayout` sorts its children by rank (stable, so a page's own order holds inside a rank) and opens fragments. A card takes `rank` (`DetailCard`) or carries one statically (`withDetailRank`: `RecordHeader`, `RequirementPlaces`, `VersionHistoryTable`, `RecordDiscussion`, `ArtefactCommentsSection`, `RecordCommentsCards`). A CSS `order` was rejected: it reorders the picture but not the reading and tab order. Every module page needs no code beyond this: the order is not a registry field because it is a layout concern, not a per-module data concern.
+- *Pages put cards straight into `DetailLayout`.* The `<div className="stack">` wrapper on 18 pages was removed (the layout's column is already a stack); a wrapper hides cards from the sort, so a check fails one beside the header.
+- *Versions, Attachments, Evidence, Files and Revalidation history are `supporting`.* On the requirement page the Actions card (purpose-relevant) now precedes Versions and Attachments; no page lost a card.
+- *Deviation: the Product Feedback request page.* Its sections are arranged by the person or the project (**Decided by: User**, "Section order: project default, personal override"), so it passes `orderCards={false}`; its built-in order already follows the rule.
+- *Scope.* Pages that use `DetailLayout` with `RecordHeader`; the editors (diagram and state-machine pages) pass a canvas, rank `body`, and are unchanged. The two Compliance overview pages have no `DetailLayout` and no comments.
+- *Not done: a registry field.* No module-boundary issue arises: no core file names a module, and a module's own card gets its rank from its own component.
+
+**Tests.** `scripts/check_detail_card_order.py` with `backend/tests/test_detail_card_order.py` (wrapper beside the header, a `CommentThread` card without `rank="discussion"`, an unknown rank, the opt-out; empty baseline); Storybook `DetailLayout` (scrambled cards, fragment and `false` child, the opt-out) and `RequirementDetailPage` (Components and codes below Details and above Versions, Discussion last); Playwright `detail-page-card-order.spec.ts` (Requirement, Decision, Stakeholder pages). Five stale Storybook stories of type-vocabulary panels (Org and Project Persona and Stakeholder types, Project Risk types) from the creation-on-demand change were fixed to open the Add dialog first.
+
+**Review (identify → verify → remediate).** Presentation and order only: no endpoint, authorization, audit, retention, tenant, logging or bundle change; no new data stored. Nothing to remediate. Not applicable: backend change, migration, seeds, MCP skill. The website page `core-features/components-on-records.md` names the section but not its position; it is checked in phase W.

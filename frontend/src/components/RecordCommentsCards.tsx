@@ -26,6 +26,7 @@ import { markdownPlainText } from "../utils/markdownPlain";
 import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import { Badge } from "./Badge";
 import { DetailCard } from "./DetailCard";
+import { withDetailRank } from "./detailCardOrder";
 
 /**
  * @param projectId The project the record is opened from.
@@ -96,3 +97,5 @@ export function RecordCommentsCards({
     </>
   );
 }
+
+withDetailRank(RecordCommentsCards, "discussion");

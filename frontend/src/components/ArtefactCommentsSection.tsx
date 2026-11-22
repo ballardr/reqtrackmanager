@@ -35,6 +35,7 @@ import { ItemRow } from "./ItemRow";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { MarkdownView } from "./MarkdownView";
 import { RemovableChip } from "./RemovableChip";
+import { withDetailRank } from "./detailCardOrder";
 
 /** The structural shape of a comment this thread can render. */
 export interface ArtefactComment {
@@ -194,3 +195,5 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
     </DetailCard>
   );
 }
+
+withDetailRank(ArtefactCommentsSection, "discussion");

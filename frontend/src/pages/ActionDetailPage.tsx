@@ -256,7 +256,6 @@ export function ActionDetailPage() {
       />
       {archiveAction.dialog}
 
-      <div className="stack">
           <DetailCard>
             <ActionFields
               values={form}
@@ -292,11 +291,11 @@ export function ActionDetailPage() {
             )}
           </DetailCard>
 
-          <DetailCard heading={strings.requirements.attachments}>
+          <DetailCard heading={strings.requirements.attachments} rank="supporting">
             <FileAttachmentList files={files} onUpload={uploadFile} onRemove={removeFile} />
           </DetailCard>
 
-          <DetailCard heading={strings.requirements.discussion}>
+          <DetailCard heading={strings.requirements.discussion} rank="discussion">
             <CommentThread
               comments={comments}
               onPost={postComment}
@@ -307,7 +306,6 @@ export function ActionDetailPage() {
               currentUserId={user?.id}
             />
           </DetailCard>
-      </div>
     </DetailLayout>
   );
 }

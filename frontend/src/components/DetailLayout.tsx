@@ -21,6 +21,9 @@
  * - A page may add further tabs after those (`extraTabs`, for example the record's Watching tab); like
  *   Links they stay mounted while hidden. A stored tab that a page does not offer falls back to Links.
  *
+ * - The content is drawn in the default card order (`detailCardOrder`: header, details and purpose cards, organising,
+ *   supporting, discussion last), so a card added later lands in its place; pass cards directly, not inside a wrapper.
+ *
  * Renders its own `.container` (unless `contained` is false, for a page that already
  * sits in a content wrapper), so a page replaces its root `<div className="container
  * stack">` with this component.
@@ -32,6 +35,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { useStrings } from "../context/TerminologyContext";
 import { DetailAsideProvider } from "./detailAsideContext";
+import { orderDetailChildren } from "./detailCardOrder";
 import { Tabs, tabPanelProps } from "./Tabs";
 
 type AsideTab = string;
@@ -58,6 +62,7 @@ export const DETAIL_ASIDE_BREAKPOINT_PX = 1279;
  * @param activity The record's activity timeline; when given with `aside`, the aside shows Links and Activity tabs.
  * @param extraTabs Further tabs after Links and Activity; any of them gives the aside a tab strip.
  * @param asideLabel Accessible name for the aside and its toggle (default "Links").
+ * @param orderCards Draw the cards in the default order (default). False for a page whose person arranges the sections (the request page), which keeps the order it is given; the page states why.
  * @param contained Wrap in `.container` (default); false for a page already inside a wrapper.
  */
 export function DetailLayout({
@@ -66,6 +71,7 @@ export function DetailLayout({
   activity,
   extraTabs = [],
   asideLabel,
+  orderCards = true,
   contained = true,
 }: {
   children: ReactNode;
@@ -73,6 +79,7 @@ export function DetailLayout({
   activity?: ReactNode;
   extraTabs?: DetailAsideTab[];
   asideLabel?: string;
+  orderCards?: boolean;
   contained?: boolean;
 }) {
   const strings = useStrings();
@@ -83,14 +90,15 @@ export function DetailLayout({
   const offered = [...(activity ? ["activity"] : []), ...extraTabs.map((extra) => extra.key)];
   const tab: AsideTab = offered.includes(storedTab) ? storedTab : "links";
   const tabbed = activity || extraTabs.length > 0;
+  const content = orderCards ? orderDetailChildren(children) : children;
 
   if (aside === undefined || aside === null) {
-    return <div className={contained ? "container stack" : "stack"}>{children}</div>;
+    return <div className={contained ? "container stack" : "stack"}>{content}</div>;
   }
   const hidden = !narrow && collapsed;
   return (
     <div className={`${contained ? "container " : ""}detail-layout${hidden ? " detail-layout--collapsed" : ""}`}>
-      <div className="detail-layout__main stack">{children}</div>
+      <div className="detail-layout__main stack">{content}</div>
       <aside className="detail-layout__aside" aria-label={label}>
         {!narrow && (
           <button

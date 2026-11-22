@@ -256,7 +256,6 @@ export function FutureStateDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
           {futureState.current_state && <RecordField markdown label="Current state" value={futureState.current_state} />}
@@ -269,7 +268,7 @@ export function FutureStateDetailPage() {
 
 
         {versions && versions.length > 1 && (
-          <DetailCard heading="Versions">
+          <DetailCard heading="Versions" rank="supporting">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -288,7 +287,7 @@ export function FutureStateDetailPage() {
           </DetailCard>
         )}
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={futureState.is_locked}
@@ -325,7 +324,6 @@ export function FutureStateDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <FutureStateFormModal

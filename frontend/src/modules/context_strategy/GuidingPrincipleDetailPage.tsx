@@ -309,7 +309,6 @@ export function GuidingPrincipleDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
           <RecordField markdown label="Principle statement" value={guidingPrinciple.principle_statement} />
@@ -330,7 +329,7 @@ export function GuidingPrincipleDetailPage() {
           ]}
         />
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={guidingPrinciple.is_locked}
@@ -367,7 +366,6 @@ export function GuidingPrincipleDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <GuidingPrincipleFormModal

@@ -17,6 +17,7 @@
  */
 import { useState, type KeyboardEventHandler, type ReactNode } from "react";
 
+import type { DetailRank } from "./detailCardOrder";
 import { DetailCardActionsContext } from "./detailCardSlots";
 import { FieldHelp } from "./FieldHelp";
 
@@ -26,13 +27,14 @@ import { FieldHelp } from "./FieldHelp";
  * @param help Plain-language help for a heading that names a domain term; drawn as a `(?)` after the heading.
  * @param action A control on the heading's line, e.g. an `AddPopoverButton`.
  * @param onKeyDown Hears key presses bubbling up from the card's controls (the editors' Selection cards return focus to the canvas on Escape).
+ * @param rank Where the card sits on a detail page (`detailCardOrder`): `body` by default; `supporting` for versions and attachments, `discussion` for comments. Read by `DetailLayout`; it does not change how the card is drawn.
  * @param maxHeight The tallest the card may be, in pixels; the content scrolls inside when it needs more. Omit for a card that grows with its content.
  * @param children The card's content.
  */
 export function DetailCard({
   heading = "Details", title, help, action, onKeyDown, maxHeight, children,
 }: {
-  heading?: string; title?: ReactNode; help?: string; action?: ReactNode; onKeyDown?: KeyboardEventHandler<HTMLElement>; maxHeight?: number; children: ReactNode;
+  heading?: string; title?: ReactNode; help?: string; action?: ReactNode; onKeyDown?: KeyboardEventHandler<HTMLElement>; rank?: DetailRank; maxHeight?: number; children: ReactNode;
 }) {
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   const shown = title ?? heading;

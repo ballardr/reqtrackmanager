@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { ProjectStakeholderTypesPanel } from "./ProjectStakeholderTypesPanel";
 import type { EffectivePersonaType } from "./types";
 
@@ -67,9 +67,9 @@ export const AddProjectOnlyType: Story = {
   beforeEach: () => mockProjectTypeApis(BASELINE),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Project Stakeholder type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Project Stakeholder type name"), "Neighbour");
-    await userEvent.click(canvas.getByRole("button", { name: "Add project-only Stakeholder type" }));
+    const dialog = await openAddDialog(canvas, "Add project-only Stakeholder type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Neighbour");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(BASE, { name: "Neighbour", display_order: 2 }));
     await waitFor(() => expect(canvas.getByDisplayValue("Neighbour")).toBeInTheDocument());
   },

@@ -211,7 +211,6 @@ export function DecisionDetailPage() {
         }
       />
       {archive.dialog}
-      <div className="stack">
         <DetailCard>
           <MarkdownView text={decision.decision_statement} />
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
@@ -234,7 +233,7 @@ export function DecisionDetailPage() {
           </DetailCard>
         )}
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={decision.is_locked}
@@ -271,7 +270,6 @@ export function DecisionDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <DecisionFormModal

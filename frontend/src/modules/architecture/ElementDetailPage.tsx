@@ -194,7 +194,6 @@ export function ElementDetailPage() {
       />
       {archive.dialog}
       {remove.dialog}
-      <div className="stack">
         <DetailCard>
           {element.description && <MarkdownView text={element.description} />}
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
@@ -254,7 +253,6 @@ export function ElementDetailPage() {
         <ElementSharingCard projectId={projectId} element={element} />
 
         <RecordCommentsCards projectId={projectId} artefactType="architecture_element" recordId={element.id} currentUserId={user?.id} />
-      </div>
 
       {editing && (
         <ElementFormModal

@@ -185,7 +185,6 @@ export function NeedDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
         <DetailCard>
           {need.description && <RecordField markdown label="Need" value={need.description} />}
           {need.rationale && <RecordField markdown label="Rationale" value={need.rationale} />}
@@ -235,7 +234,6 @@ export function NeedDetailPage() {
           currentUserId={user?.id}
           attachmentsReadOnly={false}
         />
-      </div>
 
       {editing && (
         <NeedFormModal

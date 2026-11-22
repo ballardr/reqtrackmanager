@@ -682,12 +682,6 @@ export function RequirementDetailPage() {
         />
       )}
 
-      {/* Was a two-column `.side-grid` (main content + a narrow persistent
-          Activity sidebar) before the History/Activity merge above folded
-          the sidebar's only content into the main column's card — a single
-          `.stack` is the right shell now that there's nothing left for a
-          second column to hold. */}
-      <div className="stack">
       {requirement.is_locked || !canEdit ? (
         <DetailCard>
           {requirement.is_locked && (
@@ -801,7 +795,7 @@ export function RequirementDetailPage() {
 
       {/* The requirement's own version ledger stays in the body (a wide table never goes in the
           aside); what happened to it, links included, is the aside's Activity tab. */}
-      <DetailCard heading={strings.requirements.versions}>
+      <DetailCard heading={strings.requirements.versions} rank="supporting">
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead>
@@ -828,7 +822,7 @@ export function RequirementDetailPage() {
         </div>
       </DetailCard>
 
-      <DetailCard heading={strings.requirements.attachments} action={
+      <DetailCard heading={strings.requirements.attachments} rank="supporting" action={
         <>
             {!requirement.is_locked && organizationId && (
               <button className="btn" onClick={() => setShowResourcePicker(true)}>
@@ -1018,7 +1012,7 @@ export function RequirementDetailPage() {
         )}
       </DetailCard>
 
-      <DetailCard heading={strings.requirements.discussion}>
+      <DetailCard heading={strings.requirements.discussion} rank="discussion">
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -1029,7 +1023,6 @@ export function RequirementDetailPage() {
           currentUserId={user?.id}
         />
       </DetailCard>
-      </div>
     </DetailLayout>
   );
 }

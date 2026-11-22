@@ -286,7 +286,6 @@ export function PainPointDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
           {painPoint.description && <RecordField markdown label="Description" value={painPoint.description} />}
@@ -303,7 +302,7 @@ export function PainPointDetailPage() {
         <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
 
-        <DetailCard heading="Evidence">
+        <DetailCard heading="Evidence" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={painPoint.is_locked}
@@ -340,7 +339,6 @@ export function PainPointDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <PainPointFormModal

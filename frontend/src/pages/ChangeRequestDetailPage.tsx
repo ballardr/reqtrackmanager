@@ -312,7 +312,6 @@ export function ChangeRequestDetailPage() {
           },
         ]}
       />
-      <div className="stack">
       <DetailCard>
         <div className="row">
           <Badge tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}>
@@ -623,7 +622,7 @@ export function ChangeRequestDetailPage() {
         </Modal>
       )}
 
-      <DetailCard heading={strings.requirements.discussion}>
+      <DetailCard heading={strings.requirements.discussion} rank="discussion">
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -634,7 +633,6 @@ export function ChangeRequestDetailPage() {
           currentUserId={user?.id}
         />
       </DetailCard>
-      </div>
     </DetailLayout>
   );
 }

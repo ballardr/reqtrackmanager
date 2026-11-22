@@ -19,6 +19,7 @@ import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
 import { DetailCard } from "./DetailCard";
 import { FileAttachmentList } from "./FileAttachmentList";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { withDetailRank } from "./detailCardOrder";
 
 /** A comment as `ArtefactCommentsSection` needs it. */
 interface DiscussionComment {
@@ -117,3 +118,5 @@ export function RecordDiscussion<C extends DiscussionComment>({
     </>
   );
 }
+
+withDetailRank(RecordDiscussion, "discussion");

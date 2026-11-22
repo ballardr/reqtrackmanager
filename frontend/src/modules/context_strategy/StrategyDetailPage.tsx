@@ -261,7 +261,6 @@ export function StrategyDetailPage() {
       />
       {archive.dialog}
 
-      <div className="stack">
 
         <DetailCard>
           <RecordField markdown label="Objective / strategic theme" value={strategy.objective} />
@@ -275,7 +274,7 @@ export function StrategyDetailPage() {
 
 
         {versions && versions.length > 1 && (
-          <DetailCard heading="Versions">
+          <DetailCard heading="Versions" rank="supporting">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -294,7 +293,7 @@ export function StrategyDetailPage() {
           </DetailCard>
         )}
 
-        <DetailCard heading="Attachments">
+        <DetailCard heading="Attachments" rank="supporting">
           <FileAttachmentList
             files={files}
             disabled={strategy.is_locked}
@@ -331,7 +330,6 @@ export function StrategyDetailPage() {
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
 
       {editing && (
         <StrategyFormModal

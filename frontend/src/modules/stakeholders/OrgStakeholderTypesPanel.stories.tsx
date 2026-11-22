@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
-import { withToast } from "../../testing/storybook-helpers";
+import { withToast, openAddDialog } from "../../testing/storybook-helpers";
 import { OrgStakeholderTypesPanel } from "./OrgStakeholderTypesPanel";
 import type { PersonaTypeDefinition } from "./types";
 
@@ -58,9 +58,9 @@ export const AddType: Story = {
   beforeEach: () => mockOrgTypeApis(DEFAULTS),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByPlaceholderText("Stakeholder type name"));
-    await userEvent.type(canvas.getByPlaceholderText("Stakeholder type name"), "Investor");
-    await userEvent.click(canvas.getByRole("button", { name: "Add Stakeholder type" }));
+    const dialog = await openAddDialog(canvas, "Add Stakeholder type");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Investor");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/modules/stakeholders/stakeholder-types`, { name: "Investor" }),
     );

@@ -85,7 +85,6 @@ export function BaselineDetailPage() {
           {view.stage_name ? ` · Stage ${view.stage_name}` : ""}
         </>}
       />
-      <div className="stack">
         {byType.map(([type, records]) => <BaselineRecordsCard key={type} itemType={type} records={records} onOpen={setOpen} />)}
         <DetailCard heading="Comparison" help={ARCHITECTURE_HELP.baselineComparison}>
           <LabeledSelect
@@ -96,7 +95,6 @@ export function BaselineDetailPage() {
           {against && !shown && !comparisonError && <Spinner />}
           {against && shown && <BaselineComparisonView comparison={shown} />}
         </DetailCard>
-      </div>
       {open && <BaselineRecordDialog projectId={projectId} baselineId={baselineId} record={open} onClose={() => setOpen(null)} />}
     </DetailLayout>
   );

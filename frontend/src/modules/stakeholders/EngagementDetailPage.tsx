@@ -212,7 +212,6 @@ export function EngagementDetailPage() {
       />
       {eraseAction.dialog}
 
-      <div className="stack">
         <DetailCard>
           {engagement.purpose && <RecordField markdown label="Purpose" value={engagement.purpose} />}
           {engagement.summary && <RecordField markdown label="Summary" value={engagement.summary} />}
@@ -300,7 +299,6 @@ export function EngagementDetailPage() {
           currentUserId={user?.id}
           attachmentsReadOnly={false}
         />
-      </div>
 
       {editing && (
         <EngagementFormModal
