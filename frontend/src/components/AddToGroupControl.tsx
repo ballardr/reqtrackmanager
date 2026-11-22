@@ -30,6 +30,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { Popover } from "./Popover";
 import { FormActions } from "./FormActions";
 import { LabeledSelect } from "./LabeledSelect";
+import { Tooltip } from "./Tooltip";
 
 export function AddToGroupControl({
   user,
@@ -57,18 +58,19 @@ export function AddToGroupControl({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="btn"
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <UserPlus />
-      </button>
+      <Tooltip label={label} disabled={open}>
+        <button
+          ref={triggerRef}
+          type="button"
+          className="btn"
+          aria-label={label}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <UserPlus />
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={triggerRef} title={label} onClose={() => setOpen(false)}>
           <div className="stack">

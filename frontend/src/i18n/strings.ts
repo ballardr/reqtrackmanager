@@ -3625,7 +3625,6 @@ const en = {
     choose: "Choose components…",
     filterLabel: "Component and category",
     pickerLabel: "Components and categories",
-    categoryRequired: "Choose one of its categories: a requirement is placed in a category.",
     primaryLabel: "{Component} and {category}",
     primaryChoose: "Choose a {category}…",
     primaryNoCategories: "No {categories} yet — add one in {Project} Admin.",

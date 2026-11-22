@@ -15,13 +15,21 @@ const NODES: TreeSelectNode[] = [
   { id: "ops", label: "Operations", children: [] },
 ];
 
-function Harness({ nodes, initial, mode = "multiple" }: { nodes: TreeSelectNode[]; initial: string[]; mode?: "multiple" | "single" | "search" }) {
+function Harness({
+  nodes, initial, mode = "multiple", width,
+}: { nodes: TreeSelectNode[]; initial: string[]; mode?: "multiple" | "single" | "search"; width?: string }) {
   const [selected, setSelected] = useState(initial);
-  if (mode === "single") {
-    return <TreeSelect triggerLabel="Type" nodes={nodes} selectedIds={selected} onChange={setSelected} single clearLabel="All types" emptyLabel="All types" />;
-  }
-  return <TreeSelect triggerLabel="Groups" nodes={nodes} selectedIds={selected} onChange={setSelected} searchable={mode === "search"} />;
+  const picker = mode === "single"
+    ? <TreeSelect triggerLabel="Type" nodes={nodes} selectedIds={selected} onChange={setSelected} single clearLabel="All types" emptyLabel="All types" />
+    : <TreeSelect triggerLabel="Groups" nodes={nodes} selectedIds={selected} onChange={setSelected} searchable={mode === "search"} />;
+  return width ? <div style={{ width }}>{picker}</div> : picker;
 }
+
+/** Elements carrying a native `title` inside the story's canvas and the open picker panel (the page around the story is not ours). */
+const nativeTitles = (canvasElement: HTMLElement) =>
+  [canvasElement, ...document.body.querySelectorAll<HTMLElement>("[role=dialog]")].flatMap((root) => [...root.querySelectorAll("[title]")]);
+
+const bubbles = () => within(document.body).queryAllByRole("tooltip", { hidden: true });
 
 const meta: Meta<typeof Harness> = { title: "Components/TreeSelect", component: Harness, args: { nodes: NODES, initial: [] } };
 export default meta;
@@ -257,3 +265,61 @@ export const DarkTheme: Story = { ...Empty, globals: { theme: "dark" } };
 /** The long list in each theme, opened, so the edge shadow colours are checked in both. */
 export const LongListLight: Story = { ...SearchStaysPutWhileTheListScrolls, globals: { theme: "light" } };
 export const LongListDark: Story = { ...SearchStaysPutWhileTheListScrolls, globals: { theme: "dark" } };
+
+/** Nothing over an open list: no tooltip appears over the trigger, a row or a chevron, and no native `title` is in the page. */
+export const NoTooltipOverAnOpenPicker: Story = {
+  args: { initial: ["ops"], nodes: NODES },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.hover(canvas.getByRole("button", { name: "Groups" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Groups" }));
+    const popover = within(document.body);
+    for (const target of [
+      popover.getByRole("button", { name: "Collapse Client" }),
+      popover.getByText("Beta Ltd", { exact: true }),
+      popover.getByRole("checkbox", { name: "Acme" }),
+      canvas.getByRole("button", { name: "Groups" }),
+    ]) {
+      await userEvent.hover(target);
+      await expect(bubbles()).toHaveLength(0);
+    }
+    await expect(nativeTitles(canvasElement)).toHaveLength(0);
+  },
+};
+
+/** The one-choice picker has the same rule, chevrons and the clear row included. */
+export const NoTooltipOverAnOpenOneChoicePicker: Story = {
+  args: { mode: "single" },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Type" }));
+    const popover = within(document.body);
+    await userEvent.hover(popover.getByRole("button", { name: "Collapse Client" }));
+    await expect(bubbles()).toHaveLength(0);
+    await userEvent.hover(popover.getByRole("radio", { name: "All types" }));
+    await expect(bubbles()).toHaveLength(0);
+    await expect(nativeTitles(canvasElement)).toHaveLength(0);
+  },
+};
+
+/** A closed trigger whose summary is cut off says the whole of it in a tooltip, but never while the list is open. */
+export const ClippedSummaryShowsItsFullTextWhileClosed: Story = {
+  args: { initial: ["acme-fin", "beta", "ops"], width: "9rem" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Groups" });
+    await expect(trigger).not.toHaveAttribute("title");
+    await userEvent.hover(trigger);
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("Acme — Finance, Beta Ltd, Operations");
+    await userEvent.click(trigger);
+    await expect(bubbles()).toHaveLength(0);
+  },
+};
+
+/** A summary that fits shows no tooltip, because it would repeat what is already on the trigger. */
+export const FittingSummaryHasNoTooltip: Story = {
+  args: { initial: ["ops"] },
+  play: async ({ canvasElement }) => {
+    await userEvent.hover(within(canvasElement).getByRole("button", { name: "Groups" }));
+    await expect(bubbles()).toHaveLength(0);
+  },
+};

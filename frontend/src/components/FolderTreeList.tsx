@@ -294,7 +294,7 @@ export function FolderTreeList<T>({
                 {checks && <RowCheck node={node} checks={checks} />}
                 <button
                   type="button" className="folder-tree-toggle" tabIndex={-1} aria-expanded={open}
-                  aria-label={text.toggle(node.name, open)} title={text.toggle(node.name, open)}
+                  aria-label={text.toggle(node.name, open)}
                   onClick={() => onToggle(node.id, !open)}
                 >
                   <TreeChevron expanded={open} />

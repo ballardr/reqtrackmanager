@@ -13,6 +13,7 @@ import { chooseSnippetMenuItem, snippetMenuItem } from "../testing/reportSnippet
 import { buildSnippetStoreApi } from "../testing/reportSnippetStoreFixtures";
 import { saveVersion } from "../testing/saveVersionHelpers";
 import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
+import { expectTooltip } from "../testing/tooltips";
 import { ReportLayoutDesigner } from "./ReportLayoutDesigner";
 
 /**
@@ -1117,7 +1118,7 @@ export const ALayoutWithADraftOpensOnTheDraftWithANotice: Story = {
     await expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/);
     // Opening the draft is not a change to it.
     await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save new version" })).toHaveAttribute("title", "Publishes the draft as version 3");
+    await expectTooltip(canvas.getByRole("button", { name: "Save new version" }), "Publishes the draft as version 3");
   },
 };
 

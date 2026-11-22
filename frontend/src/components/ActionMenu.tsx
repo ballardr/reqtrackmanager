@@ -41,6 +41,7 @@ import { Fragment, useEffect, useId, useRef, useState } from "react";
 import type { DragEvent, KeyboardEvent } from "react";
 
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 
 export interface ActionMenuItem {
   /** Visible label and accessible name for this menu item. */
@@ -129,20 +130,21 @@ export function ActionMenu({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`btn${size === "sm" ? " btn-sm" : ""}${triggerText ? "" : " btn-icon"}`}
-        aria-label={triggerLabel}
-        title={triggerLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-      >
-        {icon ?? <MoreVertical />}
-        {triggerText && <span style={{ marginLeft: "var(--space-1)" }}>{triggerText}</span>}
-      </button>
+      <Tooltip label={triggerLabel} disabled={open || !!triggerText}>
+        <button
+          ref={triggerRef}
+          type="button"
+          className={`btn${size === "sm" ? " btn-sm" : ""}${triggerText ? "" : " btn-icon"}`}
+          aria-label={triggerLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {icon ?? <MoreVertical />}
+          {triggerText && <span style={{ marginLeft: "var(--space-1)" }}>{triggerText}</span>}
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={triggerRef} fit menu title={triggerLabel} onClose={() => setOpen(false)}>
           <ActionMenuList label={triggerLabel} items={items} footer={footer} onSelect={() => setOpen(false)} />

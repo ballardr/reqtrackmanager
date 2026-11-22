@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS, chooseRecordAction } from "../../e2e-workflows/helpers";
+import { expectReasonTooltip, loginAs, logout, ORG_NAMES, PERSONAS, chooseRecordAction } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
@@ -50,7 +50,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section", () 
     // Last remaining manager, no fallback group configured for this org ->
     // disabled, with an explanatory title (§3's manager floor).
     await expect(managerCheckbox).toBeDisabled();
-    await expect(managerCheckbox).toHaveAttribute("title", /must always have at least one/);
+    await expectReasonTooltip(page, managerCheckbox, /must always have at least one/);
     await page.keyboard.press("Escape");
 
     // Add `memberAlphaBeta` as a Standards Contributor, via the

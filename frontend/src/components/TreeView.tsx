@@ -10,7 +10,8 @@
  * (`aria-expanded`, named toggle) and expand state instead of three copies.
  *
  * Presentational: it owns only which nodes are expanded (or, in controlled mode, none of it: the caller passes
- * `expanded` and `onToggle`, as the report picker does to open every folder while a search is active); the data and
+ * `expanded` and `onToggle`, as the report picker does to open every folder while a search is active); a chevron shows its
+ * name in a shared `Tooltip` unless `toggleTooltip` is false (a picker's list must not be covered); the data and
  * every mutation stay with the caller (the page/component split `ViewToggle` set).
  */
 import { useState, type ReactNode } from "react";
@@ -31,6 +32,7 @@ export function TreeView<N extends TreeViewNode<N>>({
   defaultExpanded = true,
   expanded,
   onToggle,
+  toggleTooltip = true,
 }: {
   nodes: N[];
   /** Plain-text name of a node, for the toggle's accessible name ("Collapse Acme"). */
@@ -44,6 +46,8 @@ export function TreeView<N extends TreeViewNode<N>>({
    * search is active, say) and `onToggle` is told what to flip. */
   expanded?: ReadonlySet<string>;
   onToggle?: (id: string, expanded: boolean) => void;
+  /** Whether a chevron shows its name in a tooltip (default true); a picker, whose list a tooltip would cover, passes false. */
+  toggleTooltip?: boolean;
 }) {
   if (nodes.length === 0) return <p className="text-muted">{emptyText}</p>;
   return (
@@ -51,7 +55,7 @@ export function TreeView<N extends TreeViewNode<N>>({
       {nodes.map((node) => (
         <TreeViewRow
           key={node.id} node={node} depth={0} nodeLabel={nodeLabel} renderNode={renderNode} defaultExpanded={defaultExpanded}
-          expanded={expanded} onToggle={onToggle}
+          expanded={expanded} onToggle={onToggle} toggleTooltip={toggleTooltip}
         />
       ))}
     </ul>
@@ -66,6 +70,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
   defaultExpanded,
   expanded: controlled,
   onToggle,
+  toggleTooltip,
 }: {
   node: N;
   depth: number;
@@ -74,6 +79,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
   defaultExpanded: boolean;
   expanded?: ReadonlySet<string>;
   onToggle?: (id: string, expanded: boolean) => void;
+  toggleTooltip: boolean;
 }) {
   const [ownExpanded, setOwnExpanded] = useState(defaultExpanded);
   const expanded = controlled ? controlled.has(node.id) : ownExpanded;
@@ -89,7 +95,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
     <li>
       <div className="row" style={{ gap: "var(--space-1)", alignItems: "center", paddingLeft: `calc(${depth} * var(--tree-indent))`, minHeight: "2rem" }}>
         {hasChildren ? (
-          <TreeToggle expanded={expanded} name={label} onToggle={() => setExpanded((e) => !e)} />
+          <TreeToggle expanded={expanded} name={label} onToggle={() => setExpanded((e) => !e)} tooltip={toggleTooltip} />
         ) : (
           <TreeToggleGap />
         )}
@@ -100,7 +106,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
           {node.children.map((child) => (
             <TreeViewRow
               key={child.id} node={child} depth={depth + 1} nodeLabel={nodeLabel} renderNode={renderNode}
-              defaultExpanded={defaultExpanded} expanded={controlled} onToggle={onToggle}
+              defaultExpanded={defaultExpanded} expanded={controlled} onToggle={onToggle} toggleTooltip={toggleTooltip}
             />
           ))}
         </ul>

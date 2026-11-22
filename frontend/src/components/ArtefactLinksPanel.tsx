@@ -65,6 +65,7 @@ import { LinkTraceModal } from "./LinkTraceModal";
 import { MenuButton } from "./MenuButton";
 import { useInDetailAside } from "./detailAsideContext";
 import { TextAreaField } from "./FormFields";
+import { Tooltip } from "./Tooltip";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
 
@@ -284,12 +285,14 @@ export function ArtefactLinksPanel({
                 />
               )
             ) : compactView ? (
-              <button
-                className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink} title={strings.artefactLinks.addLink}
-                aria-haspopup="dialog" onClick={() => setAdding(true)}
-              >
-                <Plus aria-hidden="true" />
-              </button>
+              <Tooltip label={strings.artefactLinks.addLink}>
+                <button
+                  className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink}
+                  aria-haspopup="dialog" onClick={() => setAdding(true)}
+                >
+                  <Plus aria-hidden="true" />
+                </button>
+              </Tooltip>
             ) : (
               <button className="btn btn-primary" onClick={() => setAdding(true)}>
                 <Plus /> {strings.artefactLinks.addLink}
@@ -298,12 +301,14 @@ export function ArtefactLinksPanel({
           )}
           {(compactView ? graph !== null : groups.length > 0) && (
             compactView ? (
-              <button
-                className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton} title={strings.artefactLinks.traceButton}
-                aria-haspopup="dialog" onClick={() => setTracing(true)}
-              >
-                <GitBranch aria-hidden="true" />
-              </button>
+              <Tooltip label={strings.artefactLinks.traceButton}>
+                <button
+                  className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton}
+                  aria-haspopup="dialog" onClick={() => setTracing(true)}
+                >
+                  <GitBranch aria-hidden="true" />
+                </button>
+              </Tooltip>
             ) : (
               <button className="btn" onClick={() => setTracing(true)}>
                 <GitBranch /> {strings.artefactLinks.traceButton}

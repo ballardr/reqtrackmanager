@@ -36,7 +36,7 @@ export function PrimaryPlaceField({
     <TreeSelectField
       label={text.primaryLabel} help={help} required single searchable
       emptyLabel={hasCategory ? text.primaryChoose : text.primaryNoCategories}
-      nodes={placementNodes(tree, { title: text.categoryRequired })}
+      nodes={placementNodes(tree, true)}
       value={categoryId ? [categoryNodeId(categoryId)] : []}
       onChange={(ids) => {
         const place = placesOfNodeIds(ids, tree)[0];

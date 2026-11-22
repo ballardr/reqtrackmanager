@@ -94,7 +94,9 @@ test.describe("components on every record", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto(`/projects/${projectId}/requirements/${requirement.id}`);
     await expect(page.locator(".record-header")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Components and categories" })).toHaveCount(0);
+    // The record header offers no place picker: the requirement's own place is its component, and its further places are
+    // the category-only picker of its Components card, below the header.
+    await expect(page.locator(".record-header").getByRole("button", { name: "Components and categories" })).toHaveCount(0);
     const refused = await page.request.put(`${API}/projects/${projectId}/artefacts/requirement/${requirement.id}/placements`, {
       headers, data: { placements: [] },
     });

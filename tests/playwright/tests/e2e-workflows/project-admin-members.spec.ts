@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { expectReasonTooltip, loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
  * Job to be done: (docs/decisions.md)
@@ -91,7 +91,7 @@ test.describe("project admin: Members section", () => {
       const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Stakeholder from ${PERSONAS.memberAlphaBeta.name}`) });
       await expect(checkbox).toBeChecked();
       await expect(checkbox).toBeDisabled();
-      await expect(checkbox).toHaveAttribute("title", /only role/);
+      await expectReasonTooltip(page, checkbox, /only role/);
 
       // Granting another role first makes the original clearable, and the member stays listed throughout.
       await rolesGroup.getByRole("checkbox", { name: new RegExp(`Grant Member to ${PERSONAS.memberAlphaBeta.name}`) }).click();
@@ -115,7 +115,7 @@ test.describe("project admin: Members section", () => {
       const managerCheckbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Project manager from ${PERSONAS.orgAdminAlphaBeta.name}`) });
       await expect(managerCheckbox).toBeChecked();
       await expect(managerCheckbox).toBeDisabled();
-      await expect(managerCheckbox).toHaveAttribute("title", /only manager source/);
+      await expectReasonTooltip(page, managerCheckbox, /only manager source/);
       await page.keyboard.press("Escape");
     });
 
@@ -151,7 +151,7 @@ test.describe("project admin: Members section", () => {
       const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Stakeholder from ${PERSONAS.memberAlphaBeta.name}`) });
       await expect(checkbox).toBeChecked();
       await expect(checkbox).toBeDisabled();
-      await expect(checkbox).toHaveAttribute("title", /is not a direct grant/);
+      await expectReasonTooltip(page, checkbox, /is not a direct grant/);
       await page.keyboard.press("Escape");
     });
 

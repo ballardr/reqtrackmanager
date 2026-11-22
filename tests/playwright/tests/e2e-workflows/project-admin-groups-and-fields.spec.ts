@@ -479,7 +479,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         // + name text would also satisfy.
         await expect(groupRow.getByText("Direct", { exact: true })).toBeVisible();
         const rolesButton = groupRow.getByRole("button", { name: `${directGroupName}'s roles` });
-        await expect(rolesButton).toHaveAttribute("title", "Stakeholder (only role)");
+        await expect(rolesButton).toHaveText("Stakeholder (only role)");
 
         // The role dropdown is directly editable from this row — grant a
         // second role the same way `MembersTabGroupRowRoleToggleAndRemove`
@@ -488,7 +488,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         const roleGroup = page.getByRole("group", { name: `${directGroupName}'s roles` });
         await roleGroup.getByRole("checkbox", { name: `Grant Member to ${directGroupName}` }).click();
         await page.keyboard.press("Escape");
-        await expect(rolesButton).toHaveAttribute("title", "Stakeholder, Member");
+        await expect(rolesButton).toHaveText("Stakeholder, Member");
 
         // "Remove group" (Actions column) revokes every role at once,
         // behind the same Tier-1 ConfirmDialog every other destructive

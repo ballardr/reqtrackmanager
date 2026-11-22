@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
+import { expectReasonTooltip, loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
  * Job to be done: an organisation administrator finds a project they hold no role in on the main project list (the
@@ -84,7 +84,7 @@ test.describe("org admin: Manage users from the project list", () => {
       const managerCheckbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Project manager from ${PERSONAS.projectMgrGamma.name}`) });
       await expect(managerCheckbox).toBeChecked();
       await expect(managerCheckbox).toBeDisabled();
-      await expect(managerCheckbox).toHaveAttribute("title", /only manager source/);
+      await expectReasonTooltip(page, managerCheckbox, /only manager source/);
       await page.keyboard.press("Escape");
     });
 

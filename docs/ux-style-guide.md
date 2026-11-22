@@ -511,6 +511,7 @@ For a primary action that has exactly one common case and one (or a small number
 Every expandable tree (`TreeView`, `TreeSelect`, `FolderTreeList`, the link trace) indents one level by the single `--tree-indent` token (`1rem`, `styles/theme.css`); no caller sets its own constant.
 
 - **Chevron column.** A node with children shows the shared `TreeToggle`; a leaf keeps the same width (`TreeToggleGap`), so labels of one level line up.
+- **Tooltips.** The chevron has the shared `Tooltip` in a persistent tree and none inside a picker (`toggleTooltip`); see [Pattern: help on interactive elements](#pattern-help-on-interactive-elements).
 - **One-choice picker row.** Under its parent heading a row shows the node's own name ("Performance" under "Propulsion"), not the whole path. The path (`pathLabel`) stays the row's accessible name and the text of the trigger once chosen, so a path never wraps at the popover's width.
 
 ## Pattern: scroll region
@@ -1434,6 +1435,9 @@ Help goes where the thing it explains is. A control has one target, so help for 
 - **A caption's own help stays a `(?)`:** a group of controls that shares one caption (a "Selecting cells" caption over a toolbar) uses `FieldCaption`, which is the caption's help, not a button's.
 - **Shared parts:** `CanvasModeToggle` (a canvas mode's toolbar switch; `CommentModeToggle` and the architecture `NoteModeToggle` are its wordings), `ToggleButton` and `MenuButton` carry `help`, so a screen does not assemble a button and a help button by hand.
 - **Checked** by `scripts/check_help_beside_button.py` (pinned by `backend/tests/test_help_beside_button.py`, empty baseline): a `FieldHelp` that is a sibling of a `<button`, `MenuButton`, `ToggleButton` or any element with a `btn` class fails. A line may opt out with `data-help-beside-ok` and a reason beside it.
+- **Never a native `title`, and no tooltip over what is already visible.** A browser tooltip is slow, never shows on touch or keyboard focus and is not styled, so a control that opens a list, and the choices inside a list, carry the shared `Tooltip` or nothing. `scripts/check_native_title.py` (pinned by `backend/tests/test_native_title.py`, empty baseline) fails a native `title` on a `<button>` with `aria-haspopup`, on a `tree-toggle` and on a checkbox or radio.
+- **A picker's closed trigger** (`TreeSelect`, `MultiSelectDropdown`) shows its full summary in a `Tooltip` only while the summary is cut off (`useIsClipped`) or collapsed to a count, and never while its list is open. **An open picker has no tooltip of its own:** its chevrons, rows and search say nothing the person cannot already see; the only exception is a disabled row, which gives its reason.
+- **A tree chevron** (`TreeToggle`) names itself ("Collapse Acme") in a `Tooltip` in a persistent tree (the project tree, the requirement tree); a transient list (`TreeSelect`, through `TreeView toggleTooltip={false}`) and a folder row whose name is visible beside the chevron (`FolderTreeList`) have none. The accessible name is the `aria-label` in every case.
 
 ## Pattern: list actions (export and import)
 

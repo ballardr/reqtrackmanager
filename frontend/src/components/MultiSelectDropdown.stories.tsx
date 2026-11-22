@@ -122,6 +122,31 @@ export const DisabledOption: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's roles" }));
     const group = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
     await expect(within(group).getByRole("checkbox", { name: "Revoke Org admin from Alex Morgan" })).toBeDisabled();
+    // The reason is the shared tooltip over the row, never a native `title`.
+    await expect(group.querySelectorAll("[title]")).toHaveLength(0);
+    await userEvent.hover(within(group).getByText("Org admin"));
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("You cannot change your own organisation role here.");
+  },
+};
+
+/** A summary that fits has no tooltip, and a collapsed one ("2 selected") names the choices in the shared tooltip. */
+export const TriggerTooltipOnlyWhenItAddsInformation: Story = {
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Alex Morgan's roles" });
+    await expect(trigger).not.toHaveAttribute("title");
+    await userEvent.hover(trigger);
+    await expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+  },
+};
+
+export const CollapsedSummaryNamesTheChoicesInATooltip: Story = {
+  args: { summaryLimit: 1 },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Alex Morgan's roles" });
+    await userEvent.hover(trigger);
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("Member, Org admin");
+    await userEvent.click(trigger);
+    await expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
   },
 };
 

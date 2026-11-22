@@ -17,6 +17,7 @@ import { useLocation } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
 import type { CollectedLink } from "../../api/artefactLinks";
@@ -99,9 +100,11 @@ export function ResearchFindingsPanel({
     <div className="stack" style={{ gap: "var(--space-3)" }}>
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Findings</span>
-        <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" title="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
-          <Plus aria-hidden="true" />
-        </button>
+        <Tooltip label="Add finding">
+          <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
+            <Plus aria-hidden="true" />
+          </button>
+        </Tooltip>
       </span>
       {findings.length === 0 && <span className="text-muted">No findings recorded for this engagement.</span>}
       {findings.map((f) => (

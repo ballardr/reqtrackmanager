@@ -1003,3 +1003,18 @@ export async function addDefinition(
   await dialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 }
+
+
+/**
+ * Hovers the row of a disabled choice (the label around a checkbox) and expects the shared tooltip to give its reason.
+ * A disabled control gets no pointer events, so the label, not the input, is hovered.
+ *
+ * @param page The page.
+ * @param checkbox The checkbox whose row explains why it cannot be changed.
+ * @param reason The tooltip text, or a pattern it must match.
+ */
+export async function expectReasonTooltip(page: Page, checkbox: Locator, reason: string | RegExp): Promise<void> {
+  await checkbox.locator("xpath=ancestor::label[1]").hover();
+  await expect(page.getByRole("tooltip")).toHaveText(reason);
+  await page.mouse.move(0, 0);
+}

@@ -18,10 +18,11 @@
  * (the clamp may break anywhere, so the column can give way) and, for a column that should stay narrow,
  * `maxWidth`.
  *
- * Dependencies: `Tooltip`; the `.cell-text*` rules in `styles/theme.css`.
+ * Dependencies: `Tooltip`, `useIsClipped`; the `.cell-text*` rules in `styles/theme.css`.
  */
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
+import { useIsClipped } from "../hooks/useIsClipped";
 import { Tooltip } from "./Tooltip";
 
 /**
@@ -38,21 +39,7 @@ export function CellText({
 }: {
   children: string; lines?: number; maxWidth?: string; className?: string; style?: CSSProperties;
 }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [clipped, setClipped] = useState(false);
-
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return undefined;
-    const measure = () => {
-      // One pixel of slack: sub-pixel rounding makes an exactly fitting text read as one pixel over.
-      setClipped(element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [children, lines]);
+  const [ref, clipped] = useIsClipped<HTMLSpanElement>();
 
   const clamp = lines > 1;
   const classes = ["cell-text", clamp ? "cell-text--clamp" : "", className ?? ""].filter(Boolean).join(" ");

@@ -19,6 +19,7 @@ import { Plus } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 
 /**
  * @param label Accessible name of the button and title of the popover, e.g. "Add to Participants".
@@ -49,20 +50,21 @@ export function AddPopoverButton({
   const triggerRef = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`btn${size === "sm" ? " btn-sm" : ""}${text ? "" : " btn-icon"}`}
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Icon size={14} aria-hidden="true" />
-        {text && <span style={{ marginLeft: "var(--space-1)" }}>{text}</span>}
-      </button>
+      <Tooltip label={label} disabled={open || !!text}>
+        <button
+          ref={triggerRef}
+          type="button"
+          className={`btn${size === "sm" ? " btn-sm" : ""}${text ? "" : " btn-icon"}`}
+          aria-label={label}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Icon size={14} aria-hidden="true" />
+          {text && <span style={{ marginLeft: "var(--space-1)" }}>{text}</span>}
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={triggerRef} title={label} placement="side" onClose={() => setOpen(false)}>
           {children(() => setOpen(false))}

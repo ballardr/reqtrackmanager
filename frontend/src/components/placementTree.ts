@@ -29,14 +29,15 @@ export function categoryNodeId(categoryId: string): string {
  *
  * @param tree The project's components and categories.
  * @param categoryOnly Leaves a component unchosen (a heading to open) so only a category can be ticked, for a place that
- *   needs one (a requirement's further places); `categoryOnlyTitle` says why.
+ *   needs one (a requirement's primary and further places). The heading has no tooltip: the categories beneath it and the
+ *   field's own help say what to choose, and a tooltip over every heading covered the list.
  * @returns Root nodes (the components); a category's `pathLabel` is `Component / Category`.
  */
-export function placementNodes(tree: PlacementTree, categoryOnly?: { title: string }): TreeSelectNode[] {
+export function placementNodes(tree: PlacementTree, categoryOnly = false): TreeSelectNode[] {
   return tree.components.map((component) => ({
     id: componentNodeId(component.id),
     label: component.name,
-    ...(categoryOnly ? { disabled: true, title: categoryOnly.title } : {}),
+    ...(categoryOnly ? { disabled: true } : {}),
     children: tree.categories
       .filter((category) => category.component_id === component.id)
       .map((category) => ({

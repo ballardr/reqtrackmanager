@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import type { EffectiveMember, ModuleRoleDefinition, OrgGroupProjectRoleSummary, PendingInvite } from "../api/types";
+import { expectTooltip, reasonTarget } from "../testing/tooltips";
 import { ProjectMembersTable } from "./ProjectMembersTable";
 
 const MEMBERS: EffectiveMember[] = [
@@ -250,7 +251,7 @@ export const NamedOrgGroupRoleSourceLine: Story = {
     // review 2026-09 follow-up) rather than relying on the `title` alone.
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Member from Morgan Casey" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("is not a direct grant"));
+    await expectTooltip(reasonTarget(checkbox), /is not a direct grant/);
     await expect(within(group).getByText("Member (by group)")).toBeInTheDocument();
   },
 };
@@ -269,7 +270,7 @@ export const DisabledRoleWithExplanatoryTitle: Story = {
     const group = within(document.body).getByRole("group", { name: "Priya Shah's roles" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Stakeholder from Priya Shah" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("is not a direct grant"));
+    await expectTooltip(reasonTarget(checkbox), /is not a direct grant/);
     await expect(within(group).getByText("Stakeholder (by group)")).toBeInTheDocument();
   },
 };
@@ -291,7 +292,7 @@ export const LastManagerRoleControlDisabled: Story = {
     const group = within(document.body).getByRole("group", { name: "Alex Morgan's roles" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Project manager from Alex Morgan" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("only manager source"));
+    await expectTooltip(reasonTarget(checkbox), /only manager source/);
     await expect(within(group).getByText("Project manager (only manager)")).toBeInTheDocument();
   },
 };
@@ -590,7 +591,7 @@ export const OnlyRoleCannotBeCleared: Story = {
     const only = within(document.body).getByRole("checkbox", { name: "Revoke Member from Sam Ortiz" });
     await expect(only).toBeChecked();
     await expect(only).toBeDisabled();
-    await expect(only).toHaveAttribute("title", expect.stringContaining("only role"));
+    await expectTooltip(reasonTarget(only), /only role/);
     await expect(within(document.body).getByRole("checkbox", { name: "Grant Stakeholder to Sam Ortiz" })).toBeEnabled();
   },
 };
@@ -614,7 +615,7 @@ export const ManyRolesCollapseToCount: Story = {
     const canvas = within(canvasElement);
     const many = canvas.getByRole("button", { name: "Riley Park's roles" });
     await expect(many).toHaveTextContent("4 roles");
-    await expect(many).toHaveAttribute("title", expect.stringContaining("Project administrator"));
+    await expectTooltip(many, /Project administrator/);
     await expect(canvas.getByRole("button", { name: "Priya Shah's roles" })).toHaveTextContent("Stakeholder");
   },
 };

@@ -21,6 +21,7 @@ import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
 import { TreeSelect } from "../../components/TreeSelect";
+import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi } from "./api";
 import { allGroupSelectNodes, buildGroupTree, groupPath } from "./groupTree";
@@ -114,12 +115,14 @@ export function EngagementAudiencePanel({
       label="Audience groups"
       gap="0.35rem"
       action={
-        <button
-          type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
-          title="Add to Audience groups" aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
-        >
-          <Plus aria-hidden="true" />
-        </button>
+        <Tooltip label="Add to Audience groups">
+          <button
+            type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
+            aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
+          >
+            <Plus aria-hidden="true" />
+          </button>
+        </Tooltip>
       }
     >
       {audiences.length === 0 ? (

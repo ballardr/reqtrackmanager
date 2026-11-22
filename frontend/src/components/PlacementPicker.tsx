@@ -29,7 +29,7 @@ export function PlacementPicker({
       id={id}
       triggerLabel={strings.placements.pickerLabel}
       emptyLabel={strings.placements.choose}
-      nodes={placementNodes(tree, categoryOnly ? { title: strings.placements.categoryRequired } : undefined)}
+      nodes={placementNodes(tree, categoryOnly)}
       selectedIds={value.map(placeNodeId)}
       onChange={(ids) => onChange(placesOfNodeIds(ids, tree))}
       searchable

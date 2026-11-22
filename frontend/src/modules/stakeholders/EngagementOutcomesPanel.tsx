@@ -30,6 +30,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
+import { Tooltip } from "../../components/Tooltip";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { getArtefactPath } from "../artefactPaths";
 import { getLinkedRecordCreator } from "../linkedRecordCreators";
@@ -143,12 +144,14 @@ export function EngagementOutcomesPanel({
       label={heading}
       gap="0.35rem"
       action={
-        <button
-          type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
-          aria-haspopup="dialog" onClick={() => setAdding(true)}
-        >
-          <Plus aria-hidden="true" />
-        </button>
+        <Tooltip label={`Add to ${heading}`}>
+          <button
+            type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`}
+            aria-haspopup="dialog" onClick={() => setAdding(true)}
+          >
+            <Plus aria-hidden="true" />
+          </button>
+        </Tooltip>
       }
     >
       {outcomes.length === 0 ? (

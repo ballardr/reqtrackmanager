@@ -24,10 +24,15 @@
  * the search away and the last row is not cut at the border. A one-choice row shows the node's own name under its parent
  * and keeps the whole path (`pathLabel`) as its accessible name and in the trigger. A node may appear under several
  * parents (the same id twice): each place shows the same state.
+ *
+ * Tooltips: the closed trigger shows its full summary in the shared `Tooltip`, only while the summary is clipped and
+ * never while the list is open; a chevron has none (the list is transient and its row names are beside them); a row
+ * has one only to say why a `disabled` node cannot be chosen. No native `title` anywhere (`scripts/check_native_title.py`).
  */
 import { Check, ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { useIsClipped } from "../hooks/useIsClipped";
 import { Popover } from "./Popover";
 import { ScrollRegion } from "./ScrollRegion";
 import { Tooltip } from "./Tooltip";
@@ -117,6 +122,7 @@ export function TreeSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [summaryRef, summaryClipped] = useIsClipped<HTMLSpanElement>();
   const selected = new Set(selectedIds);
   const summary =
     flatten(nodes).filter((n) => selected.has(n.id)).map((n) => n.pathLabel ?? n.label).join(", ") || emptyLabel;
@@ -134,21 +140,22 @@ export function TreeSelect({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        id={id}
-        type="button"
-        className="input row"
-        style={{ justifyContent: "space-between", flexWrap: "nowrap", cursor: "pointer" }}
-        title={summary}
-        aria-label={triggerLabel}
-        aria-haspopup="true"
-        aria-expanded={open}
-        onClick={() => { setQuery(""); setOpen((o) => !o); }}
-      >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>{summary}</span>
-        <ChevronDown size={14} style={{ flexShrink: 0 }} />
-      </button>
+      <Tooltip label={summary} wrap disabled={!summaryClipped || open} style={{ display: "flex", width: "100%" }}>
+        <button
+          ref={triggerRef}
+          id={id}
+          type="button"
+          className="input row"
+          style={{ justifyContent: "space-between", flexWrap: "nowrap", cursor: "pointer" }}
+          aria-label={triggerLabel}
+          aria-haspopup="true"
+          aria-expanded={open}
+          onClick={() => { setQuery(""); setOpen((o) => !o); }}
+        >
+          <span ref={summaryRef} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>{summary}</span>
+          <ChevronDown size={14} style={{ flexShrink: 0 }} />
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)} flush>
           {(searchable || (single && clearLabel)) && (
@@ -171,6 +178,7 @@ export function TreeSelect({
               nodes={shown}
               emptyText={searching ? "Nothing matches." : "No options."}
               nodeLabel={(n) => n.label}
+              toggleTooltip={false}
               expanded={searching ? new Set(flatten(shown).map((n) => n.id)) : undefined}
               onToggle={() => undefined}
               renderNode={(n) => (

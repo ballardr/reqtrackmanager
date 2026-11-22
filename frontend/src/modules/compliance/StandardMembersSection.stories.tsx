@@ -5,6 +5,7 @@ import type { OrgGroup, OrgUser } from "../../api/types";
 import { api } from "../../api/client";
 import { expectHeaderOrdersText } from "../../testing/sortHelpers";
 import { withToast } from "../../testing/storybook-helpers";
+import { expectTooltip, reasonTarget } from "../../testing/tooltips";
 import { StandardMembersSection } from "./StandardMembersSection";
 import type { ComplianceStandard, ComplianceStandardMembers } from "./types";
 
@@ -183,7 +184,7 @@ export const LastManagerCheckboxDisabledWithNoFallback: Story = {
     const group = within(document.body).getByRole("group", { name: "Roles for Alex Manager" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Standards Manager from Alex Manager" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("must always have at least one"));
+    await expectTooltip(reasonTarget(checkbox), /must always have at least one/);
   },
 };
 

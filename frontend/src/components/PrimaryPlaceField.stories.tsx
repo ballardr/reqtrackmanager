@@ -53,6 +53,18 @@ export const AComponentCannotBeChosenAlone: Story = {
   },
 };
 
+/** Hovering a component heading, or its chevron, shows no tooltip over the list; the field's own help says what to choose. */
+export const AComponentHeadingHasNoTooltip: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Component and category" }));
+    const list = within(document.body);
+    await userEvent.hover(await list.findByRole("radio", { name: "Hardware" }));
+    await expect(list.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+    await userEvent.hover(list.getByRole("button", { name: "Collapse Hardware" }));
+    await expect(list.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+  },
+};
+
 /** The search keeps a matching category with its component above it. */
 export const SearchNarrowsToAMatch: Story = {
   play: async ({ canvasElement }) => {

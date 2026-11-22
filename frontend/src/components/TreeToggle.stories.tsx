@@ -50,3 +50,23 @@ export const IsPlainWithATouchSizedTarget: Story = {
 export const Collapsed: Story = { args: { initial: false } };
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** In a persistent tree the chevron names itself in the shared tooltip, never in a native `title`; a picker turns it off. */
+export const NamesItselfInTheSharedTooltip: Story = {
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", { name: "Collapse Acme" });
+    await expect(toggle).not.toHaveAttribute("title");
+    await userEvent.hover(toggle);
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("Collapse Acme");
+  },
+};
+
+export const WithoutTooltipInAPicker: Story = {
+  render: () => <TreeToggle expanded name="Acme" onToggle={() => undefined} tooltip={false} />,
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", { name: "Collapse Acme" });
+    await userEvent.hover(toggle);
+    await expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+    await expect(toggle).not.toHaveAttribute("title");
+  },
+};

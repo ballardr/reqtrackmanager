@@ -19,6 +19,7 @@ import { MarkdownEditor } from "./MarkdownEditor";
 import type { FieldHelpProps } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ToggleSwitch } from "./ToggleSwitch";
+import { Tooltip } from "./Tooltip";
 
 /** Attributes a field passes straight to its control (type, min, max, maxLength, autoFocus, style…); the field owns the rest. */
 type InputExtras = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "aria-label" | "placeholder" | "disabled">;
@@ -216,13 +217,15 @@ export function CheckboxField({
     <div className="stack" style={{ gap: "var(--space-1)" }}>
       {heading && <FieldCaption label={heading} help={help} required={required} />}
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
-        <label className="checkbox-label">
-          <input
-            type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
-            disabled={disabled} title={title}
-          />
-          {label}{!heading && required && <RequiredMark />}
-        </label>
+        <Tooltip label={title ?? ""} wrap disabled={!title}>
+          <label className="checkbox-label">
+            <input
+              type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
+              disabled={disabled}
+            />
+            {label}{!heading && required && <RequiredMark />}
+          </label>
+        </Tooltip>
         {!heading && help && <FieldHelp label={label} help={help} />}
       </span>
       {hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>}

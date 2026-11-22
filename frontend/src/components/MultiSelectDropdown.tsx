@@ -22,6 +22,7 @@ import { ChevronDown } from "lucide-react";
 import { Fragment, useRef, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { useIsClipped } from "../hooks/useIsClipped";
 
 import { Popover } from "./Popover";
 import { Tooltip } from "./Tooltip";
@@ -91,6 +92,7 @@ export function MultiSelectDropdown({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [summaryRef, summaryClipped] = useIsClipped<HTMLSpanElement>();
   const filterRef = useRef<HTMLInputElement>(null);
   const checked = options.filter((o) => o.checked);
   const labels = checked.map((o) => o.label).join(", ") || emptyLabel;
@@ -120,13 +122,13 @@ export function MultiSelectDropdown({
       </button>
     </Tooltip>
   ) : (
+    <Tooltip label={labels} wrap disabled={!(summaryClipped || collapse) || open} style={{ display: "flex", width: "100%" }}>
       <button
         id={id}
         ref={triggerRef}
         type="button"
         className="input row"
         style={{ justifyContent: "space-between", flexWrap: "nowrap", cursor: "pointer" }}
-        title={labels}
         aria-label={triggerLabel}
         aria-haspopup="true"
         aria-expanded={open}
@@ -143,12 +145,13 @@ export function MultiSelectDropdown({
             `nowrap` here and truncating the summary instead keeps the
             chevron pinned to the same spot on every row regardless of
             content length; the untruncated text is still available via
-            the `title` above and the opened list itself. */}
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>
+            the tooltip above (shown while the text is clipped or collapsed) and the opened list itself. */}
+        <span ref={summaryRef} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 /* grid-text-ok: the label of a select control, not a cell of a grid */ }}>
           {summary}
         </span>
         <ChevronDown size={14} style={{ flexShrink: 0 }} />
       </button>
+    </Tooltip>
   );
   return (
     <>
@@ -184,6 +187,7 @@ export function MultiSelectDropdown({
                 {opt.section && (
                   <span className="text-muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>{opt.section}</span>
                 )}
+                <Tooltip label={opt.title ?? ""} wrap disabled={!opt.disabled || !opt.title} style={{ display: "flex" }}>
                 <label
                   className="row"
                   style={{ gap: "var(--space-2)", fontSize: "0.85rem", flexWrap: "nowrap", ...(opt.indent ? { paddingLeft: "var(--space-4)" } : {}), ...(opt.heading ? { fontWeight: 600 } : {}) }}
@@ -193,7 +197,6 @@ export function MultiSelectDropdown({
                     checked={opt.checked}
                     disabled={opt.disabled}
                     aria-label={opt.optionLabel}
-                    title={opt.disabled ? opt.title : undefined}
                     onChange={opt.onToggle}
                   />
                   <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
@@ -206,6 +209,7 @@ export function MultiSelectDropdown({
                     )}
                   </span>
                 </label>
+                </Tooltip>
                 </Fragment>
               ))}
               {canAdd && addFromFilter && (

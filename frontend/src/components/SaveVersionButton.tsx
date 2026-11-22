@@ -17,6 +17,7 @@ import { useRef, useState } from "react";
 import { useStrings } from "../context/TerminologyContext";
 import { TextField } from "./FormFields";
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 
 /**
  * @param disabled Whether the editor has nothing valid to save.
@@ -41,9 +42,11 @@ export function SaveVersionButton({
 
   return (
     <>
-      <button ref={anchor} type="button" className="btn btn-primary" disabled={disabled || saving} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)}>
-        {text.button}
-      </button>
+      <Tooltip label={title ?? ""} wrap disabled={open || !title}>
+        <button ref={anchor} type="button" className="btn btn-primary" disabled={disabled || saving} aria-haspopup="dialog" onClick={() => setOpen(true)}>
+          {text.button}
+        </button>
+      </Tooltip>
       {open && (
         <Popover anchorRef={anchor} title={text.title} onClose={() => setOpen(false)}>
           <form
